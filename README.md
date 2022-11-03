@@ -35,7 +35,7 @@ Skapi.connect('your_service_id', 'your_user_id').then(async skapi => {
 For HTML projects:
 ```
 <head>
-  <script src="https://skapi.com/lib/0.0.2/skapi.js">
+  <script src="https://skapi.com/lib/0.0.1/skapi.js">
 </head>
 <script>
     Skapi.connect('your_service_id', 'your_user_id').then(async skapi => {
