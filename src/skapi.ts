@@ -1,0 +1,3609 @@
+import {
+    CognitoUserPool,
+    CognitoUserAttribute,
+    CognitoUser,
+    AuthenticationDetails,
+    CognitoUserSession
+} from 'amazon-cognito-identity-js';
+
+import {
+    RecordData,
+    User,
+    Form,
+    FormCallbacks,
+    UserProfile,
+    PostRecordParams,
+    FetchOptions,
+    SubscriberGroup,
+    SubscriberFetch,
+    FetchResponse,
+    GetRecordParams,
+    QueryParams,
+    Newsletters
+} from './Types';
+import SkapiError from './skapi_error';
+import { formResponse } from './decorators';
+import {
+    checkParams,
+    extractFormMetaData,
+    validateUserId,
+    validateBirthdate,
+    validateEmail,
+    validatePassword,
+    validatePhoneNumber,
+    validateUrl,
+    normalize_record_data,
+    checkWhiteSpaceAndSpecialChars,
+    sha256
+} from './utils';
+
+type StartKeys = {
+    /** List of startkeys */
+    [url: string]: {
+        [hashedParams: string]: string[];
+    };
+};
+
+type CachedRequests = {
+    /** Cached url requests */
+    [url: string]: {
+        /** Array of data stored in hashed params key */
+        [hashedParams: string]: FetchResponse;
+    };
+};
+
+type Connection = {
+    /** Connection locale */
+    locale: string;
+    /** Name of the connected service */
+    name: string;
+    /** Id of the service owner */
+    owner: string;
+    /** E-Mail address of the service owner */
+    owner_email: string;
+    /** Service id */
+    service: string;
+    /** 13 digits timestamp of the service creation */
+    timestamp: number;
+    /** hash string used for login */
+    hash?: string;
+};
+/**
+ * All the methods used in Skapi are promises.<br>
+ * Use async/await or Promise.then() to interact with backend.<br>
+ * 
+ * <b>Example A: Using async await</b>
+ * ```
+ * async function app() {
+ *      try {
+ *          let skapi = await Skapi.connect('xxxxxxxxxxxxxx', 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx');
+ *
+ *          console.log(skapi.connection); // connection to Skapi!
+ *
+ *          // - Here is where all your code should be written -
+ *
+ *      } catch(error) {
+ *          console.log('Connection error');
+ *      }
+ * }
+ *
+ * // Run your application
+ * app();
+ * ```
+ * 
+ * <b>Example B: Using Promise.then()</b>
+ * ```
+ * Skapi.connect('xxxxxxxxxxxxxx', 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx').then(async skapi => {
+ *
+ *       console.log(skapi.connection); // connection to Skapi!
+ *
+ *       // - Here is where all your code should be written -
+ *
+ * }).catch(error => {
+ *       console.log('Connection error');
+ * });
+ * ```
+ */
+export default class Skapi {
+    // privates
+    private cognitoUser: CognitoUser | null = null;
+    private __disabledAccount: string | null = null;
+    private __serviceHash: Record<string, string> = {};
+    private __pendingRequest: Record<string, Promise<any>> = {};
+    private __cached_requests: CachedRequests = {};
+    private __startKey_keys: StartKeys = {};
+    private __request_signup_confirmation: string | null = null;
+    private __index_number_range = 4503599627370496;
+    private service: string;
+    private service_owner: string;
+
+    // true when session is stored successfully to session storage
+    // this property prevents duplicate stores when window closes on some device
+    private __class_properties_has_been_cached = false;
+
+    private session: Record<string, any> | null = null;
+
+    // public
+
+    /** Current logged in user object. null if not logged. */
+    user: User | null = null;
+    /** Connected service object. null if connection failed. */
+    connection: Connection | null = null;
+    host: string = 'skapi';
+    hostDomain: string = 'skapi.com';
+    userPool: CognitoUserPool | null = null;
+    admin_endpoint: Promise<Record<string, any>>;
+    record_endpoint: Promise<Record<string, any>>;
+
+    regex = {
+        validateUserId(val: string) {
+            try {
+                validateUserId(val);
+                return true;
+            } catch (err) {
+                return false;
+            }
+        },
+        validateUrl(val: string | string[]) {
+            try {
+                validateUrl(val);
+                return true;
+            } catch (err) {
+                return false;
+            }
+        },
+        validatePhoneNumber(val: string) {
+            try {
+                validatePhoneNumber(val);
+                return true;
+            } catch (err) {
+                return false;
+            }
+        },
+        validateBirthdate(val: string) {
+            try {
+                validateBirthdate(val);
+                return true;
+            } catch (err) {
+                return false;
+            }
+        },
+        validateEmail(val: string) {
+            try {
+                validateEmail(val);
+                return true;
+            } catch (err) {
+                return false;
+            }
+        }
+    };
+
+    /** @ignore */
+    __connection: Promise<Connection | null>;
+
+    // skapi int range -4503599627370545 ~ 4503599627370546
+
+    constructor(service_id: string, service_owner: string) {
+        if (typeof service_id !== 'string' || typeof service_owner !== 'string') {
+            throw new SkapiError('"service_id" and "service_owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
+        }
+
+        if (!service_id || !service_owner) {
+            throw new SkapiError('"service_id" and "service_owner" is required', { code: 'INVALID_PARAMETER' });
+        }
+
+        if (service_owner !== this.host) {
+            validateUserId(service_owner, '"service_owner"');
+        }
+
+        this.service = service_id;
+        this.service_owner = service_owner;
+
+        // get endpoints
+        const cdn_domain = 'https://dkls9pxkgz855.cloudfront.net'; // don't change this
+        let sreg = service_id.substring(0, 4);
+        this.admin_endpoint = fetch(`${cdn_domain}/${sreg}/admin.json`)
+            .then(response => response.blob())
+            .then(blob => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            }))
+            .then(data => typeof data === 'string' ? JSON.parse(window.atob(data.split(',')[1])) : null);
+
+        this.record_endpoint = fetch(`${cdn_domain}/${sreg}/record.json`)
+            .then(response => response.blob())
+            .then(blob => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            }))
+            .then(data => typeof data === 'string' ? JSON.parse(window.atob(data.split(',')[1])) : null);
+
+        // connects to server
+        this.__connection = (async (skapi: Skapi): Promise<Connection | null> => {
+            if (!window.sessionStorage) {
+                throw new Error(`This browser does not support skapi.`);
+            }
+
+            const restore = JSON.parse(window.sessionStorage.getItem(`${service_id}#${service_owner}`) || 'null');
+
+            if (restore?.connection) {
+                // apply all data to class properties
+                for (let k in restore) {
+                    skapi[k] = restore[k];
+                }
+            }
+
+            const admin_endpoint = await skapi.admin_endpoint;
+
+            skapi.userPool = new CognitoUserPool({
+                UserPoolId: admin_endpoint.userpool_id,
+                ClientId: admin_endpoint.userpool_client
+            });
+
+            await Promise.all([
+                skapi.updateServiceInformation(),
+                skapi.authentication().updateSession({ refreshToken: !!restore?.connection }).catch(err => {
+                    skapi.user = null;
+                })
+            ]);
+
+            const storeClassProperties = () => {
+                if (skapi.__class_properties_has_been_cached) {
+                    return;
+                }
+
+                let data: Record<string, any> = {};
+
+                const to_be_cached = [
+                    '__startKey_keys', // startKey key : {}
+                    '__cached_requests', // cached records : {}
+                    '__request_signup_confirmation', // for resend signup confirmation : null
+                    'connection', // service info : null
+                ];
+
+                if (skapi.connection) {
+                    for (let k of to_be_cached) {
+                        data[k] = skapi[k];
+                    }
+
+                    sessionStorage.setItem(`${service_id}#${service_owner}`, JSON.stringify(data));
+                    skapi.__class_properties_has_been_cached = true;
+                }
+            };
+
+            // attach event to save session on close
+            window.addEventListener('beforeunload', storeClassProperties);
+            window.addEventListener("visibilitychange", storeClassProperties);
+
+            return skapi.connection;
+
+        })(this).catch(err => { throw err; });
+    }
+
+    /**
+     * Connects to your Skapi web service.</br>
+     * Use your service ID and your user ID as an argument.<br>
+     * Once successful, Skapi class object will be returned.<br>
+     *
+     * <h5>IMPORTANT NOTE!</h5>
+     * When setting up your web services in Skapi, always set your service cors url on production.<br>
+     * If the cors is not set, other people can use your web service apis on their websites as well.<br>
+     * Refer: <a href='www.google.com'>Setting up cors</a>
+     *
+     * ```
+     * Skapi.connect('xxxxxxxxxxxxxx', 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx').then(async skapi => {
+     *
+     *      console.log(skapi.connection); // connection to Skapi!
+     *       
+     *      if(skapi.user) {
+     *          // user is logged in!
+     *      }
+     * 
+     *      else {
+     *          // user is not logged in.
+     *      }
+     *
+     *      // - code -
+     *
+     * }).catch(error => {
+     *       console.log('Connection error'); //'connection failed.'
+     * });
+     * ```
+     * @category Connection
+     */
+    static async connect(
+        /** 22 character service id */
+        service_id: string,
+        /** 36 character user id */
+        service_owner: string
+    ): Promise<Skapi> {
+        const skapi = new Skapi(service_id, service_owner);
+        await skapi.__connection;
+        return skapi;
+    }
+
+    private authentication() {
+        if (!this.userPool) {
+            throw new SkapiError('User pool is missing', { code: 'INVALID_REQUEST' });
+        }
+
+        const updateSession = (option?: {
+            refreshToken?: boolean;
+        }): Promise<User> => {
+            // fetch session, update user info
+            let { refreshToken = false } = option || {};
+            // console.log('%cUpdate session', 'background-color:tomato;color:white;');
+            // console.log({ refreshToken, refreshUserData });
+
+            return new Promise((res, rej) => {
+                let currentUser: CognitoUser | null = this.userPool?.getCurrentUser() || null;
+                this.cognitoUser = currentUser;
+
+                if (currentUser === null) {
+                    rej(null);
+                }
+
+                currentUser.getSession((err: any, session: CognitoUserSession) => {
+                    // console.log('%cGet session', 'background-color:tomato;color:white;');
+                    // console.log({ err, session });
+                    if (err) {
+                        rej(err);
+                    }
+
+                    const updateAttributes = async (sessionToMerge: Record<string, any>) => {
+                        // console.log('%cUpdate attributes', 'background-color:tomato;color:white;');
+                        // console.log({ sessionToMerge });
+                        if (sessionToMerge.isValid() && currentUser) {
+                            currentUser.getUserAttributes((attrErr, attributes) => {
+                                // console.log('%cGet user attributes', 'background-color:tomato;color:white;');
+                                // console.log({ attrErr, attributes });
+                                if (attrErr) {
+                                    rej(attrErr);
+                                }
+
+                                else {
+                                    let normalized_attributes: Record<string, any> = {};
+                                    let user: any = {};
+
+                                    for (let i of (attributes as CognitoUserAttribute[])) {
+                                        normalized_attributes[i.Name] = i.Value;
+                                        let key_1 = i.Name.replace('custom:', '');
+                                        user[key_1] = i.Value;
+
+                                        if (i.Name === 'custom:service' && normalized_attributes[i.Name] !== this.service) {
+                                            rej(new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' }));
+                                        }
+                                    }
+
+
+                                    for (let k of [
+                                        'address_public',
+                                        'birthdate_public',
+                                        'email_public',
+                                        'email_subscription',
+                                        'gender_public',
+                                        'phone_number_public'
+                                    ]) {
+                                        if (k.includes('_public')) {
+                                            if (user.hasOwnProperty(k.split('_')[0])) {
+                                                user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
+                                            }
+                                            else {
+                                                delete user[k];
+                                            }
+                                        } else {
+                                            user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
+                                        }
+                                    }
+
+                                    for (let k of [
+                                        'email_verified',
+                                        'phone_number_verified'
+                                    ]) {
+                                        if (user[k.split('_')[0]]) {
+                                            user[k] = user.hasOwnProperty(k) ? user[k] === 'true' : false;
+                                        }
+                                        else if (user.hasOwnProperty(k)) {
+                                            delete user[k];
+                                        }
+                                    }
+
+                                    // console.log('%cMerging attributes to session', 'background-color:tomato;color:white;');
+                                    sessionToMerge.attributes = normalized_attributes;
+                                    this.session = sessionToMerge;
+
+                                    user.access_group = Number(this.session.idToken.payload.access_group);
+                                    user.user_id = user.sub;
+                                    delete user.sub;
+                                    this.user = user;
+                                    res(user);
+                                }
+                            });
+                        }
+
+                        else {
+                            // console.log('%cInvalid session', 'background-color:tomato;color:white;');
+                            rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
+                        }
+                    };
+
+                    if (session) {
+                        if (refreshToken) {
+                            // console.log('%cRefresh token', 'background-color:tomato;color:white;');
+                            // console.log({ refreshToken });
+                            currentUser?.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
+                                if (refreshErr) {
+                                    // console.log('%cRefresh token error', 'background-color:tomato;color:white;');
+                                    // console.log({ refreshErr });
+                                    rej(refreshErr);
+                                }
+                                updateAttributes(refreshedSession).catch(err => rej(err));
+                            });
+                        }
+
+                        else {
+                            // console.log('%cLoading session', 'background-color:tomato;color:white;');
+                            // console.log({ refreshToken });
+                            updateAttributes(session).catch(err => rej(err));
+                        }
+
+                    } else {
+                        rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
+                    }
+                });
+            });
+        };
+
+        const createCognitoUser = async (email: string) => {
+            // console.log('%cCreate cognito user', 'background-color:tomato;color:white;');
+            let hash = null;
+
+            if (email) {
+                hash = this.__serviceHash[email] || (await this.updateServiceInformation({ request_hash: email })).hash;
+            }
+
+            else {
+                if (this.session) {
+                    hash = this.session.idToken.payload['cognito:username'];
+                } else {
+                    throw new SkapiError('E-Mail is required.', { code: 'INVALID_PARAMETER' });
+                }
+            }
+
+            return {
+                cognitoUser: new CognitoUser({
+                    Username: hash,
+                    Pool: this.userPool
+                }),
+                cognitoUsername: hash
+            };
+        };
+
+        const authenticateUser = (username: string, password: string): Promise<User> => {
+            // console.log('%cAuthenticate user', 'background-color:tomato;color:white;');
+            return new Promise(async (res, rej) => {
+                this.logout();
+                this.__request_signup_confirmation = null;
+                this.__disabledAccount = null;
+
+                let initUser = await createCognitoUser(username);
+                this.cognitoUser = initUser.cognitoUser;
+                username = initUser.cognitoUsername;
+
+                let authenticationDetails = new AuthenticationDetails({
+                    Username: username,
+                    Password: password
+                });
+
+                this.cognitoUser.authenticateUser(authenticationDetails, {
+                    newPasswordRequired: (userAttributes, requiredAttributes) => {
+                        this.__request_signup_confirmation = username;
+                        rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
+                    },
+                    onSuccess: (logged) => {
+                        // console.log('%cAuthenticate user success', 'background-color:tomato;color:white;');
+                        // console.log({ logged });
+                        updateSession().then(session => {
+                            res(session);
+                        });
+                    },
+                    onFailure: (err: any) => {
+                        let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
+
+                        if (err.code === "NotAuthorizedException") {
+                            if (err.message === "User is disabled.") {
+                                this.__disabledAccount = username;
+                                error = ['This account is disabled.', 'USER_IS_DISABLED'];
+                            }
+
+                            else {
+                                error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
+                            }
+                        }
+
+                        rej(new SkapiError(error[0], { code: error[1], cause: err }));
+                    }
+                });
+            });
+        };
+
+        return { updateSession, authenticateUser, createCognitoUser };
+    }
+
+    /**
+     * @ignore 
+     */
+    async requireAdmin(option?: { ignoreVerification?: boolean; throwError?: boolean; }) {
+        if (this.session?.attributes?.['custom:service'] === this.service) {
+            // logged in
+            if (this.session?.attributes?.['custom:service_owner'] === this.host) {
+                if (!option?.ignoreVerification && !this.session?.attributes?.email_verified) {
+                    throw new SkapiError('Email verification is required.', { code: 'INVALID_REQUEST' });
+                }
+
+                return true;
+            }
+
+            if (option?.throwError) {
+                throw new SkapiError('Admin access is required.', { code: 'INVALID_REQUEST' });
+            }
+
+        } else {
+            // not logged
+            this.logout();
+
+            if (option?.throwError) {
+                throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Fetch blob from url.</br>
+     * User can get saved file as blob from url.<br>
+     * getBlob can be used to fetch file that are user login is required.
+     *
+     * ```
+     * let fileBlob = await skapi.getBlob({url: 'http://blob.url'});
+     * ```
+     * @category Connection
+     * @param params.url - file url to get.
+     * @param _option.service - Service Id. Only works on admin account.
+     */
+    async getBlob(params: { url: string; }, option?: { service: string; }): Promise<Blob> {
+
+        let p = checkParams(params, {
+            url: (v: string) => validateUrl(v)
+        }, ['url']);
+
+        return await this.request(p.url, option || null, { method: 'get', auth: p.url.includes('/auth/'), contentType: null, responseType: 'blob' });
+    }
+
+    /**
+     * Sends post request to your custom server using Skapi's secure API layer.</br>
+     * You must set your secret API key from the Skapi's admin page.</br>
+     * On your server side, you must verify your secret API key.<br>
+     * Skapi API layer can process your requests both synchronously and asynchronously.<br>
+     * You can request multiple process using arrays.<br>
+     * Skapi will process your requests in order.</br>
+     * The sync process will be chained in order during process.<br>
+     * Refer: <a href='www.google.com'>Setting secret api key</a>
+     *
+     * <h6>Example</h6>
+     * 
+     * ```
+     * let call = await skapi.secureRequest(
+     *     url: 'http://my.website.com/myapi',
+     *     data: {
+     *         some_data: 'Hello'
+     *     }
+     * )
+     * 
+     * console.log(call)
+     * // {
+     * //     response: <any>
+     * //     statusCode: <number>
+     * //     url: 'http://my.website.com/myapi'
+     * // }
+     * ```
+     *
+     * 
+     * <h6>Nodejs Example</h6>
+     * 
+     * ```
+     * const http = require('http');
+     * http.createServer(function (request, response) {
+     * if (request.url === '/myapi') {
+     *     if (request.method === 'POST') {
+     *         let body = '';
+     * 
+     *         request.on('data', function (data) {
+     *             body += data;
+     *         });
+     * 
+     *         request.on('end', function () {
+     *             body = JSON.parse(body);
+     *             console.log(body);
+     *             // {
+     *             //     user: {
+     *             //         user_id: '',
+     *             //         address: '',
+     *             //         phone_number: '',
+     *             //         email: '',
+     *             //         name: '',
+     *             //         locale: '',
+     *             //         request_locale: ''
+     *             //     },
+     *             //     data: {
+     *             //         some_data: 'Hello',
+     *             //     },
+     *             //     api_key: 'your api secret key'
+     *             // }
+     * 
+     *             if (body.api_key && body.api_key === 'your api secret key') {
+     *                 response.writeHead(200, {'Content-Type': 'text/html'});
+     *                 // do something
+     *                 response.end('success');
+     *             } else {
+     *                 response.writeHead(401, {'Content-Type': 'text/html'});
+     *                 response.end("api key mismatch");
+     *             }
+     *         });
+     *     }
+     * }
+     * }).listen(3000);
+     * ```
+     *
+     * 
+     * <h6>Python Example</h6>
+     * 
+     * ```
+     * from http.server import BaseHTTPRequestHandler, HTTPServer
+     * import json
+     * 
+     * class MyServer(BaseHTTPRequestHandler):
+     * def do_request(self):
+     *     if self.path == '/myapi':
+     *         content_length = int(self.headers['Content-Length'])
+     *         body = json.loads(self.rfile.read(content_length).decode('utf-8'))
+     *         print(body)
+     *         # {
+     *         #     'user': {
+     *         #         'user_id': '',
+     *         #         'address': '',
+     *         #         'phone_number': '',
+     *         #         'email': '',
+     *         #         'name': '',
+     *         #         'locale': '',
+     *         #         'request_locale': ''
+     *         #     },
+     *         #     'data': {
+     *         #         'some_data': 'Hello',
+     *         #     },
+     *         #     'api_key': 'your api secret key'
+     *         # }
+     * 
+     *         if 'api_key' in body and body['api_key'] == 'your api secret key':
+     *             self.send_response(200)
+     *             self.send_header("Content-type", "text/html")
+     *             self.end_headers()
+     *             self.wfile.write(b'\n success')
+     *         else:
+     *             self.send_response(401)
+     *             self.send_header("Content-type", "text/html")
+     *             self.end_headers()
+     *             self.wfile.write(b'api key mismatch')
+     * 
+     * 
+     * myServer = HTTPServer(("", 3000), MyServer)
+     * 
+     * try:
+     *      myServer.serve_forever()
+     * except KeyboardInterrupt:
+     *      myServer.server_close()
+     * ```
+     * @category Connection
+     */
+    async secureRequest<RequestParams = {
+        /** Request url */
+        url: string;
+        /** Request data */
+        data?: any;
+        /** requests are sync when true */
+        sync?: boolean;
+    }>(request: RequestParams | RequestParams[]): Promise<any> {
+        let paramsStruct = {
+            url: (v: string) => {
+                return validateUrl(v);
+            },
+            data: null,
+            sync: ['boolean', () => true]
+        };
+
+        if (Array.isArray(request)) {
+            for (let r of request) {
+                r = checkParams(r, paramsStruct);
+            }
+        }
+
+        else {
+            request = checkParams(request, paramsStruct);
+        }
+
+        return await this.request('post-secure', request, { auth: true });
+    }
+
+    /**
+     * Retrives respond data from form request.
+     * 
+     * ```
+     * let respond = skapi.getResponse();
+     * ```
+     * @category Connection
+     */
+    getFormResponse(): any {
+        let params = new URLSearchParams(window.location.search);
+
+        for (let [key, val] of params.entries()) {
+            // key = response key sha256
+            // val = timestamp
+            if (key.substring(0, 5) !== 'form-') {
+                continue;
+            }
+
+            let stored = window.sessionStorage.getItem(key);
+
+            if (stored) {
+                window.sessionStorage.removeItem(key);
+                try {
+                    stored = JSON.parse(stored);
+                } catch (err) { }
+            }
+
+            if (typeof stored === 'object' && (stored as Record<string, any>)[val]) {
+                return (stored as Record<string, any>)[val];
+            }
+
+            else {
+                continue;
+            }
+        }
+
+        return null;
+    }
+
+    // internals below
+
+    /**
+     * @ignore 
+     */
+    async request(
+        url: string,
+        data: Form = null,
+        options: {
+            fetchOptions?: FetchOptions & FormCallbacks;
+            auth?: boolean;
+            method?: string;
+            meta?: Record<string, any>;
+            bypassAwaitConnection?: boolean;
+            responseType?: string;
+            contentType?: string;
+        } = {}): Promise<any> {
+
+        let {
+            auth = false,
+            method = 'post',
+            meta = null, // content meta
+            bypassAwaitConnection = false
+        } = options;
+
+        let __connection = bypassAwaitConnection ? null : (await this.__connection);
+        let token = auth ? this.session?.idToken?.jwtToken : null; // idToken
+
+        if (auth) {
+            if (!token) {
+                this.logout();
+                throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+            }
+        }
+
+        let isExternalUrl = '';
+        try {
+            isExternalUrl = validateUrl(url);
+        } catch (err) {
+            // is not an external url
+        }
+
+        const getEndpoint = async (dest: string, auth: boolean) => {
+            const endpoints = await Promise.all([
+                this.admin_endpoint,
+                this.record_endpoint
+            ]);
+
+            const admin = endpoints[0];
+            const record = endpoints[1];
+            const get_ep = () => {
+                switch (dest) {
+                    case 'get-serviceletters':
+                    case 'delete-newsletter':
+                    case 'block-account':
+                    case 'register-service':
+                    case 'get-users':
+                    case 'post-userdata':
+                    case 'remove-account':
+                    case 'post-secure':
+                    case 'get-newsletters':
+                    case 'subscribe-newsletter':
+                    case 'signup':
+                    case 'confirm-signup':
+                    case 'recover-account':
+                    case 'service':
+                        return {
+                            public: admin.admin_public,
+                            private: admin.admin_private
+                        };
+
+                    case 'post-record':
+                    case 'get-records':
+                    case 'subscription':
+                    case 'get-subscription':
+                    case 'del-records':
+                    case 'get-table':
+                    case 'get-tag':
+                    case 'get-index':
+                    case 'storage-info':
+                        return {
+                            private: record.record_private,
+                            public: record.record_public
+                        };
+                }
+            };
+
+            return get_ep()[auth ? 'private' : 'public'] + dest;
+        };
+
+        let endpoint = isExternalUrl || (await getEndpoint(url, !!auth));
+        let service = this.session?.attributes?.['custom:service'] || __connection?.service || this.service;
+        let service_owner = this.session?.attributes?.['custom:service_owner'] || __connection?.owner || this.service_owner;
+
+        if (meta) {
+            if (typeof meta === 'object' && !Array.isArray(meta)) {
+                meta = JSON.parse(JSON.stringify(meta));
+            }
+            else {
+                throw new SkapiError('Invalid meta data.', { code: 'INVALID_REQUEST' });
+            }
+        }
+
+        if (Array.isArray(data) || data && typeof data !== 'object') {
+            throw new SkapiError('Request data should be a JSON Object | FormData | HTMLFormElement.', { code: 'INVALID_REQUEST' });
+        }
+
+        /* compose meta to send */
+        let required = { service, service_owner };
+
+        // set fetch options
+        let fetchOptions = {};
+        let { refresh = false } = options.fetchOptions || {};
+
+        if (options.fetchOptions && Object.keys(options.fetchOptions).length) {
+            // record fetch options
+            let fetOpt = checkParams(
+                {
+                    limit: options?.fetchOptions?.limit || 100,
+                    startKey: options?.fetchOptions?.startKey || null,
+                    ascending: typeof options?.fetchOptions?.ascending === 'boolean' ? options.fetchOptions.ascending : true
+                },
+                {
+                    limit: ['number', () => 100],
+                    startKey: null,
+                    ascending: ['boolean', () => true]
+                }
+            );
+
+            if (fetOpt.hasOwnProperty('limit') && typeof fetOpt.limit === 'number') {
+                if (fetOpt.limit > 1000) {
+                    throw new SkapiError('Fetch limit should be below 1000.', { code: 'INVALID_REQUEST' });
+                }
+                Object.assign(fetchOptions, { limit: fetOpt.limit });
+            }
+
+            if (fetOpt.hasOwnProperty('startKey') && typeof fetOpt.startKey === 'object' && fetOpt.startKey && Object.keys(fetOpt.startKey)) {
+                Object.assign(fetchOptions, { startKey: fetOpt.startKey });
+            }
+
+            if (fetOpt.hasOwnProperty('ascending') && typeof fetOpt.ascending === 'boolean') {
+                Object.assign(fetchOptions, { ascending: fetOpt.ascending });
+            }
+        }
+
+        Object.assign(required, fetchOptions);
+
+        // extract html form meta. null if not formdata.
+        let metaData = extractFormMetaData(data);
+        let isForm = metaData?.meta;
+        let fileKeys = metaData?.files || [];
+
+        let normalize_form = async (data: any, isForm: any, addRequired = false) => {
+            if (isForm === null) {
+                return data;
+            }
+
+            let isFormEl = false;
+            if (data instanceof HTMLFormElement) {
+                data = new FormData(data);
+                isFormEl = true;
+            }
+
+            if (!(data instanceof FormData)) {
+                return data;
+            }
+
+            if (addRequired) {
+                // !do not change the order of iterations below!
+                for (let k in required) {
+                    if (required[k] !== undefined) {
+                        data.set(k, typeof required[k] === 'string' ? required[k] : new Blob([JSON.stringify(required[k])], {
+                            type: 'application/json'
+                        }));
+                    }
+                }
+            }
+
+            for (let k in isForm) {
+                if (isForm[k] !== undefined) {
+                    data[fileKeys.includes(k) ? "append" : "set"](k, typeof isForm[k] === 'string' ? isForm[k] : new Blob([JSON.stringify(isForm[k])], {
+                        type: 'application/json'
+                    }));
+                }
+            }
+
+            if (options?.fetchOptions?.formData) {
+                if (typeof options?.fetchOptions?.formData === 'function') {
+                    if (!isFormEl) {
+                        throw new SkapiError('Form data should be HTMLFormElement when formData() callback is used.', { code: 'INVALID_PARAMETER' });
+                    }
+
+                    let cb = options.fetchOptions.formData((data as FormData));
+                    if (cb instanceof Promise) {
+                        cb = await cb;
+                    }
+
+                    if (cb instanceof FormData) {
+                        data = cb;
+                    }
+
+                    else {
+                        throw new SkapiError('Callback for extractFormData() should return FormData', { code: 'INVALID_PARAMETER' });
+                    }
+                }
+
+                else {
+                    throw new SkapiError('Callback "formData" should type: function.', { code: 'INVALID_PARAMETER' });
+                }
+            }
+
+            return data;
+        };
+
+        if (meta) {
+            // add required to meta
+            // when meta has data, form data will be nested in 'data' key by the backend
+            meta = Object.assign(required, meta);
+            data = await normalize_form(data, isForm);
+        }
+
+        else {
+            // add required to data
+            if (!data && isForm === null) {
+                data = required;
+            }
+            else {
+                if (isForm) {
+                    // data is either HTMLFormElement | FormData
+                    data = await normalize_form(data, isForm, true);
+                }
+                else {
+                    data = Object.assign(required, data);
+                }
+            }
+        }
+
+        let requestKey = this.load_startKey_keys({
+            params: Object.assign(isForm || (data || {}), required || {}),
+            url: isExternalUrl || url,
+            refresh: isForm ? true : refresh // should not use startKey when post is a form
+        }); // returns requrestKey | cached data
+
+        if (requestKey && typeof requestKey === 'object') {
+            return requestKey;
+        }
+
+        if (typeof requestKey === 'string') {
+            if (!(this.__pendingRequest[requestKey] instanceof Promise)) {
+                // new request
+
+                let headers: Record<string, any> = {
+                    'Accept': '*/*'
+                };
+
+                if (token) {
+                    headers.Authorization = token;
+                }
+
+                if (meta) {
+                    headers["Content-Meta"] = JSON.stringify(meta);
+                }
+
+                if (options.hasOwnProperty('contentType')) {
+                    if (options?.contentType) {
+                        headers["Content-Type"] = options.contentType;
+                    }
+                }
+
+                else if (!(data instanceof FormData)) {
+                    headers["Content-Type"] = 'application/json';
+                }
+
+                let opt: RequestInit & { responseType?: string | null, headers: Record<string, any>; } = { headers };
+                if (options?.responseType) {
+                    opt.responseType = options.responseType;
+                }
+
+                // pending call request
+                // this prevents recursive calls
+                if (method === 'post') {
+                    this.__pendingRequest[requestKey] = this._post(endpoint, data, opt);
+                }
+                else if (method === 'get') {
+                    this.__pendingRequest[requestKey] = this._get(endpoint, data, opt);
+                }
+            }
+
+            try {
+                let response = await this.__pendingRequest[requestKey];
+
+                // should not use startKey when post is a form (is a post)
+                if (isForm) {
+                    return response;
+                }
+
+                else {
+                    return await this.update_startKey_keys({
+                        hashedParam: requestKey,
+                        url,
+                        response
+                    });
+                }
+
+            } catch (err) {
+                throw err;
+            } finally {
+                // remove promise
+                if (requestKey && this.__pendingRequest.hasOwnProperty(requestKey)) {
+                    delete this.__pendingRequest[requestKey];
+                }
+            }
+        }
+    }
+    // cache, handle database records
+
+    private load_startKey_keys(option: {
+        params: Record<string, any>;
+        url: string;
+        refresh?: boolean;
+    }): string | FetchResponse {
+
+        let { params = {}, url, refresh = false } = option || {};
+
+        if (params.hasOwnProperty('startKey')) {
+            if (
+                typeof params.startKey !== 'object' && !Object.keys(params.startKey).length ||
+                // params.startKey !== 'start' && params.startKey !== 'end'
+                params.startKey !== 'end'
+            ) {
+                throw new SkapiError(`"${params.startKey}" is invalid startKey key.`, { code: 'INVALID_PARAMETER' });
+            }
+
+            switch (params.startKey) {
+                case 'end':
+                    // end is always end
+                    return {
+                        list: [],
+                        startKey: 'end',
+                        endOfList: true
+                    };
+
+                case 'start':
+                    // deletes referenced object key
+                    delete params.startKey;
+            }
+        }
+
+        let toHash = (() => {
+            if (params && typeof params === 'object' && Object.keys(params).length) {
+                // hash request parameters
+                let paramsHash = JSON.parse(JSON.stringify(params));
+
+                function orderObjectKeys(obj: Record<string, any>) {
+                    function sortObject(obj: Record<string, any>): Record<string, any> {
+                        if (typeof obj === 'object' && obj) {
+                            return Object.keys(obj).sort().reduce((res, key) => ((res as any)[key] = obj[key], res), {});
+                        }
+                        return obj;
+                    };
+
+                    let _obj = sortObject(obj);
+                    for (let k in _obj) {
+                        if (_obj[k] && typeof _obj[k] === 'object') {
+                            _obj[k] = sortObject(obj[k]);
+                        }
+                    }
+
+                    return _obj;
+                }
+
+                return JSON.stringify(orderObjectKeys(paramsHash)) + url + this.service;
+            }
+
+            return url + this.service;
+        })();
+
+        // let hashedParams = createHash('sha256').update(toHash).digest('hex');
+        let hashedParams = sha256((() => {
+            if (params && typeof params === 'object' && Object.keys(params).length) {
+                // hash request parameters
+                let paramsHash = JSON.parse(JSON.stringify(params));
+
+                function orderObjectKeys(obj: Record<string, any>) {
+                    function sortObject(obj: Record<string, any>): Record<string, any> {
+                        if (typeof obj === 'object' && obj) {
+                            return Object.keys(obj).sort().reduce((res, key) => ((res as any)[key] = obj[key], res), {});
+                        }
+                        return obj;
+                    };
+
+                    let _obj = sortObject(obj);
+                    for (let k in _obj) {
+                        if (_obj[k] && typeof _obj[k] === 'object') {
+                            _obj[k] = sortObject(obj[k]);
+                        }
+                    }
+
+                    return _obj;
+                }
+
+                return JSON.stringify(orderObjectKeys(paramsHash)) + url + this.service;
+            }
+
+            return url + this.service;
+        })());
+
+        if (refresh && this.__startKey_keys?.[url]?.[hashedParams]) {
+            // init cache, init startKey
+
+            if (this.__cached_requests?.[url] && this.__cached_requests?.[url]?.[hashedParams]) {
+                // delete cached data start
+                delete this.__cached_requests[url][hashedParams];
+            }
+
+            if (Array.isArray(this.__startKey_keys[url][hashedParams]) && this.__startKey_keys[url][hashedParams].length) {
+                // delete cache of all startkeys
+                for (let p of this.__startKey_keys[url][hashedParams]) {
+                    let hashedParams_cached = hashedParams + sha256(JSON.stringify(p));
+                    // let hashedParams_cached = hashedParams + createHash('sha256').update(JSON.stringify(p)).digest('hex');
+
+                    if (this.__cached_requests?.[url] && this.__cached_requests?.[url]?.[hashedParams_cached]) {
+                        delete this.__cached_requests[url][hashedParams_cached];
+                    }
+                }
+            }
+
+            // delete start key lists
+            delete this.__startKey_keys[url][hashedParams];
+
+            return hashedParams;
+        }
+
+        if (!Array.isArray(this.__startKey_keys?.[url]?.[hashedParams])) {
+            // startkey does not exists
+            return hashedParams;
+        }
+
+        // hashed params exists
+        let list_of_startKeys = this.__startKey_keys[url][hashedParams]; // [{<startKey key>}, ...'end']
+        let last_startKey_key = list_of_startKeys[list_of_startKeys.length - 1];
+        let cache_hashedParams = hashedParams;
+        // if (last_startKey_key !== 'start') {
+        if (last_startKey_key) {
+            // use last start key
+
+            if (last_startKey_key === 'end') {
+                return {
+                    list: [],
+                    startKey: 'end',
+                    endOfList: true
+                };
+            }
+
+            else {
+                // cache_hashedParams += createHash('sha256').update(last_startKey_key).digest('hex');
+                cache_hashedParams += sha256(last_startKey_key);
+                params.startKey = JSON.parse(last_startKey_key);
+            }
+        }
+
+        if (this.__cached_requests?.[url]?.[cache_hashedParams]) {
+            // return data if there is cache
+            return this.__cached_requests?.[url]?.[cache_hashedParams];
+        }
+
+        return hashedParams;
+    }
+
+    private update_startKey_keys = async (option: Record<string, any>) => {
+        let { hashedParam, url, response } = option;
+        let fetched = null;
+
+        if (response instanceof Promise) {
+            fetched = await response;
+        }
+
+        else {
+            fetched = response;
+        }
+
+        if (
+            typeof fetched !== 'object' ||
+            !fetched.hasOwnProperty('startKey') ||
+            !hashedParam ||
+            !url
+        ) {
+            // no startkey no caching
+            return fetched;
+        }
+
+        // has start key
+        // startkey is key for next fetch
+
+        // this.__startKey_keys[url] = {
+        //     [hashedParam]: ['{<startKey key>}', ...'end'],
+        //     ...
+        // }
+
+        // this.__cached_requests[url][hashsedParams + sha256(JSON.stringify(startKey))] = {
+        //     data
+        //     ...
+        // }
+
+        if (!this.__startKey_keys.hasOwnProperty(url)) {
+            // create url key to store startKey key list if it doesnt exists
+            this.__startKey_keys[url] = {};
+        }
+
+        if (!this.__cached_requests?.[url]) {
+            this.__cached_requests[url] = {};
+        }
+
+        this.__cached_requests[url][hashedParam] = fetched;
+
+        if (!this.__startKey_keys[url].hasOwnProperty(hashedParam)) {
+            this.__startKey_keys[url][hashedParam] = [];
+        }
+
+        let startKey_string = JSON.stringify(fetched.startKey);
+        if (!this.__startKey_keys[url][hashedParam].includes(startKey_string)) {
+            this.__startKey_keys[url][hashedParam].push(startKey_string);
+        }
+
+        this.__cached_requests[url][hashedParam] = fetched;
+
+        return Object.assign({ startKey_list: this.__startKey_keys[url][hashedParam] }, fetched);
+    };
+
+    private _fetch = async (url: string, opt: RequestInit, responseType: string) => {
+
+        let response: Record<string, any> = await fetch(url, opt);
+
+        if (responseType) {
+            if (response.status === 200) {
+                return await response[responseType]();
+            } else {
+                throw response;
+            }
+        }
+
+        let received = await response.text();
+        try {
+            received = JSON.parse(received);
+        } catch (err) {
+        }
+
+        if (response.status === 200) {
+            if (typeof received === 'object' && opt.method === 'GET' && received.hasOwnProperty('body')) {
+                try {
+                    received = JSON.parse(received.body);
+                } catch (err) { }
+            }
+            return received;
+        }
+
+        else {
+            let status = response?.status;
+            let errCode = [
+                'INVALID_CORS',
+                'INVALID_REQUEST',
+                'SERVICE_DISABLED',
+                'INVALID_PARAMETER',
+                'ERROR',
+                'EXISTS',
+                'NOT_EXISTS'
+            ];
+
+            if (typeof received === 'object' && received?.message) {
+                let code = ((status ? status.toString() : null) || 'ERROR');
+                throw new SkapiError(received?.message, { code: code });
+            }
+
+            else if (typeof received === 'string') {
+                let errMsg = received.split(':');
+                let code = errMsg.splice(0, 1)[0];
+                throw new SkapiError(errMsg.join(''), { code: (errCode.includes(code) ? code : 'ERROR') });
+            }
+
+            throw response;
+        }
+    };
+
+    private _post(url: string, params: Record<string, any>, option: RequestInit & { responseType?: string | null, headers: Record<string, any>; }) {
+        let responseType = null;
+        if (option.hasOwnProperty('responseType')) {
+            responseType = option.responseType;
+            delete option.responseType;
+        }
+
+        let opt = Object.assign(
+            {
+                method: 'POST'
+            },
+            option,
+            {
+                body: params instanceof FormData ? params : JSON.stringify(params)
+            }
+        );
+
+        return this._fetch(url, opt, responseType);
+    }
+
+    private _get = async (url: string, params: Record<string, any>, option: RequestInit & { responseType?: string | null, headers: Record<string, any>; }) => {
+        if (params && typeof params === 'object' && Object.keys(params).length) {
+            if (url.substring(url.length - 1) !== '?') {
+                url = url + '?';
+            }
+
+            let query = Object.keys(params)
+                .map(k => {
+                    let value = params[k];
+                    if (typeof value !== 'string') {
+                        value = JSON.stringify(value);
+                    }
+                    return encodeURIComponent(k) + '=' + encodeURIComponent(value);
+                })
+                .join('&');
+
+            url += query;
+        }
+
+        let responseType = null;
+        if (option.hasOwnProperty('responseType')) {
+            responseType = option.responseType;
+            delete option.responseType;
+        }
+
+        let opt = Object.assign(
+            {
+                method: 'GET'
+            },
+            option
+        );
+
+        return this._fetch(url, opt, responseType);
+    };
+
+    /**
+     * Uploads data to your service database.<br>
+     * We will call data in database as record.
+     * <ul>
+     * <li>
+     * <b>About tables:</b><br>
+     * When uploading new records, table setting is required.<br>
+     * Database table are created automatically on upload.<br>
+     * You can have infinite numbers of tables.<br>
+     * You cannot change table settings once it's uploaded.<br>
+     * Database table will be deleted automatically if there is no record in the table.<br>
+     * <br>
+     * <b>NOTE:</b> Whitespace or special characters are not allowed in table name.<br>
+     * </li>
+     * <li>
+     * <b>About Index:</b><br>
+     * Index help you to categorize records paired by "name" and "value".<br>
+     * Index caculates total sum of values if the value is number or boolean.<br>
+     * <b>NOTE:</b> Whitespace or special characters are not allowed in index name or value.<br>
+     * </li>
+     * <li>
+     * <b>About Tags:</b><br>
+     * Tags let's you categorize records by given tags.<br>
+     * You can have multiple tags on single record.<br>
+     * <b>NOTE:</b> Whitespace or special characters are not allowed in tags.<br>
+     * </li>
+     * </ul>
+     * @category Database
+     */
+    @formResponse()
+    async postRecord(
+        /** Any type of data to store. If undefined, does not update the data. */
+        form: Form | any,
+        option?: PostRecordParams & FormCallbacks
+    ): Promise<RecordData> {
+
+        let is_admin = await this.requireAdmin({ ignoreVerification: true });
+
+        let { formData } = option;
+        let fetchOptions: Record<string, any> = {};
+
+        if (typeof formData === 'function') {
+            fetchOptions.formData = formData;
+        }
+
+        option = checkParams(option || {}, {
+            record_id: 'string',
+            access_group: ['number', 'private'],
+            table: ['string', () => {
+                if (!option?.record_id) {
+                    throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
+                }
+            }],
+            subscription_group: 'number',
+            reference: 'string',
+            index: {
+                name: 'string',
+                value: ['string', 'number', 'boolean']
+            },
+            tags: (v: string | string[]) => {
+                if (v === null) {
+                    return v;
+                }
+
+                if (typeof v === 'string') {
+                    return [v];
+                }
+
+                if (Array.isArray(v)) {
+                    for (let i of v) {
+                        if (typeof i !== 'string') {
+                            throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
+                        }
+                    }
+                    return v;
+                }
+
+                throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
+            },
+            config: {
+                reference_limit: ['number', null],
+                allow_multiple_reference: 'boolean',
+                private_access: (v: string | string[]) => {
+                    let param = 'config.private_access';
+
+                    if (v && typeof v === 'string') {
+                        v = [v];
+                    }
+
+                    if (Array.isArray(v)) {
+                        for (let u of v) {
+                            validateUserId(u, `User ID in "${param}"`);
+
+                            if (this.user && u === this.user.user_id) {
+                                throw new SkapiError(`"${param}" should not be the uploader's user ID.`, { code: 'INVALID_PARAMETER' });
+                            }
+                        }
+                    }
+
+                    else {
+                        throw new SkapiError(`"${param}" should be an array of user ID.`, { code: 'INVALID_PARAMETER' });
+                    }
+
+                    return v;
+                }
+            }
+        }, [], ['response', 'formData', 'onerror']);
+
+        // callbacks should be removed after checkparams
+        delete option.response;
+        delete option.formData;
+        delete option.onerror;
+
+        if (option?.index) {
+            // index name allows periods. white space is invalid.
+            if (!option.index?.name || typeof option.index?.name !== 'string') {
+                throw new SkapiError('"index.name" is required. type: string.', { code: 'INVALID_PARAMETER' });
+            }
+
+            checkWhiteSpaceAndSpecialChars(option.index.name, 'index name', true);
+
+            if (!option.index.hasOwnProperty('value')) {
+                throw new SkapiError('"index.value" is required.', { code: 'INVALID_PARAMETER' });
+            }
+
+            if (typeof option.index.value === 'string') {
+                // index name allows periods. white space is invalid.
+                checkWhiteSpaceAndSpecialChars(option.index.value, 'index value', false, true);
+            }
+
+            else if (typeof option.index.value === 'number') {
+                if (option.index.value > this.__index_number_range || option.index.value < -this.__index_number_range) {
+                    throw new SkapiError(`Number value should be within range -${this.__index_number_range} ~ +${this.__index_number_range}`, { code: 'INVALID_PARAMETER' });
+                }
+            }
+        }
+
+
+        if (is_admin) {
+            if (option?.access_group === 'private') {
+                throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
+            }
+
+            if (option.hasOwnProperty('subscription_group')) {
+                throw new SkapiError('Service owner cannot write to subscription table.', { code: 'INVALID_REQUEST' });
+            }
+        }
+
+        let options = { auth: true };
+        let postData = null;
+
+        if (form instanceof HTMLFormElement || form instanceof FormData) {
+            Object.assign(options, { meta: option });
+        }
+
+        else {
+            postData = Object.assign({ data: form }, option);
+        }
+
+        if (Object.keys(fetchOptions).length) {
+            Object.assign(options, { fetchOptions });
+        }
+
+        return normalize_record_data(await this.request('post-record', postData || form, options));
+    }
+
+    /**
+     * Get records from service database.
+    * @category Database
+    */
+    async getRecords(params: GetRecordParams, fetchOptions?: FetchOptions): Promise<FetchResponse> {
+        const indexTypes = {
+            '$record_id': 'string',
+            '$updated': 'number',
+            '$uploaded': 'number',
+            '$referenced_count': 'number'
+        };
+
+        const struct = {
+            table: 'string',
+            reference: 'string',
+            access_group: ['number', 'private'],
+            subscription: {
+                user_id: (v: string) => validateUserId(v, 'User ID in "subscription.user_id"'),
+                group: 'number'
+            },
+            index: {
+                name: (v: string) => {
+                    if (typeof v !== 'string') {
+                        throw new SkapiError('"index.name" should be type: string.', { code: 'INVALID_PARAMETER' });
+                    }
+
+                    if (indexTypes.hasOwnProperty(v)) {
+                        return v;
+                    }
+
+                    return checkWhiteSpaceAndSpecialChars(v, 'index.name', true, false);
+                },
+                value: (v: number | boolean | string) => {
+                    if (params.index?.name && indexTypes.hasOwnProperty(params.index.name)) {
+                        let tp = indexTypes[params.index.name];
+
+                        if (typeof v === tp) {
+                            return v;
+                        }
+
+                        else {
+                            throw new SkapiError(`"index.value" should be type: ${tp}.`, { code: 'INVALID_PARAMETER' });
+                        }
+                    }
+
+                    if (typeof v === 'number') {
+                        if (v > this.__index_number_range || v < -this.__index_number_range) {
+                            throw new SkapiError(`Number value should be within range -${this.__index_number_range} ~ +${this.__index_number_range}`, { code: 'INVALID_PARAMETER' });
+                        }
+                        return v;
+                    }
+
+                    else if (typeof v === 'boolean') {
+                        return v;
+                    }
+
+                    else {
+                        // is string
+                        return checkWhiteSpaceAndSpecialChars((v as string), 'index.value', false, true);
+                    }
+                },
+                condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne'],
+                range: (v: number | boolean | string) => {
+                    if (!('value' in params.index)) {
+                        throw new SkapiError('"index.value" is required.', { code: 'INVALID_PARAMETER' });
+                    }
+
+                    if (params.index.name === '$record_id') {
+                        throw new SkapiError(`Cannot do "index.range" on ${params.index.name}`, { code: 'INVALID_PARAMETER' });
+                    }
+
+                    if (typeof params.index.value !== typeof v) {
+                        throw new SkapiError('"index.range" type should match the type of "index.value".', { code: 'INVALID_PARAMETER' });
+                    }
+
+                    if (typeof v === 'string') {
+                        return checkWhiteSpaceAndSpecialChars(v, 'index.value');
+                    }
+
+                    return v;
+                }
+            },
+            tags: (v: string | string[]) => {
+                if (typeof v === 'string') {
+                    return [v];
+                }
+                else if (Array.isArray(v)) {
+                    if (v.length > 10) {
+                        throw new SkapiError('Cannot query more than 10 tags at once.', { code: 'INVALID_REQUEST' });
+                    }
+                    for (let s of v) {
+                        if (typeof s !== 'string') {
+                            throw new SkapiError('Tags should be type: <string | string[]>', { code: 'INVALID_PARAMETER' });
+                        }
+                    }
+                    return v;
+                }
+            }
+        };
+
+        params = checkParams(params || {}, struct, ['table']);
+
+        if (params?.subscription && !this.session) {
+            throw new SkapiError('Requires login.', { code: 'INVALID_REQUEST' });
+        }
+
+        if (params?.tags) {
+            let tagFetch = [];
+            let getStartKey = fetchOptions?.startKey || null;
+
+            for (let t of params.tags) {
+                let params_copy = JSON.parse(JSON.stringify(params));
+                params_copy.tag = t;
+                delete params_copy.tags;
+
+                let fetchOpt = fetchOptions ? JSON.parse(JSON.stringify(fetchOptions)) : null;
+                if (fetchOpt) {
+                    delete fetchOpt.startKey;
+
+                    if (getStartKey && getStartKey?.[t]) {
+                        fetchOpt.startKey = getStartKey[t];
+                    }
+                }
+
+                tagFetch.push(this.request(
+                    'get-records',
+                    params_copy,
+                    Object.assign(
+                        { auth: params.hasOwnProperty('access_group') && (params.access_group === 'private' || params.access_group > 0) ? true : !!this.session },
+                        { fetchOptions: fetchOpt }
+                    )));
+            }
+
+            let list = [];
+            let startKey = {};
+            let res_all = await Promise.all(tagFetch);
+
+            for (let res of res_all) {
+                for (let i in res.list) {
+                    if (tagFetch.includes(res.list[i].rec)) {
+                        continue;
+                    }
+                    tagFetch.push(res.list[i]);
+                    list.push(normalize_record_data(res.list[i]));
+                };
+                if (res.startKey) {
+                    if (Array.isArray(params.tags)) {
+                        let tag = params.tags.splice(0, 1);
+                        startKey[tag[0]] = res.startKey;
+                    }
+                }
+            }
+
+            let endOfList = true;
+            for (let k in startKey) {
+                if (startKey[k] && startKey[k] !== 'end') {
+                    endOfList = false;
+                    break;
+                }
+            }
+
+            return {
+                list,
+                endOfList,
+                startKey
+            };
+        }
+
+        let result = await this.request(
+            'get-records',
+            params,
+            Object.assign(
+                { auth: params.hasOwnProperty('access_group') && (params.access_group === 'private' || params.access_group > 0) ? true : !!this.user },
+                { fetchOptions }
+            )
+        );
+
+        for (let i in result.list) { result.list[i] = normalize_record_data(result.list[i]); };
+
+        return result;
+    }
+
+    /**
+     * Retrieve table info of record database.
+     * Get table info of record database.
+     * 
+     * ```
+     * // Get information in 'MyTable'.
+     * let getTable = await skapi.getTable({
+     *     table: 'MyTable'
+     * });
+     * 
+     * // Get all list of tables in service in lexographical order.
+     * let getTablePrivate = await skapi.getTable();
+     * 
+     * // Get all list of tables in service in lexographical order.
+     * let getTablePrivate = await skapi.getTable();
+     * ```
+     */
+    async getTable(
+        params: {
+            /** Table name. If omitted fetch all list of tables. */
+            table?: string;
+            condition?: string;
+        },
+        fetchOptions?: FetchOptions
+    ): Promise<FetchResponse> {
+        let res = await this.request('get-table', checkParams(params || {}, {
+            table: 'string',
+            condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
+        }), Object.assign({ auth: true }, { fetchOptions }));
+
+        let convert = {
+            'cnt_rec': 'number_of_records',
+            'tbl': 'table',
+            'srvc': 'service'
+        };
+
+        if (Array.isArray(res.list)) {
+            for (let t of res.list) {
+                for (let k in convert) {
+                    if (t.hasOwnProperty(k)) {
+                        t[convert[k]] = t[k];
+                        delete t[k];
+                    }
+                }
+            }
+        }
+
+        return res;
+    }
+    /**
+     * Retrieve index info of record database.
+     * Get index info of record database.
+     * 
+     * ```
+     * 
+     * // Get info of "Gold" index in "MyTable" table.
+     * let getIndex = await skapi.getIndex({
+     *     index: 'Gold',
+     *     table: 'MyTable'
+     * });
+     * 
+     * // Get all index in average value order in "MyTable" table.
+     * let getIndexAll = await skapi.getIndex({
+     *     order_by: {
+     *          name: 'average_number'
+     *     },
+     *     table: 'MyTable'
+     * });
+     * 
+     * ```
+     * @category Database
+     */
+    async getIndex(
+        params: {
+            /** Table name */
+            table: string;
+            /** Index name. When period is at the end of name, querys nested index keys. */
+            index?: string;
+            /** Queries order by */
+            order_by: {
+                /** Key name to order. */
+                name: 'average_number' | 'total_number' | 'number_count' | 'average_bool' | 'total_bool' | 'bool_count' | 'string_count' | 'index_name';
+                /** Value to query. */
+                value?: number | boolean | string;
+                /** "order_by.value" is required for condition. */
+                condition?: 'gt' | 'gte' | 'lt' | 'lte' | '>' | '>=' | '<' | '<=' | '=' | 'eq' | '!=' | 'ne';
+            };
+        },
+        fetchOptions?: FetchOptions
+    ): Promise<FetchResponse> {
+
+        let p = checkParams(
+            params || {},
+            {
+                table: 'string',
+                index: (v: string) => checkWhiteSpaceAndSpecialChars(v, 'index name', true, false),
+                order_by: {
+                    name: [
+                        'average_number',
+                        'total_number',
+                        'number_count',
+                        'average_bool',
+                        'total_bool',
+                        'bool_count',
+                        'string_count',
+                        'index_name'
+                    ],
+                    value: ['string', 'number', 'boolean'],
+                    condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
+                }
+            },
+            ['table']
+        );
+
+        if (p.hasOwnProperty('order_by')) {
+            if (p.order_by === 'index_name') {
+                if (!p.hasOwnProperty('index')) {
+                    throw new SkapiError('"index" is required for ordered by "index_name".', { code: 'INVALID_PARAMETER' });
+                }
+
+                if (p.index.substring(p.index.length - 1) !== '.') {
+                    throw new SkapiError('"index" should be parent "index name".', { code: 'INVALID_PARAMETER' });
+                }
+            }
+
+            if (p.order_by.hasOwnProperty('condition') && !p.order_by.hasOwnProperty('value')) {
+                throw new SkapiError('"value" is required for "condition".', { code: 'INVALID_PARAMETER' });
+            }
+        }
+
+        let res = await this.request(
+            'get-index',
+            p,
+            Object.assign(
+                { auth: true },
+                { fetchOptions }
+            )
+        );
+
+        let convert = {
+            'cnt_bool': 'boolean_count',
+            'cnt_numb': 'number_count',
+            'totl_numb': 'total_number',
+            'totl_bool': 'total_bool',
+            'avrg_numb': 'average_number',
+            'avrg_bool': 'average_bool',
+            'cnt_str': 'string_count'
+        };
+
+        if (Array.isArray(res.list)) {
+            res.list = res.list.map((i: Record<string, any>) => {
+                let iSplit = i.idx.split('/');
+                let resolved: Record<string, any> = {
+                    table: iSplit[1],
+                    index: iSplit[2],
+                    number_of_records: i.cnt_rec
+                };
+
+                for (let k in convert) {
+                    if (i?.[k]) {
+                        resolved[convert[k]] = i[k];
+                    }
+
+                    if (resolved?.number_of_number_values) {
+                        resolved.average_of_number_values = i.totl_numb / i.cnt_numb;
+                    }
+                    if (resolved?.number_of_boolean_values) {
+                        resolved.average_of_boolean_values = i.totl_bool / i.cnt_bool;
+                    }
+                }
+
+                return resolved;
+            });
+        }
+
+        return res;
+    }
+
+
+    /**
+     * Retrieve filter info of database table.
+     * 
+     * ```
+     * // Get all tags from "MyTable" in record number orders.
+     * let getTagAll = await skapi.getTag({
+     *     table: "MyTable"
+     * });
+     * 
+     * // Get info on 'Gold' from "MyTable".
+     * let getTagInfo = await skapi.getTag({
+     *     table: "MyTable",
+     *     tag: 'Gold'
+     * });
+     * ```
+     * @category Database
+     */
+    async getTag(
+        params: {
+            /** Table name */
+            table: string;
+            /** Tag name */
+            tag: string;
+            /** String query condition for tag name. */
+            condition: 'gt' | 'gte' | 'lt' | 'lte' | '>' | '>=' | '<' | '<=' | '=' | 'eq' | '!=' | 'ne';
+        },
+        fetchOptions?: FetchOptions
+    ): Promise<FetchResponse> {
+
+        let res = await this.request(
+            'get-tag',
+            checkParams(params || {},
+                {
+                    table: 'string',
+                    tag: 'string',
+                    condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
+                }
+            ),
+            Object.assign({ auth: true }, { fetchOptions })
+        );
+
+        if (Array.isArray(res.list)) {
+            for (let i in res.list) {
+                let item = res.list[i];
+                let tSplit = item.tag.split('/');
+                res.list[i] = {
+                    table: tSplit[1],
+                    tag: tSplit[0],
+                    number_of_records: item.cnt_rec
+                };
+            }
+        }
+
+        return res;
+    }
+
+    /**
+    * Deletes specific records or bulk of records under certain table, index, tag.
+    * <br>
+    * <b>WARNING:</b> Deleted record cannot be restored.
+    * 
+    * ```
+    * // Delete record
+    * // users wont be able to delete other users record.
+    * await skapi.deleteRecords({
+    *     record_id: ['record id 1', 'record id 2']
+    * });
+    * 
+    * // Delete all my record in "MyTable" in access group 1.
+    * await skapi.deleteRecords({
+    *     access_group: 1,
+    *     table: {
+    *         name: 'MyTable'
+    *     }
+    * });
+    * 
+    * // Delete all record in subscription table of group 1 in "MyTable" in access group 0.
+    * await skapi.deleteRecords({
+    *     access_group: 0,
+    *     table: {
+    *         name: 'MyTable',
+    *         subscription_group: 1
+    *     }
+    * });
+    * 
+    * // (for admin) Delete all record in the service
+    * await skapi.deleteRecords({
+    *   service: 'xxxxxxxx'
+    * });
+    * 
+    * // (for admin) Delete all record in "MyTable"
+    * // admin can delete all records in table regardless access group or subscription tables.
+    * await skapi.deleteRecords({
+    *   service: 'xxxxxxxx',
+    *   table: {
+    *       name: 'MyTable'
+    *   }
+    * });
+    * // (for admin) Delete all record in "MyTable"
+    * 
+    * // admin can delete all records in users subscription table from target access group.
+    * await skapi.deleteRecords({
+    *   service: 'xxxxxxxx',
+    *   access_group: 1,
+    *   table: {
+    *       name: 'MyTable',
+    *       subscription: 'user_id',
+    *       subscription_group: 1
+    *   }
+    * });
+    * 
+    * ```
+    * @category Database
+    */
+    async deleteRecords(params: {
+        /**
+         * (only admin) Service ID.
+         */
+        service?: string;
+        /**
+         * Record ID(s) to delete.<br>
+         * table parameter is not needed when record_id is given.
+         */
+        record_id?: string | string[];
+        /**
+         * Access group number.<br>
+         */
+        access_group: number | 'private';
+        /** 
+         * Table to delete.<br>
+         */
+        table: {
+            /** Table name. */
+            name: string;
+            /** @ignore */
+            subscription: string;
+            /**
+             * Subscription group number.<br>
+             * Access group is required.
+             */
+            subscription_group?: number;
+        };
+    }): Promise<string> {
+        let isAdmin = await this.requireAdmin();
+        if (isAdmin && !params?.service) {
+            throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
+        }
+
+        if (!isAdmin && !params?.table) {
+            throw new SkapiError('"table" is required.', { code: 'INVALID_PARAMETER' });
+        }
+
+        if (params?.record_id) {
+            return await this.request('del-records', {
+                service: params.service,
+                record_id: (v => {
+                    let id = checkWhiteSpaceAndSpecialChars(v, 'record_id', false);
+                    if (typeof id === 'string') {
+                        return [id];
+                    }
+
+                    return id;
+                })(params.record_id)
+            }, { auth: true });
+        }
+
+        else {
+            if (!params?.table) {
+                throw new SkapiError('Either "table" or "record_id" is required.', { code: 'INVALID_PARAMETER' });
+            }
+
+            let struct = {
+                access_group: ['number', 'private'],
+                table: {
+                    name: 'string',
+                    subscription: (v: string) => {
+                        if (isAdmin) {
+                            // admin targets user id
+                            return validateUserId((v as string), 'User ID in "table.subscription"');
+                        }
+
+                        throw new SkapiError('"table.subscription" is an invalid parameter key.', { code: 'INVALID_PARAMETER' });
+                    },
+                    subscription_group: (v: number) => {
+                        if (isAdmin && typeof params?.table?.subscription !== 'string') {
+                            throw new SkapiError('"table.subscription" is required.', { code: 'INVALID_PARAMETER' });
+                        }
+
+                        if (typeof v === 'number') {
+                            if (v > 0 && v < 99) {
+                                return v;
+                            }
+                        }
+
+                        throw new SkapiError('Subscription group should be between 0 ~ 99.', { code: 'INVALID_PARAMETER' });
+                    }
+                }
+            };
+
+            params = checkParams(params || {}, struct, isAdmin ? ['service'] : ['table', 'access_group']);
+        }
+
+        return await this.request('del-records', params, { auth: true });
+    }
+
+
+    //<_subscriptions>
+    /**
+     * Anyone who submits their E-Mail address will receive newsletters from you.<br>
+     * The newsletters you send out will have unsubscribe link at the bottom.<br>
+     * Both Signed and unsigned users can subscribe to your newsletter.<br>
+     * Refer: <a href='www.google.com'>Sending out newsletters</a>
+     * ```
+     * let params = {
+     *      email: 'visitors@email.com',
+     *      bypassWelcome: false // Send out welcome E-Mails on submit
+     * };
+     * 
+     * skapi.subscribeNewsletter(params);
+     * ```
+     * @category Subscriptions
+     */
+    @formResponse()
+    async subscribeNewsletter(
+        form: Form | {
+            /** Newsletter subscriber's E-Mail. 64 character max. */
+            email: string,
+            /**
+             * Subscriber will receive a welcome E-Mail if set to false.<br>
+             * The welcome E-Mail is the same E-Mail that is sent when the new user successfully creates an account on your web services.<br>
+             * To save your operation cost, it is advised to redirect the users to your welcome page once subscription is successful.<br>
+             * Refer: <a href="www.google.com">Setting up E-Mail templates</a><br>
+             */
+            bypassWelcome: boolean;
+        },
+        option: FormCallbacks
+    ): Promise<string> {
+        let params = checkParams(
+            form || {},
+            {
+                email: (v: string) => validateEmail(v),
+                bypassWelcome: ['boolean', () => true]
+            },
+            ['email']
+        );
+
+        return await this.request('subscribe-newsletter', params);
+    }
+
+
+    private async subscriptionGroupCheck(option: Record<string, any>) {
+        await this.__connection;
+        option = checkParams(option, {
+            userId: (v: string) => validateUserId(v, '"userId"'),
+            group: (v: number | string) => {
+                if (v === '*') {
+                    return v;
+                }
+
+                if (typeof v !== 'number') {
+                    throw new SkapiError('"group" should be type: number.', { code: 'INVALID_PARAMETER' });
+                }
+
+                else if (v < 1 && v > 9) {
+                    throw new SkapiError('"group" should be within range 1 ~ 9.', { code: 'INVALID_PARAMETER' });
+                }
+
+                return v;
+            },
+            emailSubscription: ['boolean']
+        }, ['userId', 'group']);
+
+        if (this.user && option.userId === this.user.user_id) {
+            throw new SkapiError(`"userId" cannot be the user's own ID.`, { code: 'INVALID_PARAMETER' });
+        }
+
+        return option;
+    }
+    /**
+     * Subscribes user's account to another account or updates email_subscription state.<br>
+     * User cannot subscribe to email if they did not verify their email.<br>
+     * This can be used for user following, content restrictions when building social media services.<br>
+     * Refer: <a href='www.google.com'>How to use subscription systems</a><br>
+     * 
+     * ```
+     * // user subscribes to another user with email subscription
+     * await skapi.subscribe({
+     *     userId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+     *     group: 1,
+     *     emailSubscription: true
+     * })
+     * ```
+     * @category Subscriptions
+     */
+    @formResponse()
+    async subscribe(
+        option: SubscriberGroup
+    ) {
+        let { userId, group } = await this.subscriptionGroupCheck(option);
+
+        if (group === '*') {
+            throw new SkapiError('Cannot subscribe to all groups at once.', { code: 'INVALID_PARAMETER' });
+        }
+
+        return await this.request('subscription', {
+            subscribe: userId,
+            group
+        }, { auth: true });
+    }
+
+    /**
+     * Unsubscribes user's account from another account or service.
+     * ```
+     * // user unsubscribes from another user
+     * await skapi.unsubscribe({
+     *     userId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+     *     group: 2
+     * })
+     * ```
+     * @category Subscriptions
+     */
+    @formResponse()
+    async unsubscribe(option: SubscriberGroup) {
+        let { userId, group } = await this.subscriptionGroupCheck(option);
+
+        return await this.request('subscription', {
+            unsubscribe: userId,
+            group
+        }, { auth: true });
+    }
+
+    /**
+     * Account owner can block user from their account subscription.
+     * ```
+     * // account owner blocks user from group 2
+     * await skapi.blockSubscriber({
+     *     userId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+     *     group: 2
+     * })
+     * // account owner blocks user from all group
+     * await skapi.blockSubscriber({
+     *     userId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+     * })
+     * ```
+     * @category Subscriptions
+     */
+    @formResponse()
+    async blockSubscriber(option: SubscriberGroup): Promise<string> {
+        let { userId, group } = await this.subscriptionGroupCheck(option);
+        return await this.request('subscription', { block: userId, group }, { auth: true });
+    }
+
+    /**
+     * Account owner can unblock user from their account subscription.
+     * ```
+     * // account owner unblocks user from group 2
+     * await skapi.unblockSubscriber({
+     *     userId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+     *     group: 2
+     * })
+     * 
+     * // account owner unblocks user from all group
+     * await skapi.unblockSubscriber({
+     *     userId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+     * })
+     * ```
+     * @category Subscriptions
+     */
+    @formResponse()
+    async unblockSubscriber(option: SubscriberGroup): Promise<string> {
+        let { userId, group } = await this.subscriptionGroupCheck(option);
+        return await this.request('subscription', { unblock: userId, group }, { auth: true });
+    }
+
+    /**
+     * Get user's subscriptions
+     * @ignore
+     */
+    async getUserSubscriptions(option: SubscriberFetch): Promise<FetchResponse> {
+        await this.__connection;
+        option = checkParams(option, {
+            userId: (v: string) => {
+                try {
+                    return validateUserId(v, '"userId"');
+                } catch (err) {
+                }
+
+                try {
+                    return validateEmail(v);
+                } catch (err) {
+                }
+
+                throw new SkapiError('"subscriber" should be either valid user ID or E-Mail.', { code: 'INVALID_PARAMETER' });
+            },
+            group: 'number',
+            emailSubscription: 'boolean'
+        }) || {};
+
+        return this.getSubscriptions({
+            subscriber: option.userId || this.user?.user_id,
+            group: option.group,
+            emailSubscription: option?.emailSubscription || undefined
+        });
+    }
+
+
+    /**
+     * Get user's subscribers
+     * @ignore
+     */
+    async getUserSubscribers(option: SubscriberFetch): Promise<FetchResponse> {
+        await this.__connection;
+        option = checkParams(option, {
+            userId: (v: string) => validateUserId(v, '"userId"'),
+            group: 'number',
+            emailSubscription: 'boolean'
+        }) || {};
+
+        let subParams = {
+            subscription: option.userId || this.user?.user_id,
+            group: option.group,
+            emailSubscription: option.emailSubscription
+        };
+
+        return this.getSubscriptions(subParams);
+    }
+
+    /**
+     * Get user's subscriptions / subscribers
+     *
+     * @category Subscriptions
+     */
+    async getSubscriptions(
+        params: {
+            /** Subscribers user id | E-Mail for newsletter subscribers. */
+            subscriber?: string;
+            /** Subscription id. User id that subscriber has subscribed to. */
+            subscription?: string;
+            /** subscription group. if omitted, will fetch all groups. */
+            group?: number;
+            /** True | False to fetch service email subscribers. If omitted, will fetch all subscribers. */
+            emailSubscription?: boolean;
+            /** Fetch blocked subscription when True */
+            blocked?: boolean;
+        },
+        fetchOptions?: FetchOptions,
+        /** @ignore */
+        _mapper?: Function
+    ): Promise<FetchResponse> {
+        let isNewsletterSub = false;
+
+        params = checkParams(params, {
+            subscriber: (v: string) => {
+                try {
+                    return validateUserId(v, 'User ID in "subscriber"');
+                } catch (err) {
+                }
+
+                try {
+                    let isEmail = validateEmail(v);
+                    isNewsletterSub = true;
+                    return isEmail;
+                } catch (err) {
+                }
+
+                throw new SkapiError('"subscriber" should be either valid user ID or E-Mail.', { code: 'INVALID_PARAMETER' });
+            },
+            group: 'number',
+            subscription: (v: string) => {
+                // can be
+                try {
+                    return validateUserId(v, 'User ID in "subscription"');
+                } catch (err) {
+                }
+
+                if (typeof v === 'string' && v.length === 14) {
+                    return v;
+                }
+
+                throw new SkapiError('"subscriber" should be either valid service ID or user ID.', { code: 'INVALID_PARAMETER' });
+            },
+            emailSubscription: 'boolean',
+            blocked: 'boolean'
+        });
+
+        if (isNewsletterSub && !params?.subscription) {
+            params.subscription = this.service;
+        }
+
+        if (!params.subscriber && !params.subscription) {
+            throw new SkapiError('At least either "subscriber" or "subscription" should have a value.', { code: 'INVALID_PARAMETER' });
+        }
+
+        let response = await this.request('get-subscription', params, Object.assign({ auth: !isNewsletterSub }, { fetchOptions }));
+
+        response.list = response.list.map(_mapper || ((s: Record<string, any>) => {
+            let subscription: Record<string, any> = {};
+            let subSplit = s.sub.split('#');
+            subscription.subscriber = subSplit[2];
+            subscription.subscription = subSplit[0];
+            subscription.group = parseInt(subSplit[1]);
+            subscription.timestamp = s.stmp;
+            subscription.blocked = s.grp.substring(0, 1) === 'N';
+
+            return subscription;
+        }));
+
+        return response;
+    }
+
+
+    /**
+     * Get newsletters and service letters that service owner sent out.
+     * You can make use of your sent newsletters as an article for your web services.
+     * ```
+     * @category Subscriptions
+     */
+    async getNewsletters(
+        params?: {
+            /**
+             * Search points.<br>
+             * 'message_id' and 'subject' value should be string.<br>
+             * Others numbers.
+             */
+            searchFor: 'message_id' | 'timestamp' | 'read' | 'complaint' | 'subject';
+            value: string | number;
+            range: string | number;
+            /**
+             * Defaults to '='
+             */
+            condition?: '>' | '>=' | '=' | '<' | '<=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte';
+            /**
+             * 'newsletter' for newsletters.<br>
+             * Numbers for service letter sent to corresponding access groups.
+             */
+            group: 'newsletter' | number;
+        },
+        fetchOptions?: FetchOptions
+    ): Promise<Newsletters> {
+        let isAdmin = await this.requireAdmin();
+
+        let searchType = {
+            'message_id': 'string',
+            'timestamp': 'number',
+            'read': 'number',
+            'complaint': 'number',
+            'subject': 'string'
+        };
+
+        if (!params) {
+            if (!fetchOptions) {
+                fetchOptions = {};
+            }
+            fetchOptions.ascending = false;
+        }
+
+        let _params = params || {
+            searchFor: 'timestamp',
+            value: 0,
+            condition: '>'
+        };
+
+        params = checkParams(_params, {
+            searchFor: ['message_id', 'timestamp', 'read', 'complaint', 'group', 'subject'],
+            value: (v: number | string) => {
+                if (typeof v !== searchType[_params.searchFor]) {
+                    throw new SkapiError(`"value" type does not match the type of "${_params.searchFor}" index.`, { code: 'INVALID_PARAMETER' });
+                }
+                else if (typeof v === 'string' && !v) {
+                    throw new SkapiError('"value" should not be empty string.', { code: 'INVALID_PARAMETER' });
+                }
+
+                return v;
+            },
+            range: (v: number | string) => {
+                if (!_params.hasOwnProperty('value') || typeof v !== typeof _params.value) {
+                    throw new SkapiError('"range" should match type of "value".', { code: 'INVALID_PARAMETER' });
+                }
+                return v;
+            },
+            condition: ['>', '>=', '=', '<', '<=', 'gt', 'gte', 'eq', 'lt', 'lte', () => '='],
+            group: (x: string | number) => {
+                if (x !== 'newsletter' && !this.session) {
+                    throw new SkapiError('User should be logged in.', { code: 'INVALID_REQUEST' });
+                }
+                if (typeof x === 'string' && x !== 'newsletter') {
+                    throw new SkapiError('Group should be either "newsletter" or access group number.', { code: 'INVALID_PARAMETER' });
+                }
+                if (!isAdmin && x > parseInt(this.session.idToken.payload.access_group)) {
+                    throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
+                }
+                if (x === 'newsletter') {
+                    return 0;
+                }
+
+                return x;
+            }
+        }, ['searchFor', 'value', 'group']);
+
+        let mails = await this.request(
+            params.group === 0 ? 'get-newsletters' : 'get-serviceletters',
+            params,
+            Object.assign({ method: 'get', auth: params.group !== 0 }, { fetchOptions })
+        );
+
+        let remap = {
+            'message_id': 'mid',
+            'timestamp': 'stmp',
+            'complaint': 'cmpl',
+            'read': 'read',
+            'subject': 'subj',
+            'bounced': 'bnce',
+            'url': 'url'
+        };
+        let defaults = {
+            'message_id': '',
+            'timestamp': 0,
+            'complaint': 0,
+            'read': 0,
+            'subject': '',
+            'bounced': 0,
+            'url': ''
+        };
+
+        mails.list = mails.list.map(m => {
+            let remapped = {};
+            for (let k in remap) {
+                remapped[k] = m[remap[k]] || defaults[remap[k]];
+            }
+            return remapped;
+        });
+
+        return mails;
+    }
+
+
+    //<_user>
+    /**
+     * Signup creates new user account to the service.<br>
+     * You can let users confirm their signup by sending out signup confirmation E-Mail.<br>
+     * Once the E-Mail is confirmed, user will receive your welcome E-Mail and will be able to login.<br>
+     * The welcome E-Mail is the same E-Mail that is sent when visitor subscribes to your newsletters.<br>
+     * It is advised to let your users to confirm their signup to prevent automated bots.<br>
+     * Signup confirmation E-Mails will have a link that verifies the user.<br>
+     * If option.confirmation is set to a url string, signup confirmation link will redirect the user to that url.<br>
+     * Welcome emails will only be sent after a user logs in if option.confirmation is set to true.
+     * Common pratice would be to setup a url to redihashedParamsrect users to your 'thankyou for signing up' page.<br>
+     * If the parameter is set to true, user will be redirected to an empty html page that shows success message with your web service link below.<br>
+     * Refer: <a href="www.google.com">Setting up E-Mail templates</a><br>
+     * 
+     * ```
+     * let params = {
+     *     email: 'login@email.com',
+     *     password: 'password',
+     *     name: 'Baksa',
+     *     phone_number: "+0012341234"
+     * };
+     *  
+     * let option = {
+     *     confirmation: "http://baksa.com/thankyouforsigningup"
+     * };
+     *  
+     * await skapi.signup(params, option);
+     *  
+     * // signup confirmation E-Mail is sent
+     * ```
+     * @category User
+     */
+    @formResponse()
+    async signup(
+        form: Form | UserProfile | { email: String, password: String; },
+        option?: {
+            /**
+             * When true, the service will send out confirmation E-Mail.
+             * User will not be able to signin to their account unless they have confirm their email.
+             */
+            confirmation?: boolean;
+            /**
+             * Automatically login to account after signup. Will not work if E-Mail confirmation is required.
+             */
+            login?: boolean;
+        } & FormCallbacks): Promise<User | "SUCCESS: The account has been created. User's email confirmation is required." | 'SUCCESS: The account has been created.'> {
+
+        this.logout();
+
+        let params = checkParams(form || {}, {
+            email: (v: string) => validateEmail(v),
+            password: (v: string) => validatePassword(v),
+            name: 'string',
+            address: 'string',
+            gender: 'string',
+            birthdate: (v: string) => validateBirthdate(v),
+            phone_number: (v: string) => validatePhoneNumber(v),
+            email_public: ['boolean', () => false],
+            address_public: ['boolean', () => false],
+            gender_public: ['boolean', () => false],
+            birthdate_public: ['boolean', () => false],
+            phone_number_public: ['boolean', () => false],
+            email_subscription: ['boolean', () => false]
+        }, ['email', 'password']);
+
+        option = checkParams(option || {}, {
+            confirmation: (v: string | boolean) => {
+                if (typeof v === 'string') {
+                    return validateUrl(v);
+                }
+                else if (typeof v === 'boolean') {
+                    return v;
+                }
+                else {
+                    throw new SkapiError('"option.confirmation" should be type: <string | boolean>.', { code: 'INVALID_PARAMETER' });
+                }
+            },
+            login: (v: boolean) => {
+                if (typeof v === 'boolean') {
+                    if (option.confirmation && v) {
+                        throw new SkapiError('"login" is not allowed when "option.confirmation" is true.', { code: 'INVALID_PARAMETER' });
+                    }
+                    return v;
+                }
+                throw new SkapiError('"option.login" should be type: boolean.', { code: 'INVALID_PARAMETER' });
+            }
+        });
+
+        let {
+            login = false,
+            confirmation = false
+        } = option || {};
+
+        if (!confirmation && params.email_public) {
+            throw new SkapiError('"option.confirmation" should be true if "email_public" is set to true.', { code: 'INVALID_PARAMETER' });
+        }
+
+        await this.request("signup", params, { meta: option });
+
+        if (confirmation) {
+            return "SUCCESS: The account has been created. User's email confirmation is required.";
+        }
+
+        else if (login) {
+            return await this.login({ email: params.email, password: params.password });
+        }
+
+        else {
+            return 'SUCCESS: The account has been created.';
+        }
+    }
+
+    /**
+     * Logout user and delete user session data.
+     *
+     * ```
+     * await skapi.logout();
+     * ```
+     *
+     * @category User
+     */
+    logout(): 'SUCCESS: The user has been logged out.' {
+        if (this.cognitoUser) {
+            this.cognitoUser.signOut();
+        }
+
+        let to_be_erased = {
+            'session': null,
+            '__startKey_keys': {},
+            '__cached_requests': {},
+            'user': null
+        };
+
+        for (let k in to_be_erased) {
+            this[k] = to_be_erased[k];
+        }
+
+        return 'SUCCESS: The user has been logged out.';
+    }
+
+    /**
+     * Resends signup confirmation E-Mail.<br>
+     * User needs at least one signin attempt.
+     *
+     * ```
+     * // user tries to signin
+     * try {
+     *      await skapi.login('baksa@email.com','password');
+     * } catch(failed) {
+     *      console.log(failed); // SIGNUP_CONFIRMATION_NEEDED: ...
+     * 
+     *      // now you can resend signup confirmation E-Mail to the user.
+     *      await skapi.resendSignupConfirmation("http://baksa.com/thankyouforsigningup");
+     * }
+     * 
+     * ```
+     *
+     * @category User
+     */
+    async resendSignupConfirmation(
+        /** Redirect url on confirmation success. */
+        redirect: boolean | string = false
+    ): Promise<string> {
+        if (redirect && typeof redirect === 'string') {
+            redirect = (validateUrl(redirect) as string);
+        }
+
+        else if (typeof redirect !== 'boolean') {
+            throw new SkapiError('Argument should be type: <boolean | string>.', { code: 'INVALID_REQUEST' });
+        }
+
+        if (!this.__request_signup_confirmation) {
+            throw new SkapiError('Least one signin attempt is required.', { code: 'INVALID_REQUEST' });
+        }
+
+        let resend = await this.request("confirm-signup", {
+            username: this.__request_signup_confirmation,
+            redirect
+        });
+
+        this.__request_signup_confirmation = null;
+        return resend;
+    }
+
+    /**
+     * Recovers disabled account.<br>
+     * User needs at least one signin attempt of the disabled account.</br>
+     * User should have their E-Mail verified in their disabled account to receive account recovery E-Mail.<br>
+     * It will not be possible to recover unverified accounts.
+     *
+     * ```
+     * // user tries to signin
+     * try {
+     *      await skapi.signin('baksa@email.com','password');
+     * } catch(failed) {
+     *      console.log(failed); // USER_IS_DISABLED: ...
+     * 
+     *      // now you can send recover account E-Mail to the user.
+     *      await skapi.recoverAccount("http://baksa.com/welcomeback");
+     * }
+     * 
+     * ```
+     *
+     * @category User
+     * @param redirect Redirect url on recover account success.
+     */
+    async recoverAccount(
+        /** Redirect url on confirmation success. */
+        redirect: boolean | string = false
+    ): Promise<string> {
+
+        if (typeof redirect === 'string') {
+            validateUrl(redirect);
+        }
+
+        else if (typeof redirect !== 'boolean') {
+            throw new SkapiError('Argument should be type: <boolean | string>.', { code: 'INVALID_REQUEST' });
+        }
+
+        if (!this.__disabledAccount) {
+            throw new SkapiError('Least one signin attempt of disabled account is required.', { code: 'INVALID_REQUEST' });
+        }
+
+        let resend = await this.request("recover-account", { username: this.__disabledAccount, redirect });
+        this.__disabledAccount = null;
+        return resend;
+    }
+
+
+    /**
+     * Logs user to the service.<br>
+     * <h6>DO NOT LEAVE ANY EMAIL AND PASSWORD ON FRONTEND JAVASCRIPT</h6>
+     * Always let users input their own signin information.<br>
+     * <b>Note: User is automatically logged in.</b>
+     *
+     * ```
+     * let user = await skapi.login({
+     *   email: 'user@email.com',
+     *   password: 'password'
+     * }); // returns user information on success
+     * ```
+     *
+     * @category User
+     */
+    @formResponse()
+    login(
+        form: Form | {
+            /** E-Mail for signin. 64 character max. */
+            email: string;
+            /** Password for signin. Should be at least 6 characters. */
+            password: string;
+        },
+        option?: FormCallbacks): Promise<User> {
+        this.logout();
+        let params = checkParams(form, {
+            email: (v: string) => validateEmail(v),
+            password: (v: string) => validatePassword(v)
+        }, ['email', 'password']);
+
+        return this.authentication().authenticateUser(params.email, params.password);
+    }
+
+    private verifyAttribute(attribute: string, code?: string): Promise<string> {
+        if (!this.cognitoUser) {
+            throw new SkapiError('The user has to be logged in.', { code: 'INVALID_REQUEST' });
+        }
+
+        return new Promise((res, rej) => {
+            let callback = {
+                onSuccess: (result: any) => {
+                    if (code) {
+                        this.authentication().updateSession({ refreshToken: true }).then(
+                            () => {
+                                if (this.user) {
+                                    this.user[attribute + '_verified'] = true;
+                                }
+                                res(`SUCCESS: "${attribute}" is verified.`);
+                            }
+                        ).catch(err => {
+                            rej(err);
+                        });
+                    }
+
+                    else {
+                        res('SUCCESS: Verification code has been sent.');
+                    }
+                },
+                onFailure: (err: Record<string, any>) => {
+                    rej(
+                        new SkapiError(
+                            err.message || 'Failed to request verification code.',
+                            {
+                                code: err?.code
+                            }
+                        )
+                    );
+                },
+                inputVerificationCode: null
+            };
+
+            if (code) {
+                this.cognitoUser?.verifyAttribute(attribute, code, callback);
+            }
+            else {
+                this.cognitoUser?.getAttributeVerificationCode(attribute, callback);
+            }
+        });
+    }
+
+    /**
+     * Verifies user's E-Mail.<br>
+     * The account has to be signed in.<br>
+     * For the verification E-Mail/SMS, template 'template_verification' will be used.<br>
+     * Refer: <a href="www.google.com">Setting up E-Mail templates</a><br>
+     *
+     * ```
+     * async skapi.verifyEmail();
+     * // Signed in user receives verification code via E-Mail.
+     *
+     * // Execute the method again with verification code as a additional argument.
+     * async skapi.verifyEmail({code});
+     * // User E-Mail is now verified
+     * ```
+     *
+     * @category User
+     */
+    @formResponse()
+    verifyEmail(
+        form?: Form | {
+            /** Verification code. */
+            code: string | number;
+        },
+        option?: FormCallbacks
+    ): Promise<string> {
+
+        let code = (form ? checkParams(form, {
+            code: ['number', 'string']
+        }) : {}).code || '';
+
+        return this.verifyAttribute('email', code.toString());
+    }
+
+
+    /**
+     * Verifies user's mobile phone number.<br>
+     * The account has to be signed in.<br>
+     * For the verification E-Mail/SMS, template 'template_verification' will be used.<br>
+     * Refer: <a href="www.google.com">Setting up E-Mail templates</a><br>
+     *
+     * ```
+     * async skapi.verifyMobile();
+     * // Signed in user receives verification code via SMS.
+     *
+     * async skapi.verifyMobile({code});
+     * // User phone is now verified
+     * ```
+     *
+     * @category User
+     */
+    @formResponse()
+    verifyMobile(
+        form?: Form | {
+            /** Verification code. */
+            code: string | number;
+        },
+        option?: FormCallbacks): Promise<string> {
+
+        let code = (form ? checkParams(form, {
+            code: ['number', 'string']
+        }) : {}).code || null;
+
+        return this.verifyAttribute('phone_number', code.toString());
+    }
+
+
+    /**
+     * Users can request password reset when password is forgotten.<br>
+     * <h6>IMPORTANT</h6>
+     * If the user's account does not have any verified E-Mail, user will not be able to receive any verification E-Mail.<br>
+     * Advise users to verify their E-Mails.<br>
+     *
+     * ```
+     * async skapi.forgotPassword({ email: 'your@email.com' });
+     * // User receives verification E-Mail with verification code.
+     *
+     * // enter verification code and new password as arguments.
+     * async skapi.resetPassword({ email: 'your@email.com', code, new_password });
+     * 
+     * // users account password is now set to new_password.
+     * ```
+     *
+     * @category User
+     */
+    @formResponse()
+    async forgotPassword(
+        form: Form | {
+            /** Signin E-Mail. */
+            email: string;
+        },
+        option?: FormCallbacks): Promise<string> {
+
+        await this.__connection;
+
+        let params = checkParams(form, {
+            email: (v: string) => validateEmail(v)
+        }, ['email']);
+
+        return new Promise(async (res, rej) => {
+            let cognitoUser = (await this.authentication().createCognitoUser(params.email)).cognitoUser;
+            cognitoUser.forgotPassword({
+                onSuccess: result => {
+                    res("SUCCESS: Verification code has been sent.");
+                },
+                onFailure: (err: any) => {
+                    rej(new SkapiError(err?.message || 'Failed to send verification code.', { code: err?.code || 'ERROR' }));
+                }
+            });
+        });
+    }
+
+    /**
+     * Users can request password reset when password is forgotten.<br>
+     * <h6>IMPORTANT</h6>
+     * If the user's account does not have any verified E-Mail, user will not be able to receive any verification E-Mail.<br>
+     * Advise users to verify their E-Mails.<br>
+     *
+     * ```
+     * async skapi.forgotPassword({ email: 'your@email.com' });
+     * // User receives verification E-Mail with verification code.
+     *
+     * // enter verification code and new password as arguments.
+     * async skapi.resetPassword({ email: 'your@email.com', code, new_password });
+     * 
+     * // users account password is now set to new_password.
+     * ```
+     *
+     * @category User
+
+     */
+    @formResponse()
+    resetPassword(form: Form | {
+        /** Signin E-Mail */
+        email: string;
+        /** The verification code user has received. */
+        code: string | number;
+        /** New password to set. Verification code is required. */
+        new_password: string;
+    }, option?: FormCallbacks): Promise<string> {
+
+        let params = checkParams(form, {
+            email: (v: string) => validateEmail(v),
+            code: ['number', 'string'],
+            new_password: (v: string) => validatePassword(v)
+        }, ['email', 'code', 'new_password']);
+
+        let code = params.code, new_password = params.new_password;
+
+        if (typeof code === 'number') {
+            code = code.toString();
+        }
+
+        return new Promise(async (res, rej) => {
+            let cognitoUser = (await this.authentication().createCognitoUser(params.email)).cognitoUser;
+
+            cognitoUser.confirmPassword(code, new_password, {
+                onSuccess: result => {
+                    res("SUCCESS: New password has been set.");
+                },
+                onFailure: (err: any) => {
+                    rej(new SkapiError(err?.message || 'Failed to reset password.', { code: err?.code }));
+                }
+            });
+        });
+    }
+
+    /**
+     * Disables user account.</br>
+     * All the data related to the account will be deleted after 3 months.</br>
+     * Within 3 months, user can recover their account.
+     * ```
+     * async skapi.disableAccount();
+     * // Account is disabled.
+     * ```
+     * @category User
+     */
+    async disableAccount(): Promise<string> {
+        await this.__connection;
+
+        if (this.user && Array.isArray(this.user.services)) {
+            for (let s of this.user.services) {
+                if (s.active) {
+                    throw new SkapiError('All services needs to be disabled.', { code: 'INVALID_REQUEST' });
+                }
+            }
+        }
+
+        let result = await this.request('remove-account', { disable: true }, { auth: true });
+        this.logout();
+        return result;
+    }
+
+    //usersetting
+    /**
+     * Updates user's settings.<br>
+     * The user needs to be logged in.
+     * 
+     * ```
+     * await skapi.updateUserSettings({
+     *     name: 'John Lennon',
+     *     gender: 'Male',
+     *     address: 'Liver pool',
+     *     email_public: true
+     * });
+     *  
+     * // User setting is updated.
+     * ```
+     * @category User
+     */
+    @formResponse()
+    async updateUserSettings(
+        form: Form | UserProfile & {
+            /** Set new password. *Current password is required. */
+            new_password?: string;
+            /** Current password. Only required when setting new password. */
+            current_password?: string;
+        },
+        option?: FormCallbacks
+    ): Promise<User> {
+        await this.__connection;
+
+        let attr: CognitoUserAttribute = this.session?.attributes;
+
+        if (!attr || !this.cognitoUser) {
+            throw new SkapiError('User has to be logged in.', { code: 'INVALID_REQUEST' });
+        }
+
+        let params = checkParams(form || {}, {
+            email: (v: string) => validateEmail(v),
+            name: 'string',
+            address: 'string',
+            gender: 'string',
+            birthdate: (v: string) => validateBirthdate(v),
+            phone_number: (v: string) => validatePhoneNumber(v),
+            email_public: 'boolean',
+            phone_number_public: 'boolean',
+            address_public: 'boolean',
+            gender_public: 'boolean',
+            birthdate_public: 'boolean',
+            email_subscription: 'boolean',
+            current_password: (v: string) => validatePassword(v),
+            new_password: (v: string) => validatePassword(v)
+        });
+
+        if (params && typeof params === 'object' && !Object.keys(params).length) {
+            return this.user;
+        }
+
+        if (params.new_password || params.current_password) {
+            if (!params.current_password) {
+                throw new SkapiError('"current_password" is needed to change the password.', { code: 'INVALID_PARAMETER' });
+            }
+
+            if (!params.new_password) {
+                throw new SkapiError('"new_password" is needed to change password.', { code: 'INVALID_PARAMETER' });
+            }
+
+            if (params.new_password !== params.current_password) {
+                await new Promise((res, rej) => {
+                    this.cognitoUser.changePassword(
+                        params.current_password,
+                        params.new_password,
+                        (err: any, result: any) => {
+                            if (err) {
+                                rej(new SkapiError(err?.message || 'Failed to change users password.', { code: err?.code || err?.name }));
+                            }
+
+                            res(result);
+                        });
+                });
+            }
+
+            delete params.current_password;
+            delete params.new_password;
+        }
+
+        // set alternative signin email
+        if (params.email) {
+            let connect = await this.updateServiceInformation({ request_hash: params.email });
+            params['preferred_username'] = connect.hash;
+        }
+
+        let collision = [
+            ['email_subscription', 'email_verified', "User's E-Mail should be verified to set"],
+            ['email_public', 'email_verified', "User's E-Mail should be verified to set"],
+            ['phone_number_public', 'phone_number_verified', "User's phone number should be verified to set"]
+        ];
+
+        if (this.user) {
+            for (let c of collision) {
+                if (params[c[0]] && !this.user[c[1]]) {
+                    throw new SkapiError(`${c[2]} "${c[0]}" to true.`, { code: 'INVALID_PARAMETER' });
+                }
+            }
+        }
+
+        let customAttr = [
+            'email_public',
+            'phone_number_public',
+            'address_public',
+            'gender_public',
+            'birthdate_public',
+            'email_subscription'
+        ];
+
+        // delete unchanged values, convert key names to cognito attributes
+        for (let k in params) {
+            if (params[k] === attr[k]) {
+                delete params[k];
+            }
+
+            else if (customAttr.includes(k)) {
+                let parseValue = params[k];
+
+                if (typeof parseValue === 'boolean')
+                    parseValue = parseValue ? '1' : '0';
+
+                params['custom:' + k] = parseValue;
+                delete params[k];
+            }
+        }
+
+        if (params && typeof params === 'object' && Object.keys(params).length) {
+            let toSet: Array<CognitoUserAttribute> = [];
+            for (let key in params) {
+                toSet.push(new CognitoUserAttribute({
+                    Name: key,
+                    Value: params[key]
+                }));
+            }
+
+            await new Promise((res, rej) => {
+                this.cognitoUser?.updateAttributes(
+                    toSet,
+                    (err: any, result: any) => {
+                        if (err) {
+                            rej(
+                                [
+                                    err?.code || err?.name,
+                                    err?.message || `Failed to update user settings.`
+                                ]
+                            );
+                        }
+                        res(result);
+                    });
+            });
+
+            await this.authentication().updateSession({ refreshToken: true });
+        }
+
+        return this.user;
+    }
+
+
+    /**
+     * Uploads user's account profile data.<br>
+     * The account needs to be signed in.
+     * 
+     * ```
+     * await skapi.updateUserData(
+     *     {
+     *         whoAmI: 'John Lennon',
+     *         myFavoriteFruits: ['Strawberry', 'Apple'],
+     *         meAndYoko: {
+     *             pictures: ['traveling.jpg', 'in_the_studio.jpg'],
+     *             unreleased_videos: ['give_a_peace_a_chance.mpg']
+     *         },
+     *         secret: 'Walrus was paul'
+     *     },
+     *     {
+     *         private: ['meAndYoko', 'secret']
+     *     }
+     * );
+     *  
+     * // userdata.meAndYoko, userdata.secret will not be public
+     * ```
+     * @category User
+     */
+    @formResponse()
+    async uploadUserData(
+        /** Form element or object. */
+        form: Form,
+        option?: FormCallbacks & {
+            /** Lists of key to make private. */
+            private: string[];
+        }): Promise<User> {
+
+        option = checkParams(option || {}, {
+            private: 'array'
+        });
+
+        let opt = {
+            auth: true
+        };
+
+        if (option.private) {
+            Object.assign(opt, { meta: { '__private__': option.private } });
+        }
+
+        await this.request('post-userdata', form, opt);
+        await this.authentication().updateSession();
+        return this.user;
+    }
+
+    /**
+     * Query and fetch user account database.<br>
+     * Any attribute that user has set to private will not be searchable.<br>
+     * If the fetched list of users exceeds 100 users, you can run the same method with the same parameters to get the next batch of list of users. (auto startKey)<br>
+     * If the argument is empty, It will fetch all users in the service in order of signuped timestamp.<br>
+     * User login is required.<br>
+     * You can search for user's information based on:<br>
+     * 'user_id' | 'email' | 'phone_number' | 'name' | 'address' | 'group' | 'email_subscription' | 'gender' | 'birthdate' | 'locale' | 'subscribers'</br>
+     * User's will not be on the database if they did not login after signup.
+     * 
+     * ```
+     * let getPauls = await skapi.getUsers({
+     *     searchFor: 'name',
+     *     value: 'paul', // search all user profile names in the connection service that is/start's with 'paul'
+     *     condition: '>='
+     * });
+     *  
+     * let getAllUsers = await skapi.getUsers({
+     *     searchFor: 'group',
+     *     value: 1 // search all users in group 1
+     * });
+     *  
+     * // returns -
+     * // {
+     * //     list: [<object | user objects>, ...],
+     * //     startKey: <object>,
+     * //     endOfList: false // if true, more list can be fetched when method is executed again.
+     * // }
+     * ```
+     *
+     * form.searchFor: Index to search.
+     * Search for user's information based on:<br>
+     * - 'user_id'<br>
+     * - 'email'<br>
+     * - 'phone_number'<br>
+     * - 'name'<br>
+     * - 'address'<br>
+     * - 'group'<br>
+     * - 'email_subscription'<br>
+     * - 'gender'<br>
+     * - 'birthdate'<br>
+     * - 'locale'<br>
+     * - 'subscribers'<br>
+     * - 'timestamp'<br>
+     * form.value: Value to "searchFor":<br>
+     * If user has set certain information private, it will not be searchable.<br>
+     * Certain columns have specific types:<br>
+      
+     * Search for user's information based on:<br>
+     * - 'user_id'<br>
+     * 36 character unique user id. If omitted it queries profile for currently signed in account.<br>
+     * Conditions don't apply.<br>
+     
+     * - 'blocked'<br>
+     * Boolean. Queries users blocked state.<br>
+     * Conditions don't apply.<br>
+     
+     * - 'email'<br>
+     * User's email.
+     * Conditions don't apply.
+      
+     * - 'phone_number'<br>
+     * User phone number including region code. ex) +0012341234
+      
+     * - 'name'<br>
+     * Name that user have set on their account.
+      
+     * - 'address'<br>
+     * User's address.
+      
+     * - 'group'<br>
+     * User's account group number.
+      
+     * - 'email_subscription'<br>
+     * E-Mail subscribed user's group number.
+      
+     * - 'gender'<br>
+     * User's gender.
+      
+     * - 'birthdate'<br>
+     * User's birthdate.
+      fetch
+     * - 'locale'<br>
+     * User's locale.
+      
+     * - 'subscribers'<br>
+     * Number of user's subscribers.
+      
+     * - 'timestamp'<br>
+     * User's account creation timestamp.
+     * 
+     * @category User
+     */
+    async getUsers(
+        params?: QueryParams | null,
+        fetchOptions?: FetchOptions
+    ): Promise<User | FetchResponse> {
+
+        let isAdmin = await this.requireAdmin({
+            ignoreVerification: true
+        });
+
+        if (!params) {
+            if (!fetchOptions) {
+                fetchOptions = {};
+            }
+            fetchOptions.ascending = false;
+        }
+
+        // set default value
+        params = params || {
+            searchFor: 'timestamp',
+            condition: '>',
+            value: 0
+        };
+
+        const searchForTypes = {
+            'user_id': (v: string) => validateUserId(v),
+            'name': 'string',
+            'email': (v: string) => validateEmail(v),
+            'phone_number': (v: string) => validatePhoneNumber(v),
+            'address': 'string',
+            'gender': 'string',
+            'birthdate': (v: string) => validateBirthdate(v),
+            'locale': (v: string) => {
+                if (typeof v !== 'string' || typeof v === 'string' && v.length > 5) {
+                    throw new SkapiError('Value of "locale" should be a country code.');
+                }
+                return v;
+            },
+            'subscribers': 'number',
+            'timestamp': 'number',
+            'group': 'number',
+            'email_subscription': (v: number) => {
+                if (!isAdmin) {
+                    throw new SkapiError('Only admin is allowed to search "email_subscription".', { code: 'INVALID_REQUEST' });
+                }
+                return v;
+            },
+            'blocked': (v: boolean) => {
+                if (v) {
+                    return 'by_admin:suspended';
+                }
+                else {
+                    return 'by_admin:approved';
+                }
+            }
+        };
+
+        let required = ['searchFor', 'value'];
+
+        params = checkParams(params, {
+            searchFor: [
+                'user_id',
+                'name',
+                'email',
+                'phone_number',
+                'address',
+                'gender',
+                'birthdate',
+                'locale',
+                'subscribers',
+                'timestamp',
+                'group',
+                'email_subscription',
+                'blocked'
+            ],
+            condition: ['>', '>=', '=', '<', '<=', 'gt', 'gte', 'eq', 'lt', 'lte', () => '='],
+            value: (v: any) => {
+                let checker = searchForTypes[params.searchFor];
+                if (typeof checker === 'function') {
+                    return checker(v);
+                }
+
+                else if (typeof v !== checker) {
+                    throw new SkapiError(`Value does not match the type of "${params.searchFor}" index.`, { code: 'INVALID_PARAMETER' });
+                }
+
+                return v;
+            },
+            range: (v: any) => {
+                let checker = searchForTypes[params.searchFor];
+                if (typeof checker === 'function') {
+                    return checker(v);
+                }
+
+                else if (typeof v !== checker) {
+                    throw new SkapiError(`Range does not match the type of "${params.searchFor}" index.`, { code: 'INVALID_PARAMETER' });
+                }
+
+                return v;
+            }
+        }, required);
+
+        if (params?.condition && params?.condition !== '=' && params.hasOwnProperty('range')) {
+            throw new SkapiError('Conditions does not apply on range search.', { code: 'INVALID_PARAMETER' });
+        }
+
+        if (['user_id', 'blocked'].includes(params.searchFor) && params.condition !== '=') {
+            throw new SkapiError(`Condition is not allowed on "${params.searchFor}"`, { code: 'INVALID_PARAMETER' });
+        }
+
+        if (params.searchFor === 'blocked') {
+            // backend uses 'suspended' for column name
+            params.searchFor = 'suspended';
+        }
+
+        if (typeof params?.value === 'string' && !params?.value) {
+            throw new SkapiError('Value should not be an empty string.', { code: 'INVALID_PARAMETER' });
+        }
+
+        if (typeof params?.searchFor === 'string' && !params?.searchFor) {
+            throw new SkapiError('"searchFor" should not be an empty string.', { code: 'INVALID_PARAMETER' });
+        }
+
+        let isSelfProfile = params.searchFor === 'user_id' && params.value === this.session.idToken.payload.sub;
+
+        if (isAdmin && !isSelfProfile && !(params as any).service) {
+            throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
+        }
+
+        let result = await this.request(
+            'get-users',
+            params,
+            { auth: true, fetchOptions }
+        );
+
+        if (!result.list[0] || !isSelfProfile || result.list.length > 1) {
+            return result;
+        }
+
+        let user = result.list[0];
+        // append user session data
+        Object.assign(user, this.user);
+
+        user._what_public_see = JSON.parse(JSON.stringify(user));
+
+        let public_keys = [
+            'service',
+            'user_id',
+            'name',
+            'locale',
+            'address',
+            'birthdate',
+            'phone_number',
+            'email',
+            'gender',
+            'subscribers',
+            'timestamp',
+            'group',
+            'log',
+            'user_data'
+        ];
+
+        // remove unnecessary keys in _what_public_see
+        for (let k in user._what_public_see) {
+            if (!public_keys.includes(k)) {
+                delete user._what_public_see[k];
+            }
+        }
+
+        return user;
+    }
+
+    private async updateServiceInformation(params?: { request_hash: string; }): Promise<Connection> {
+
+        let request = null;
+        let connectedService: Record<string, any> = {};
+
+        if (params?.request_hash) {
+            // hash request
+
+            if (this.__serviceHash[params.request_hash]) {
+                // has hash
+                Object.assign(connectedService, { hash: this.__serviceHash[params.request_hash] });
+            }
+
+            else {
+                // request signin hash
+                request = {
+                    request_hash: validateEmail(params.request_hash)
+                };
+            }
+        }
+
+        if (!this.connection || this.connection.service !== this.service || request) {
+            // has hash request or need new connection request
+
+            if (request === null) {
+                request = {};
+            }
+
+            // assign service id and owner to request
+            Object.assign(request, {
+                service: this.service,
+                service_owner: this.service_owner
+            });
+        }
+
+        // post request if needed
+        Object.assign(connectedService, (request ? await this.request('service', request, { bypassAwaitConnection: true }) : this.connection));
+
+        if (params?.request_hash) {
+            // cache hash if needed
+            this.__serviceHash[params.request_hash] = connectedService.hash;
+        }
+
+        // deep copy, save connection service info without hash
+        let connection = JSON.parse(JSON.stringify(connectedService));
+        delete connection.hash;
+        this.connection = connection;
+
+        return connectedService as Connection;
+    }
+}
