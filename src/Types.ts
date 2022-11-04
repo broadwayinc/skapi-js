@@ -1,3 +1,20 @@
+export type Connection = {
+    /** Connection locale */
+    locale: string;
+    /** User ID of the service owner */
+    owner: string;
+    /** E-Mail address of the service owner */
+    email: string;
+    /** Service id */
+    service: string;
+    /** Service region */
+    region: string;
+    /** 13 digits timestamp of the service creation */
+    timestamp: number;
+    /** Hash string for authentication */
+    hash: string;
+};
+
 /**
  * Additional option for form requests.
  * You can attach callbacks on response and error.
@@ -11,7 +28,7 @@
  * ```
  */
 export type FormCallbacks = {
-    /** Callback for response */
+    /** Callback for form response */
     response?(response: any): any;
     /** Callback on error. When boolen true is given, alertbox will show. */
     onerror?: (error: Error) => any;
@@ -59,6 +76,16 @@ export type Newsletters = {
 };
 
 export type UserProfile = {
+    /** Service id of the user account. */
+    service: string;
+    /** User ID of the service owner. */
+    service_owner?: string;
+    /** Access level of the user's account. */
+    access_group?: number;
+    /** User's ID. */
+    user_id: string;
+    /** Country code of where user signed up from. */
+    locale: string;
     /**
      * User's E-Mail for signin.<br>
      * 64 character max.<br>
@@ -67,6 +94,18 @@ export type UserProfile = {
      * E-Mail should be verified to set to public.
      * */
     email?: string;
+    /** Shows true when user has verified their E-Mail. */
+    email_verified?: boolean;
+    /**
+     * User's phone number. Format: "+0012341234"<br>
+     * When phone number is changed, phone number verified state will be changed to false.<br>
+     * Phone number is only visible to others when set to public.<br>
+     * Phone number should be verified to set to public.
+     */
+    phone_number?: string;
+    /** Shows true when user has verified their phone number. */
+    phone_number_verified?: boolean;
+
     /** User's name */
     name?: string;
     /** User's address */
@@ -78,62 +117,37 @@ export type UserProfile = {
     gender?: string;
     /** User's birthdate. String format: "1969-07-16" */
     birthdate?: string;
-    /**
-     * User's phone number. Format: "+0012341234"<br>
-     * When phone number is changed, phone number verified state will be changed to false.<br>
-     * Phone number is only visible to others when set to public.<br>
-     * Phone number should be verified to set to public.
-     */
-    phone_number?: string;
-    /** Subscribes to service newsletters. E-Mail should be verified. */
-    email_subscription?: boolean;
-    /** When true, Set's E-Mail to public. E-Mail should be verified. */
+    /** User has subscribed to service e-mail when positive number. E-mail should be verified. */
+    email_subscription?: number;
+    /** User's E-mail is public when positive number. E-Mail should be verified. */
     email_public?: boolean;
-    /** When true, Set's phone number to public. Phone number should be verified. */
+    /** User's phone number is public when positive number. Phone number should be verified. */
     phone_number_public?: boolean;
-    /** When true, Set's address to public. */
+    /** User's address is public when positive number. */
     address_public?: boolean;
-    /** When true, Set's gender to public. */
+    /** User's gender is public when positive number. */
     gender_public?: boolean;
-    /** When true, Set's birthdate to public. */
+    /** User's birthdate is public when positive number. */
     birthdate_public?: boolean;
+    /** Shows 'PASS' if the user's account signup was successful.  */
+    signup_ticket?: string;
 };
 
 export interface User extends UserProfile {
-    /** Service id of the user account. */
-    service: string;
-    /** User id of the service owner. */
-    service_owner?: string;
-    /** Shows true when user has verified their E-Mail. */
-    email_verified?: boolean;
-    /** User group that user account is in. */
-    group?: number;
-    /** Country code of where user signed up from. */
-    locale: string;
     /** Last login time */
     log: number;
-    /** Shows true when user has verified their phone number. */
-    phone_number_verified?: boolean;
     /** User data that has been set to private. The data is only shown to the owner of the account. */
     private_data?: Record<string, any>;
-    /** Shows 'PASS' if the account signup was successful.  */
-    signup_ticket?: string;
-    /** User id. */
-    sub: string;
-    /** Number of the users subscribers. */
+    /** Number of the user's subscribers. */
     subscribers: number;
     /** Timestamp of user signup time. */
     timestamp: number;
-    /** User data. */
+    /** User's data. */
     user_data?: Record<string, any>;
-    /** User id. Same as 'sub'. */
-    user_id: string;
     /** Reference of how others would see the data. Appears only on the owner of the account. */
-    what_public_see?: Record<string, any>;
-    /** Service that account owns. Appears only on admin users. */
-    services?: Array<Service>;
-    /** Service access group number. */
-    access_group?: number;
+    _what_public_see?: Record<string, any>;
+    /** @ignore */
+    services?: Record<string, any>[];
 }
 
 export type GetRecordParams = {
@@ -323,8 +337,6 @@ export type Service = {
     email_subscribers: number;
     /** Service group. 1 = free try out. 1 > paid users. */
     group: number;
-    /** Locale of where service was created. */
-    locale: string;
     /** Service region */
     region: string;
     /** Service name. */
@@ -368,18 +380,9 @@ export type Service = {
     users: number;
 };
 
-export type SubscriberGroup = {
+export type SubscriptionGroup = {
     /** User id. */
-    userId: string;
+    user_id: string;
     /** Target group number (1 ~ 9). '*' is given, will apply to all groups. */
     group: number | '*';
-};
-
-export type SubscriberFetch = {
-    /** User id of E-Mail. Defaults to users own id. If E-Mail is given for fetch subscription, api will fetch newletter subscription.*/
-    userId?: string;
-    /** Target group number (1 ~ 9). Fetch all group if ommited. */
-    group: number;
-    /** True / False to fetch email subscribed subscriptions. If omitted, will fetch both. */
-    emailSubscription?: boolean;
 };
