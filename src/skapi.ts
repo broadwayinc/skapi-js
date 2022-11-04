@@ -14,12 +14,12 @@ import {
     UserProfile,
     PostRecordParams,
     FetchOptions,
-    SubscriberGroup,
-    SubscriberFetch,
+    SubscriptionGroup,
     FetchResponse,
     GetRecordParams,
     QueryParams,
-    Newsletters
+    Newsletters,
+    Connection
 } from './Types';
 import SkapiError from './skapi_error';
 import { formResponse } from './decorators';
@@ -52,22 +52,6 @@ type CachedRequests = {
     };
 };
 
-type Connection = {
-    /** Connection locale */
-    locale: string;
-    /** Name of the connected service */
-    name: string;
-    /** Id of the service owner */
-    owner: string;
-    /** E-Mail address of the service owner */
-    owner_email: string;
-    /** Service id */
-    service: string;
-    /** 13 digits timestamp of the service creation */
-    timestamp: number;
-    /** hash string used for login */
-    hash?: string;
-};
 /**
  * All the methods used in Skapi are promises.<br>
  * Use async/await or Promise.then() to interact with backend.<br>
@@ -183,7 +167,7 @@ export default class Skapi {
 
     // skapi int range -4503599627370545 ~ 4503599627370546
 
-    constructor(service_id: string, service_owner: string) {
+    constructor(service_id: string, service_owner: string, autoLogin: boolean = false) {
         if (typeof service_id !== 'string' || typeof service_owner !== 'string') {
             throw new SkapiError('"service_id" and "service_owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
@@ -244,12 +228,18 @@ export default class Skapi {
                 ClientId: admin_endpoint.userpool_client
             });
 
-            await Promise.all([
-                skapi.updateServiceInformation(),
-                skapi.authentication().updateSession({ refreshToken: !!restore?.connection }).catch(err => {
+            const process: any[] = [
+                skapi.updateConnection()
+            ];
+
+            if (restore?.connection || autoLogin) {
+                // from session reload | autoLogin
+                process.push(skapi.authentication().updateSession({ refreshToken: !!restore?.connection }).catch(err => {
                     skapi.user = null;
-                })
-            ]);
+                }));
+            }
+
+            await Promise.all(process);
 
             const storeClassProperties = () => {
                 if (skapi.__class_properties_has_been_cached) {
@@ -316,12 +306,14 @@ export default class Skapi {
      * @category Connection
      */
     static async connect(
-        /** 22 character service id */
+        /** service ID */
         service_id: string,
-        /** 36 character user id */
-        service_owner: string
+        /** service owner's user ID */
+        service_owner: string,
+        /** Auto login user when true */
+        autoLogin: boolean = false
     ): Promise<Skapi> {
-        const skapi = new Skapi(service_id, service_owner);
+        const skapi = new Skapi(service_id, service_owner, autoLogin);
         await skapi.__connection;
         return skapi;
     }
@@ -463,7 +455,7 @@ export default class Skapi {
             let hash = null;
 
             if (email) {
-                hash = this.__serviceHash[email] || (await this.updateServiceInformation({ request_hash: email })).hash;
+                hash = this.__serviceHash[email] || (await this.updateConnection({ request_hash: email })).hash;
             }
 
             else {
@@ -2192,11 +2184,10 @@ export default class Skapi {
         return await this.request('subscribe-newsletter', params);
     }
 
-
-    private async subscriptionGroupCheck(option: Record<string, any>) {
+    private async subscriptionGroupCheck(option: SubscriptionGroup) {
         await this.__connection;
         option = checkParams(option, {
-            userId: (v: string) => validateUserId(v, '"userId"'),
+            user_id: (v: string) => validateUserId(v, '"user_id"'),
             group: (v: number | string) => {
                 if (v === '*') {
                     return v;
@@ -2211,12 +2202,11 @@ export default class Skapi {
                 }
 
                 return v;
-            },
-            emailSubscription: ['boolean']
-        }, ['userId', 'group']);
+            }
+        }, ['user_id', 'group']);
 
-        if (this.user && option.userId === this.user.user_id) {
-            throw new SkapiError(`"userId" cannot be the user's own ID.`, { code: 'INVALID_PARAMETER' });
+        if (this.user && option.user_id === this.user.user_id) {
+            throw new SkapiError(`"user_id" cannot be the user's own ID.`, { code: 'INVALID_PARAMETER' });
         }
 
         return option;
@@ -2230,25 +2220,24 @@ export default class Skapi {
      * ```
      * // user subscribes to another user with email subscription
      * await skapi.subscribe({
-     *     userId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-     *     group: 1,
-     *     emailSubscription: true
+     *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+     *     group: 1
      * })
      * ```
      * @category Subscriptions
      */
     @formResponse()
     async subscribe(
-        option: SubscriberGroup
+        option: SubscriptionGroup
     ) {
-        let { userId, group } = await this.subscriptionGroupCheck(option);
+        let { user_id, group } = await this.subscriptionGroupCheck(option);
 
         if (group === '*') {
             throw new SkapiError('Cannot subscribe to all groups at once.', { code: 'INVALID_PARAMETER' });
         }
 
         return await this.request('subscription', {
-            subscribe: userId,
+            subscribe: user_id,
             group
         }, { auth: true });
     }
@@ -2258,18 +2247,18 @@ export default class Skapi {
      * ```
      * // user unsubscribes from another user
      * await skapi.unsubscribe({
-     *     userId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+     *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
      *     group: 2
      * })
      * ```
      * @category Subscriptions
      */
     @formResponse()
-    async unsubscribe(option: SubscriberGroup) {
-        let { userId, group } = await this.subscriptionGroupCheck(option);
+    async unsubscribe(option: SubscriptionGroup) {
+        let { user_id, group } = await this.subscriptionGroupCheck(option);
 
         return await this.request('subscription', {
-            unsubscribe: userId,
+            unsubscribe: user_id,
             group
         }, { auth: true });
     }
@@ -2279,20 +2268,20 @@ export default class Skapi {
      * ```
      * // account owner blocks user from group 2
      * await skapi.blockSubscriber({
-     *     userId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+     *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
      *     group: 2
      * })
      * // account owner blocks user from all group
      * await skapi.blockSubscriber({
-     *     userId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+     *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
      * })
      * ```
      * @category Subscriptions
      */
     @formResponse()
-    async blockSubscriber(option: SubscriberGroup): Promise<string> {
-        let { userId, group } = await this.subscriptionGroupCheck(option);
-        return await this.request('subscription', { block: userId, group }, { auth: true });
+    async blockSubscriber(option: SubscriptionGroup): Promise<string> {
+        let { user_id, group } = await this.subscriptionGroupCheck(option);
+        return await this.request('subscription', { block: user_id, group }, { auth: true });
     }
 
     /**
@@ -2300,33 +2289,33 @@ export default class Skapi {
      * ```
      * // account owner unblocks user from group 2
      * await skapi.unblockSubscriber({
-     *     userId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+     *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
      *     group: 2
      * })
      * 
      * // account owner unblocks user from all group
      * await skapi.unblockSubscriber({
-     *     userId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+     *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
      * })
      * ```
      * @category Subscriptions
      */
     @formResponse()
-    async unblockSubscriber(option: SubscriberGroup): Promise<string> {
-        let { userId, group } = await this.subscriptionGroupCheck(option);
-        return await this.request('subscription', { unblock: userId, group }, { auth: true });
+    async unblockSubscriber(option: SubscriptionGroup): Promise<string> {
+        let { user_id, group } = await this.subscriptionGroupCheck(option);
+        return await this.request('subscription', { unblock: user_id, group }, { auth: true });
     }
 
     /**
      * Get user's subscriptions
      * @ignore
      */
-    async getUserSubscriptions(option: SubscriberFetch): Promise<FetchResponse> {
+    async getUserSubscriptions(option: SubscriptionGroup): Promise<FetchResponse> {
         await this.__connection;
         option = checkParams(option, {
-            userId: (v: string) => {
+            user_id: (v: string) => {
                 try {
-                    return validateUserId(v, '"userId"');
+                    return validateUserId(v, '"user_id"');
                 } catch (err) {
                 }
 
@@ -2337,14 +2326,12 @@ export default class Skapi {
 
                 throw new SkapiError('"subscriber" should be either valid user ID or E-Mail.', { code: 'INVALID_PARAMETER' });
             },
-            group: 'number',
-            emailSubscription: 'boolean'
+            group: 'number'
         }) || {};
 
         return this.getSubscriptions({
-            subscriber: option.userId || this.user?.user_id,
-            group: option.group,
-            emailSubscription: option?.emailSubscription || undefined
+            subscriber: option.user_id || this.user?.user_id,
+            group: option.group
         });
     }
 
@@ -2353,18 +2340,16 @@ export default class Skapi {
      * Get user's subscribers
      * @ignore
      */
-    async getUserSubscribers(option: SubscriberFetch): Promise<FetchResponse> {
+    async getUserSubscribers(option: SubscriptionGroup): Promise<FetchResponse> {
         await this.__connection;
         option = checkParams(option, {
-            userId: (v: string) => validateUserId(v, '"userId"'),
-            group: 'number',
-            emailSubscription: 'boolean'
+            user_id: (v: string) => validateUserId(v, '"user_id"'),
+            group: 'number'
         }) || {};
 
         let subParams = {
-            subscription: option.userId || this.user?.user_id,
-            group: option.group,
-            emailSubscription: option.emailSubscription
+            subscription: option.user_id || this.user?.user_id,
+            group: option.group
         };
 
         return this.getSubscriptions(subParams);
@@ -2382,9 +2367,7 @@ export default class Skapi {
             /** Subscription id. User id that subscriber has subscribed to. */
             subscription?: string;
             /** subscription group. if omitted, will fetch all groups. */
-            group?: number;
-            /** True | False to fetch service email subscribers. If omitted, will fetch all subscribers. */
-            emailSubscription?: boolean;
+            group?: number | '*';
             /** Fetch blocked subscription when True */
             blocked?: boolean;
         },
@@ -2424,7 +2407,6 @@ export default class Skapi {
 
                 throw new SkapiError('"subscriber" should be either valid service ID or user ID.', { code: 'INVALID_PARAMETER' });
             },
-            emailSubscription: 'boolean',
             blocked: 'boolean'
         });
 
@@ -2613,7 +2595,7 @@ export default class Skapi {
      */
     @formResponse()
     async signup(
-        form: Form | UserProfile | { email: String, password: String; },
+        form: Form | UserProfile & { email: String, password: String; },
         option?: {
             /**
              * When true, the service will send out confirmation E-Mail.
@@ -3166,7 +3148,7 @@ export default class Skapi {
 
         // set alternative signin email
         if (params.email) {
-            let connect = await this.updateServiceInformation({ request_hash: params.email });
+            let connect = await this.updateConnection({ request_hash: params.email });
             params['preferred_username'] = connect.hash;
         }
 
@@ -3556,7 +3538,7 @@ export default class Skapi {
         return user;
     }
 
-    private async updateServiceInformation(params?: { request_hash: string; }): Promise<Connection> {
+    private async updateConnection(params?: { request_hash: string; }): Promise<Connection> {
 
         let request = null;
         let connectedService: Record<string, any> = {};
