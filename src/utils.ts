@@ -298,8 +298,8 @@ function checkParams(
         val = _params;
     }
 
-    if (val === undefined) {
-        throw errToThrow || new SkapiError(`Type "undefined"${isInvalid}`, { code: 'INVALID_PARAMETER' });
+    if (val === undefined && errToThrow) {
+        throw errToThrow;
     }
 
     return val;

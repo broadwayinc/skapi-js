@@ -27,20 +27,16 @@ $ npm i skapi-js
 
 ```
 import {Skapi} from 'skapi-js';
-Skapi.connect('your_service_id', 'your_user_id').then(async skapi => {
-  // Code here!
-});
+let skapi = new Skapi('your_service_id', 'your_user_id');
 ```
 
 For HTML projects:
 ```
 <head>
-  <script src="https://skapi.com/lib/0.0.2/skapi.js">
+  <script src="https://skapi.com/lib/0.0.4/skapi.js">
 </head>
 <script>
-    Skapi.connect('your_service_id', 'your_user_id').then(async skapi => {
-      // Code here!
-    });
+    let skapi = new Skapi('your_service_id', 'your_user_id');
 </script>
 ```
 
