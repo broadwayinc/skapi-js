@@ -1008,7 +1008,7 @@ export default class Skapi {
         }
 
         let requestKey = this.load_startKey_keys({
-            params: Object.assign(isForm || (data || {}), required || {}),
+            params: data,
             url: isExternalUrl || url,
             refresh: isForm ? true : refresh // should not use startKey when post is a form
         }); // returns requrestKey | cached data
@@ -1118,35 +1118,6 @@ export default class Skapi {
             }
         }
 
-        let toHash = (() => {
-            if (params && typeof params === 'object' && Object.keys(params).length) {
-                // hash request parameters
-                let paramsHash = JSON.parse(JSON.stringify(params));
-
-                function orderObjectKeys(obj: Record<string, any>) {
-                    function sortObject(obj: Record<string, any>): Record<string, any> {
-                        if (typeof obj === 'object' && obj) {
-                            return Object.keys(obj).sort().reduce((res, key) => ((res as any)[key] = obj[key], res), {});
-                        }
-                        return obj;
-                    };
-
-                    let _obj = sortObject(obj);
-                    for (let k in _obj) {
-                        if (_obj[k] && typeof _obj[k] === 'object') {
-                            _obj[k] = sortObject(obj[k]);
-                        }
-                    }
-
-                    return _obj;
-                }
-
-                return JSON.stringify(orderObjectKeys(paramsHash)) + url + this.service;
-            }
-
-            return url + this.service;
-        })();
-
         // let hashedParams = createHash('sha256').update(toHash).digest('hex');
         let hashedParams = sha256((() => {
             if (params && typeof params === 'object' && Object.keys(params).length) {
@@ -1216,7 +1187,7 @@ export default class Skapi {
         if (last_startKey_key) {
             // use last start key
 
-            if (last_startKey_key === 'end') {
+            if (last_startKey_key === '"end"') { // cached startKeys are stringified
                 return {
                     list: [],
                     startKey: 'end',
@@ -3265,7 +3236,7 @@ export default class Skapi {
             auth: true
         };
 
-        if (option.private) {
+        if (option?.private) {
             Object.assign(opt, { meta: { '__private__': option.private } });
         }
 
