@@ -33,7 +33,7 @@ let skapi = new Skapi('your_service_id', 'your_user_id');
 For HTML projects:
 ```
 <head>
-  <script src="https://skapi.com/lib/0.0.4/skapi.js">
+  <script src="https://skapi.com/lib/skapi.js">
 </head>
 <script>
     let skapi = new Skapi('your_service_id', 'your_user_id');
