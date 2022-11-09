@@ -1464,7 +1464,7 @@ export default class Skapi {
                 private_access: (v: string | string[]) => {
                     let param = 'config.private_access';
 
-                    if (!v) {
+                    if (v === null) {
                         return null;
                     }
 
