@@ -236,7 +236,7 @@ function checkParams(
             } catch (err) {
                 if (typeof err === 'string' && err.substring(0, 6) === 'BREAK:') {
                     // break on BREAK message
-                    err = err.substring(5);
+                    err = err.substring(6);
                     let errMsg = (err as string).split(':');
                     errToThrow = new SkapiError(errMsg[1], { code: errMsg[0] });
                     break;

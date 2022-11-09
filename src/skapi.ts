@@ -113,7 +113,7 @@ export default class Skapi {
     __user: User | null = null;
 
     get user() {
-        if(this.__user && Object.keys(this.__user).length) {
+        if (this.__user && Object.keys(this.__user).length) {
             return JSON.parse(JSON.stringify(this.__user));
         }
         else {
@@ -1473,7 +1473,25 @@ export default class Skapi {
                 throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
             },
             config: {
-                reference_limit: ['number', null],
+                reference_limit: (v: number) => {
+                    if (v === null) {
+                        return null;
+                    }
+
+                    else if (typeof v === 'number') {
+                        if (0 < v) {
+                            throw new SkapiError(`"reference_limit" should be >= 0`, { code: 'INVALID_PARAMETER' });
+                        }
+
+                        if (v > 4503599627370546) {
+                            throw new SkapiError(`"reference_limit" should be <= 4503599627370546`, { code: 'INVALID_PARAMETER' });
+                        }
+
+                        return v;
+                    }
+
+                    throw new SkapiError(`"reference_limit" should be type: <number | null>`, { code: 'INVALID_PARAMETER' });
+                },
                 allow_multiple_reference: 'boolean',
                 private_access: (v: string | string[]) => {
                     let param = 'config.private_access';
