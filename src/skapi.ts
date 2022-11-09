@@ -110,7 +110,21 @@ export default class Skapi {
     // public
 
     /** Current logged in user object. null if not logged. */
-    user: User | null = null;
+    __user: User | null = null;
+
+    get user() {
+        if(this.__user && Object.keys(this.__user).length) {
+            return JSON.parse(JSON.stringify(this.__user));
+        }
+        else {
+            return null;
+        }
+    }
+
+    set user(value) {
+        // setting user is bypassed
+    }
+
     /** Connected service object. null if connection failed. */
     connection: Connection | null = null;
     host: string = 'skapi';
@@ -411,7 +425,7 @@ export default class Skapi {
                                     user.access_group = Number(this.session.idToken.payload.access_group);
                                     user.user_id = user.sub;
                                     delete user.sub;
-                                    this.user = user;
+                                    this.__user = user;
                                     res(user);
                                 }
                             });
@@ -1476,7 +1490,7 @@ export default class Skapi {
                         for (let u of v) {
                             validateUserId(u, `User ID in "${param}"`);
 
-                            if (this.user && u === this.user.user_id) {
+                            if (this.__user && u === this.__user.user_id) {
                                 throw new SkapiError(`"${param}" should not be the uploader's user ID.`, { code: 'INVALID_PARAMETER' });
                             }
                         }
@@ -1721,7 +1735,7 @@ export default class Skapi {
             'get-records',
             params,
             Object.assign(
-                { auth: params.hasOwnProperty('access_group') && (params.access_group === 'private' || params.access_group > 0) ? true : !!this.user },
+                { auth: params.hasOwnProperty('access_group') && (params.access_group === 'private' || params.access_group > 0) ? true : !!this.__user },
                 { fetchOptions }
             )
         );
@@ -2180,7 +2194,7 @@ export default class Skapi {
             }
         }, ['user_id', 'group']);
 
-        if (this.user && option.user_id === this.user.user_id) {
+        if (this.__user && option.user_id === this.__user.user_id) {
             throw new SkapiError(`"user_id" cannot be the user's own ID.`, { code: 'INVALID_PARAMETER' });
         }
 
@@ -2305,7 +2319,7 @@ export default class Skapi {
         }) || {};
 
         return this.getSubscriptions({
-            subscriber: option.user_id || this.user?.user_id,
+            subscriber: option.user_id || this.__user?.user_id,
             group: option.group
         });
     }
@@ -2323,7 +2337,7 @@ export default class Skapi {
         }) || {};
 
         let subParams = {
-            subscription: option.user_id || this.user?.user_id,
+            subscription: option.user_id || this.__user?.user_id,
             group: option.group
         };
 
@@ -2805,8 +2819,8 @@ export default class Skapi {
                     if (code) {
                         this.authentication().updateSession({ refreshToken: true }).then(
                             () => {
-                                if (this.user) {
-                                    this.user[attribute + '_verified'] = true;
+                                if (this.__user) {
+                                    this.__user[attribute + '_verified'] = true;
                                 }
                                 res(`SUCCESS: "${attribute}" is verified.`);
                             }
@@ -3020,8 +3034,8 @@ export default class Skapi {
     async disableAccount(): Promise<string> {
         await this.__connection;
 
-        if (this.user && Array.isArray(this.user.services)) {
-            for (let s of this.user.services) {
+        if (this.__user && Array.isArray(this.__user.services)) {
+            for (let s of this.__user.services) {
                 if (s.active) {
                     throw new SkapiError('All services needs to be disabled.', { code: 'INVALID_REQUEST' });
                 }
@@ -3086,7 +3100,7 @@ export default class Skapi {
         });
 
         if (params && typeof params === 'object' && !Object.keys(params).length) {
-            return this.user;
+            return this.__user;
         }
 
         if (params.new_password || params.current_password) {
@@ -3129,9 +3143,9 @@ export default class Skapi {
             ['phone_number_public', 'phone_number_verified', "User's phone number should be verified to set"]
         ];
 
-        if (this.user) {
+        if (this.__user) {
             for (let c of collision) {
-                if (params[c[0]] && !this.user[c[1]]) {
+                if (params[c[0]] && !this.__user[c[1]]) {
                     throw new SkapiError(`${c[2]} "${c[0]}" to true.`, { code: 'INVALID_REQUEST' });
                 }
             }
@@ -3191,7 +3205,7 @@ export default class Skapi {
             await this.authentication().updateSession({ refreshToken: true });
         }
 
-        return this.user;
+        return this.__user;
     }
 
 
@@ -3242,7 +3256,7 @@ export default class Skapi {
 
         await this.request('post-userdata', form, opt);
         await this.authentication().updateSession();
-        return this.user;
+        return this.__user;
     }
 
     /**
@@ -3478,7 +3492,7 @@ export default class Skapi {
 
         let user = result.list[0];
         // append user session data
-        Object.assign(user, this.user);
+        Object.assign(user, this.__user);
 
         user._what_public_see = JSON.parse(JSON.stringify(user));
 
