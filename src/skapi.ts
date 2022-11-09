@@ -1479,7 +1479,7 @@ export default class Skapi {
                     }
 
                     else if (typeof v === 'number') {
-                        if (0 < v) {
+                        if (0 > v) {
                             throw new SkapiError(`"reference_limit" should be >= 0`, { code: 'INVALID_PARAMETER' });
                         }
 
