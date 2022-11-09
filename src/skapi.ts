@@ -735,7 +735,7 @@ export default class Skapi {
      * Retrives respond data from form request.
      * 
      * ```
-     * let respond = skapi.getResponse();
+     * let respond = skapi.getFormResponse();
      * ```
      * @category Connection
      */
@@ -2693,18 +2693,14 @@ export default class Skapi {
      */
     async resendSignupConfirmation(
         /** Redirect url on confirmation success. */
-        redirect: boolean | string = false
+        redirect: string
     ): Promise<string> {
-        if (redirect && typeof redirect === 'string') {
-            redirect = (validateUrl(redirect) as string);
-        }
-
-        else if (typeof redirect !== 'boolean') {
-            throw new SkapiError('Argument should be type: <boolean | string>.', { code: 'INVALID_REQUEST' });
-        }
-
         if (!this.__request_signup_confirmation) {
-            throw new SkapiError('Least one signin attempt is required.', { code: 'INVALID_REQUEST' });
+            throw new SkapiError('Least one login attempt is required.', { code: 'INVALID_REQUEST' });
+        }
+
+        if (redirect) {
+            validateUrl(redirect);
         }
 
         let resend = await this.request("confirm-signup", {
@@ -2713,7 +2709,7 @@ export default class Skapi {
         });
 
         this.__request_signup_confirmation = null;
-        return resend;
+        return resend; // 'SUCCESS: Signup confirmation E-Mail has been sent.'
     }
 
     /**
@@ -3132,7 +3128,7 @@ export default class Skapi {
         if (this.user) {
             for (let c of collision) {
                 if (params[c[0]] && !this.user[c[1]]) {
-                    throw new SkapiError(`${c[2]} "${c[0]}" to true.`, { code: 'INVALID_PARAMETER' });
+                    throw new SkapiError(`${c[2]} "${c[0]}" to true.`, { code: 'INVALID_REQUEST' });
                 }
             }
         }
