@@ -291,6 +291,9 @@ function checkParams(
 
             val = _params;
         }
+        else {
+            throw new SkapiError(`Value: ${_params}${isInvalid}`, { code: 'INVALID_PARAMETER' });
+        }
     }
 
     else if (struct === null) {
