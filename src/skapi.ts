@@ -1433,7 +1433,7 @@ export default class Skapi {
                 }
             }],
             subscription_group: 'number',
-            reference: 'string',
+            reference: ['string', null],
             index: {
                 name: 'string',
                 value: ['string', 'number', 'boolean']
@@ -1463,6 +1463,10 @@ export default class Skapi {
                 allow_multiple_reference: 'boolean',
                 private_access: (v: string | string[]) => {
                     let param = 'config.private_access';
+
+                    if (!v) {
+                        return null;
+                    }
 
                     if (v && typeof v === 'string') {
                         v = [v];
