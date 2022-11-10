@@ -1441,11 +1441,7 @@ export default class Skapi {
         option = checkParams(option || {}, {
             record_id: 'string',
             access_group: ['number', 'private'],
-            table: ['string', () => {
-                if (!option?.record_id) {
-                    throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
-                }
-            }],
+            table: 'string',
             subscription_group: 'number',
             reference: ['string', null],
             index: {
@@ -1528,6 +1524,10 @@ export default class Skapi {
         delete option.formData;
         delete option.onerror;
 
+        if (!option?.table && !option?.record_id) {
+            throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
+        }
+
         if (option?.index) {
             // index name allows periods. white space is invalid.
             if (!option.index?.name || typeof option.index?.name !== 'string') {
@@ -1551,7 +1551,6 @@ export default class Skapi {
                 }
             }
         }
-
 
         if (is_admin) {
             if (option?.access_group === 'private') {
