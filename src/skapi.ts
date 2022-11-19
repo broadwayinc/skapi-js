@@ -591,6 +591,10 @@ export default class Skapi {
         return await this.request(p.url, option || null, { method: 'get', auth: p.url.includes('/auth/'), contentType: null, responseType: 'blob' });
     }
 
+    async mock(data, options) {
+        return this.request('test-api', data, options);
+    }
+
     /**
      * Sends post request to your custom server using Skapi's secure API layer.</br>
      * You must set your secret API key from the Skapi's admin page.</br>
@@ -849,6 +853,7 @@ export default class Skapi {
                     case 'signup':
                     case 'confirm-signup':
                     case 'recover-account':
+                    case 'test-api':
                     case 'service':
                         return {
                             public: admin.admin_public,
