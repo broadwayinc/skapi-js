@@ -1031,7 +1031,7 @@ export default class Skapi {
             url: isExternalUrl || url,
             refresh: isForm ? true : refresh // should not use startKey when post is a form
         }); // returns requrestKey | cached data
-
+        
         if (requestKey && typeof requestKey === 'object') {
             return requestKey;
         }
@@ -1112,7 +1112,7 @@ export default class Skapi {
     }): string | FetchResponse {
 
         let { params = {}, url, refresh = false } = option || {};
-
+        
         if (params.hasOwnProperty('startKey')) {
             if (
                 typeof params.startKey !== 'object' && !Object.keys(params.startKey).length ||
@@ -1138,11 +1138,9 @@ export default class Skapi {
         }
 
         // let hashedParams = createHash('sha256').update(toHash).digest('hex');
-        let hashedParams = sha256((() => {
+        let hashedParams = (() => {
             if (params && typeof params === 'object' && Object.keys(params).length) {
                 // hash request parameters
-                let paramsHash = JSON.parse(JSON.stringify(params));
-
                 function orderObjectKeys(obj: Record<string, any>) {
                     function sortObject(obj: Record<string, any>): Record<string, any> {
                         if (typeof obj === 'object' && obj) {
@@ -1161,11 +1159,12 @@ export default class Skapi {
                     return _obj;
                 }
 
-                return JSON.stringify(orderObjectKeys(paramsHash)) + url + this.service;
+                return url + '/' + JSON.stringify(orderObjectKeys(params));
             }
 
-            return url + this.service;
-        })());
+            return url + '/' + this.service;
+
+        })();
 
         if (refresh && this.__startKey_keys?.[url]?.[hashedParams]) {
             // init cache, init startKey
@@ -1178,7 +1177,8 @@ export default class Skapi {
             if (Array.isArray(this.__startKey_keys[url][hashedParams]) && this.__startKey_keys[url][hashedParams].length) {
                 // delete cache of all startkeys
                 for (let p of this.__startKey_keys[url][hashedParams]) {
-                    let hashedParams_cached = hashedParams + sha256(JSON.stringify(p));
+                    // let hashedParams_cached = hashedParams + '/' + sha256(JSON.stringify(p));
+                    let hashedParams_cached = hashedParams + '/' + JSON.stringify(p);
                     // let hashedParams_cached = hashedParams + createHash('sha256').update(JSON.stringify(p)).digest('hex');
 
                     if (this.__cached_requests?.[url] && this.__cached_requests?.[url]?.[hashedParams_cached]) {
@@ -1216,7 +1216,8 @@ export default class Skapi {
 
             else {
                 // cache_hashedParams += createHash('sha256').update(last_startKey_key).digest('hex');
-                cache_hashedParams += sha256(last_startKey_key);
+                // cache_hashedParams += sha256(last_startKey_key);
+                cache_hashedParams += ('/' + last_startKey_key);
                 params.startKey = JSON.parse(last_startKey_key);
             }
         }
