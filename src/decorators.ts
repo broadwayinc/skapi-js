@@ -29,7 +29,8 @@ function formResponse() {
 
                 // form element action
                 let href = new URL(form.action);
-                let response_key = sha256(form.action);
+                // let response_key = sha256(form.action);
+                let response_key = form.action;
                 let timestamp = Date.now().toString();
 
                 window.sessionStorage.setItem(response_key, JSON.stringify({ [timestamp]: response }));
