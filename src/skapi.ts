@@ -1667,90 +1667,13 @@ export default class Skapi {
                     return v;
                 }
             },
-            tags: (v: string | string[]) => {
-                if (typeof v === 'string') {
-                    return [v];
-                }
-                else if (Array.isArray(v)) {
-                    if (v.length > 10) {
-                        throw new SkapiError('Cannot query more than 10 tags at once.', { code: 'INVALID_REQUEST' });
-                    }
-                    for (let s of v) {
-                        if (typeof s !== 'string') {
-                            throw new SkapiError('Tags should be type: <string | string[]>', { code: 'INVALID_PARAMETER' });
-                        }
-                    }
-                    return v;
-                }
-            }
+            tags: 'string'
         };
 
         params = checkParams(params || {}, struct, ['table']);
 
         if (params?.subscription && !this.session) {
             throw new SkapiError('Requires login.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (params?.tags) {
-            let tagFetch = [];
-            let getStartKey = fetchOptions?.startKey || null;
-
-            for (let t of params.tags) {
-                let params_copy = JSON.parse(JSON.stringify(params));
-                params_copy.tag = t;
-                delete params_copy.tags;
-
-                let fetchOpt = fetchOptions ? JSON.parse(JSON.stringify(fetchOptions)) : null;
-                if (fetchOpt) {
-                    delete fetchOpt.startKey;
-
-                    if (getStartKey && getStartKey?.[t]) {
-                        fetchOpt.startKey = getStartKey[t];
-                    }
-                }
-
-                tagFetch.push(this.request(
-                    'get-records',
-                    params_copy,
-                    Object.assign(
-                        { auth: params.hasOwnProperty('access_group') && (params.access_group === 'private' || params.access_group > 0) ? true : !!this.session },
-                        { fetchOptions: fetchOpt }
-                    )));
-            }
-
-            let list = [];
-            let startKey = {};
-            let res_all = await Promise.all(tagFetch);
-
-            for (let res of res_all) {
-                for (let i in res.list) {
-                    if (tagFetch.includes(res.list[i].rec)) {
-                        continue;
-                    }
-                    tagFetch.push(res.list[i]);
-                    list.push(normalize_record_data(res.list[i]));
-                };
-                if (res.startKey) {
-                    if (Array.isArray(params.tags)) {
-                        let tag = params.tags.splice(0, 1);
-                        startKey[tag[0]] = res.startKey;
-                    }
-                }
-            }
-
-            let endOfList = true;
-            for (let k in startKey) {
-                if (startKey[k] && startKey[k] !== 'end') {
-                    endOfList = false;
-                    break;
-                }
-            }
-
-            return {
-                list,
-                endOfList,
-                startKey
-            };
         }
 
         let result = await this.request(
