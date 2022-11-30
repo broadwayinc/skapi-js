@@ -2,7 +2,7 @@
   "name": "skapi-js",
   "version": "0.0.4",
   "description": "skapi javascript library",
-  "main": "./dist/skapi.js",
+  "main": "./dist/skapi.module.js",
   "scripts": {
     "build": "npx tsc ; npx webpack --config webpack.config.js ; npx typedoc"
   },
