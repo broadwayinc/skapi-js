@@ -1,7 +1,7 @@
 {
   "name": "skapi-js",
-  "version": "0.0.4",
-  "description": "skapi javascript library",
+  "version": "0.0.41",
+  "description": "skapi serverless cloud javascript library",
   "main": "./dist/skapi.module.js",
   "scripts": {
     "build": "npx tsc ; npx webpack --config webpack.config.js ; npx typedoc"
@@ -27,7 +27,8 @@
     "backend",
     "serverless",
     "skapi",
-    "api"
+    "api",
+    "cloud"
   ],
   "dependencies": {
     "amazon-cognito-identity-js": "^5.2.12"
