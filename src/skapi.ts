@@ -1031,7 +1031,7 @@ export default class Skapi {
             url: isExternalUrl || url,
             refresh: isForm ? true : refresh // should not use startKey when post is a form
         }); // returns requrestKey | cached data
-        
+
         if (requestKey && typeof requestKey === 'object') {
             return requestKey;
         }
@@ -1112,7 +1112,7 @@ export default class Skapi {
     }): string | FetchResponse {
 
         let { params = {}, url, refresh = false } = option || {};
-        
+
         if (params.hasOwnProperty('startKey')) {
             if (
                 typeof params.startKey !== 'object' && !Object.keys(params.startKey).length ||
@@ -1432,11 +1432,14 @@ export default class Skapi {
     async postRecord(
         /** Any type of data to store. If undefined, does not update the data. */
         form: Form | any,
-        option?: PostRecordParams & FormCallbacks
+        option: PostRecordParams & FormCallbacks
     ): Promise<RecordData> {
 
         let is_admin = await this.requireAdmin({ ignoreVerification: true });
-
+        if (!option) {
+            throw new SkapiError(['INVALID_PARAMETER', '"option" argument is required.']);
+        }
+        
         let { formData } = option;
         let fetchOptions: Record<string, any> = {};
 
@@ -2737,7 +2740,7 @@ export default class Skapi {
      * @category User
      */
     @formResponse()
-    login(
+    async login(
         form: Form | {
             /** E-Mail for signin. 64 character max. */
             email: string;
@@ -2745,6 +2748,7 @@ export default class Skapi {
             password: string;
         },
         option?: FormCallbacks): Promise<User> {
+        await this.__connection;
         this.logout();
         let params = checkParams(form, {
             email: (v: string) => validateEmail(v),
