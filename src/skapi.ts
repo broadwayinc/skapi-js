@@ -1112,8 +1112,7 @@ export default class Skapi {
     }): string | FetchResponse {
 
         let { params = {}, url, refresh = false } = option || {};
-
-        if (params.hasOwnProperty('startKey')) {
+        if (params.hasOwnProperty('startKey') && params.startKey) {
             if (
                 typeof params.startKey !== 'object' && !Object.keys(params.startKey).length &&
                 params.startKey !== 'start' && params.startKey !== 'end'
