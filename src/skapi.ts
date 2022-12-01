@@ -1115,9 +1115,8 @@ export default class Skapi {
 
         if (params.hasOwnProperty('startKey')) {
             if (
-                typeof params.startKey !== 'object' && !Object.keys(params.startKey).length ||
-                // params.startKey !== 'start' && params.startKey !== 'end'
-                params.startKey !== 'end'
+                typeof params.startKey !== 'object' && !Object.keys(params.startKey).length &&
+                params.startKey !== 'start' && params.startKey !== 'end'
             ) {
                 throw new SkapiError(`"${params.startKey}" is invalid startKey key.`, { code: 'INVALID_PARAMETER' });
             }
