@@ -34,7 +34,7 @@ import {
     validateUrl,
     normalize_record_data,
     checkWhiteSpaceAndSpecialChars,
-    sha256
+    MD5
 } from './utils';
 
 type StartKeys = {
@@ -1157,10 +1157,10 @@ export default class Skapi {
                     return _obj;
                 }
 
-                return url + '/' + JSON.stringify(orderObjectKeys(params));
+                return MD5.hash(url + '/' + JSON.stringify(orderObjectKeys(params)));
             }
 
-            return url + '/' + this.service;
+            return MD5.hash(url + '/' + this.service);
 
         })();
 
@@ -1175,8 +1175,8 @@ export default class Skapi {
             if (Array.isArray(this.__startKey_keys[url][hashedParams]) && this.__startKey_keys[url][hashedParams].length) {
                 // delete cache of all startkeys
                 for (let p of this.__startKey_keys[url][hashedParams]) {
-                    // let hashedParams_cached = hashedParams + '/' + sha256(JSON.stringify(p));
-                    let hashedParams_cached = hashedParams + '/' + JSON.stringify(p);
+                    let hashedParams_cached = hashedParams + '/' + MD5.hash(JSON.stringify(p));
+                    // let hashedParams_cached = hashedParams + '/' + JSON.stringify(p);
                     // let hashedParams_cached = hashedParams + createHash('sha256').update(JSON.stringify(p)).digest('hex');
 
                     if (this.__cached_requests?.[url] && this.__cached_requests?.[url]?.[hashedParams_cached]) {
@@ -1214,8 +1214,8 @@ export default class Skapi {
 
             else {
                 // cache_hashedParams += createHash('sha256').update(last_startKey_key).digest('hex');
-                // cache_hashedParams += sha256(last_startKey_key);
-                cache_hashedParams += ('/' + last_startKey_key);
+                cache_hashedParams += MD5.hash(last_startKey_key);
+                // cache_hashedParams += ('/' + last_startKey_key);
                 params.startKey = JSON.parse(last_startKey_key);
             }
         }
@@ -1437,7 +1437,7 @@ export default class Skapi {
         if (!option) {
             throw new SkapiError(['INVALID_PARAMETER', '"option" argument is required.']);
         }
-        
+
         let { formData } = option;
         let fetchOptions: Record<string, any> = {};
 
