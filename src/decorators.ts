@@ -1,6 +1,6 @@
 import { Form, FormCallbacks } from './Types';
 import SkapiError from './skapi_error';
-import { sha256 } from './utils';
+import { MD5 } from './utils';
 
 function formResponse() {
     // wraps methods that requires form handling
@@ -29,8 +29,8 @@ function formResponse() {
 
                 // form element action
                 let href = new URL(form.action);
-                // let response_key = sha256(form.action);
-                let response_key = form.action;
+                let response_key = MD5.hash(form.action);
+                // let response_key = form.action;
                 let timestamp = Date.now().toString();
 
                 window.sessionStorage.setItem(response_key, JSON.stringify({ [timestamp]: response }));
