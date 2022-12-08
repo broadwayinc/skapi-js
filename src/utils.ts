@@ -632,6 +632,9 @@ function normalize_record_data<T extends RecordData>(record: T): RecordData {
     const output: Record<any, any> = {};
 
     const keys = {
+        'ip': (r) => {
+            output.ip = r;
+        },
         'rec': (r) => {
             if (!r) return;
             output.record_id = r;
@@ -647,7 +650,7 @@ function normalize_record_data<T extends RecordData>(record: T): RecordData {
             if (!r) return;
             let rSplit = r.split('/');
             output.table = rSplit[0];
-            output.access_group = rSplit[2] == '@@' ? 'private' : parseInt(rSplit[2]);
+            output.access_group = rSplit[2] == '**' ? 'private' : parseInt(rSplit[2]);
             if (rSplit?.[3]) {
                 output.subscription = {
                     user_id: rSplit[3],
@@ -693,13 +696,6 @@ function normalize_record_data<T extends RecordData>(record: T): RecordData {
         },
         'rfd': (r) => {
             output.referenced_count = r;
-        },
-        'prv_acs': (r) => {
-            if (!r) return;
-            if (!output?.config)
-                output.config = {};
-
-            output.config.private_access = r;
         },
         'data': (r) => {
             let data = r;
