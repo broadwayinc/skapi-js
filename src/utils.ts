@@ -159,6 +159,299 @@ class MD5 {
     }
 }
 
+// validation checks
+
+function validateUserId(id: string, param = 'User ID') {
+    let uuid_regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    if (!id) {
+        throw new SkapiError(`${param} is empty.`, { code: 'INVALID_PARAMETER' });
+    }
+    else if (typeof id !== 'string') {
+        throw new SkapiError(`${param} should be type: string.`, { code: 'INVALID_PARAMETER' });
+    }
+    else if (!id.match(uuid_regex)) {
+        throw new SkapiError(`${param} is invalid.`, { code: 'INVALID_PARAMETER' });
+    }
+
+    return id;
+}
+
+function validatePhoneNumber(value: string) {
+    if (typeof value !== 'string' || value.charAt(0) !== '+' || isNaN(Number(value.substring(1)))) {
+        throw new SkapiError('"phone_number" is invalid. The format should be "+00123456789". Type: string.', { code: 'INVALID_PARAMETER' });
+    }
+    return value;
+}
+
+function validateBirthdate(birthdate: string) {
+    // yyyy-mm-dd
+    if (typeof birthdate !== 'string') {
+        throw new SkapiError('"birthdate" is invalid. The format should be "yyyy-mm-dd". Type: string.', { code: 'INVALID_PARAMETER' });
+    }
+
+    else {
+        let date_regex = new RegExp(/([12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01]))/);
+        if (birthdate.length !== 10 || birthdate.split('-').length !== 3 || !date_regex.test(birthdate)) {
+            throw new SkapiError('"birthdate" is invalid. The format should be "yyyy-mm-dd". Type: string.', { code: 'INVALID_PARAMETER' });
+        }
+    }
+    return birthdate;
+}
+
+function validatePassword(password: string) {
+    if (!password) {
+        throw new SkapiError('"password" is empty.', { code: 'PASSWORD_REQUIRED' });
+    }
+    else if (typeof password !== 'string') {
+        throw new SkapiError('"password" should be type: string.', { code: 'INVALID_PASSWORD' });
+    }
+    else if (password.length < 6) {
+        throw new SkapiError('"password" should be at least 6 characters.', { code: 'INVALID_PASSWORD' });
+    }
+    else if (password.length > 60) {
+        throw new SkapiError('"password" can be up to 60 characters max.', { code: 'INVALID_PASSWORD' });
+    }
+
+    return password;
+}
+
+function validateEmail(email: string, paramName: string = 'email') {
+    if (!email) {
+        throw new SkapiError(`"${paramName}" is empty.`, { code: 'EMAIL_REQUIRED' });
+    }
+
+    else if (typeof email !== 'string') {
+        throw new SkapiError(`"${paramName}"should be type: string.`, { code: 'INVALID_EMAIL' });
+    }
+
+    else if (email.length < 5 || email.length > 64) {
+        throw new SkapiError(`"${paramName}" should be at least 5 characters and max 64 characters.`, { code: 'INVALID_EMAIL' });
+    }
+
+    else if (/^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/.test(email)) {
+        email = email.trim();
+        let splitAt = email.split('@');
+        let tld = splitAt[1].split('.');
+
+        if (tld.length >= 2) {
+            return email.toLowerCase();
+        }
+    }
+
+    throw new SkapiError(`"${email}" is an invalid email.`, { code: 'INVALID_EMAIL' });
+}
+
+function validateUrl(url: string | string[]) {
+    const baseUrl = (() => {
+        let baseUrl = window?.location?.origin || null;
+
+        if (baseUrl === 'file://') {
+            baseUrl += window.location.pathname;
+            let _baseUrl = baseUrl.split('/');
+            _baseUrl.pop();
+            baseUrl = _baseUrl.join('/');
+        }
+
+        return baseUrl;
+    })();
+    let check = (c: string) => {
+        if (typeof c === 'string') {
+            if (c === '*') {
+                return '*';
+            }
+            else {
+                let cu = c.trim();
+                if (!cu.includes(' ') && !cu.includes(',')) {
+                    if (cu.substring(0, 1) === '/' && baseUrl) {
+                        cu = baseUrl + cu;
+                    }
+                    let _url = null;
+
+                    try {
+                        _url = new URL(cu);
+                    } catch (err) {
+                        throw new SkapiError(`"${c}" is an invalid url.`, { code: 'INVALID_PARAMETER' });
+                    }
+
+                    if (_url.protocol) {
+                        let url = _url.href;
+                        if (url.charAt(url.length - 1) === '/')
+                            url = url.substring(0, url.length - 1);
+
+                        return url;
+                    }
+                }
+            }
+        }
+
+        throw new SkapiError(`"${c}" is an invalid url.`, { code: 'INVALID_PARAMETER' });
+    };
+
+    if (Array.isArray(url)) {
+        return url.map(u => check(u));
+    }
+    else {
+        return check(url);
+    }
+}
+
+function normalize_record_data(record: Record<string, any>): RecordData {
+    function base_decode(chars) {
+        let charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+        return chars.split('').reverse().reduce((prev, curr, i) =>
+            prev + (charset.indexOf(curr) * (62 ** i)), 0);
+    }
+
+    const output: Record<string, any> = {
+        config: {
+            reference_limit: null
+        }
+    };
+
+    const keys = {
+        'ip': (r: string) => {
+            output.ip = r;
+        },
+        'rec': (r: string) => {
+            if (!r) return;
+            output.record_id = r;
+            let base62timestamp = r.substring(0, r.length - 9); // id: [base62 timestamp][random 5 char][suid]
+            let uploaded = base_decode(base62timestamp);
+            output.uploaded = uploaded;
+        },
+        'usr': (r: string) => {
+            output.user_id = r;
+        },
+        'tbl': (r: string) => {
+            if (!r) return;
+            let rSplit = r.split('/');
+            output.table = rSplit[0];
+            output.access_group = rSplit[2] == '**' ? 'private' : parseInt(rSplit[2]);
+            if (rSplit?.[3]) {
+                output.subscription = {
+                    user_id: rSplit[3],
+                    group: parseInt(rSplit[4])
+                };
+            }
+        },
+        'idx': (r: string) => {
+            if (!r) return;
+            let rSplit = r.split('!');
+            let name = rSplit.splice(0, 1)[0];
+            let value = normalize_typed_string('!' + rSplit.join('!'));
+            output.index = {
+                name,
+                value
+            };
+        },
+        'ref': (r: string) => {
+            if (!r) return;
+            output.reference = r.split('/')[0];
+        },
+        'tags': (r: string[]) => {
+            output.tags = r;
+        },
+        'upd': (r: number) => {
+            output.updated = r;
+        },
+        'acpt_mrf': (r: boolean) => {
+            output.config.allow_multiple_reference = r;
+        },
+        'ref_limt': (r: number) => {
+            output.config.reference_limit = r;
+        },
+        'rfd': (r: number) => {
+            output.referenced_count = r;
+        },
+        'data': (r: any) => {
+            let data = r;
+            if (r === '!D%{}') {
+                data = {};
+            }
+            else if (r === '!L%[]') {
+                data = [];
+            }
+            output.data = data;
+        }
+    };
+
+    if (record.record_id) {
+        // bypass already normalized records
+        return record as RecordData;
+    }
+
+    for (let k in keys) {
+        keys[k](record[k]);
+    }
+
+    return output as RecordData;
+}
+
+function normalize_typed_string(v: string) {
+    let value = v.substring(3);
+    let type = v.substring(0, 3);
+
+    switch (type) {
+        case "!S%":
+            // !S%string
+            return value;
+        case "!N%":
+            // !N%0
+            return Number(value) - 4503599627370496;
+        case "!B%":
+            // !B%1
+            return value === '1';
+        case "!L%":
+        case "!D%":
+            // !L%[0, "hello"] / !D%{}
+            try {
+                return JSON.parse(value);
+            } catch (err) {
+                throw new SkapiError('Value parse error.', { code: 'PARSE_ERROR' });
+            }
+        default:
+            return v;
+    }
+}
+
+function checkWhiteSpaceAndSpecialChars(
+    string: string | string[],
+    p = 'parameter',
+    allowPeriods = false,
+    allowWhiteSpace = false
+) {
+    let checkStr = (s: string) => {
+        if (typeof s !== 'string') {
+            throw new SkapiError(`${p} should be type: <string | string[]>.`, { code: 'INVALID_PARAMETER' });
+        }
+
+        if (!allowWhiteSpace && string.includes(' ')) {
+            throw new SkapiError(`${p} should not have whitespace.`, { code: 'INVALID_PARAMETER' });
+        }
+
+        if (!allowPeriods && string.includes('.')) {
+            throw new SkapiError(`${p} should not have periods.`, { code: 'INVALID_PARAMETER' });
+        }
+
+        if (/[`!@#$%^&*()_+\-=\[\]{};':"\\|,<>\/?~]/.test(s)) {
+            throw new SkapiError(`${p} should not have special characters.`, { code: 'INVALID_PARAMETER' });
+        }
+    };
+
+    if (Array.isArray(string)) {
+        for (let s of string) {
+            checkStr(s);
+        }
+    }
+
+    else {
+        checkStr(string);
+    }
+
+    return string;
+}
+
 function checkParams(
     params: any,
     struct: Record<string, any>,
@@ -484,304 +777,6 @@ function extractFormMetaData(form: Form) {
     }
 
     return null;
-}
-
-// validation checks
-
-function validateUserId(id: string, param = 'User ID') {
-    let uuid_regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-    if (!id) {
-        throw new SkapiError(`${param} is empty.`, { code: 'INVALID_PARAMETER' });
-    }
-    else if (typeof id !== 'string') {
-        throw new SkapiError(`${param} should be type: string.`, { code: 'INVALID_PARAMETER' });
-    }
-    else if (!id.match(uuid_regex)) {
-        throw new SkapiError(`${param} is invalid.`, { code: 'INVALID_PARAMETER' });
-    }
-
-    return id;
-}
-
-function validatePhoneNumber(value: string) {
-    if (typeof value !== 'string' || value.charAt(0) !== '+' || isNaN(Number(value.substring(1)))) {
-        throw new SkapiError('"phone_number" is invalid. The format should be "+00123456789". Type: string.', { code: 'INVALID_PARAMETER' });
-    }
-    return value;
-}
-
-function validateBirthdate(birthdate: string) {
-    // yyyy-mm-dd
-    if (typeof birthdate !== 'string') {
-        throw new SkapiError('"birthdate" is invalid. The format should be "yyyy-mm-dd". Type: string.', { code: 'INVALID_PARAMETER' });
-    }
-
-    else {
-        let date_regex = new RegExp(/([12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01]))/);
-        if (birthdate.length !== 10 || birthdate.split('-').length !== 3 || !date_regex.test(birthdate)) {
-            throw new SkapiError('"birthdate" is invalid. The format should be "yyyy-mm-dd". Type: string.', { code: 'INVALID_PARAMETER' });
-        }
-    }
-    return birthdate;
-}
-
-function validatePassword(password: string) {
-    if (!password) {
-        throw new SkapiError('"password" is empty.', { code: 'PASSWORD_REQUIRED' });
-    }
-    else if (typeof password !== 'string') {
-        throw new SkapiError('"password" should be type: string.', { code: 'INVALID_PASSWORD' });
-    }
-    else if (password.length < 6) {
-        throw new SkapiError('"password" should be at least 6 characters.', { code: 'INVALID_PASSWORD' });
-    }
-    else if (password.length > 60) {
-        throw new SkapiError('"password" can be up to 60 characters max.', { code: 'INVALID_PASSWORD' });
-    }
-
-    return password;
-}
-
-function validateEmail(email: string, paramName: string = 'email') {
-    if (!email) {
-        throw new SkapiError(`"${paramName}" is empty.`, { code: 'EMAIL_REQUIRED' });
-    }
-
-    else if (typeof email !== 'string') {
-        throw new SkapiError(`"${paramName}"should be type: string.`, { code: 'INVALID_EMAIL' });
-    }
-
-    else if (email.length < 5 || email.length > 64) {
-        throw new SkapiError(`"${paramName}" should be at least 5 characters and max 64 characters.`, { code: 'INVALID_EMAIL' });
-    }
-
-    else if (/^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/.test(email)) {
-        email = email.trim();
-        let splitAt = email.split('@');
-        let tld = splitAt[1].split('.');
-
-        if (tld.length >= 2) {
-            return email.toLowerCase();
-        }
-    }
-
-    throw new SkapiError(`"${email}" is an invalid email.`, { code: 'INVALID_EMAIL' });
-}
-
-function validateUrl(url: string | string[]) {
-    const baseUrl = (() => {
-        let baseUrl = window?.location?.origin || null;
-
-        if (baseUrl === 'file://') {
-            baseUrl += window.location.pathname;
-            let _baseUrl = baseUrl.split('/');
-            _baseUrl.pop();
-            baseUrl = _baseUrl.join('/');
-        }
-
-        return baseUrl;
-    })();
-    let check = (c: string) => {
-        if (typeof c === 'string') {
-            if (c === '*') {
-                return '*';
-            }
-            else {
-                let cu = c.trim();
-                if (!cu.includes(' ') && !cu.includes(',')) {
-                    if (cu.substring(0, 1) === '/' && baseUrl) {
-                        cu = baseUrl + cu;
-                    }
-                    let _url = null;
-
-                    try {
-                        _url = new URL(cu);
-                    } catch (err) {
-                        throw new SkapiError(`"${c}" is an invalid url.`, { code: 'INVALID_PARAMETER' });
-                    }
-
-                    if (_url.protocol) {
-                        let url = _url.href;
-                        if (url.charAt(url.length - 1) === '/')
-                            url = url.substring(0, url.length - 1);
-
-                        return url;
-                    }
-                }
-            }
-        }
-
-        throw new SkapiError(`"${c}" is an invalid url.`, { code: 'INVALID_PARAMETER' });
-    };
-
-    if (Array.isArray(url)) {
-        return url.map(u => check(u));
-    }
-    else {
-        return check(url);
-    }
-}
-
-function normalize_record_data<T extends RecordData>(record: T): RecordData {
-    function base_decode(chars) {
-        let charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-        return chars.split('').reverse().reduce((prev, curr, i) =>
-            prev + (charset.indexOf(curr) * (62 ** i)), 0);
-    }
-    const output: Record<any, any> = {};
-
-    const keys = {
-        'ip': (r) => {
-            output.ip = r;
-        },
-        'rec': (r) => {
-            if (!r) return;
-            output.record_id = r;
-            let base62timestamp = r.substring(0, r.length - 9); // id: [base62 timestamp][random 5 char][suid]
-            let uploaded = base_decode(base62timestamp);
-            output.uploaded = uploaded;
-        },
-        'usr': (r) => {
-            if (!r) return;
-            output.user_id = r;
-        },
-        'tbl': (r) => {
-            if (!r) return;
-            let rSplit = r.split('/');
-            output.table = rSplit[0];
-            output.access_group = rSplit[2] == '**' ? 'private' : parseInt(rSplit[2]);
-            if (rSplit?.[3]) {
-                output.subscription = {
-                    user_id: rSplit[3],
-                    group: parseInt(rSplit[4])
-                };
-            }
-        },
-        'idx': (r) => {
-            if (!r) return;
-            let rSplit = r.split('!');
-            let name = rSplit.splice(0, 1)[0];
-            let value = normalize_typed_string(rSplit.join('!'));
-            output.index = {
-                name,
-                value
-            };
-        },
-        'ref': (r) => {
-            if (!r) return;
-            output.reference = r.split('/')[0];
-        },
-        'tags': (r) => {
-            if (!r) return;
-            output.tags = r;
-        },
-        'upd': (r) => {
-            if (!r) return;
-            output.updated = r;
-        },
-        'acpt_mrf': (r) => {
-            if (!r) return;
-            if (!output?.config)
-                output.config = {};
-
-            output.config.allow_multiple_reference = r;
-        },
-        'ref_limt': (r) => {
-            if (!r) return;
-            if (!output?.config)
-                output.config = {};
-
-            output.config.reference_limit = r;
-        },
-        'rfd': (r) => {
-            output.referenced_count = r;
-        },
-        'data': (r) => {
-            let data = r;
-            if (r === '!D%{}') {
-                data = {};
-            }
-            else if (r === '!L%[]') {
-                data = [];
-            }
-            output.data = data;
-        }
-    };
-
-    if (record.record_id) {
-        // bypass already normalized records
-        return record;
-    }
-
-    for (let k in keys) {
-        keys[k](record[k]);
-    }
-
-    return output as RecordData;
-}
-
-function normalize_typed_string(v: string) {
-    let value = v.substring(2);
-    let type = v.substring(0, 2);
-
-    switch (type) {
-        case "S%":
-            // S%string
-            return value;
-        case "N%":
-            // N%0
-            return Number(value) - 4503599627370496;
-        case "B%":
-            // B%1
-            return value === '1';
-        case "L%":
-            // L%[0, "hello"]
-            try {
-                return JSON.parse(value);
-            } catch (err) {
-                throw new SkapiError('Value parse error.', { code: 'PARSE_ERROR' });
-            }
-        default:
-            return v;
-    }
-}
-
-function checkWhiteSpaceAndSpecialChars(
-    string: string | string[],
-    p = 'parameter',
-    allowPeriods = false,
-    allowWhiteSpace = false
-) {
-    let checkStr = (s: string, array = false) => {
-        if (typeof s !== 'string') {
-            throw new SkapiError(`${p} should be type: <string | string[]>.`, { code: 'INVALID_PARAMETER' });
-        }
-
-        if (!allowWhiteSpace && string.includes(' ')) {
-            throw new SkapiError(`${p} should not have whitespace.`, { code: 'INVALID_PARAMETER' });
-        }
-
-        if (!allowPeriods && string.includes('.')) {
-            throw new SkapiError(`${p} should not have periods.`, { code: 'INVALID_PARAMETER' });
-        }
-
-        if (/[`!@#$%^&*()_+\-=\[\]{};':"\\|,<>\/?~]/.test(s)) {
-            throw new SkapiError(`${p} should not have special characters.`, { code: 'INVALID_PARAMETER' });
-        }
-    };
-
-    if (Array.isArray(string)) {
-        for (let s of string) {
-            checkStr(s, true);
-        }
-    }
-
-    else {
-        checkStr(string, false);
-    }
-
-    return string;
 }
 
 export {
