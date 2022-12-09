@@ -111,3 +111,4 @@ package-lock.json
 /js
 index.html
 .DS_Store
+dist/
