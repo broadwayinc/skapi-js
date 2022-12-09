@@ -278,9 +278,7 @@ export type RecordData = {
         /** Allows multiple reference if true. */
         allow_multi_reference: boolean;
         /** Allows referencing if true. */
-        reference_limit?: number;
-        /** List of user id that has private access */
-        private_access?: string[];
+        reference_limit: number;
     };
     /** Record id that the record is referencing. */
     reference?: string;

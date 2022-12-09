@@ -97,7 +97,7 @@ export default class Skapi {
     private __cached_requests: CachedRequests = {};
     private __startKey_keys: StartKeys = {};
     private __request_signup_confirmation: string | null = null;
-    private __index_number_range = 4503599627370496;
+    private __index_number_range = 4503599627370496; // +/-
     private service: string;
     private service_owner: string;
 
@@ -176,8 +176,20 @@ export default class Skapi {
         }
     };
 
-    /** @ignore */
     __connection: Promise<Connection | null>;
+
+    /**
+     * Awaits connection to be established.
+     * You can use this to make sure the connection is established.
+     * 
+     * ```
+     * let skapi = new Skapi();
+     * skapi.awaitConnection().then(connection=>console.log('Connected to Server'));
+     * ```
+     */
+    async awaitConnection(): Promise<Connection | null> {
+        return this.__connection;
+    }
 
     // skapi int range -4503599627370545 ~ 4503599627370546
 
@@ -286,50 +298,6 @@ export default class Skapi {
             return skapi.connection;
 
         })(this).catch(err => { throw err; });
-    }
-
-    /**
-     * Connects to your Skapi web service.</br>
-     * Use your service ID and your user ID as an argument.<br>
-     * Once successful, Skapi class object will be returned.<br>
-     *
-     * <h5>IMPORTANT NOTE!</h5>
-     * When setting up your web services in Skapi, always set your service cors url on production.<br>
-     * If the cors is not set, other people can use your web service apis on their websites as well.<br>
-     * Refer: <a href='www.google.com'>Setting up cors</a>
-     *
-     * ```
-     * Skapi.connect('xxxxxxxxxxxxxx', 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx').then(async skapi => {
-     *
-     *      console.log(skapi.connection); // connection to Skapi!
-     *       
-     *      if(skapi.user) {
-     *          // user is logged in!
-     *      }
-     * 
-     *      else {
-     *          // user is not logged in.
-     *      }
-     *
-     *      // - code -
-     *
-     * }).catch(error => {
-     *       console.log('Connection error'); //'connection failed.'
-     * });
-     * ```
-     * @category Connection
-     */
-    static async connect(
-        /** service ID */
-        service_id: string,
-        /** service owner's user ID */
-        service_owner: string,
-        /** Auto login user when true */
-        autoLogin: boolean = false
-    ): Promise<Skapi> {
-        const skapi = new Skapi(service_id, service_owner, autoLogin);
-        await skapi.__connection;
-        return skapi;
     }
 
     private authentication() {
@@ -540,31 +508,16 @@ export default class Skapi {
         return { updateSession, authenticateUser, createCognitoUser };
     }
 
-    /**
-     * @ignore 
-     */
-    async requireAdmin(option?: { ignoreVerification?: boolean; throwError?: boolean; }) {
+    async checkAdmin() {
+        await this.__connection;
+
         if (this.session?.attributes?.['custom:service'] === this.service) {
             // logged in
-            if (this.session?.attributes?.['custom:service_owner'] === this.host) {
-                if (!option?.ignoreVerification && !this.session?.attributes?.email_verified) {
-                    throw new SkapiError('Email verification is required.', { code: 'INVALID_REQUEST' });
-                }
-
-                return true;
-            }
-
-            if (option?.throwError) {
-                throw new SkapiError('Admin access is required.', { code: 'INVALID_REQUEST' });
-            }
+            return this.session?.attributes?.['custom:service_owner'] === this.host;
 
         } else {
             // not logged
             this.logout();
-
-            if (option?.throwError) {
-                throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
-            }
         }
 
         return false;
@@ -591,7 +544,21 @@ export default class Skapi {
         return await this.request(p.url, option || null, { method: 'get', auth: p.url.includes('/auth/'), contentType: null, responseType: 'blob' });
     }
 
-    async mock(data, options) {
+    /**
+     * mock skapi api
+     * @param data data to send
+     * @param options fetch options
+     * @returns mock response
+     */
+    async mock(data: any, options?: {
+        fetchOptions?: FetchOptions & FormCallbacks;
+        auth?: boolean;
+        method?: string;
+        meta?: Record<string, any>;
+        bypassAwaitConnection?: boolean;
+        responseType?: string;
+        contentType?: string;
+    }): Promise<{ mockResponse: Record<string, any>; }> {
         return this.request('test-api', data, options);
     }
 
@@ -790,13 +757,10 @@ export default class Skapi {
 
     // internals below
 
-    /**
-     * @ignore 
-     */
     async request(
         url: string,
         data: Form = null,
-        options: {
+        options?: {
             fetchOptions?: FetchOptions & FormCallbacks;
             auth?: boolean;
             method?: string;
@@ -804,14 +768,14 @@ export default class Skapi {
             bypassAwaitConnection?: boolean;
             responseType?: string;
             contentType?: string;
-        } = {}): Promise<any> {
+        }): Promise<any> {
 
         let {
             auth = false,
             method = 'post',
             meta = null, // content meta
             bypassAwaitConnection = false
-        } = options;
+        } = options || {};
 
         let __connection = bypassAwaitConnection ? null : (await this.__connection);
         let token = auth ? this.session?.idToken?.jwtToken : null; // idToken
@@ -854,6 +818,7 @@ export default class Skapi {
                     case 'confirm-signup':
                     case 'recover-account':
                     case 'test-api':
+                    case 'get-services':
                     case 'service':
                         return {
                             public: admin.admin_public,
@@ -1433,7 +1398,7 @@ export default class Skapi {
         option: PostRecordParams & FormCallbacks
     ): Promise<RecordData> {
 
-        let is_admin = await this.requireAdmin({ ignoreVerification: true });
+        let isAdmin = await this.checkAdmin();
         if (!option) {
             throw new SkapiError(['INVALID_PARAMETER', '"option" argument is required.']);
         }
@@ -1559,7 +1524,7 @@ export default class Skapi {
             }
         }
 
-        if (is_admin) {
+        if (isAdmin) {
             if (option?.access_group === 'private') {
                 throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
             }
@@ -2014,7 +1979,7 @@ export default class Skapi {
             subscription_group?: number;
         };
     }): Promise<string> {
-        let isAdmin = await this.requireAdmin();
+        let isAdmin = await this.checkAdmin();
         if (isAdmin && !params?.service) {
             throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
         }
@@ -2400,7 +2365,7 @@ export default class Skapi {
         },
         fetchOptions?: FetchOptions
     ): Promise<Newsletters> {
-        let isAdmin = await this.requireAdmin();
+        let isAdmin = await this.checkAdmin();
 
         let searchType = {
             'message_id': 'string',
@@ -3156,57 +3121,6 @@ export default class Skapi {
         return this.__user;
     }
 
-
-    /**
-     * Uploads user's account profile data.<br>
-     * The account needs to be signed in.
-     * 
-     * ```
-     * await skapi.updateUserData(
-     *     {
-     *         whoAmI: 'John Lennon',
-     *         myFavoriteFruits: ['Strawberry', 'Apple'],
-     *         meAndYoko: {
-     *             pictures: ['traveling.jpg', 'in_the_studio.jpg'],
-     *             unreleased_videos: ['give_a_peace_a_chance.mpg']
-     *         },
-     *         secret: 'Walrus was paul'
-     *     },
-     *     {
-     *         private: ['meAndYoko', 'secret']
-     *     }
-     * );
-     *  
-     * // userdata.meAndYoko, userdata.secret will not be public
-     * ```
-     * @category User
-     */
-    @formResponse()
-    async uploadUserData(
-        /** Form element or object. */
-        form: Form,
-        option?: FormCallbacks & {
-            /** Lists of key to make private. */
-            private: string[];
-        }): Promise<User> {
-
-        option = checkParams(option || {}, {
-            private: 'array'
-        });
-
-        let opt = {
-            auth: true
-        };
-
-        if (option?.private) {
-            Object.assign(opt, { meta: { '__private__': option.private } });
-        }
-
-        await this.request('post-userdata', form, opt);
-        await this.authentication().updateSession();
-        return this.__user;
-    }
-
     /**
      * Query and fetch user account database.<br>
      * Any attribute that user has set to private will not be searchable.<br>
@@ -3216,26 +3130,7 @@ export default class Skapi {
      * You can search for user's information based on:<br>
      * 'user_id' | 'email' | 'phone_number' | 'name' | 'address' | 'group' | 'email_subscription' | 'gender' | 'birthdate' | 'locale' | 'subscribers'</br>
      * User's will not be on the database if they did not login after signup.
-     * 
-     * ```
-     * let getPauls = await skapi.getUsers({
-     *     searchFor: 'name',
-     *     value: 'paul', // search all user profile names in the connection service that is/start's with 'paul'
-     *     condition: '>='
-     * });
-     *  
-     * let getAllUsers = await skapi.getUsers({
-     *     searchFor: 'group',
-     *     value: 1 // search all users in group 1
-     * });
-     *  
-     * // returns -
-     * // {
-     * //     list: [<object | user objects>, ...],
-     * //     startKey: <object>,
-     * //     endOfList: false // if true, more list can be fetched when method is executed again.
-     * // }
-     * ```
+     *
      *
      * form.searchFor: Index to search.
      * Search for user's information based on:<br>
@@ -3300,14 +3195,9 @@ export default class Skapi {
      * 
      * @category User
      */
-    async getUsers(
-        params?: QueryParams | null,
-        fetchOptions?: FetchOptions
-    ): Promise<User | FetchResponse> {
+    async getUsers(params?: QueryParams | null, fetchOptions?: FetchOptions): Promise<User | FetchResponse> {
 
-        let isAdmin = await this.requireAdmin({
-            ignoreVerification: true
-        });
+        let isAdmin = await this.checkAdmin();
 
         if (!params) {
             if (!fetchOptions) {
@@ -3424,51 +3314,19 @@ export default class Skapi {
 
         let isSelfProfile = params.searchFor === 'user_id' && params.value === this.session.idToken.payload.sub;
 
-        if (isAdmin && !isSelfProfile && !(params as any).service) {
+        if (isSelfProfile) {
+            return JSON.parse(JSON.stringify(this.__user));
+        }
+
+        if (isAdmin && !params.hasOwnProperty('service')) {
             throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
         }
 
-        let result = await this.request(
+        return this.request(
             'get-users',
             params,
             { auth: true, fetchOptions }
         );
-
-        if (!result.list[0] || !isSelfProfile || result.list.length > 1) {
-            return result;
-        }
-
-        let user = result.list[0];
-        // append user session data
-        Object.assign(user, this.__user);
-
-        user._what_public_see = JSON.parse(JSON.stringify(user));
-
-        let public_keys = [
-            'service',
-            'user_id',
-            'name',
-            'locale',
-            'address',
-            'birthdate',
-            'phone_number',
-            'email',
-            'gender',
-            'subscribers',
-            'timestamp',
-            'group',
-            'log',
-            'user_data'
-        ];
-
-        // remove unnecessary keys in _what_public_see
-        for (let k in user._what_public_see) {
-            if (!public_keys.includes(k)) {
-                delete user._what_public_see[k];
-            }
-        }
-
-        return user;
     }
 
     private async updateConnection(params?: { request_hash: string; }): Promise<Connection> {
