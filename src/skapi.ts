@@ -1634,7 +1634,7 @@ export default class Skapi {
                     return v;
                 }
             },
-            tags: 'string'
+            tag: 'string'
         };
 
         params = checkParams(params || {}, struct, ['table']);
