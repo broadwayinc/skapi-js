@@ -1558,7 +1558,6 @@ export default class Skapi {
     */
     async getRecords(params: GetRecordParams, fetchOptions?: FetchOptions): Promise<FetchResponse> {
         const indexTypes = {
-            '$record_id': 'string',
             '$updated': 'number',
             '$uploaded': 'number',
             '$referenced_count': 'number'
@@ -1637,10 +1636,16 @@ export default class Skapi {
             tag: 'string'
         };
 
-        params = checkParams(params || {}, struct, ['table']);
+        if (params.record_id) {
+            checkWhiteSpaceAndSpecialChars(params.record_id, 'record_id', false, false);
+            params = { record_id: params.record_id };
+        }
 
-        if (params?.subscription && !this.session) {
-            throw new SkapiError('Requires login.', { code: 'INVALID_REQUEST' });
+        else {
+            params = checkParams(params || {}, struct, ['table']);
+            if (params?.subscription && !this.session) {
+                throw new SkapiError('Requires login.', { code: 'INVALID_REQUEST' });
+            }
         }
 
         let result = await this.request(
