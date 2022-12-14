@@ -154,7 +154,8 @@ export type GetRecordParams = {
     /** @ignore */
     service?: string;
     /** Table name */
-    table: string;
+    record_id?:string;
+    table?: string;
     /**
      * Query for records that are accessable in certain user groups.
      * User cannot request access that are higher than the accounts user group.
@@ -174,18 +175,17 @@ export type GetRecordParams = {
          */
         group: number;
     },
-    index: {
+    index?: {
         /** 
          * Index name. Queries list of nested index key if index name ends with period.<br>
          * As example below, you can query all movies under the index name director.spielberg...<br>
          * ex) director.spielberg.<br>
-         * Reserved index names are: '$record_id' | '$updated' | '$uploaded' | '$referenced_count'
+         * Reserved index names are: '$updated' | '$uploaded' | '$referenced_count'
          * */
-        name: string | '$record_id' | '$updated' | '$uploaded' | '$referenced_count';
+        name: string | '$updated' | '$uploaded' | '$referenced_count';
         /**
          * Index value to search based on the index name.<br>
-         * If the index name is a index key name search value type must be string.<br>
-         * For reserved index names '$record_id' is an record id string, otherwise is type number.
+         * If the index name is a index key name search value type must be string.
          */
         value: string | number | boolean;
         /** Search condition. Defaults to '='.*/
