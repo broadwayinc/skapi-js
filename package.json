@@ -3,6 +3,9 @@
   "version": "0.0.52",
   "description": "skapi serverless cloud javascript library",
   "main": "./dist/skapi.module.js",
+  "files": [
+    "dist/"
+  ],
   "scripts": {
     "build": "npx tsc ; npx webpack --config webpack.config.js ; npx typedoc"
   },
