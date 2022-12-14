@@ -1636,7 +1636,7 @@ export default class Skapi {
             tag: 'string'
         };
 
-        if (params.record_id) {
+        if (params?.record_id) {
             checkWhiteSpaceAndSpecialChars(params.record_id, 'record_id', false, false);
             params = { record_id: params.record_id };
         }
