@@ -197,9 +197,9 @@ export type GetRecordParams = {
         range?: string | number | boolean;
     };
     /** 
-     * Tags can be queried up to 10 tags at once.
+     * Queries record that includes given tag
      */
-    tags?: string | string[];
+    tag?: string;
     /**
      * Queries records that are referencing other record ids.<br>
      * If user id is given, you can get all records uploaded by certain user.
