@@ -1638,7 +1638,7 @@ export default class Skapi {
 
         if (params?.record_id) {
             checkWhiteSpaceAndSpecialChars(params.record_id, 'record_id', false, false);
-            params = { record_id: params.record_id };
+            params = { record_id: params.record_id, service: params?.service };
         }
 
         else {
