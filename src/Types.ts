@@ -153,8 +153,9 @@ export interface User extends UserProfile {
 export type GetRecordParams = {
     /** @ignore */
     service?: string;
-    /** Table name */
+    /** Record ID. When query is by record id, all other parameter is irrelevant. */
     record_id?:string;
+    /** Table name */
     table?: string;
     /**
      * Query for records that are accessable in certain user groups.
