@@ -559,7 +559,7 @@ export default class Skapi {
         responseType?: string;
         contentType?: string;
     }): Promise<{ mockResponse: Record<string, any>; }> {
-        return this.request('test-api', data, options);
+        return this.request('mock', data, options);
     }
 
     /**
@@ -817,7 +817,7 @@ export default class Skapi {
                     case 'signup':
                     case 'confirm-signup':
                     case 'recover-account':
-                    case 'test-api':
+                    case 'mock':
                     case 'get-services':
                     case 'service':
                         return {
@@ -1642,7 +1642,16 @@ export default class Skapi {
         }
 
         else {
-            params = checkParams(params || {}, struct, ['table']);
+            let ref_user;
+            if (params?.reference) {
+                try {
+                    ref_user = validateUserId(params?.reference, 'User ID in "subscription.user_id"');
+                } catch (err) {
+                    // bypass error
+                }
+            }
+
+            params = checkParams(params || {}, struct, ref_user ? [] : ['table']);
             if (params?.subscription && !this.session) {
                 throw new SkapiError('Requires login.', { code: 'INVALID_REQUEST' });
             }
