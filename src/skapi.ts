@@ -1556,8 +1556,8 @@ export default class Skapi {
 
     /**
      * Get records from service database.
-    * @category Database
-    */
+     * @category Database
+     */
     async getRecords(params: GetRecordParams, fetchOptions?: FetchOptions): Promise<FetchResponse> {
         const indexTypes = {
             '$updated': 'number',
