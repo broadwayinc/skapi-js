@@ -770,12 +770,14 @@ export default class Skapi {
             contentType?: string;
         }): Promise<any> {
 
+        options = options || {};
+
         let {
             auth = false,
             method = 'post',
             meta = null, // content meta
             bypassAwaitConnection = false
-        } = options || {};
+        } = options;
 
         let __connection = bypassAwaitConnection ? null : (await this.__connection);
         let token = auth ? this.session?.idToken?.jwtToken : null; // idToken
@@ -866,15 +868,15 @@ export default class Skapi {
 
         // set fetch options
         let fetchOptions = {};
-        let { refresh = false } = options.fetchOptions || {};
+        let { refresh = false } = options?.fetchOptions || {};
 
-        if (options.fetchOptions && Object.keys(options.fetchOptions).length) {
+        if (options?.fetchOptions && Object.keys(options.fetchOptions).length) {
             // record fetch options
             let fetOpt = checkParams(
                 {
-                    limit: options?.fetchOptions?.limit || 100,
-                    startKey: options?.fetchOptions?.startKey || null,
-                    ascending: typeof options?.fetchOptions?.ascending === 'boolean' ? options.fetchOptions.ascending : true
+                    limit: options.fetchOptions?.limit || 100,
+                    startKey: options.fetchOptions?.startKey || null,
+                    ascending: typeof options.fetchOptions?.ascending === 'boolean' ? options.fetchOptions.ascending : true
                 },
                 {
                     limit: ['number', () => 100],
