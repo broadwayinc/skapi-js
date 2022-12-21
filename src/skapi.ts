@@ -37,21 +37,6 @@ import {
     MD5
 } from './utils';
 
-type StartKeys = {
-    /** List of startkeys */
-    [url: string]: {
-        [hashedParams: string]: string[];
-    };
-};
-
-type CachedRequests = {
-    /** Cached url requests */
-    [url: string]: {
-        /** Array of data stored in hashed params key */
-        [hashedParams: string]: FetchResponse;
-    };
-};
-
 /**
  * All the methods used in Skapi are promises.<br>
  * Use async/await or Promise.then() to interact with backend.<br>
@@ -94,8 +79,22 @@ export default class Skapi {
     private __disabledAccount: string | null = null;
     private __serviceHash: Record<string, string> = {};
     private __pendingRequest: Record<string, Promise<any>> = {};
-    private __cached_requests: CachedRequests = {};
-    private __startKey_keys: StartKeys = {};
+    
+    private __cached_requests: {
+        /** Cached url requests */
+        [url: string]: {
+            /** Array of data stored in hashed params key */
+            [hashedParams: string]: FetchResponse;
+        };
+    } = {};
+
+    private __startKey_keys: {
+        /** List of startkeys */
+        [url: string]: {
+            [hashedParams: string]: string[];
+        };
+    } = {};
+    
     private __request_signup_confirmation: string | null = null;
     private __index_number_range = 4503599627370496; // +/-
     private service: string;
@@ -212,6 +211,7 @@ export default class Skapi {
         // get endpoints
         const cdn_domain = 'https://dkls9pxkgz855.cloudfront.net'; // don't change this
         let sreg = service_id.substring(0, 4);
+
         this.admin_endpoint = fetch(`${cdn_domain}/${sreg}/admin.json`)
             .then(response => response.blob())
             .then(blob => new Promise((resolve, reject) => {
@@ -254,18 +254,23 @@ export default class Skapi {
                 ClientId: admin_endpoint.userpool_client
             });
 
-            const process: any[] = [
-                skapi.updateConnection()
-            ];
+            const process: any[] = [];
+
+            if (!restore?.connection) {
+                // await for first connection
+                process.push(skapi.updateConnection());
+            }
 
             if (restore?.connection || autoLogin) {
-                // from session reload | autoLogin
-                process.push(skapi.authentication().updateSession({ refreshToken: !!restore?.connection }).catch(err => {
-                    skapi.user = null;
+                // session reload or autoLogin
+                process.push(skapi.authentication().updateSession({ refreshToken: !restore?.connection }).catch(err => {
+                    skapi.__user = null;
                 }));
             }
 
-            await Promise.all(process);
+            if (process.length) {
+                await Promise.all(process);
+            }
 
             const storeClassProperties = () => {
                 if (skapi.__class_properties_has_been_cached) {
@@ -328,7 +333,7 @@ export default class Skapi {
                         rej(err);
                     }
 
-                    const updateAttributes = async (sessionToMerge: Record<string, any>) => {
+                    const updateAttributes = (sessionToMerge: Record<string, any>) => {
                         // console.log('%cUpdate attributes', 'background-color:tomato;color:white;');
                         // console.log({ sessionToMerge });
                         if (sessionToMerge.isValid() && currentUser) {
@@ -415,17 +420,17 @@ export default class Skapi {
                                     // console.log({ refreshErr });
                                     rej(refreshErr);
                                 }
-                                updateAttributes(refreshedSession).catch(err => rej(err));
+                                updateAttributes(refreshedSession);
                             });
                         }
 
                         else {
                             // console.log('%cLoading session', 'background-color:tomato;color:white;');
                             // console.log({ refreshToken });
-                            updateAttributes(session).catch(err => rej(err));
+                            updateAttributes(session);
                         }
-
-                    } else {
+                    }
+                    else {
                         rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
                     }
                 });
@@ -457,50 +462,51 @@ export default class Skapi {
             };
         };
 
-        const authenticateUser = (username: string, password: string): Promise<User> => {
+        const authenticateUser = (email: string, password: string): Promise<User> => {
             // console.log('%cAuthenticate user', 'background-color:tomato;color:white;');
-            return new Promise(async (res, rej) => {
+            return new Promise((res, rej) => {
                 this.logout();
                 this.__request_signup_confirmation = null;
                 this.__disabledAccount = null;
 
-                let initUser = await createCognitoUser(username);
-                this.cognitoUser = initUser.cognitoUser;
-                username = initUser.cognitoUsername;
+                createCognitoUser(email).then(initUser => {
+                    this.cognitoUser = initUser.cognitoUser;
+                    let username = initUser.cognitoUsername;
 
-                let authenticationDetails = new AuthenticationDetails({
-                    Username: username,
-                    Password: password
-                });
+                    let authenticationDetails = new AuthenticationDetails({
+                        Username: username,
+                        Password: password
+                    });
 
-                this.cognitoUser.authenticateUser(authenticationDetails, {
-                    newPasswordRequired: (userAttributes, requiredAttributes) => {
-                        this.__request_signup_confirmation = username;
-                        rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
-                    },
-                    onSuccess: (logged) => {
-                        // console.log('%cAuthenticate user success', 'background-color:tomato;color:white;');
-                        // console.log({ logged });
-                        updateSession().then(session => {
-                            res(session);
-                        });
-                    },
-                    onFailure: (err: any) => {
-                        let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
+                    this.cognitoUser.authenticateUser(authenticationDetails, {
+                        newPasswordRequired: (userAttributes, requiredAttributes) => {
+                            this.__request_signup_confirmation = username;
+                            rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
+                        },
+                        onSuccess: (logged) => {
+                            // console.log('%cAuthenticate user success', 'background-color:tomato;color:white;');
+                            // console.log({ logged });
+                            updateSession().then(session => {
+                                res(session);
+                            });
+                        },
+                        onFailure: (err: any) => {
+                            let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
 
-                        if (err.code === "NotAuthorizedException") {
-                            if (err.message === "User is disabled.") {
-                                this.__disabledAccount = username;
-                                error = ['This account is disabled.', 'USER_IS_DISABLED'];
+                            if (err.code === "NotAuthorizedException") {
+                                if (err.message === "User is disabled.") {
+                                    this.__disabledAccount = username;
+                                    error = ['This account is disabled.', 'USER_IS_DISABLED'];
+                                }
+
+                                else {
+                                    error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
+                                }
                             }
 
-                            else {
-                                error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
-                            }
+                            rej(new SkapiError(error[0], { code: error[1], cause: err }));
                         }
-
-                        rej(new SkapiError(error[0], { code: error[1], cause: err }));
-                    }
+                    });
                 });
             });
         };
@@ -768,7 +774,8 @@ export default class Skapi {
             bypassAwaitConnection?: boolean;
             responseType?: string;
             contentType?: string;
-        }): Promise<any> {
+        }
+    ): Promise<any> {
 
         options = options || {};
 
@@ -1070,6 +1077,7 @@ export default class Skapi {
             }
         }
     }
+
     // cache, handle database records
 
     private load_startKey_keys(option: {
@@ -1295,14 +1303,14 @@ export default class Skapi {
             ];
 
             if (typeof received === 'object' && received?.message) {
-                let code = ((status ? status.toString() : null) || 'ERROR');
+                let code = ((status ? status.toString() : null) || received?.code || 'ERROR');
                 throw new SkapiError(received?.message, { code: code });
             }
 
             else if (typeof received === 'string') {
                 let errMsg = received.split(':');
-                let code = errMsg.splice(0, 1)[0];
-                throw new SkapiError(errMsg.join(''), { code: (errCode.includes(code) ? code : 'ERROR') });
+                let code = errMsg.splice(0, 1)[0].trim();
+                throw new SkapiError(errMsg.join('').trim(), { code: (errCode.includes(code) ? code : 'ERROR') });
             }
 
             throw response;
