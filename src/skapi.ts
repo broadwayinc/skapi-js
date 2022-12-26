@@ -79,7 +79,7 @@ export default class Skapi {
     private __disabledAccount: string | null = null;
     private __serviceHash: Record<string, string> = {};
     private __pendingRequest: Record<string, Promise<any>> = {};
-    
+
     private __cached_requests: {
         /** Cached url requests */
         [url: string]: {
@@ -94,7 +94,7 @@ export default class Skapi {
             [hashedParams: string]: string[];
         };
     } = {};
-    
+
     private __request_signup_confirmation: string | null = null;
     private __index_number_range = 4503599627370496; // +/-
     private service: string;
@@ -259,6 +259,13 @@ export default class Skapi {
             if (!restore?.connection) {
                 // await for first connection
                 process.push(skapi.updateConnection());
+            }
+
+            if (!restore?.connection && !autoLogin) {
+                let currentUser = this.userPool?.getCurrentUser() || null;
+                if (currentUser) {
+                    currentUser.signOut();
+                }
             }
 
             if (restore?.connection || autoLogin) {
