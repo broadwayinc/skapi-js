@@ -465,7 +465,6 @@ export default class Skapi {
         const authenticateUser = (email: string, password: string): Promise<User> => {
             // console.log('%cAuthenticate user', 'background-color:tomato;color:white;');
             return new Promise((res, rej) => {
-                this.logout();
                 this.__request_signup_confirmation = null;
                 this.__disabledAccount = null;
 
@@ -523,7 +522,7 @@ export default class Skapi {
 
         } else {
             // not logged
-            this.logout();
+            await this.logout();
         }
 
         return false;
@@ -791,7 +790,7 @@ export default class Skapi {
 
         if (auth) {
             if (!token) {
-                this.logout();
+                await this.logout();
                 throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
             }
         }
@@ -2533,7 +2532,7 @@ export default class Skapi {
             login?: boolean;
         } & FormCallbacks): Promise<User | "SUCCESS: The account has been created. User's email confirmation is required." | 'SUCCESS: The account has been created.'> {
 
-        this.logout();
+        await this.logout();
 
         let params = checkParams(form || {}, {
             email: (v: string) => validateEmail(v),
@@ -2607,7 +2606,9 @@ export default class Skapi {
      *
      * @category User
      */
-    logout(): 'SUCCESS: The user has been logged out.' {
+    async logout(): Promise<'SUCCESS: The user has been logged out.'> {
+        await this.__connection;
+
         if (this.cognitoUser) {
             this.cognitoUser.signOut();
         }
@@ -2736,7 +2737,7 @@ export default class Skapi {
         },
         option?: FormCallbacks): Promise<User> {
         await this.__connection;
-        this.logout();
+        await this.logout();
         let params = checkParams(form, {
             email: (v: string) => validateEmail(v),
             password: (v: string) => validatePassword(v)
@@ -2980,7 +2981,7 @@ export default class Skapi {
         }
 
         let result = await this.request('remove-account', { disable: true }, { auth: true });
-        this.logout();
+        await this.logout();
         return result;
     }
 
