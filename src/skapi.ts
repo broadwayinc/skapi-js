@@ -1673,13 +1673,15 @@ export default class Skapi {
             }
         }
 
+        let auth = params.hasOwnProperty('access_group') && (params.access_group === 'private' || params.access_group > 0) ? true : !!this.__user;
         let result = await this.request(
             'get-records',
             params,
-            Object.assign(
-                { auth: params.hasOwnProperty('access_group') && (params.access_group === 'private' || params.access_group > 0) ? true : !!this.__user },
-                { fetchOptions }
-            )
+            {
+                fetchOptions,
+                auth,
+                method: auth ? 'post' : 'get'
+            }
         );
 
         for (let i in result.list) { result.list[i] = normalize_record_data(result.list[i]); };
