@@ -28,14 +28,20 @@ function formResponse() {
                 }
 
                 // form element action
-                let href = new URL(form.action);
-                let response_key = MD5.hash(form.action);
-                // let response_key = form.action;
-                let timestamp = Date.now().toString();
+                let currentUrl = window.location.href;
 
-                window.sessionStorage.setItem(response_key, JSON.stringify({ [timestamp]: response }));
-                href.searchParams.set(response_key, timestamp);
-                window.location.href = href.href;
+                let href = new URL(form.action);
+                if (href.href !== currentUrl) {
+                    let response_key = MD5.hash(form.action);
+                    let timestamp = Date.now().toString();
+
+                    window.sessionStorage.setItem(response_key, JSON.stringify({ [timestamp]: response }));
+                    href.searchParams.set(response_key, timestamp);
+                    window.location.href = href.href;
+                }
+                else {
+                    return response;
+                }
             };
 
             let response: any;
