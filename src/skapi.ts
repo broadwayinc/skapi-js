@@ -3,7 +3,7 @@ import {
     CognitoUserAttribute,
     CognitoUser,
     AuthenticationDetails,
-    CognitoUserSession
+    // CognitoUserSession
 } from 'amazon-cognito-identity-js';
 
 import {
@@ -270,7 +270,7 @@ export default class Skapi {
 
             if (restore?.connection || autoLogin) {
                 // session reload or autoLogin
-                process.push(skapi.authentication().updateSession({ refreshToken: !restore?.connection }).catch(err => {
+                process.push(skapi.authentication().getSession({ refreshToken: !restore?.connection }).catch(err => {
                     skapi.__user = null;
                 }));
             }
@@ -298,7 +298,7 @@ export default class Skapi {
                         data[k] = skapi[k];
                     }
 
-                    sessionStorage.setItem(`${service_id}#${service_owner}`, JSON.stringify(data));
+                    window.sessionStorage.setItem(`${service_id}#${service_owner}`, JSON.stringify(data));
                     skapi.__class_properties_has_been_cached = true;
                 }
             };
@@ -317,13 +317,95 @@ export default class Skapi {
             throw new SkapiError('User pool is missing', { code: 'INVALID_REQUEST' });
         }
 
-        const updateSession = (option?: {
+        const mergeAttributes = (attr: any, session: any) => {
+            let user: any = {};
+
+            for (let k in attr) {
+                if (k.includes('custom:')) {
+                    user[k.replace('custom:', '')] = attr[k];
+                }
+                else {
+                    user[k] = attr[k];
+                }
+            }
+
+            for (let k of [
+                'address_public',
+                'birthdate_public',
+                'email_public',
+                'email_subscription',
+                'gender_public',
+                'phone_number_public',
+                'access_group'
+            ]) {
+                if (k.includes('_public')) {
+                    if (user.hasOwnProperty(k.split('_')[0])) {
+                        user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
+                    }
+                    else {
+                        delete user[k];
+                    }
+                } else {
+                    user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
+                }
+            }
+
+            for (let k of [
+                'email_verified',
+                'phone_number_verified'
+            ]) {
+                if (user[k.split('_')[0]]) {
+                    user[k] = user.hasOwnProperty(k) ? user[k] === 'true' : false;
+                }
+                else if (user.hasOwnProperty(k)) {
+                    delete user[k];
+                }
+            }
+            
+            this.session = session;
+            user.user_id = user.sub;
+            delete user.sub;
+            this.__user = user;
+            return user;
+        };
+
+        const getUser = () => {
+            if (!this.session) {
+                return null;
+            }
+
+            return new Promise((res, rej) => {
+                let currentUser: CognitoUser | null = this.userPool?.getCurrentUser() || null;
+                this.cognitoUser = currentUser;
+
+                if (currentUser === null) {
+                    rej(null);
+                }
+                currentUser.getUserAttributes((attrErr, attributes) => {
+                    if (attrErr) {
+                        rej(attrErr);
+                    }
+
+                    else {
+                        let normalized_attributes: Record<string, any> = {};
+                        for (let i of (attributes as CognitoUserAttribute[])) {
+                            normalized_attributes[i.Name] = i.Value;
+
+                            if (i.Name === 'custom:service' && normalized_attributes[i.Name] !== this.service) {
+                                rej(new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' }));
+                            }
+                        }
+                        res(mergeAttributes(normalized_attributes, this.session));
+                    }
+                });
+            });
+        };
+
+        const getSession = (option?: {
             refreshToken?: boolean;
         }): Promise<User> => {
             // fetch session, update user info
             let { refreshToken = false } = option || {};
-            // console.log('%cUpdate session', 'background-color:tomato;color:white;');
-            // console.log({ refreshToken, refreshUserData });
 
             return new Promise((res, rej) => {
                 let currentUser: CognitoUser | null = this.userPool?.getCurrentUser() || null;
@@ -333,110 +415,36 @@ export default class Skapi {
                     rej(null);
                 }
 
-                currentUser.getSession((err: any, session: CognitoUserSession) => {
-                    // console.log('%cGet session', 'background-color:tomato;color:white;');
-                    // console.log({ err, session });
+                currentUser.getSession((err: any, session: any) => {
                     if (err) {
                         rej(err);
                     }
 
-                    const updateAttributes = (sessionToMerge: Record<string, any>) => {
-                        // console.log('%cUpdate attributes', 'background-color:tomato;color:white;');
-                        // console.log({ sessionToMerge });
-                        if (sessionToMerge.isValid() && currentUser) {
-                            currentUser.getUserAttributes((attrErr, attributes) => {
-                                // console.log('%cGet user attributes', 'background-color:tomato;color:white;');
-                                // console.log({ attrErr, attributes });
-                                if (attrErr) {
-                                    rej(attrErr);
-                                }
-
-                                else {
-                                    let normalized_attributes: Record<string, any> = {};
-                                    let user: any = {};
-
-                                    for (let i of (attributes as CognitoUserAttribute[])) {
-                                        normalized_attributes[i.Name] = i.Value;
-                                        let key_1 = i.Name.replace('custom:', '');
-                                        user[key_1] = i.Value;
-
-                                        if (i.Name === 'custom:service' && normalized_attributes[i.Name] !== this.service) {
-                                            rej(new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' }));
-                                        }
-                                    }
-
-
-                                    for (let k of [
-                                        'address_public',
-                                        'birthdate_public',
-                                        'email_public',
-                                        'email_subscription',
-                                        'gender_public',
-                                        'phone_number_public'
-                                    ]) {
-                                        if (k.includes('_public')) {
-                                            if (user.hasOwnProperty(k.split('_')[0])) {
-                                                user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
-                                            }
-                                            else {
-                                                delete user[k];
-                                            }
-                                        } else {
-                                            user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
-                                        }
-                                    }
-
-                                    for (let k of [
-                                        'email_verified',
-                                        'phone_number_verified'
-                                    ]) {
-                                        if (user[k.split('_')[0]]) {
-                                            user[k] = user.hasOwnProperty(k) ? user[k] === 'true' : false;
-                                        }
-                                        else if (user.hasOwnProperty(k)) {
-                                            delete user[k];
-                                        }
-                                    }
-
-                                    // console.log('%cMerging attributes to session', 'background-color:tomato;color:white;');
-                                    sessionToMerge.attributes = normalized_attributes;
-                                    this.session = sessionToMerge;
-
-                                    user.access_group = Number(this.session.idToken.payload.access_group);
-                                    user.user_id = user.sub;
-                                    delete user.sub;
-                                    this.__user = user;
-                                    res(user);
-                                }
-                            });
-                        }
-
-                        else {
-                            // console.log('%cInvalid session', 'background-color:tomato;color:white;');
-                            rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
-                        }
-                    };
+                    // try refresh when invalid token
+                    refreshToken = refreshToken || !session.isValid();
 
                     if (session) {
                         if (refreshToken) {
-                            // console.log('%cRefresh token', 'background-color:tomato;color:white;');
-                            // console.log({ refreshToken });
-                            currentUser?.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
+                            currentUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
                                 if (refreshErr) {
-                                    // console.log('%cRefresh token error', 'background-color:tomato;color:white;');
-                                    // console.log({ refreshErr });
                                     rej(refreshErr);
                                 }
-                                updateAttributes(refreshedSession);
+
+                                if (refreshedSession.isValid()) {
+                                    res(mergeAttributes(refreshedSession.idToken.payload, refreshedSession));
+                                }
+
+                                else {
+                                    rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
+                                }
                             });
                         }
 
                         else {
-                            // console.log('%cLoading session', 'background-color:tomato;color:white;');
-                            // console.log({ refreshToken });
-                            updateAttributes(session);
+                            res(mergeAttributes(session.idToken.payload, session));
                         }
                     }
+
                     else {
                         rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
                     }
@@ -445,7 +453,6 @@ export default class Skapi {
         };
 
         const createCognitoUser = async (email: string) => {
-            // console.log('%cCreate cognito user', 'background-color:tomato;color:white;');
             let hash = null;
 
             if (email) {
@@ -470,7 +477,6 @@ export default class Skapi {
         };
 
         const authenticateUser = (email: string, password: string): Promise<User> => {
-            // console.log('%cAuthenticate user', 'background-color:tomato;color:white;');
             return new Promise((res, rej) => {
                 this.__request_signup_confirmation = null;
                 this.__disabledAccount = null;
@@ -489,13 +495,7 @@ export default class Skapi {
                             this.__request_signup_confirmation = username;
                             rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
                         },
-                        onSuccess: (logged) => {
-                            // console.log('%cAuthenticate user success', 'background-color:tomato;color:white;');
-                            // console.log({ logged });
-                            updateSession().then(session => {
-                                res(session);
-                            });
-                        },
+                        onSuccess: (logged) => getSession().then(session => res(session)),
                         onFailure: (err: any) => {
                             let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
 
@@ -517,15 +517,15 @@ export default class Skapi {
             });
         };
 
-        return { updateSession, authenticateUser, createCognitoUser };
+        return { getSession, authenticateUser, createCognitoUser, getUser };
     }
 
     async checkAdmin() {
         await this.__connection;
 
-        if (this.session?.attributes?.['custom:service'] === this.service) {
+        if (this.__user?.service === this.service) {
             // logged in
-            return this.session?.attributes?.['custom:service_owner'] === this.host;
+            return this.__user?.service_owner === this.host;
 
         } else {
             // not logged
@@ -797,8 +797,21 @@ export default class Skapi {
 
         if (auth) {
             if (!token) {
-                await this.logout();
+                this.logout();
                 throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+            }
+            else {
+                let currTime = Date.now() / 1000;
+                if (this.session.idToken.payload.exp < currTime) {
+                    try {
+                        await this.authentication().getSession({ refreshToken: true });
+                        token = this.session?.idToken?.jwtToken;
+                    }
+                    catch (err) {
+                        this.logout();
+                        throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+                    }
+                }
             }
         }
 
@@ -870,6 +883,10 @@ export default class Skapi {
             else {
                 throw new SkapiError('Invalid meta data.', { code: 'INVALID_REQUEST' });
             }
+        }
+
+        if (data instanceof SubmitEvent) {
+            data = data.target;
         }
 
         if (Array.isArray(data) || data && typeof data !== 'object') {
@@ -1585,7 +1602,15 @@ export default class Skapi {
             access_group: ['number', 'private'],
             subscription: {
                 user_id: (v: string) => validateUserId(v, 'User ID in "subscription.user_id"'),
-                group: 'number'
+                group: (v:number)=>{
+                    if(typeof v !== 'number') {
+                        throw new SkapiError('"subscription.group" should be type: number.', { code: 'INVALID_PARAMETER' });
+                    }
+                    if(v > 99 || v < 0) {
+                        throw new SkapiError('"subscription.group" should be within range: 0 ~ 99.', { code: 'INVALID_PARAMETER' });
+                    }
+                    return v;
+                }
             },
             index: {
                 name: (v: string) => {
@@ -2626,7 +2651,7 @@ export default class Skapi {
             'session': null,
             '__startKey_keys': {},
             '__cached_requests': {},
-            'user': null
+            '__user': null
         };
 
         for (let k in to_be_erased) {
@@ -2764,7 +2789,7 @@ export default class Skapi {
             let callback = {
                 onSuccess: (result: any) => {
                     if (code) {
-                        this.authentication().updateSession({ refreshToken: true }).then(
+                        this.authentication().getUser().then(
                             () => {
                                 if (this.__user) {
                                     this.__user[attribute + '_verified'] = true;
@@ -3149,7 +3174,7 @@ export default class Skapi {
                     });
             });
 
-            await this.authentication().updateSession({ refreshToken: true });
+            await this.authentication().getUser();
         }
 
         return this.__user;
