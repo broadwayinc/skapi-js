@@ -34,7 +34,6 @@
     "cloud"
   ],
   "dependencies": {
-    "amazon-cognito-identity-js": "^5.2.12",
-    "build": "^0.1.4"
+    "amazon-cognito-identity-js": "^5.2.12"
   }
 }

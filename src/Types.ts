@@ -51,7 +51,7 @@ export type FormCallbacks = {
  * // Javascript FormData is also supported.
  * ```
  */
-export type Form = HTMLFormElement | FormData | Record<string, any>;
+export type Form = HTMLFormElement | FormData | SubmitEvent | Record<string, any>;
 
 export type Newsletters = {
     /** Newsletter id */
