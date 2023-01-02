@@ -495,7 +495,7 @@ function checkParams(
     if (_parentKey === null) {
         // parent level. executes on first run
         if (isObjectWithKeys(_params)) {
-            if (_params instanceof HTMLFormElement || _params instanceof FormData) {
+            if (_params instanceof HTMLFormElement || _params instanceof FormData || _params instanceof SubmitEvent) {
                 // first execution, it's an object or form element
                 _params = extractFormMetaData(params)?.meta;
             }
@@ -664,6 +664,34 @@ function extractFormMetaData(form: Form) {
     // creates meta object to post
 
     function appendData(meta, key, val, append = true) {
+        let fchar = key.slice(0, 1);
+        let lchar = key.slice(-1);
+
+        if (fchar === '.') {
+            key = key.slice(1);
+        }
+
+        if (lchar === '.') {
+            key = key.slice(0, -1);
+        }
+
+        if (key.includes('.')) {
+            let nestKey = key.split('.');
+            key = nestKey.pop();
+
+            for (let k of nestKey) {
+                if (!k) {
+                    continue;
+                }
+
+                if (!meta.hasOwnProperty(k)) {
+                    meta[k] = {};
+                }
+
+                meta = meta[k];
+            }
+        }
+
         if (meta[key] && append) {
             if (Array.isArray(meta)) {
                 meta[key].push(val);
@@ -718,7 +746,11 @@ function extractFormMetaData(form: Form) {
         return { meta, files };
     }
 
-    else if (form instanceof HTMLFormElement) {
+    if (form instanceof SubmitEvent) {
+        form = form.target;
+    }
+
+    if (form instanceof HTMLFormElement) {
         let meta = {};
         let files = [];
         let totalFileSize = 0;
