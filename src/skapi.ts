@@ -3,7 +3,7 @@ import {
     CognitoUserAttribute,
     CognitoUser,
     AuthenticationDetails,
-    // CognitoUserSession
+    CognitoUserSession
 } from 'amazon-cognito-identity-js';
 
 import {
@@ -105,7 +105,7 @@ export default class Skapi {
     private __class_properties_has_been_cached = false;
 
     private session: Record<string, any> | null = null;
-
+    origin: string = null;
     // public
 
     /** Current logged in user object. null if not logged. */
@@ -183,16 +183,16 @@ export default class Skapi {
      * 
      * ```
      * let skapi = new Skapi();
-     * skapi.awaitConnection().then(connection=>console.log('Connected to Server'));
+     * skapi.getConnection().then(connection=>console.log('Connected to Server'));
      * ```
      */
-    async awaitConnection(): Promise<Connection | null> {
+    getConnection(): Promise<Connection | null> {
         return this.__connection;
     }
 
     // skapi int range -4503599627370545 ~ 4503599627370546
 
-    constructor(service_id: string, service_owner: string, autoLogin: boolean = false) {
+    constructor(service_id: string, service_owner: string, autoLogin = false) {
         if (typeof service_id !== 'string' || typeof service_owner !== 'string') {
             throw new SkapiError('"service_id" and "service_owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
@@ -275,8 +275,9 @@ export default class Skapi {
                 }));
             }
 
+            let awaitProcess;
             if (process.length) {
-                await Promise.all(process);
+                awaitProcess = await Promise.all(process);
             }
 
             const storeClassProperties = () => {
@@ -284,23 +285,27 @@ export default class Skapi {
                     return;
                 }
 
-                let data: Record<string, any> = {};
+                let exec = () => {
+                    let data: Record<string, any> = {};
 
-                const to_be_cached = [
-                    '__startKey_keys', // startKey key : {}
-                    '__cached_requests', // cached records : {}
-                    '__request_signup_confirmation', // for resend signup confirmation : null
-                    'connection', // service info : null
-                ];
+                    const to_be_cached = [
+                        '__startKey_keys', // startKey key : {}
+                        '__cached_requests', // cached records : {}
+                        '__request_signup_confirmation', // for resend signup confirmation : null
+                        'connection', // service info : null
+                    ];
 
-                if (skapi.connection) {
-                    for (let k of to_be_cached) {
-                        data[k] = skapi[k];
+                    if (skapi.connection) {
+                        for (let k of to_be_cached) {
+                            data[k] = skapi[k];
+                        }
+
+                        window.sessionStorage.setItem(`${service_id}#${service_owner}`, JSON.stringify(data));
+                        skapi.__class_properties_has_been_cached = true;
                     }
+                };
 
-                    window.sessionStorage.setItem(`${service_id}#${service_owner}`, JSON.stringify(data));
-                    skapi.__class_properties_has_been_cached = true;
-                }
+                return (awaitProcess instanceof Promise) ? awaitProcess.then(() => exec()) : exec();
             };
 
             // attach event to save session on close
@@ -313,20 +318,27 @@ export default class Skapi {
     }
 
     private authentication() {
-        if (!this.userPool) {
-            throw new SkapiError('User pool is missing', { code: 'INVALID_REQUEST' });
-        }
+        if (!this.userPool) throw new SkapiError('User pool is missing', { code: 'INVALID_REQUEST' });
 
-        const mergeAttributes = (attr: any, session: any) => {
+        const normalizeUserAttributes = (attr: any) => {
             let user: any = {};
 
+            if (Array.isArray(attr)) {
+                // parse attribute structure: [ { Name, Value }, ... ]
+                let normalized_user_attribute_keys = {};
+                for (let i of (attr as CognitoUserAttribute[])) {
+                    normalized_user_attribute_keys[i.Name] = i.Value;
+
+                    if (i.Name === 'custom:service' && normalized_user_attribute_keys[i.Name] !== this.service)
+                        throw new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' });
+                }
+
+                attr = normalized_user_attribute_keys;
+            }
+
             for (let k in attr) {
-                if (k.includes('custom:')) {
-                    user[k.replace('custom:', '')] = attr[k];
-                }
-                else {
-                    user[k] = attr[k];
-                }
+                if (k.includes('custom:')) user[k.replace('custom:', '')] = attr[k];
+                else user[k] = attr[k];
             }
 
             for (let k of [
@@ -339,134 +351,108 @@ export default class Skapi {
                 'access_group'
             ]) {
                 if (k.includes('_public')) {
-                    if (user.hasOwnProperty(k.split('_')[0])) {
-                        user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
-                    }
-                    else {
-                        delete user[k];
-                    }
-                } else {
-                    user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
+                    if (user.hasOwnProperty(k.split('_')[0])) user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
+                    else delete user[k];
                 }
+                else user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
             }
 
             for (let k of [
                 'email_verified',
                 'phone_number_verified'
             ]) {
-                if (user[k.split('_')[0]]) {
-                    user[k] = user.hasOwnProperty(k) ? user[k] === 'true' : false;
-                }
-                else if (user.hasOwnProperty(k)) {
+                if (user[k.split('_')[0]]) user[k] = user.hasOwnProperty(k) ? user[k] === 'true' : false;
+                else if (user.hasOwnProperty(k)) delete user[k];
+            }
+
+            for (let k of [
+                'aud',
+                { from: 'auth_time', to: 'log' },
+                'cognito:username',
+                'event_id',
+                'exp',
+                'iat',
+                'iss',
+                'jti',
+                'origin_jti',
+                'secret_key',
+                { from: 'sub', to: 'user_id' },
+                'token_use'
+            ]) {
+                if (typeof k === 'string') {
                     delete user[k];
                 }
-            }
-            
-            this.session = session;
-            user.user_id = user.sub;
-            delete user.sub;
+                else {
+                    user[k.to] = user[k.from];
+                    delete user[k.from];
+                }
+            };
+
             this.__user = user;
-            return user;
         };
 
         const getUser = () => {
-            if (!this.session) {
-                return null;
-            }
-
+            // get users updated attribute
+            if (!this.session) return null;
             return new Promise((res, rej) => {
                 let currentUser: CognitoUser | null = this.userPool?.getCurrentUser() || null;
                 this.cognitoUser = currentUser;
 
-                if (currentUser === null) {
-                    rej(null);
-                }
-                currentUser.getUserAttributes((attrErr, attributes) => {
-                    if (attrErr) {
-                        rej(attrErr);
-                    }
-
-                    else {
-                        let normalized_attributes: Record<string, any> = {};
-                        for (let i of (attributes as CognitoUserAttribute[])) {
-                            normalized_attributes[i.Name] = i.Value;
-
-                            if (i.Name === 'custom:service' && normalized_attributes[i.Name] !== this.service) {
-                                rej(new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' }));
-                            }
+                if (currentUser === null) rej(null);
+                else {
+                    currentUser.getUserAttributes((attrErr, attributes) => {
+                        if (attrErr) rej(attrErr);
+                        else {
+                            normalizeUserAttributes(attributes);
+                            res(this.user);
                         }
-                        res(mergeAttributes(normalized_attributes, this.session));
-                    }
-                });
+                    });
+                }
             });
         };
 
         const getSession = (option?: {
             refreshToken?: boolean;
-        }): Promise<User> => {
-            // fetch session, update user info
+        }): Promise<CognitoUserSession> => {
+            // fetch session, updates user attributes
             let { refreshToken = false } = option || {};
 
             return new Promise((res, rej) => {
                 let currentUser: CognitoUser | null = this.userPool?.getCurrentUser() || null;
                 this.cognitoUser = currentUser;
 
-                if (currentUser === null) {
-                    rej(null);
-                }
+                if (currentUser === null) rej(null);
+                currentUser.getSession((err: any, session: CognitoUserSession) => {
+                    if (err) rej(err);
 
-                currentUser.getSession((err: any, session: any) => {
-                    if (err) {
-                        rej(err);
-                    }
-
+                    if (!session) rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
                     // try refresh when invalid token
-                    refreshToken = refreshToken || !session.isValid();
-
-                    if (session) {
-                        if (refreshToken) {
-                            currentUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
-                                if (refreshErr) {
-                                    rej(refreshErr);
-                                }
-
+                    if (refreshToken || !session.isValid()) {
+                        currentUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
+                            if (refreshErr) rej(refreshErr);
+                            else {
                                 if (refreshedSession.isValid()) {
-                                    res(mergeAttributes(refreshedSession.idToken.payload, refreshedSession));
+                                    this.session = refreshedSession;
+                                    normalizeUserAttributes(refreshedSession.getIdToken().payload);
+                                    res(refreshedSession);
                                 }
-
                                 else {
                                     rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
                                 }
-                            });
-                        }
-
-                        else {
-                            res(mergeAttributes(session.idToken.payload, session));
-                        }
-                    }
-
-                    else {
-                        rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
+                            }
+                        });
+                    } else {
+                        this.session = session;
+                        normalizeUserAttributes(session.getIdToken().payload);
+                        res(session);
                     }
                 });
             });
         };
 
         const createCognitoUser = async (email: string) => {
-            let hash = null;
-
-            if (email) {
-                hash = this.__serviceHash[email] || (await this.updateConnection({ request_hash: email })).hash;
-            }
-
-            else {
-                if (this.session) {
-                    hash = this.session.idToken.payload['cognito:username'];
-                } else {
-                    throw new SkapiError('E-Mail is required.', { code: 'INVALID_PARAMETER' });
-                }
-            }
-
+            if (!email) throw new SkapiError('E-Mail is required.', { code: 'INVALID_PARAMETER' });
+            let hash = this.__serviceHash[email] || (await this.updateConnection({ request_hash: email })).hash;
             return {
                 cognitoUser: new CognitoUser({
                     Username: hash,
@@ -495,7 +481,7 @@ export default class Skapi {
                             this.__request_signup_confirmation = username;
                             rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
                         },
-                        onSuccess: (logged) => getSession().then(session => res(session)),
+                        onSuccess: (logged) => getSession().then(session => res(this.user)),
                         onFailure: (err: any) => {
                             let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
 
@@ -520,13 +506,21 @@ export default class Skapi {
         return { getSession, authenticateUser, createCognitoUser, getUser };
     }
 
+    async getAccount() {
+        await this.__connection;
+        try {
+            await this.authentication().getSession();
+            return this.user;
+        } catch (err) {
+            return null;
+        }
+    }
+
     async checkAdmin() {
         await this.__connection;
-
         if (this.__user?.service === this.service) {
             // logged in
             return this.__user?.service_owner === this.host;
-
         } else {
             // not logged
             await this.logout();
@@ -736,40 +730,23 @@ export default class Skapi {
      * ```
      * @category Connection
      */
-    getFormResponse(): any {
-        let params = new URLSearchParams(window.location.search);
+    getFormResponse = async (): Promise<any> => {
+        await this.__connection;
+        let responseKey = `${this.service}:${MD5.hash(window.location.href)}`;
+        let stored = window.sessionStorage.getItem(responseKey);
+        if (stored !== null) {
+            try {
+                stored = JSON.parse(stored);
+            } catch (err) { }
 
-        for (let [key, val] of params.entries()) {
-            // key = response key sha256
-            // val = timestamp
-            if (key.substring(0, 5) !== 'form-') {
-                continue;
-            }
-
-            let stored = window.sessionStorage.getItem(key);
-
-            if (stored) {
-                window.sessionStorage.removeItem(key);
-                try {
-                    stored = JSON.parse(stored);
-                } catch (err) { }
-            }
-
-            if (typeof stored === 'object' && (stored as Record<string, any>)[val]) {
-                return (stored as Record<string, any>)[val];
-            }
-
-            else {
-                continue;
-            }
+            return stored;
         }
 
-        return null;
-    }
+        throw new SkapiError("Form response doesn't exist.", { code: 'NOT_EXISTS' });
+    };
 
     // internals below
-
-    async request(
+    request = async (
         url: string,
         data: Form = null,
         options?: {
@@ -781,7 +758,7 @@ export default class Skapi {
             responseType?: string;
             contentType?: string;
         }
-    ): Promise<any> {
+    ): Promise<any> => {
 
         options = options || {};
 
@@ -1099,11 +1076,11 @@ export default class Skapi {
                 }
             }
         }
-    }
+    };
 
     // cache, handle database records
 
-    private load_startKey_keys(option: {
+    load_startKey_keys(option: {
         params: Record<string, any>;
         url: string;
         refresh?: boolean;
@@ -1133,7 +1110,6 @@ export default class Skapi {
             }
         }
 
-        // let hashedParams = createHash('sha256').update(toHash).digest('hex');
         let hashedParams = (() => {
             if (params && typeof params === 'object' && Object.keys(params).length) {
                 // hash request parameters
@@ -1174,9 +1150,6 @@ export default class Skapi {
                 // delete cache of all startkeys
                 for (let p of this.__startKey_keys[url][hashedParams]) {
                     let hashedParams_cached = hashedParams + '/' + MD5.hash(JSON.stringify(p));
-                    // let hashedParams_cached = hashedParams + '/' + JSON.stringify(p);
-                    // let hashedParams_cached = hashedParams + createHash('sha256').update(JSON.stringify(p)).digest('hex');
-
                     if (this.__cached_requests?.[url] && this.__cached_requests?.[url]?.[hashedParams_cached]) {
                         delete this.__cached_requests[url][hashedParams_cached];
                     }
@@ -1198,7 +1171,6 @@ export default class Skapi {
         let list_of_startKeys = this.__startKey_keys[url][hashedParams]; // [{<startKey key>}, ...'end']
         let last_startKey_key = list_of_startKeys[list_of_startKeys.length - 1];
         let cache_hashedParams = hashedParams;
-        // if (last_startKey_key !== 'start') {
         if (last_startKey_key) {
             // use last start key
 
@@ -1211,9 +1183,7 @@ export default class Skapi {
             }
 
             else {
-                // cache_hashedParams += createHash('sha256').update(last_startKey_key).digest('hex');
                 cache_hashedParams += MD5.hash(last_startKey_key);
-                // cache_hashedParams += ('/' + last_startKey_key);
                 params.startKey = JSON.parse(last_startKey_key);
             }
         }
@@ -1287,7 +1257,6 @@ export default class Skapi {
     };
 
     private _fetch = async (url: string, opt: RequestInit, responseType: string) => {
-
         let response: Record<string, any> = await fetch(url, opt);
 
         if (responseType) {
@@ -1430,7 +1399,6 @@ export default class Skapi {
         form: Form | any,
         option: PostRecordParams & FormCallbacks
     ): Promise<RecordData> {
-
         let isAdmin = await this.checkAdmin();
         if (!option) {
             throw new SkapiError(['INVALID_PARAMETER', '"option" argument is required.']);
@@ -1602,11 +1570,11 @@ export default class Skapi {
             access_group: ['number', 'private'],
             subscription: {
                 user_id: (v: string) => validateUserId(v, 'User ID in "subscription.user_id"'),
-                group: (v:number)=>{
-                    if(typeof v !== 'number') {
+                group: (v: number) => {
+                    if (typeof v !== 'number') {
                         throw new SkapiError('"subscription.group" should be type: number.', { code: 'INVALID_PARAMETER' });
                     }
-                    if(v > 99 || v < 0) {
+                    if (v > 99 || v < 0) {
                         throw new SkapiError('"subscription.group" should be within range: 0 ~ 99.', { code: 'INVALID_PARAMETER' });
                     }
                     return v;
@@ -1892,7 +1860,6 @@ export default class Skapi {
         return res;
     }
 
-
     /**
      * Retrieve filter info of database table.
      * 
@@ -2098,7 +2065,6 @@ export default class Skapi {
         return await this.request('del-records', params, { auth: true });
     }
 
-
     //<_subscriptions>
     /**
      * Anyone who submits their E-Mail address will receive newsletters from you.<br>
@@ -2293,7 +2259,6 @@ export default class Skapi {
         });
     }
 
-
     /**
      * Get user's subscribers
      * @ignore
@@ -2392,7 +2357,6 @@ export default class Skapi {
 
         return response;
     }
-
 
     /**
      * Get newsletters and service letters that service owner sent out.
@@ -2517,7 +2481,6 @@ export default class Skapi {
 
         return mails;
     }
-
 
     //<_user>
     /**
@@ -2745,7 +2708,6 @@ export default class Skapi {
         return resend;
     }
 
-
     /**
      * Logs user to the service.<br>
      * <h6>DO NOT LEAVE ANY EMAIL AND PASSWORD ON FRONTEND JAVASCRIPT</h6>
@@ -2860,7 +2822,6 @@ export default class Skapi {
         return this.verifyAttribute('email', code.toString());
     }
 
-
     /**
      * Verifies user's mobile phone number.<br>
      * The account has to be signed in.<br>
@@ -2891,7 +2852,6 @@ export default class Skapi {
 
         return this.verifyAttribute('phone_number', code.toString());
     }
-
 
     /**
      * Users can request password reset when password is forgotten.<br>
@@ -2924,7 +2884,7 @@ export default class Skapi {
         let params = checkParams(form, {
             email: (v: string) => validateEmail(v)
         }, ['email']);
-
+        
         return new Promise(async (res, rej) => {
             let cognitoUser = (await this.authentication().createCognitoUser(params.email)).cognitoUser;
             cognitoUser.forgotPassword({
@@ -2958,7 +2918,7 @@ export default class Skapi {
 
      */
     @formResponse()
-    resetPassword(form: Form | {
+    async resetPassword(form: Form | {
         /** Signin E-Mail */
         email: string;
         /** The verification code user has received. */
@@ -2967,12 +2927,14 @@ export default class Skapi {
         new_password: string;
     }, option?: FormCallbacks): Promise<string> {
 
+        await this.__connection;
+        console.log({form});
         let params = checkParams(form, {
             email: (v: string) => validateEmail(v),
             code: ['number', 'string'],
             new_password: (v: string) => validatePassword(v)
         }, ['email', 'code', 'new_password']);
-
+        console.log({params});
         let code = params.code, new_password = params.new_password;
 
         if (typeof code === 'number') {
