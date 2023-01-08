@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+
+<head>
+    <script src="../../dist/skapi.js"></script>
+</head>
+
+<body>
+    <h1 id="welcome">Welcome #name</h1>
+    <p id="your_email">Your e-mail is: #email</p>
+    <form onsubmit="skapi.logout()" action="login.html">
+        <input type="submit" value="Logout">
+    </form>
+</body>
+<script>
+    let skapi = new Skapi('ap22TS2zkW1pl08TnsVi', '7aa4ffe1-1b06-4375-9be2-47d89da9d206', true);
+    skapi.getAccount().then(account => {
+        if (account) {
+            welcome.textContent = welcome.textContent.replace('#name', account.name || '');
+            your_email.textContent = your_email.textContent.replace('#email', account.email);
+        }
+        else {
+            // redirect user to login page
+            let redirect = new URL('login.html');
+            window.location.href = redirect.href;
+        }
+    });
+</script>
