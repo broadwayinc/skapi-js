@@ -244,13 +244,9 @@ function validateEmail(email: string, paramName: string = 'email') {
 
 function validateUrl(url: string | string[]) {
     const baseUrl = (() => {
-        let baseUrl = window?.location?.origin || null;
-
-        if (baseUrl === 'file://') {
-            baseUrl += window.location.pathname;
-            let _baseUrl = baseUrl.split('/');
-            _baseUrl.pop();
-            baseUrl = _baseUrl.join('/');
+        let baseUrl = window.location.origin || null;
+        if (baseUrl.slice(-1) === '/') {
+            baseUrl = baseUrl.slice(0, -1);
         }
 
         return baseUrl;
@@ -263,14 +259,19 @@ function validateUrl(url: string | string[]) {
             else {
                 let cu = c.trim();
                 if (!cu.includes(' ') && !cu.includes(',')) {
-                    if (cu.substring(0, 1) === '/' && baseUrl) {
+                    if (cu.slice(0, 1) === '/' && baseUrl) {
                         cu = baseUrl + cu;
                     }
+                    else if (cu.slice(0, 1) === '.' && baseUrl) {
+                        cu = window.location.href.split('/').slice(0, -1).join('/') + cu;
+                    }
+
                     let _url = null;
 
                     try {
                         _url = new URL(cu);
-                    } catch (err) {
+                    }
+                    catch (err) {
                         throw new SkapiError(`"${c}" is an invalid url.`, { code: 'INVALID_PARAMETER' });
                     }
 

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+
+<head>
+    <script src="../../dist/skapi.js"></script>
+</head>
+
+<body>
+    <h1>Login</h1>
+    <form onsubmit="skapi.login(event, { onerror: handleError });" action="welcome.html">
+        <input type="email" name="email" required placeholder="E-Mail">
+        <br>
+        <input id="password" type="password" name="password" required placeholder="Password">
+        <br>
+        <input type="submit" value="Login">
+    </form>
+    <a href="forgot_password.html">Forgot Password?</a>
+    <div id="confirmation" style="display: none;">
+        <p>Signup confirmation is needed.</p>
+        <button onclick="skapi.resendSignupConfirmation().then(r => alert(r))">Resend Confirmation e-mail</button>
+    </div>
+</body>
+<script>
+    let skapi = new Skapi('ap22TS2zkW1pl08TnsVi', '7aa4ffe1-1b06-4375-9be2-47d89da9d206');
+    function handleError(err) {
+        if (err?.code === 'SIGNUP_CONFIRMATION_NEEDED') {
+            confirmation.style.display = 'block';
+        }
+        else {
+            alert(err.message);
+        }
+    }
+</script>
