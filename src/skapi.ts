@@ -192,7 +192,7 @@ export default class Skapi {
 
     // skapi int range -4503599627370545 ~ 4503599627370546
 
-    constructor(service_id: string, service_owner: string, autoLogin = false) {
+    constructor(service_id: string, service_owner: string, options?: { autoLogin: boolean; }) {
         if (typeof service_id !== 'string' || typeof service_owner !== 'string') {
             throw new SkapiError('"service_id" and "service_owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
@@ -207,6 +207,8 @@ export default class Skapi {
 
         this.service = service_id;
         this.service_owner = service_owner;
+
+        let autoLogin = options?.autoLogin || false;
 
         // get endpoints
         const cdn_domain = 'https://dkls9pxkgz855.cloudfront.net'; // don't change this
@@ -351,9 +353,10 @@ export default class Skapi {
                 'access_group'
             ]) {
                 if (k.includes('_public')) {
-                    if (user.hasOwnProperty(k.split('_')[0])) user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
+                    if (user.hasOwnProperty(k.split('_')[0])) user[k] = user.hasOwnProperty(k) ? !!Number(user[k]) : false;
                     else delete user[k];
                 }
+                else if (k === 'email_subscription') user[k] = user.hasOwnProperty(k) ? !!Number(user[k]) : false;
                 else user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
             }
 
@@ -391,7 +394,7 @@ export default class Skapi {
             this.__user = user;
         };
 
-        const getUser = () => {
+        const getUser = (): Promise<UserProfile> => {
             // get users updated attribute
             if (!this.session) return null;
             return new Promise((res, rej) => {
@@ -2492,9 +2495,9 @@ export default class Skapi {
      * Signup confirmation E-Mails will have a link that verifies the user.<br>
      * If option.confirmation is set to a url string, signup confirmation link will redirect the user to that url.<br>
      * Welcome emails will only be sent after a user logs in if option.confirmation is set to true.
-     * Common pratice would be to setup a url to redihashedParamsrect users to your 'thankyou for signing up' page.<br>
+     * Common pratice would be to setup a url to redirect users to your 'thankyou for signing up' page.<br>
      * If the parameter is set to true, user will be redirected to an empty html page that shows success message with your web service link below.<br>
-     * Refer: <a href="www.google.com">Setting up E-Mail templates</a><br>
+
      * 
      * ```
      * let params = {
@@ -2512,7 +2515,6 @@ export default class Skapi {
      *  
      * // signup confirmation E-Mail is sent
      * ```
-     * @category User
      */
     @formResponse()
     async signup(
@@ -2594,15 +2596,6 @@ export default class Skapi {
         }
     }
 
-    /**
-     * Logout user and delete user session data.
-     *
-     * ```
-     * await skapi.logout();
-     * ```
-     *
-     * @category User
-     */
     async logout(): Promise<'SUCCESS: The user has been logged out.'> {
         await this.__connection;
 
@@ -2624,29 +2617,10 @@ export default class Skapi {
         return 'SUCCESS: The user has been logged out.';
     }
 
-    /**
-     * Resends signup confirmation E-Mail.<br>
-     * User needs at least one signin attempt.
-     *
-     * ```
-     * // user tries to signin
-     * try {
-     *      await skapi.login('baksa@email.com','password');
-     * } catch(failed) {
-     *      console.log(failed); // SIGNUP_CONFIRMATION_NEEDED: ...
-     * 
-     *      // now you can resend signup confirmation E-Mail to the user.
-     *      await skapi.resendSignupConfirmation("http://baksa.com/thankyouforsigningup");
-     * }
-     * 
-     * ```
-     *
-     * @category User
-     */
     async resendSignupConfirmation(
         /** Redirect url on confirmation success. */
         redirect: string
-    ): Promise<string> {
+    ): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
         if (!this.__request_signup_confirmation) {
             throw new SkapiError('Least one login attempt is required.', { code: 'INVALID_REQUEST' });
         }
@@ -2664,28 +2638,6 @@ export default class Skapi {
         return resend; // 'SUCCESS: Signup confirmation E-Mail has been sent.'
     }
 
-    /**
-     * Recovers disabled account.<br>
-     * User needs at least one signin attempt of the disabled account.</br>
-     * User should have their E-Mail verified in their disabled account to receive account recovery E-Mail.<br>
-     * It will not be possible to recover unverified accounts.
-     *
-     * ```
-     * // user tries to signin
-     * try {
-     *      await skapi.signin('baksa@email.com','password');
-     * } catch(failed) {
-     *      console.log(failed); // USER_IS_DISABLED: ...
-     * 
-     *      // now you can send recover account E-Mail to the user.
-     *      await skapi.recoverAccount("http://baksa.com/welcomeback");
-     * }
-     * 
-     * ```
-     *
-     * @category User
-     * @param redirect Redirect url on recover account success.
-     */
     async recoverAccount(
         /** Redirect url on confirmation success. */
         redirect: boolean | string = false
@@ -2708,21 +2660,6 @@ export default class Skapi {
         return resend;
     }
 
-    /**
-     * Logs user to the service.<br>
-     * <h6>DO NOT LEAVE ANY EMAIL AND PASSWORD ON FRONTEND JAVASCRIPT</h6>
-     * Always let users input their own signin information.<br>
-     * <b>Note: User is automatically logged in.</b>
-     *
-     * ```
-     * let user = await skapi.login({
-     *   email: 'user@email.com',
-     *   password: 'password'
-     * }); // returns user information on success
-     * ```
-     *
-     * @category User
-     */
     @formResponse()
     async login(
         form: Form | {
@@ -2789,23 +2726,6 @@ export default class Skapi {
         });
     }
 
-    /**
-     * Verifies user's E-Mail.<br>
-     * The account has to be signed in.<br>
-     * For the verification E-Mail/SMS, template 'template_verification' will be used.<br>
-     * Refer: <a href="www.google.com">Setting up E-Mail templates</a><br>
-     *
-     * ```
-     * async skapi.verifyEmail();
-     * // Signed in user receives verification code via E-Mail.
-     *
-     * // Execute the method again with verification code as a additional argument.
-     * async skapi.verifyEmail({code});
-     * // User E-Mail is now verified
-     * ```
-     *
-     * @category User
-     */
     @formResponse()
     verifyEmail(
         form?: Form | {
@@ -2822,22 +2742,6 @@ export default class Skapi {
         return this.verifyAttribute('email', code.toString());
     }
 
-    /**
-     * Verifies user's mobile phone number.<br>
-     * The account has to be signed in.<br>
-     * For the verification E-Mail/SMS, template 'template_verification' will be used.<br>
-     * Refer: <a href="www.google.com">Setting up E-Mail templates</a><br>
-     *
-     * ```
-     * async skapi.verifyMobile();
-     * // Signed in user receives verification code via SMS.
-     *
-     * async skapi.verifyMobile({code});
-     * // User phone is now verified
-     * ```
-     *
-     * @category User
-     */
     @formResponse()
     verifyMobile(
         form?: Form | {
@@ -2853,38 +2757,20 @@ export default class Skapi {
         return this.verifyAttribute('phone_number', code.toString());
     }
 
-    /**
-     * Users can request password reset when password is forgotten.<br>
-     * <h6>IMPORTANT</h6>
-     * If the user's account does not have any verified E-Mail, user will not be able to receive any verification E-Mail.<br>
-     * Advise users to verify their E-Mails.<br>
-     *
-     * ```
-     * async skapi.forgotPassword({ email: 'your@email.com' });
-     * // User receives verification E-Mail with verification code.
-     *
-     * // enter verification code and new password as arguments.
-     * async skapi.resetPassword({ email: 'your@email.com', code, new_password });
-     * 
-     * // users account password is now set to new_password.
-     * ```
-     *
-     * @category User
-     */
     @formResponse()
     async forgotPassword(
         form: Form | {
             /** Signin E-Mail. */
             email: string;
         },
-        option?: FormCallbacks): Promise<string> {
+        option?: FormCallbacks): Promise<"SUCCESS: Verification code has been sent."> {
 
         await this.__connection;
 
         let params = checkParams(form, {
             email: (v: string) => validateEmail(v)
         }, ['email']);
-        
+
         return new Promise(async (res, rej) => {
             let cognitoUser = (await this.authentication().createCognitoUser(params.email)).cognitoUser;
             cognitoUser.forgotPassword({
@@ -2898,25 +2784,6 @@ export default class Skapi {
         });
     }
 
-    /**
-     * Users can request password reset when password is forgotten.<br>
-     * <h6>IMPORTANT</h6>
-     * If the user's account does not have any verified E-Mail, user will not be able to receive any verification E-Mail.<br>
-     * Advise users to verify their E-Mails.<br>
-     *
-     * ```
-     * async skapi.forgotPassword({ email: 'your@email.com' });
-     * // User receives verification E-Mail with verification code.
-     *
-     * // enter verification code and new password as arguments.
-     * async skapi.resetPassword({ email: 'your@email.com', code, new_password });
-     * 
-     * // users account password is now set to new_password.
-     * ```
-     *
-     * @category User
-
-     */
     @formResponse()
     async resetPassword(form: Form | {
         /** Signin E-Mail */
@@ -2925,16 +2792,16 @@ export default class Skapi {
         code: string | number;
         /** New password to set. Verification code is required. */
         new_password: string;
-    }, option?: FormCallbacks): Promise<string> {
+    }, option?: FormCallbacks): Promise<"SUCCESS: New password has been set."> {
 
         await this.__connection;
-        console.log({form});
+        console.log({ form });
         let params = checkParams(form, {
             email: (v: string) => validateEmail(v),
             code: ['number', 'string'],
             new_password: (v: string) => validatePassword(v)
         }, ['email', 'code', 'new_password']);
-        console.log({params});
+        console.log({ params });
         let code = params.code, new_password = params.new_password;
 
         if (typeof code === 'number') {
@@ -2955,17 +2822,7 @@ export default class Skapi {
         });
     }
 
-    /**
-     * Disables user account.</br>
-     * All the data related to the account will be deleted after 3 months.</br>
-     * Within 3 months, user can recover their account.
-     * ```
-     * async skapi.disableAccount();
-     * // Account is disabled.
-     * ```
-     * @category User
-     */
-    async disableAccount(): Promise<string> {
+    async disableAccount() {
         await this.__connection;
 
         if (this.__user && Array.isArray(this.__user.services)) {
@@ -2981,39 +2838,11 @@ export default class Skapi {
         return result;
     }
 
-    //usersetting
-    /**
-     * Updates user's settings.<br>
-     * The user needs to be logged in.
-     * 
-     * ```
-     * await skapi.updateUserSettings({
-     *     name: 'John Lennon',
-     *     gender: 'Male',
-     *     address: 'Liver pool',
-     *     email_public: true
-     * });
-     *  
-     * // User setting is updated.
-     * ```
-     * @category User
-     */
     @formResponse()
-    async updateUserSettings(
-        form: Form | UserProfile & {
-            /** Set new password. *Current password is required. */
-            new_password?: string;
-            /** Current password. Only required when setting new password. */
-            current_password?: string;
-        },
-        option?: FormCallbacks
-    ): Promise<User> {
+    async updateProfile(form: Form | UserProfile, option?: FormCallbacks) {
         await this.__connection;
-
-        let attr: CognitoUserAttribute = this.session?.attributes;
-
-        if (!attr || !this.cognitoUser) {
-            throw new SkapiError('User has to be logged in.', { code: 'INVALID_REQUEST' });
+        if (!this.session) {
+            throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
         }
 
         let params = checkParams(form || {}, {
@@ -3028,47 +2857,16 @@ export default class Skapi {
             address_public: 'boolean',
             gender_public: 'boolean',
             birthdate_public: 'boolean',
-            email_subscription: 'boolean',
-            current_password: (v: string) => validatePassword(v),
-            new_password: (v: string) => validatePassword(v)
+            email_subscription: 'boolean'
         });
 
         if (params && typeof params === 'object' && !Object.keys(params).length) {
-            return this.__user;
-        }
-
-        if (params.new_password || params.current_password) {
-            if (!params.current_password) {
-                throw new SkapiError('"current_password" is needed to change the password.', { code: 'INVALID_PARAMETER' });
-            }
-
-            if (!params.new_password) {
-                throw new SkapiError('"new_password" is needed to change password.', { code: 'INVALID_PARAMETER' });
-            }
-
-            if (params.new_password !== params.current_password) {
-                await new Promise((res, rej) => {
-                    this.cognitoUser.changePassword(
-                        params.current_password,
-                        params.new_password,
-                        (err: any, result: any) => {
-                            if (err) {
-                                rej(new SkapiError(err?.message || 'Failed to change users password.', { code: err?.code || err?.name }));
-                            }
-
-                            res(result);
-                        });
-                });
-            }
-
-            delete params.current_password;
-            delete params.new_password;
+            return this.user;
         }
 
         // set alternative signin email
         if (params.email) {
-            let connect = await this.updateConnection({ request_hash: params.email });
-            params['preferred_username'] = connect.hash;
+            params['preferred_username'] = (await this.updateConnection({ request_hash: params.email })).hash;
         }
 
         let collision = [
@@ -3085,33 +2883,41 @@ export default class Skapi {
             }
         }
 
-        let customAttr = [
-            'email_public',
-            'phone_number_public',
-            'address_public',
-            'gender_public',
-            'birthdate_public',
-            'email_subscription'
-        ];
-
         // delete unchanged values, convert key names to cognito attributes
+        let toRemove = [];
         for (let k in params) {
-            if (params[k] === attr[k]) {
-                delete params[k];
+            if (params[k] === this.user[k]) {
+                toRemove.push(k);
+                continue;
             }
 
-            else if (customAttr.includes(k)) {
+            let customAttr = [
+                'email_public',
+                'phone_number_public',
+                'address_public',
+                'gender_public',
+                'birthdate_public',
+                'email_subscription'
+            ];
+
+            if (customAttr.includes(k)) {
                 let parseValue = params[k];
 
-                if (typeof parseValue === 'boolean')
+                if (typeof parseValue === 'boolean') {
                     parseValue = parseValue ? '1' : '0';
+                }
 
                 params['custom:' + k] = parseValue;
-                delete params[k];
+                toRemove.push(k);
             }
         }
 
+        for (let k of toRemove) {
+            delete params[k];
+        }
+
         if (params && typeof params === 'object' && Object.keys(params).length) {
+            // format params to cognito attribute
             let toSet: Array<CognitoUserAttribute> = [];
             for (let key in params) {
                 toSet.push(new CognitoUserAttribute({
@@ -3136,103 +2942,70 @@ export default class Skapi {
                     });
             });
 
-            await this.authentication().getUser();
+            return this.authentication().getUser();
         }
 
-        return this.__user;
+        return this.user;
     }
 
-    /**
-     * Query and fetch user account database.<br>
-     * Any attribute that user has set to private will not be searchable.<br>
-     * If the fetched list of users exceeds 100 users, you can run the same method with the same parameters to get the next batch of list of users. (auto startKey)<br>
-     * If the argument is empty, It will fetch all users in the service in order of signuped timestamp.<br>
-     * User login is required.<br>
-     * You can search for user's information based on:<br>
-     * 'user_id' | 'email' | 'phone_number' | 'name' | 'address' | 'group' | 'email_subscription' | 'gender' | 'birthdate' | 'locale' | 'subscribers'</br>
-     * User's will not be on the database if they did not login after signup.
-     *
-     *
-     * form.searchFor: Index to search.
-     * Search for user's information based on:<br>
-     * - 'user_id'<br>
-     * - 'email'<br>
-     * - 'phone_number'<br>
-     * - 'name'<br>
-     * - 'address'<br>
-     * - 'group'<br>
-     * - 'email_subscription'<br>
-     * - 'gender'<br>
-     * - 'birthdate'<br>
-     * - 'locale'<br>
-     * - 'subscribers'<br>
-     * - 'timestamp'<br>
-     * form.value: Value to "searchFor":<br>
-     * If user has set certain information private, it will not be searchable.<br>
-     * Certain columns have specific types:<br>
-      
-     * Search for user's information based on:<br>
-     * - 'user_id'<br>
-     * 36 character unique user id. If omitted it queries profile for currently signed in account.<br>
-     * Conditions don't apply.<br>
-     
-     * - 'blocked'<br>
-     * Boolean. Queries users blocked state.<br>
-     * Conditions don't apply.<br>
-     
-     * - 'email'<br>
-     * User's email.
-     * Conditions don't apply.
-      
-     * - 'phone_number'<br>
-     * User phone number including region code. ex) +0012341234
-      
-     * - 'name'<br>
-     * Name that user have set on their account.
-      
-     * - 'address'<br>
-     * User's address.
-      
-     * - 'group'<br>
-     * User's account group number.
-      
-     * - 'email_subscription'<br>
-     * E-Mail subscribed user's group number.
-      
-     * - 'gender'<br>
-     * User's gender.
-      
-     * - 'birthdate'<br>
-     * User's birthdate.
-      fetch
-     * - 'locale'<br>
-     * User's locale.
-      
-     * - 'subscribers'<br>
-     * Number of user's subscribers.
-      
-     * - 'timestamp'<br>
-     * User's account creation timestamp.
-     * 
-     * @category User
-     */
-    async getUsers(params?: QueryParams | null, fetchOptions?: FetchOptions): Promise<User | FetchResponse> {
+    @formResponse()
+    async changePassword(params: {
+        new_password: string;
+        current_password: string;
+    }) {
+        await this.__connection;
+        if (!this.session) {
+            throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+        }
 
-        let isAdmin = await this.checkAdmin();
+        if (!params?.current_password) {
+            throw new SkapiError('"current_password" is required to change password.', { code: 'INVALID_PARAMETER' });
+        }
 
+        if (!params?.new_password) {
+            throw new SkapiError('"new_password" is required to change password.', { code: 'INVALID_PARAMETER' });
+        }
+
+        validatePassword(params.current_password);
+        validatePassword(params.new_password);
+
+        if (params.new_password !== params.current_password) {
+            return new Promise((res, rej) => {
+                this.cognitoUser.changePassword(
+                    params.current_password,
+                    params.new_password,
+                    (err: any, result: any) => {
+                        if (err) {
+                            rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || err?.name }));
+                        }
+
+                        res('SUCCESS: Password has been changed.');
+                    });
+            });
+        }
+    }
+
+    async getUsers(params?: QueryParams | null, fetchOptions?: FetchOptions): Promise<FetchResponse> {
         if (!params) {
+            // set default value
+            params = {
+                searchFor: 'timestamp',
+                condition: '>',
+                value: 0
+            };
+
             if (!fetchOptions) {
                 fetchOptions = {};
             }
+
             fetchOptions.ascending = false;
         }
 
-        // set default value
-        params = params || {
-            searchFor: 'timestamp',
-            condition: '>',
-            value: 0
-        };
+        let isAdmin = await this.checkAdmin();
+
+        if (isAdmin && !params.hasOwnProperty('service')) {
+            throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
+        }
 
         const searchForTypes = {
             'user_id': (v: string) => validateUserId(v),
@@ -3250,14 +3023,14 @@ export default class Skapi {
             },
             'subscribers': 'number',
             'timestamp': 'number',
-            'group': 'number',
+            'access_group': 'number',
             'email_subscription': (v: number) => {
                 if (!isAdmin) {
                     throw new SkapiError('Only admin is allowed to search "email_subscription".', { code: 'INVALID_REQUEST' });
                 }
                 return v;
             },
-            'blocked': (v: boolean) => {
+            'suspended': (v: boolean) => {
                 if (v) {
                     return 'by_admin:suspended';
                 }
@@ -3281,9 +3054,9 @@ export default class Skapi {
                 'locale',
                 'subscribers',
                 'timestamp',
-                'group',
+                'access_group',
                 'email_subscription',
-                'blocked'
+                'suspended'
             ],
             condition: ['>', '>=', '=', '<', '<=', 'gt', 'gte', 'eq', 'lt', 'lte', () => '='],
             value: (v: any) => {
@@ -3316,13 +3089,12 @@ export default class Skapi {
             throw new SkapiError('Conditions does not apply on range search.', { code: 'INVALID_PARAMETER' });
         }
 
-        if (['user_id', 'blocked'].includes(params.searchFor) && params.condition !== '=') {
-            throw new SkapiError(`Condition is not allowed on "${params.searchFor}"`, { code: 'INVALID_PARAMETER' });
+        if (params.searchFor === 'user_id' && params.condition !== '=') {
+            throw new SkapiError(`Conditions are not allowed on "user_id"`, { code: 'INVALID_PARAMETER' });
         }
 
-        if (params.searchFor === 'blocked') {
-            // backend uses 'suspended' for column name
-            params.searchFor = 'suspended';
+        if (params.searchFor === 'access_group') {
+            params.searchFor = 'group';
         }
 
         if (typeof params?.value === 'string' && !params?.value) {
@@ -3333,21 +3105,7 @@ export default class Skapi {
             throw new SkapiError('"searchFor" should not be an empty string.', { code: 'INVALID_PARAMETER' });
         }
 
-        let isSelfProfile = params.searchFor === 'user_id' && params.value === this.session.idToken.payload.sub;
-
-        if (isSelfProfile) {
-            return JSON.parse(JSON.stringify(this.__user));
-        }
-
-        if (isAdmin && !params.hasOwnProperty('service')) {
-            throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
-        }
-
-        return this.request(
-            'get-users',
-            params,
-            { auth: true, fetchOptions }
-        );
+        return this.request('get-users', params, { auth: true, fetchOptions });
     }
 
     private async updateConnection(params?: { request_hash: string; }): Promise<Connection> {

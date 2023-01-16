@@ -694,7 +694,7 @@ function extractFormMetaData(form: Form) {
         }
 
         if (meta[key] && append) {
-            if (Array.isArray(meta)) {
+            if (Array.isArray(meta[key])) {
                 meta[key].push(val);
             }
             else {
