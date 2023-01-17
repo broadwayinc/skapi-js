@@ -664,7 +664,7 @@ function checkParams(
 function extractFormMetaData(form: Form) {
     // creates meta object to post
 
-    function appendData(meta, key, val, append = true) {
+    function appendData(meta, key, val) {
         let fchar = key.slice(0, 1);
         let lchar = key.slice(-1);
 
@@ -693,7 +693,7 @@ function extractFormMetaData(form: Form) {
             }
         }
 
-        if (meta.hasOwnProperty(key) && append) {
+        if (meta.hasOwnProperty(key)) {
             if (Array.isArray(meta[key])) {
                 meta[key].push(val);
             }
@@ -766,21 +766,23 @@ function extractFormMetaData(form: Form) {
 
         for (let i of inputs) {
             if (i.name) {
-                if (i.type === 'number' && i.value) {
-                    appendData(meta, i.name, Number(i.value));
+                if (i.type === 'number') {
+                    if (i.value) {
+                        appendData(meta, i.name, Number(i.value));
+                    }
                 }
 
                 else if (i.type === 'checkbox' || i.type === 'radio') {
                     if (i.value === 'on' || i.value === 'true') {
-                        appendData(meta, i.name, i.checked, false);
+                        appendData(meta, i.name, i.checked);
                     }
 
                     else if (i.value === 'false') {
-                        appendData(meta, i.name, !i.checked, false);
+                        appendData(meta, i.name, !i.checked);
                     }
 
-                    else if (i.checked) {
-                        appendData(meta, i.name, i.value, false);
+                    else if (i.checked && i.value) {
+                        appendData(meta, i.name, i.value);
                     }
                 }
 
