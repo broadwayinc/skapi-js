@@ -665,6 +665,7 @@ function extractFormMetaData(form: Form) {
     // creates meta object to post
 
     function appendData(meta, key, val) {
+
         let fchar = key.slice(0, 1);
         let lchar = key.slice(-1);
 
@@ -773,16 +774,18 @@ function extractFormMetaData(form: Form) {
                 }
 
                 else if (i.type === 'checkbox' || i.type === 'radio') {
-                    if (i.value === 'on' || i.value === 'true') {
-                        appendData(meta, i.name, i.checked);
-                    }
+                    if (i.checked) {
+                        if (i.value === 'on' || i.value === 'true') {
+                            appendData(meta, i.name, true);
+                        }
 
-                    else if (i.value === 'false') {
-                        appendData(meta, i.name, !i.checked);
-                    }
+                        else if (i.value === 'false') {
+                            appendData(meta, i.name, false);
+                        }
 
-                    else if (i.checked && i.value) {
-                        appendData(meta, i.name, i.value);
+                        else if (i.checked && i.value) {
+                            appendData(meta, i.name, i.value);
+                        }
                     }
                 }
 
