@@ -2878,24 +2878,32 @@ export default class Skapi {
             throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
         }
 
-        if (!params?.current_password) {
+        let p = checkParams(params, {
+            'current_password': 'string',
+            'new_password': 'string'
+        });
+
+        if (!p?.current_password) {
             throw new SkapiError('"current_password" is required to change password.', { code: 'INVALID_PARAMETER' });
         }
 
-        if (!params?.new_password) {
+        if (!p?.new_password) {
             throw new SkapiError('"new_password" is required to change password.', { code: 'INVALID_PARAMETER' });
         }
 
-        validatePassword(params.current_password);
-        validatePassword(params.new_password);
+        validatePassword(p.current_password);
+        validatePassword(p.new_password);
 
-        if (params.new_password !== params.current_password) {
+        if (p.new_password !== p.current_password) {
             return new Promise((res, rej) => {
                 this.cognitoUser.changePassword(
-                    params.current_password,
-                    params.new_password,
+                    p.current_password,
+                    p.new_password,
                     (err: any, result: any) => {
                         if (err) {
+                            if(err?.code === "InvalidParameterException") {
+                                rej(new SkapiError('Invalid password parameter.', { code: 'INVALID_PARAMETER' }));    
+                            }
                             rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || err?.name }));
                         }
 
@@ -2903,6 +2911,7 @@ export default class Skapi {
                     });
             });
         }
+        return 'SUCCESS: Password has been changed.';
     }
 
     async getUsers(params?: QueryParams | null, fetchOptions?: FetchOptions): Promise<FetchResponse> {
