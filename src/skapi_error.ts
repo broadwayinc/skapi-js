@@ -1,10 +1,3 @@
-/**
- * Skapi throws custom error.
- * You can check error instance by:
- * if(err instanceof SkapiError) &#123;
- *      // Skapi had an error
- * &#125;
- */
 export default class SkapiError extends Error {
     code: string | number;
     cause: Error;

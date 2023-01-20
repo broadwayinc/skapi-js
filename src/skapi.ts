@@ -37,42 +37,6 @@ import {
     MD5
 } from './utils';
 
-/**
- * All the methods used in Skapi are promises.<br>
- * Use async/await or Promise.then() to interact with backend.<br>
- * 
- * <b>Example A: Using async await</b>
- * ```
- * async function app() {
- *      try {
- *          let skapi = await Skapi.connect('xxxxxxxxxxxxxx', 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx');
- *
- *          console.log(skapi.connection); // connection to Skapi!
- *
- *          // - Here is where all your code should be written -
- *
- *      } catch(error) {
- *          console.log('Connection error');
- *      }
- * }
- *
- * // Run your application
- * app();
- * ```
- * 
- * <b>Example B: Using Promise.then()</b>
- * ```
- * Skapi.connect('xxxxxxxxxxxxxx', 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx').then(async skapi => {
- *
- *       console.log(skapi.connection); // connection to Skapi!
- *
- *       // - Here is where all your code should be written -
- *
- * }).catch(error => {
- *       console.log('Connection error');
- * });
- * ```
- */
 export default class Skapi {
     // privates
     private cognitoUser: CognitoUser | null = null;
@@ -124,7 +88,6 @@ export default class Skapi {
         // setting user is bypassed
     }
 
-    /** Connected service object. null if connection failed. */
     connection: Connection | null = null;
     host: string = 'skapi';
     hostDomain: string = 'skapi.com';
@@ -132,8 +95,8 @@ export default class Skapi {
     admin_endpoint: Promise<Record<string, any>>;
     record_endpoint: Promise<Record<string, any>>;
 
-    regex = {
-        validateUserId(val: string) {
+    validate = {
+        userId(val: string) {
             try {
                 validateUserId(val);
                 return true;
@@ -141,7 +104,7 @@ export default class Skapi {
                 return false;
             }
         },
-        validateUrl(val: string | string[]) {
+        url(val: string | string[]) {
             try {
                 validateUrl(val);
                 return true;
@@ -149,7 +112,7 @@ export default class Skapi {
                 return false;
             }
         },
-        validatePhoneNumber(val: string) {
+        phoneNumber(val: string) {
             try {
                 validatePhoneNumber(val);
                 return true;
@@ -157,7 +120,7 @@ export default class Skapi {
                 return false;
             }
         },
-        validateBirthdate(val: string) {
+        birthdate(val: string) {
             try {
                 validateBirthdate(val);
                 return true;
@@ -165,7 +128,7 @@ export default class Skapi {
                 return false;
             }
         },
-        validateEmail(val: string) {
+        email(val: string) {
             try {
                 validateEmail(val);
                 return true;
@@ -177,15 +140,6 @@ export default class Skapi {
 
     __connection: Promise<Connection | null>;
 
-    /**
-     * Awaits connection to be established.
-     * You can use this to make sure the connection is established.
-     * 
-     * ```
-     * let skapi = new Skapi();
-     * skapi.getConnection().then(connection=>console.log('Connected to Server'));
-     * ```
-     */
     getConnection(): Promise<Connection | null> {
         return this.__connection;
     }
@@ -532,18 +486,6 @@ export default class Skapi {
         return false;
     }
 
-    /**
-     * Fetch blob from url.</br>
-     * User can get saved file as blob from url.<br>
-     * getBlob can be used to fetch file that are user login is required.
-     *
-     * ```
-     * let fileBlob = await skapi.getBlob({url: 'http://blob.url'});
-     * ```
-     * @category Connection
-     * @param params.url - file url to get.
-     * @param _option.service - Service Id. Only works on admin account.
-     */
     async getBlob(params: { url: string; }, option?: { service: string; }): Promise<Blob> {
 
         let p = checkParams(params, {
@@ -553,12 +495,6 @@ export default class Skapi {
         return await this.request(p.url, option || null, { method: 'get', auth: p.url.includes('/auth/'), contentType: null, responseType: 'blob' });
     }
 
-    /**
-     * mock skapi api
-     * @param data data to send
-     * @param options fetch options
-     * @returns mock response
-     */
     async mock(data: any, options?: {
         fetchOptions?: FetchOptions & FormCallbacks;
         auth?: boolean;
@@ -725,14 +661,6 @@ export default class Skapi {
         return await this.request('post-secure', request, { auth: true });
     }
 
-    /**
-     * Retrives respond data from form request.
-     * 
-     * ```
-     * let respond = skapi.getFormResponse();
-     * ```
-     * @category Connection
-     */
     getFormResponse = async (): Promise<any> => {
         await this.__connection;
         let responseKey = `${this.service}:${MD5.hash(window.location.href)}`;
@@ -878,7 +806,7 @@ export default class Skapi {
 
         // set fetch options
         let fetchOptions = {};
-        let { refresh = false } = options?.fetchOptions || {};
+        let { fetchMore = false } = options?.fetchOptions || {};
 
         if (options?.fetchOptions && Object.keys(options.fetchOptions).length) {
             // record fetch options
@@ -1006,7 +934,7 @@ export default class Skapi {
         let requestKey = this.load_startKey_keys({
             params: data,
             url: isExternalUrl || url,
-            refresh: isForm ? true : refresh // should not use startKey when post is a form
+            fetchMore: isForm ? false : fetchMore // should not use startKey when post is a form
         }); // returns requrestKey | cached data
 
         if (requestKey && typeof requestKey === 'object') {
@@ -1082,14 +1010,13 @@ export default class Skapi {
     };
 
     // cache, handle database records
-
-    load_startKey_keys(option: {
+    private load_startKey_keys = (option: {
         params: Record<string, any>;
         url: string;
-        refresh?: boolean;
-    }): string | FetchResponse {
+        fetchMore?: boolean;
+    }): string | FetchResponse => {
 
-        let { params = {}, url, refresh = false } = option || {};
+        let { params = {}, url, fetchMore = false } = option || {};
         if (params.hasOwnProperty('startKey') && params.startKey) {
             if (
                 typeof params.startKey !== 'object' && !Object.keys(params.startKey).length &&
@@ -1141,7 +1068,7 @@ export default class Skapi {
 
         })();
 
-        if (refresh && this.__startKey_keys?.[url]?.[hashedParams]) {
+        if (!fetchMore && this.__startKey_keys?.[url]?.[hashedParams]) {
             // init cache, init startKey
 
             if (this.__cached_requests?.[url] && this.__cached_requests?.[url]?.[hashedParams]) {
@@ -1197,7 +1124,7 @@ export default class Skapi {
         }
 
         return hashedParams;
-    }
+    };
 
     private update_startKey_keys = async (option: Record<string, any>) => {
         let { hashedParam, url, response } = option;
@@ -1500,6 +1427,10 @@ export default class Skapi {
         delete option.formData;
         delete option.onerror;
 
+        if (option?.table === '') {
+            throw new SkapiError('"table" cannot be empty string.', { code: 'INVALID_PARAMETER' });
+        }
+
         if (!option?.table && !option?.record_id) {
             throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
         }
@@ -1556,11 +1487,7 @@ export default class Skapi {
         return normalize_record_data(await this.request('post-record', postData || form, options));
     }
 
-    /**
-     * Get records from service database.
-     * @category Database
-     */
-    async getRecords(params: GetRecordParams, fetchOptions?: FetchOptions): Promise<FetchResponse> {
+    getRecords = async (params: GetRecordParams, fetchOptions?: FetchOptions): Promise<FetchResponse> => {
         const indexTypes = {
             '$updated': 'number',
             '$uploaded': 'number',
@@ -1683,7 +1610,7 @@ export default class Skapi {
         for (let i in result.list) { result.list[i] = normalize_record_data(result.list[i]); };
 
         return result;
-    }
+    };
 
     /**
      * Retrieve table info of record database.
@@ -1702,14 +1629,14 @@ export default class Skapi {
      * let getTablePrivate = await skapi.getTable();
      * ```
      */
-    async getTable(
+    getTable = async (
         params: {
             /** Table name. If omitted fetch all list of tables. */
             table?: string;
             condition?: string;
         },
         fetchOptions?: FetchOptions
-    ): Promise<FetchResponse> {
+    ): Promise<FetchResponse> => {
         let res = await this.request('get-table', checkParams(params || {}, {
             table: 'string',
             condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
@@ -1733,7 +1660,8 @@ export default class Skapi {
         }
 
         return res;
-    }
+    };
+
     /**
      * Retrieve index info of record database.
      * Get index info of record database.
@@ -1757,7 +1685,7 @@ export default class Skapi {
      * ```
      * @category Database
      */
-    async getIndex(
+    getIndex = async (
         params: {
             /** Table name */
             table: string;
@@ -1774,7 +1702,7 @@ export default class Skapi {
             };
         },
         fetchOptions?: FetchOptions
-    ): Promise<FetchResponse> {
+    ): Promise<FetchResponse> => {
 
         let p = checkParams(
             params || {},
@@ -1861,7 +1789,7 @@ export default class Skapi {
         }
 
         return res;
-    }
+    };
 
     /**
      * Retrieve filter info of database table.
@@ -1880,7 +1808,7 @@ export default class Skapi {
      * ```
      * @category Database
      */
-    async getTag(
+    getTag = async (
         params: {
             /** Table name */
             table: string;
@@ -1890,7 +1818,7 @@ export default class Skapi {
             condition: 'gt' | 'gte' | 'lt' | 'lte' | '>' | '>=' | '<' | '<=' | '=' | 'eq' | '!=' | 'ne';
         },
         fetchOptions?: FetchOptions
-    ): Promise<FetchResponse> {
+    ): Promise<FetchResponse> => {
 
         let res = await this.request(
             'get-tag',
@@ -1917,7 +1845,7 @@ export default class Skapi {
         }
 
         return res;
-    }
+    };
 
     /**
     * Deletes specific records or bulk of records under certain table, index, tag.
@@ -1977,7 +1905,7 @@ export default class Skapi {
     * ```
     * @category Database
     */
-    async deleteRecords(params: {
+    deleteRecords = async (params: {
         /**
          * (only admin) Service ID.
          */
@@ -2005,7 +1933,7 @@ export default class Skapi {
              */
             subscription_group?: number;
         };
-    }): Promise<string> {
+    }): Promise<string> => {
         let isAdmin = await this.checkAdmin();
         if (isAdmin && !params?.service) {
             throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
@@ -2066,7 +1994,7 @@ export default class Skapi {
         }
 
         return await this.request('del-records', params, { auth: true });
-    }
+    };
 
     //<_subscriptions>
     /**
@@ -2085,7 +2013,7 @@ export default class Skapi {
      * @category Subscriptions
      */
     @formResponse()
-    async subscribeNewsletter(
+    subscribeNewsletter(
         form: Form | {
             /** Newsletter subscriber's E-Mail. 64 character max. */
             email: string,
@@ -2108,10 +2036,10 @@ export default class Skapi {
             ['email']
         );
 
-        return await this.request('subscribe-newsletter', params);
+        return this.request('subscribe-newsletter', params);
     }
 
-    private async subscriptionGroupCheck(option: SubscriptionGroup) {
+    private subscriptionGroupCheck = async (option: SubscriptionGroup) => {
         await this.__connection;
         option = checkParams(option, {
             user_id: (v: string) => validateUserId(v, '"user_id"'),
@@ -2137,7 +2065,8 @@ export default class Skapi {
         }
 
         return option;
-    }
+    };
+
     /**
      * Subscribes user's account to another account or updates email_subscription state.<br>
      * User cannot subscribe to email if they did not verify their email.<br>
@@ -2641,7 +2570,7 @@ export default class Skapi {
     async recoverAccount(
         /** Redirect url on confirmation success. */
         redirect: boolean | string = false
-    ): Promise<string> {
+    ): Promise<"SUCCESS: Recovery e-mail has been sent."> {
 
         if (typeof redirect === 'string') {
             validateUrl(redirect);
@@ -2655,9 +2584,9 @@ export default class Skapi {
             throw new SkapiError('Least one signin attempt of disabled account is required.', { code: 'INVALID_REQUEST' });
         }
 
-        let resend = await this.request("recover-account", { username: this.__disabledAccount, redirect });
+        await this.request("recover-account", { username: this.__disabledAccount, redirect });
         this.__disabledAccount = null;
-        return resend;
+        return 'SUCCESS: Recovery e-mail has been sent.';
     }
 
     @formResponse()
@@ -2824,15 +2753,6 @@ export default class Skapi {
 
     async disableAccount() {
         await this.__connection;
-
-        if (this.__user && Array.isArray(this.__user.services)) {
-            for (let s of this.__user.services) {
-                if (s.active) {
-                    throw new SkapiError('All services needs to be disabled.', { code: 'INVALID_REQUEST' });
-                }
-            }
-        }
-
         let result = await this.request('remove-account', { disable: true }, { auth: true });
         await this.logout();
         return result;
