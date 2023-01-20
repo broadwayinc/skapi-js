@@ -15,42 +15,12 @@ export type Connection = {
     hash: string;
 };
 
-/**
- * Additional option for form requests.
- * You can attach callbacks on response and error.
- * If there is a response callback, form will not trigger redirect.
- * <b>Example:</b>
- * 
- * ```
- * <form onsubmit="skapi.method(this, { response:r=>r, onerror: err=>err } ); return false;">
- *  <input name='NameIsKey' value='Some value'></input>
- * </form>
- * ```
- */
 export type FormCallbacks = {
-    /** Callback for form response */
     response?(response: any): any;
-    /** Callback on error. When boolen true is given, alertbox will show. */
     onerror?: (error: Error) => any;
-    /** Middleware callback for extracted FormData from HTMLFormElement. Will not execute if form is not HTMLFormElement.*/
     formData?: (formData: FormData) => Promise<FormData> | FormData;
 };
 
-/**
- * You can pass parameters with html forms if the method supports it.
- * 
- * <b>Example:</b>
- * 
- * ```
- * <form onsubmit="skapi.method(this, options); return false;">
- *  <input name='NameIsKey' value='Some value'></input>
- * </form>
- * 
- * // Above is equivalent as skapi.method({NameIsKey: 'Some Value'}, option);
- * // Form is useful when posting binary files.
- * // Javascript FormData is also supported.
- * ```
- */
 export type Form = HTMLFormElement | FormData | SubmitEvent | Record<string, any>;
 
 export type Newsletters = {
@@ -136,18 +106,10 @@ export type UserProfile = {
 export interface User extends UserProfile {
     /** Last login time */
     log: number;
-    /** User data that has been set to private. The data is only shown to the owner of the account. */
-    private_data?: Record<string, any>;
     /** Number of the user's subscribers. */
     subscribers: number;
     /** Timestamp of user signup time. */
     timestamp: number;
-    /** User's data. */
-    user_data?: Record<string, any>;
-    /** Reference of how others would see the data. Appears only on the owner of the account. */
-    _what_public_see?: Record<string, any>;
-    /** @ignore */
-    services?: Record<string, any>[];
 }
 
 export type GetRecordParams = {
@@ -309,8 +271,8 @@ export type QueryParams = {
 export type FetchOptions = {
     /** Number of records to fetch per call */
     limit?: number;
-    /** Refresh the startKey. Only works on paginated queries. */
-    refresh?: boolean;
+    /** Fetch next batch of data. Only works on paginated queries. */
+    fetchMore?: boolean;
     /** Result in ascending order if true, decending when false. */
     ascending?: boolean;
     /** StartKey key object can be used to query from the certain page of fetch. If refresh is true, will overwrite startKey to start. Only works on paginated queries.*/
