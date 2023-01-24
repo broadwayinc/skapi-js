@@ -793,10 +793,6 @@ export default class Skapi {
             }
         }
 
-        if (data instanceof SubmitEvent) {
-            data = data.target;
-        }
-
         if (Array.isArray(data) || data && typeof data !== 'object') {
             throw new SkapiError('Request data should be a JSON Object | FormData | HTMLFormElement.', { code: 'INVALID_REQUEST' });
         }
@@ -841,93 +837,54 @@ export default class Skapi {
 
         Object.assign(required, fetchOptions);
 
-        // extract html form meta. null if not formdata.
-        let metaData = extractFormMetaData(data);
-        let isForm = metaData?.meta;
-        let fileKeys = metaData?.files || [];
+        let isForm = false;
 
-        let normalize_form = async (data: any, isForm: any, addRequired = false) => {
-            if (isForm === null) {
-                return data;
+        if (data instanceof SubmitEvent) {
+            data = data?.target;
+        }
+
+        if (data instanceof HTMLFormElement) {
+            data = new FormData(data);
+            isForm = true;
+        }
+
+        if (meta) {
+            // add required to meta
+            meta = Object.assign(required, meta);
+        }
+
+        else {
+            // add required to data
+            if (!data) {
+                data = required;
             }
-
-            let isFormEl = false;
-            if (data instanceof HTMLFormElement) {
-                data = new FormData(data);
-                isFormEl = true;
-            }
-
-            if (!(data instanceof FormData)) {
-                return data;
-            }
-
-            if (addRequired) {
-                // !do not change the order of iterations below!
+            else if (isForm) {
                 for (let k in required) {
                     if (required[k] !== undefined) {
-                        data.set(k, typeof required[k] === 'string' ? required[k] : new Blob([JSON.stringify(required[k])], {
+                        data.set(k, new Blob([JSON.stringify(required[k])], {
                             type: 'application/json'
                         }));
                     }
                 }
             }
-
-            for (let k in isForm) {
-                if (isForm[k] !== undefined) {
-                    data[fileKeys.includes(k) ? "append" : "set"](k, typeof isForm[k] === 'string' ? isForm[k] : new Blob([JSON.stringify(isForm[k])], {
-                        type: 'application/json'
-                    }));
-                }
+            else {
+                data = Object.assign(required, data);
             }
-
-            if (options?.fetchOptions?.formData) {
-                if (typeof options?.fetchOptions?.formData === 'function') {
-                    if (!isFormEl) {
-                        throw new SkapiError('Form data should be HTMLFormElement when formData() callback is used.', { code: 'INVALID_PARAMETER' });
-                    }
-
-                    let cb = options.fetchOptions.formData((data as FormData));
-                    if (cb instanceof Promise) {
-                        cb = await cb;
-                    }
-
-                    if (cb instanceof FormData) {
-                        data = cb;
-                    }
-
-                    else {
-                        throw new SkapiError('Callback for extractFormData() should return FormData', { code: 'INVALID_PARAMETER' });
-                    }
-                }
-
-                else {
-                    throw new SkapiError('Callback "formData" should type: function.', { code: 'INVALID_PARAMETER' });
-                }
-            }
-
-            return data;
-        };
-
-        if (meta) {
-            // add required to meta
-            // when meta has data, form data will be nested in 'data' key by the backend
-            meta = Object.assign(required, meta);
-            data = await normalize_form(data, isForm);
         }
 
-        else {
-            // add required to data
-            if (!data && isForm === null) {
-                data = required;
+        // formdata callback
+        if (isForm && typeof options?.fetchOptions?.formData === 'function') {
+            let cb = options.fetchOptions.formData((data as FormData));
+            if (cb instanceof Promise) {
+                cb = await cb;
             }
+
+            if (cb instanceof FormData) {
+                data = cb;
+            }
+
             else {
-                if (isForm) {
-                    // data is either HTMLFormElement | FormData
-                    data = await normalize_form(data, isForm, true);
-                }
-                else {
-                    data = Object.assign(required, data);
-                }
+                throw new SkapiError('Callback for extractFormData() should return FormData', { code: 'INVALID_PARAMETER' });
             }
         }
 
@@ -2901,8 +2858,8 @@ export default class Skapi {
                     p.new_password,
                     (err: any, result: any) => {
                         if (err) {
-                            if(err?.code === "InvalidParameterException") {
-                                rej(new SkapiError('Invalid password parameter.', { code: 'INVALID_PARAMETER' }));    
+                            if (err?.code === "InvalidParameterException") {
+                                rej(new SkapiError('Invalid password parameter.', { code: 'INVALID_PARAMETER' }));
                             }
                             rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || err?.name }));
                         }
