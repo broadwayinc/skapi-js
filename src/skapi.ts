@@ -726,7 +726,8 @@ export default class Skapi {
         let isExternalUrl = '';
         try {
             isExternalUrl = validateUrl(url);
-        } catch (err) {
+        }
+        catch (err) {
             // is not an external url
         }
 
@@ -2681,13 +2682,13 @@ export default class Skapi {
     }, option?: FormCallbacks): Promise<"SUCCESS: New password has been set."> {
 
         await this.__connection;
-        console.log({ form });
+        
         let params = checkParams(form, {
             email: (v: string) => validateEmail(v),
             code: ['number', 'string'],
             new_password: (v: string) => validatePassword(v)
         }, ['email', 'code', 'new_password']);
-        console.log({ params });
+
         let code = params.code, new_password = params.new_password;
 
         if (typeof code === 'number') {
