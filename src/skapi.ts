@@ -846,6 +846,9 @@ export default class Skapi {
 
         if (data instanceof HTMLFormElement) {
             data = new FormData(data);
+        }
+
+        if (data instanceof FormData) {
             isForm = true;
         }
 
@@ -1427,11 +1430,28 @@ export default class Skapi {
             }
         }
 
-        let options = { auth: true };
+        let options: Record<string, any> = { auth: true };
         let postData = null;
 
         if (form instanceof HTMLFormElement || form instanceof FormData) {
-            Object.assign(options, { meta: option });
+            let formData = (form instanceof HTMLFormElement) ? new FormData(form) : form;
+            let formMeta = extractFormMetaData(form);
+            Object.assign(options.meta, option);
+
+            let formToRemove = [];
+            for (const pair of formData.entries()) {
+                if (!formMeta.files.includes(pair[0])) {
+                    formToRemove.push(pair[0]);
+                }
+            }
+            
+            if (formToRemove.length) {
+                for (let f of formToRemove) {
+                    formData.delete(f);
+                }
+            }
+
+            postData = formData;
         }
 
         else {
@@ -1442,7 +1462,8 @@ export default class Skapi {
             Object.assign(options, { fetchOptions });
         }
 
-        return normalize_record_data(await this.request('post-record', postData || form, options));
+        // return normalize_record_data(await this.request('post-record', postData || form, options));
+        return normalize_record_data(await this.request('post-record', postData, options));
     }
 
     getRecords = async (params: GetRecordParams, fetchOptions?: FetchOptions): Promise<FetchResponse> => {
@@ -2682,7 +2703,7 @@ export default class Skapi {
     }, option?: FormCallbacks): Promise<"SUCCESS: New password has been set."> {
 
         await this.__connection;
-        
+
         let params = checkParams(form, {
             email: (v: string) => validateEmail(v),
             code: ['number', 'string'],
