@@ -1436,7 +1436,7 @@ export default class Skapi {
         if (form instanceof HTMLFormElement || form instanceof FormData) {
             let formData = (form instanceof HTMLFormElement) ? new FormData(form) : form;
             let formMeta = extractFormMetaData(form);
-            Object.assign(options.meta, option);
+            options.meta = option;
 
             let formToRemove = [];
             for (const pair of formData.entries()) {
@@ -1444,7 +1444,7 @@ export default class Skapi {
                     formToRemove.push(pair[0]);
                 }
             }
-            
+
             if (formToRemove.length) {
                 for (let f of formToRemove) {
                     formData.delete(f);
