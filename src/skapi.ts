@@ -1433,10 +1433,15 @@ export default class Skapi {
         let options: Record<string, any> = { auth: true };
         let postData = null;
 
-        if (form instanceof HTMLFormElement || form instanceof FormData) {
-            let formData = (form instanceof HTMLFormElement) ? new FormData(form) : form;
+        if ((form instanceof HTMLFormElement) || (form instanceof FormData) || (form instanceof SubmitEvent)) {
+            let toConvert = (form instanceof SubmitEvent) ? form.target : form;
+            let formData = !(form instanceof FormData) ? new FormData(toConvert as HTMLFormElement) : form;
             let formMeta = extractFormMetaData(form);
             options.meta = option;
+
+            if (Object.keys(formMeta.meta).length) {
+                options.meta.data = formMeta.meta;
+            }
 
             let formToRemove = [];
             for (const pair of formData.entries()) {
