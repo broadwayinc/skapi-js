@@ -13,7 +13,7 @@
 </body>
 <script>
     let skapi = new Skapi('ap22TS2zkW1pl08TnsVi', '7aa4ffe1-1b06-4375-9be2-47d89da9d206', true);
-    skapi.getAccount().then(account => {
+    skapi.getProfile().then(account => {
         if (account) {
             welcome.textContent = welcome.textContent.replace('#name', account.name || '');
             your_email.textContent = your_email.textContent.replace('#email', account.email);
