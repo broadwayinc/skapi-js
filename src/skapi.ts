@@ -1186,7 +1186,7 @@ export default class Skapi {
             ];
 
             if (typeof received === 'object' && received?.message) {
-                let code = ((status ? status.toString() : null) || received?.code || 'ERROR');
+                let code = (received?.code || (status ? status.toString() : null) || 'ERROR');
                 throw new SkapiError(received?.message, { code: code });
             }
 
