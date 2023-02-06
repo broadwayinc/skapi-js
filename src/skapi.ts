@@ -315,11 +315,20 @@ export default class Skapi {
             }
 
             for (let k of [
-                'email_verified',
-                'phone_number_verified'
+                'email',
+                'phone_number'
             ]) {
-                if (user[k.split('_')[0]]) user[k] = user.hasOwnProperty(k) ? user[k] === 'true' : false;
-                else if (user.hasOwnProperty(k)) delete user[k];
+                if (user.hasOwnProperty(k)) {
+                    if (user[k + '_verified'] === true || user[k + '_verified'] === 'true') {
+                        user[k + '_verified'] = true;
+                    }
+                    else {
+                        user[k + '_verified'] = false;
+                    }
+                }
+                else {
+                    delete user[k + '_verified'];
+                }
             }
 
             for (let k of [
@@ -352,12 +361,9 @@ export default class Skapi {
             // get users updated attribute
             if (!this.session) return null;
             return new Promise((res, rej) => {
-                let currentUser: CognitoUser | null = this.userPool?.getCurrentUser() || null;
-                this.cognitoUser = currentUser;
-
-                if (currentUser === null) rej(null);
+                if (this.cognitoUser === null) rej(new SkapiError('Invalid session', { code: 'INVALID_REQUEST' }));
                 else {
-                    currentUser.getUserAttributes((attrErr, attributes) => {
+                    this.cognitoUser.getUserAttributes((attrErr, attributes) => {
                         if (attrErr) rej(attrErr);
                         else {
                             normalizeUserAttributes(attributes);
@@ -463,10 +469,10 @@ export default class Skapi {
         return { getSession, authenticateUser, createCognitoUser, getUser };
     }
 
-    async getAccount() {
+    async getProfile(options?: { refreshToken: boolean; }) {
         await this.__connection;
         try {
-            await this.authentication().getSession();
+            await this.authentication().getSession(options);
             return this.user;
         } catch (err) {
             return null;
@@ -2592,16 +2598,18 @@ export default class Skapi {
         return this.authentication().authenticateUser(params.email, params.password);
     }
 
-    private verifyAttribute(attribute: string, code?: string): Promise<string> {
+    private async verifyAttribute(attribute: string, code?: string): Promise<string> {
+        await this.__connection;
+
         if (!this.cognitoUser) {
             throw new SkapiError('The user has to be logged in.', { code: 'INVALID_REQUEST' });
         }
 
         return new Promise((res, rej) => {
-            let callback = {
+            let callback: any = {
                 onSuccess: (result: any) => {
                     if (code) {
-                        this.authentication().getUser().then(
+                        this.authentication().getSession({ refreshToken: true }).then(
                             () => {
                                 if (this.__user) {
                                     this.__user[attribute + '_verified'] = true;
@@ -2626,27 +2634,32 @@ export default class Skapi {
                             }
                         )
                     );
-                },
-                inputVerificationCode: null
+                }
             };
 
             if (code) {
                 this.cognitoUser?.verifyAttribute(attribute, code, callback);
             }
             else {
+                callback.inputVerificationCode = null;
                 this.cognitoUser?.getAttributeVerificationCode(attribute, callback);
             }
         });
     }
 
     @formResponse()
-    verifyEmail(
+    async verifyEmail(
         form?: Form | {
             /** Verification code. */
             code: string | number;
         },
         option?: FormCallbacks
     ): Promise<string> {
+        await this.__connection;
+
+        if (!this.__user.hasOwnProperty('email')) {
+            throw new SkapiError('No e-mail to verify', { code: 'INVALID_REQUEST' });
+        }
 
         let code = (form ? checkParams(form, {
             code: ['number', 'string']
@@ -2656,12 +2669,17 @@ export default class Skapi {
     }
 
     @formResponse()
-    verifyMobile(
+    async verifyPhoneNumber(
         form?: Form | {
             /** Verification code. */
             code: string | number;
         },
         option?: FormCallbacks): Promise<string> {
+        await this.__connection;
+
+        if (!this.__user.hasOwnProperty('phone_number')) {
+            throw new SkapiError('No phone number to verify', { code: 'INVALID_REQUEST' });
+        }
 
         let code = (form ? checkParams(form, {
             code: ['number', 'string']
@@ -2846,7 +2864,8 @@ export default class Skapi {
                     });
             });
 
-            return this.authentication().getUser();
+            await this.authentication().getSession({ refreshToken: true });
+            return this.user;
         }
 
         return this.user;
