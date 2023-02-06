@@ -2558,7 +2558,6 @@ export default class Skapi {
             redirect
         });
 
-        this.__request_signup_confirmation = null;
         return resend; // 'SUCCESS: Signup confirmation E-Mail has been sent.'
     }
 
