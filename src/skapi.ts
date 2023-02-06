@@ -416,6 +416,7 @@ export default class Skapi {
         const createCognitoUser = async (email: string) => {
             if (!email) throw new SkapiError('E-Mail is required.', { code: 'INVALID_PARAMETER' });
             let hash = this.__serviceHash[email] || (await this.updateConnection({ request_hash: email })).hash;
+
             return {
                 cognitoUser: new CognitoUser({
                     Username: hash,
@@ -2503,6 +2504,10 @@ export default class Skapi {
         await this.request("signup", params, { meta: option });
 
         if (confirmation) {
+            let u = await this.authentication().createCognitoUser(params.email);
+            this.cognitoUser = u.cognitoUser;
+            this.__request_signup_confirmation = u.cognitoUsername;
+
             return "SUCCESS: The account has been created. User's email confirmation is required.";
         }
 
