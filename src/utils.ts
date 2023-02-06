@@ -201,16 +201,16 @@ function validateBirthdate(birthdate: string) {
 
 function validatePassword(password: string) {
     if (!password) {
-        throw new SkapiError('"password" is empty.', { code: 'PASSWORD_REQUIRED' });
+        throw new SkapiError('"password" is required.', { code: 'INVALID_PARAMETER' });
     }
     else if (typeof password !== 'string') {
-        throw new SkapiError('"password" should be type: string.', { code: 'INVALID_PASSWORD' });
+        throw new SkapiError('"password" should be type: string.', { code: 'INVALID_PARAMETER' });
     }
     else if (password.length < 6) {
-        throw new SkapiError('"password" should be at least 6 characters.', { code: 'INVALID_PASSWORD' });
+        throw new SkapiError('"password" should be at least 6 characters.', { code: 'INVALID_PARAMETER' });
     }
     else if (password.length > 60) {
-        throw new SkapiError('"password" can be up to 60 characters max.', { code: 'INVALID_PASSWORD' });
+        throw new SkapiError('"password" can be up to 60 characters max.', { code: 'INVALID_PARAMETER' });
     }
 
     return password;
@@ -218,15 +218,15 @@ function validatePassword(password: string) {
 
 function validateEmail(email: string, paramName: string = 'email') {
     if (!email) {
-        throw new SkapiError(`"${paramName}" is empty.`, { code: 'EMAIL_REQUIRED' });
+        throw new SkapiError(`"${paramName}" is required.`, { code: 'INVALID_PARAMETER' });
     }
 
     else if (typeof email !== 'string') {
-        throw new SkapiError(`"${paramName}"should be type: string.`, { code: 'INVALID_EMAIL' });
+        throw new SkapiError(`"${paramName}"should be type: string.`, { code: 'INVALID_PARAMETER' });
     }
 
     else if (email.length < 5 || email.length > 64) {
-        throw new SkapiError(`"${paramName}" should be at least 5 characters and max 64 characters.`, { code: 'INVALID_EMAIL' });
+        throw new SkapiError(`"${paramName}" should be at least 5 characters and max 64 characters.`, { code: 'INVALID_PARAMETER' });
     }
 
     else if (/^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/.test(email)) {
@@ -239,7 +239,7 @@ function validateEmail(email: string, paramName: string = 'email') {
         }
     }
 
-    throw new SkapiError(`"${email}" is an invalid email.`, { code: 'INVALID_EMAIL' });
+    throw new SkapiError(`"${email}" is an invalid email.`, { code: 'INVALID_PARAMETER' });
 }
 
 function validateUrl(url: string | string[]) {
