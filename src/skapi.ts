@@ -140,8 +140,9 @@ export default class Skapi {
 
     __connection: Promise<Connection | null>;
 
-    getConnection(): Promise<Connection | null> {
-        return this.__connection;
+    async getConnection(): Promise<Connection | null> {
+        await this.__connection;
+        return this.connection;
     }
 
     // skapi int range -4503599627370545 ~ 4503599627370546
@@ -229,6 +230,9 @@ export default class Skapi {
                 process.push(skapi.authentication().getSession({ refreshToken: !restore?.connection }).catch(err => {
                     skapi.__user = null;
                 }));
+
+                // updates connection passively
+                skapi.updateConnection();
             }
 
             let awaitProcess;
@@ -1295,26 +1299,48 @@ export default class Skapi {
     async postRecord(
         /** Any type of data to store. If undefined, does not update the data. */
         form: Form | any,
-        option: PostRecordParams & FormCallbacks
+        config: PostRecordParams & FormCallbacks
     ): Promise<RecordData> {
         let isAdmin = await this.checkAdmin();
-        if (!option) {
-            throw new SkapiError(['INVALID_PARAMETER', '"option" argument is required.']);
+        if (!config) {
+            throw new SkapiError(['INVALID_PARAMETER', '"config" argument is required.']);
         }
 
-        let { formData } = option;
+        let { formData } = config;
         let fetchOptions: Record<string, any> = {};
 
         if (typeof formData === 'function') {
             fetchOptions.formData = formData;
         }
 
-        option = checkParams(option || {}, {
+        config = checkParams(config || {}, {
             record_id: 'string',
             access_group: ['number', 'private'],
             table: 'string',
-            subscription_group: 'number',
-            reference: ['string', null],
+            subscription_group: ['number', null],
+            reference: {
+                record_id: ['string', null],
+                reference_limit: (v: number) => {
+                    if (v === null) {
+                        return null;
+                    }
+
+                    else if (typeof v === 'number') {
+                        if (0 > v) {
+                            throw new SkapiError(`"reference_limit" should be >= 0`, { code: 'INVALID_PARAMETER' });
+                        }
+
+                        if (v > 4503599627370546) {
+                            throw new SkapiError(`"reference_limit" should be <= 4503599627370546`, { code: 'INVALID_PARAMETER' });
+                        }
+
+                        return v;
+                    }
+
+                    throw new SkapiError(`"reference_limit" should be type: <number | null>`, { code: 'INVALID_PARAMETER' });
+                },
+                allow_multiple_reference: 'boolean',
+            },
             index: {
                 name: 'string',
                 value: ['string', 'number', 'boolean']
@@ -1339,100 +1365,86 @@ export default class Skapi {
 
                 throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
             },
-            config: {
-                reference_limit: (v: number) => {
-                    if (v === null) {
-                        return null;
-                    }
+            private_access: (v: string | string[]) => {
+                let param = 'config.private_access';
 
-                    else if (typeof v === 'number') {
-                        if (0 > v) {
-                            throw new SkapiError(`"reference_limit" should be >= 0`, { code: 'INVALID_PARAMETER' });
-                        }
-
-                        if (v > 4503599627370546) {
-                            throw new SkapiError(`"reference_limit" should be <= 4503599627370546`, { code: 'INVALID_PARAMETER' });
-                        }
-
-                        return v;
-                    }
-
-                    throw new SkapiError(`"reference_limit" should be type: <number | null>`, { code: 'INVALID_PARAMETER' });
-                },
-                allow_multiple_reference: 'boolean',
-                private_access: (v: string | string[]) => {
-                    let param = 'config.private_access';
-
-                    if (v === null) {
-                        return null;
-                    }
-
-                    if (v && typeof v === 'string') {
-                        v = [v];
-                    }
-
-                    if (Array.isArray(v)) {
-                        for (let u of v) {
-                            validateUserId(u, `User ID in "${param}"`);
-
-                            if (this.__user && u === this.__user.user_id) {
-                                throw new SkapiError(`"${param}" should not be the uploader's user ID.`, { code: 'INVALID_PARAMETER' });
-                            }
-                        }
-                    }
-
-                    else {
-                        throw new SkapiError(`"${param}" should be an array of user ID.`, { code: 'INVALID_PARAMETER' });
-                    }
-
-                    return v;
+                if (v === null) {
+                    return null;
                 }
+
+                if (v && typeof v === 'string') {
+                    v = [v];
+                }
+
+                if (Array.isArray(v)) {
+                    for (let u of v) {
+                        validateUserId(u, `User ID in "${param}"`);
+
+                        if (this.__user && u === this.__user.user_id) {
+                            throw new SkapiError(`"${param}" should not be the uploader's user ID.`, { code: 'INVALID_PARAMETER' });
+                        }
+                    }
+                }
+
+                else {
+                    throw new SkapiError(`"${param}" should be an array of user ID.`, { code: 'INVALID_PARAMETER' });
+                }
+
+                return v;
             }
         }, [], ['response', 'formData', 'onerror']);
 
-        // callbacks should be removed after checkparams
-        delete option.response;
-        delete option.formData;
-        delete option.onerror;
+        if (typeof config?.access_group === 'number' && this.user.access_group < config.access_group) {
+            throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
+        }
 
-        if (option?.table === '') {
+        if (typeof config?.subscription_group === 'number' && config.subscription_group < 0 || config.subscription_group > 99) {
+            throw new SkapiError("Subscription group should be within range: 0 ~ 99", { code: 'INVALID_PARAMETER' });
+        }
+
+        // callbacks should be removed after checkparams
+        delete config.response;
+        delete config.formData;
+        delete config.onerror;
+
+        if (config?.table === '') {
             throw new SkapiError('"table" cannot be empty string.', { code: 'INVALID_PARAMETER' });
         }
 
-        if (!option?.table && !option?.record_id) {
+        if (!config?.table && !config?.record_id) {
             throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
         }
 
-        if (option?.index) {
+        if (config?.index) {
             // index name allows periods. white space is invalid.
-            if (!option.index?.name || typeof option.index?.name !== 'string') {
+            if (!config.index?.name || typeof config.index?.name !== 'string') {
                 throw new SkapiError('"index.name" is required. type: string.', { code: 'INVALID_PARAMETER' });
             }
 
-            checkWhiteSpaceAndSpecialChars(option.index.name, 'index name', true);
+            checkWhiteSpaceAndSpecialChars(config.index.name, 'index name', true);
 
-            if (!option.index.hasOwnProperty('value')) {
+            if (!config.index.hasOwnProperty('value')) {
                 throw new SkapiError('"index.value" is required.', { code: 'INVALID_PARAMETER' });
             }
 
-            if (typeof option.index.value === 'string') {
+            if (typeof config.index.value === 'string') {
                 // index name allows periods. white space is invalid.
-                checkWhiteSpaceAndSpecialChars(option.index.value, 'index value', false, true);
+                checkWhiteSpaceAndSpecialChars(config.index.value, 'index value', false, true);
             }
 
-            else if (typeof option.index.value === 'number') {
-                if (option.index.value > this.__index_number_range || option.index.value < -this.__index_number_range) {
+            else if (typeof config.index.value === 'number') {
+                if (config.index.value > this.__index_number_range || config.index.value < -this.__index_number_range) {
                     throw new SkapiError(`Number value should be within range -${this.__index_number_range} ~ +${this.__index_number_range}`, { code: 'INVALID_PARAMETER' });
                 }
             }
         }
 
         if (isAdmin) {
-            if (option?.access_group === 'private') {
+            if (config?.access_group === 'private') {
                 throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
             }
 
-            if (option.hasOwnProperty('subscription_group')) {
+            if (config.hasOwnProperty('subscription_group')) {
                 throw new SkapiError('Service owner cannot write to subscription table.', { code: 'INVALID_REQUEST' });
             }
         }
@@ -1444,7 +1456,7 @@ export default class Skapi {
             let toConvert = (form instanceof SubmitEvent) ? form.target : form;
             let formData = !(form instanceof FormData) ? new FormData(toConvert as HTMLFormElement) : form;
             let formMeta = extractFormMetaData(form);
-            options.meta = option;
+            options.meta = config;
 
             if (Object.keys(formMeta.meta).length) {
                 options.meta.data = formMeta.meta;
@@ -1467,7 +1479,7 @@ export default class Skapi {
         }
 
         else {
-            postData = Object.assign({ data: form }, option);
+            postData = Object.assign({ data: form }, config);
         }
 
         if (Object.keys(fetchOptions).length) {
@@ -1676,16 +1688,16 @@ export default class Skapi {
      * ```
      * @category Database
      */
-    getIndex = async (
-        params: {
+    async getIndex(
+        query: {
             /** Table name */
             table: string;
             /** Index name. When period is at the end of name, querys nested index keys. */
             index?: string;
             /** Queries order by */
-            order_by: {
+            order?: {
                 /** Key name to order. */
-                name: 'average_number' | 'total_number' | 'number_count' | 'average_bool' | 'total_bool' | 'bool_count' | 'string_count' | 'index_name';
+                by: 'average_number' | 'total_number' | 'number_count' | 'average_bool' | 'total_bool' | 'bool_count' | 'string_count' | 'index_name';
                 /** Value to query. */
                 value?: number | boolean | string;
                 /** "order_by.value" is required for condition. */
@@ -1693,15 +1705,15 @@ export default class Skapi {
             };
         },
         fetchOptions?: FetchOptions
-    ): Promise<FetchResponse> => {
+    ): Promise<FetchResponse> {
 
         let p = checkParams(
-            params || {},
+            query || {},
             {
                 table: 'string',
                 index: (v: string) => checkWhiteSpaceAndSpecialChars(v, 'index name', true, false),
-                order_by: {
-                    name: [
+                order: {
+                    by: [
                         'average_number',
                         'total_number',
                         'number_count',
@@ -1709,7 +1721,8 @@ export default class Skapi {
                         'total_bool',
                         'bool_count',
                         'string_count',
-                        'index_name'
+                        'index_name',
+                        'number_of_records'
                     ],
                     value: ['string', 'number', 'boolean'],
                     condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
@@ -1718,19 +1731,19 @@ export default class Skapi {
             ['table']
         );
 
-        if (p.hasOwnProperty('order_by')) {
-            if (p.order_by === 'index_name') {
-                if (!p.hasOwnProperty('index')) {
-                    throw new SkapiError('"index" is required for ordered by "index_name".', { code: 'INVALID_PARAMETER' });
-                }
-
+        if (p.hasOwnProperty('order')) {
+            if (p.hasOwnProperty('index')) {
                 if (p.index.substring(p.index.length - 1) !== '.') {
                     throw new SkapiError('"index" should be parent "index name".', { code: 'INVALID_PARAMETER' });
                 }
-            }
 
-            if (p.order_by.hasOwnProperty('condition') && !p.order_by.hasOwnProperty('value')) {
-                throw new SkapiError('"value" is required for "condition".', { code: 'INVALID_PARAMETER' });
+                if (!p.order?.by) {
+                    throw new SkapiError('"order.by" is required.', { code: 'INVALID_PARAMETER' });
+                }
+
+                if (p.order.hasOwnProperty('condition') && !p.order.hasOwnProperty('value')) {
+                    throw new SkapiError('"value" is required for "condition".', { code: 'INVALID_PARAMETER' });
+                }
             }
         }
 
@@ -1767,12 +1780,12 @@ export default class Skapi {
                         resolved[convert[k]] = i[k];
                     }
 
-                    if (resolved?.number_of_number_values) {
-                        resolved.average_of_number_values = i.totl_numb / i.cnt_numb;
-                    }
-                    if (resolved?.number_of_boolean_values) {
-                        resolved.average_of_boolean_values = i.totl_bool / i.cnt_bool;
-                    }
+                    // if (resolved?.number_of_number_values) {
+                    //     resolved.average_of_number_values = i.totl_numb / i.cnt_numb;
+                    // }
+                    // if (resolved?.number_of_boolean_values) {
+                    //     resolved.average_of_boolean_values = i.totl_bool / i.cnt_bool;
+                    // }
                 }
 
                 return resolved;

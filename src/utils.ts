@@ -348,7 +348,10 @@ function normalize_record_data(record: Record<string, any>): RecordData {
         },
         'ref': (r: string) => {
             if (!r) return;
-            output.reference = r.split('/')[0];
+            if(!output.hasOwnProperty('reference')) {
+                output.reference = {}
+            }
+            output.reference.record_id = r.split('/')[0];
         },
         'tags': (r: string[]) => {
             output.tags = r;
@@ -357,10 +360,16 @@ function normalize_record_data(record: Record<string, any>): RecordData {
             output.updated = r;
         },
         'acpt_mrf': (r: boolean) => {
-            output.config.allow_multiple_reference = r;
+            if(!output.hasOwnProperty('reference')) {
+                output.reference = {}
+            }
+            output.reference.allow_multiple_reference = r;
         },
         'ref_limt': (r: number) => {
-            output.config.reference_limit = r;
+            if(!output.hasOwnProperty('reference')) {
+                output.reference = {}
+            }
+            output.reference.reference_limit = r;
         },
         'rfd': (r: number) => {
             output.referenced_count = r;
