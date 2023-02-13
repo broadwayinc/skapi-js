@@ -987,7 +987,6 @@ export default class Skapi {
         url: string;
         fetchMore?: boolean;
     }): string | FetchResponse => {
-
         let { params = {}, url, fetchMore = false } = option || {};
         if (params.hasOwnProperty('startKey') && params.startKey) {
             if (
@@ -998,17 +997,9 @@ export default class Skapi {
             }
 
             switch (params.startKey) {
-                case 'end':
-                    // end is always end
-                    // return {
-                    //     list: [],
-                    //     startKey: 'end',
-                    //     endOfList: true
-                    // };
-                    break;
-
                 case 'start':
                     // deletes referenced object key
+                    fetchMore = false;
                     delete params.startKey;
             }
         }
