@@ -283,6 +283,7 @@ export type FetchResponse = {
     list: any[];
     startKey: Record<string, any> | 'end';
     endOfList: boolean;
+    startKey_list?: any[];
 };
 
 export type Service = {
