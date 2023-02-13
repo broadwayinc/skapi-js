@@ -1000,11 +1000,12 @@ export default class Skapi {
             switch (params.startKey) {
                 case 'end':
                     // end is always end
-                    return {
-                        list: [],
-                        startKey: 'end',
-                        endOfList: true
-                    };
+                    // return {
+                    //     list: [],
+                    //     startKey: 'end',
+                    //     endOfList: true
+                    // };
+                    break;
 
                 case 'start':
                     // deletes referenced object key
@@ -1037,7 +1038,6 @@ export default class Skapi {
             }
 
             return MD5.hash(url + '/' + this.service);
-
         })();
 
         if (!fetchMore && this.__startKey_keys?.[url]?.[hashedParams]) {
@@ -1080,7 +1080,8 @@ export default class Skapi {
                 return {
                     list: [],
                     startKey: 'end',
-                    endOfList: true
+                    endOfList: true,
+                    startKey_list: this.__startKey_keys[url][hashedParams]
                 };
             }
 
@@ -1092,7 +1093,7 @@ export default class Skapi {
 
         if (this.__cached_requests?.[url]?.[cache_hashedParams]) {
             // return data if there is cache
-            return this.__cached_requests?.[url]?.[cache_hashedParams];
+            return this.__cached_requests[url][cache_hashedParams];
         }
 
         return hashedParams;
