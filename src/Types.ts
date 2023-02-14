@@ -1,3 +1,48 @@
+
+export type GetRecordQuery = {
+    service?: string;
+    /** When record_id is given, all other parameter is irrelevant. */
+    record_id?: string;
+    table?: string;
+    access_group?: number | 'private';
+    subscription?: {
+        user_id: string;
+        group: number;
+    },
+    index?: {
+        name: string | '$updated' | '$uploaded' | '$referenced_count';
+        value: string | number | boolean;
+        condition?: Condition;
+        range?: string | number | boolean;
+    };
+    tag?: string;
+    /** User ID / Record ID */
+    reference?: string;
+};
+
+export type PostRecordConfig = {
+    /** Record id to be updated. If omited, New record is uploaded. */
+    record_id?: string;
+    table: string;
+    /** 0: Public / 1: For authenticated users / 'private': Only uploaders */
+    access_group: number | 'private';
+    /** Number range: 0 ~ 99 */
+    subscription_group: number;
+    reference?: {
+        /** If 0 is given, record cannot be referenced. If null, is infinite. */
+        reference_limit?: number | null;
+        allow_multiple_reference: boolean;
+    };
+    index: {
+        /** White space not allowed. */
+        name: string;
+        value: string | number | boolean;
+    };
+    tags?: string | string[];
+};
+
+export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+
 export type Connection = {
     /** Connection locale */
     locale: string;
@@ -15,10 +60,10 @@ export type Connection = {
     hash: string;
 };
 
-export type FormCallbacks = {
+export type FormSubmitCallback = {
     response?(response: any): any;
-    onerror?: (error: Error) => any;
-    formData?: (formData: FormData) => Promise<FormData> | FormData;
+    onerror?(error: Error): any;
+    formData?(formData: FormData): Promise<FormData> | FormData;
 };
 
 export type Form = HTMLFormElement | FormData | SubmitEvent | Record<string, any>;
@@ -112,121 +157,14 @@ export interface User extends UserProfile {
     timestamp: number;
 }
 
-export type GetRecordParams = {
-    /** @ignore */
-    service?: string;
-    /** Record ID. When query is by record id, all other parameter is irrelevant. */
-    record_id?:string;
-    /** Table name */
-    table?: string;
-    /**
-     * Query for records that are accessable in certain user groups.
-     * User cannot request access that are higher than the accounts user group.
-     * Queries private records if 'private' is given.
-     * User can only query their own private records or can have access to other private record if access is given.
-     */
-    access_group?: number | 'private';
-    subscription?: {
-        /**
-         * You can fetch records in certain users subscription records.<br>
-         * User will not be able to access the subscription record if the user is not subscribed to the user.
-         */
-        user_id: string;
-        /**
-         * Target subscription group number.<br>
-         * User will not be able to access subscription group if the user is not subscribed to the group.<br>
-         */
-        group: number;
-    },
-    index?: {
-        /** 
-         * Index name. Queries list of nested index key if index name ends with period.<br>
-         * As example below, you can query all movies under the index name director.spielberg...<br>
-         * ex) director.spielberg.<br>
-         * Reserved index names are: '$updated' | '$uploaded' | '$referenced_count'
-         * */
-        name: string | '$updated' | '$uploaded' | '$referenced_count';
-        /**
-         * Index value to search based on the index name.<br>
-         * If the index name is a index key name search value type must be string.
-         */
-        value: string | number | boolean;
-        /** Search condition. Defaults to '='.*/
-        condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
-        /** 
-         * Range of search. <br>
-         * Range does not work with conditions.
-         */
-        range?: string | number | boolean;
-    };
-    /** 
-     * Queries record that includes given tag
-     */
-    tag?: string;
-    /**
-     * Queries records that are referencing other record ids.<br>
-     * If user id is given, you can get all records uploaded by certain user.
-     */
-    reference?: string;
-};
-
-export type PostRecordParams = {
-    /** Record id to be updated. If omited, New record is uploaded. */
-    record_id?: string;
-    /** Table name */
-    table: string;
-    /** 
-     * Access group.<br>
-     * When number is given, user of corresponding service group has access to the record.<br>
-     * User cannot set access_group number higher then the accounts service group.<br>
-     * When 'private' is given, record is private.
-     */
-    access_group: number | 'private';
-    /** 
-     * Subscription group to allow access.<br>
-     * When value is given, the record is only accessable to user who is subscribed the corresponding group.
-     */
-    subscription_group: number;
-    /**
-     * Record id to reference.<br>
-     * If the reference record is private or subscription record, user must have access.<br>
-     * When the subscription or private record is referenced,
-     * the record does not get uploaded to the source subscription table since subscription record is only uploaded to the uploaders subscription table.<br>
-     * In other words, if you upload a record with reference, with given subscription group number,
-     * users wont be able to query all referenced record from the source since some of the referenced records will be in each individual subscription table.<br>
-     * If record is referencing a private record and uploaded as private,
-     * Any user who has access to the referenced record will also have access to all private referencing records.
-     */
-    reference?: string;
-    index: {
-        /** Index name. When ending with period, searches for nested key names ex) director. */
-        name: string;
-        /** Index value */
-        value: string | number | boolean;
-    };
-    /** Tags */
-    tags?: string | string[];
-    config?: {
-        /** Limits possible number of references. If 0 is given, record cannot be referenced. */
-        reference_limit?: number;
-        /** When true, allows users to upload multiple record that references the current record. */
-        allow_multiple_reference?: boolean;
-        /** List of user id to allow private access. */
-        private_access?: string | string[];
-    };
-};
-
 export type RecordData = {
-    /** Record id */
     record_id: string;
-    /** Table name of the record */
     table: string;
-    /** Record access group */
     access_group: number | 'private';
     subscription: {
-        /** Subscription id */
+        /** Subscription id of current record */
         user_id: string;
-        /** Subscription group */
+        /** Subscription group or current record */
         group: number;
     };
     /** Uploaded timestamp */
@@ -237,23 +175,17 @@ export type RecordData = {
     updated: number;
     /** Number of record referencing this record. */
     referenced_count: number;
-    config: {
-        /** Allows multiple reference if true. */
+    reference?: {
+        /** Record id that current record is referencing. */
+        record_id: string;
         allow_multi_reference: boolean;
-        /** Allows referencing if true. */
         reference_limit: number;
     };
-    /** Record id that the record is referencing. */
-    reference?: string;
-    /** Data of the record */
     data?: any;
     index?: {
-        /** Name of the index */
         name: string;
-        /** Value of the index */
         value: string | number | boolean;
     };
-    /** List of tags of the record. */
     tags?: string[];
 };
 
@@ -276,14 +208,14 @@ export type FetchOptions = {
     /** Result in ascending order if true, decending when false. */
     ascending?: boolean;
     /** StartKey key object can be used to query from the certain page of fetch. If refresh is true, will overwrite startKey to start. Only works on paginated queries.*/
-    startKey?: Record<string, any>;
+    startKey?: string;
 };
 
-export type FetchResponse = {
+export type DatabaseResponse = {
     list: any[];
     startKey: Record<string, any> | 'end';
     endOfList: boolean;
-    startKey_list?: any[];
+    startKey_list: any[];
 };
 
 export type Service = {
@@ -343,8 +275,7 @@ export type Service = {
 };
 
 export type SubscriptionGroup = {
-    /** User id. */
     user_id: string;
-    /** Target group number (1 ~ 9). '*' is given, will apply to all groups. */
+    /** Number range: 0 ~ 99 */
     group: number | '*';
 };

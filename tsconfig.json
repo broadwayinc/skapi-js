@@ -1,17 +1,16 @@
 {
   "files": [
-    "./src/Api.ts"
+    "src/Main.ts"
   ],
   "typedocOptions": {
     "entryPoints": [
-      "src/Api.ts",
+      "src/methods/database.ts",
+      "src/methods/subscription.ts",
+      "src/methods/request.ts",
       "src/Types.ts"
     ],
     "out": "docs",
-    "excludePrivate": true,
-    "name": "Skapi Documentation",
-    "categorizeByGroup": true,
-    "excludeProtected": true,
+    "name": "skapi"
   },
   "compilerOptions": {
     /* Visit https://aka.ms/tsconfig to read more about this file */
@@ -59,7 +58,6 @@
     // "declarationMap": true,                           /* Create sourcemaps for d.ts files. */
     // "emitDeclarationOnly": true,                      /* Only output d.ts files and not JavaScript files. */
     // "sourceMap": true,                                /* Create source map files for emitted JavaScript files. */
-    "sourceMap": true,
     // "outFile": "./",                                  /* Specify a file that bundles all outputs into one JavaScript file. If 'declaration' is true, also designates a file that bundles all .d.ts output. */
     // "outDir": "./",                                   /* Specify an output folder for all emitted files. */
     "outDir": "./js",
@@ -95,8 +93,10 @@
     "strictNullChecks": false,
     // "strictFunctionTypes": true,                      /* When assigning functions, check to ensure parameters and the return values are subtype-compatible. */
     // "strictBindCallApply": true,                      /* Check that the arguments for 'bind', 'call', and 'apply' methods match the original function. */
+    "strictBindCallApply": false,                      /* Check that the arguments for 'bind', 'call', and 'apply' methods match the original function. */
     // "strictPropertyInitialization": true,             /* Check for class properties that are declared but not set in the constructor. */
     // "noImplicitThis": true,                           /* Enable error reporting when 'this' is given the type 'any'. */
+    "noImplicitThis": false,                           /* Enable error reporting when 'this' is given the type 'any'. */
     // "useUnknownInCatchVariables": true,               /* Default catch clause variables as 'unknown' instead of 'any'. */
     // "alwaysStrict": true,                             /* Ensure 'use strict' is always emitted. */
     // "noUnusedLocals": true,                           /* Enable error reporting when local variables aren't read. */

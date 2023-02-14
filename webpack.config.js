@@ -3,17 +3,18 @@ module.exports = [{
     // cdn
     mode: 'production',
     target: 'web',
-    entry: './js/Api.js',
+    entry: './js/Main.js',
     output: {
         filename: 'skapi.js',
         libraryTarget: 'umd'
     },
     devtool: 'source-map'
-}, {
+},
+{
     // webpack
     mode: 'production',
     target: 'web',
-    entry: './js/Api.js',
+    entry: './js/Main.js',
     output: {
         filename: 'skapi.module.js',
         libraryTarget: 'module'
