@@ -331,6 +331,7 @@ export default class Skapi {
     getProfile = getProfile.bind(this);
     checkAdmin = checkAdmin.bind(this);
     getBlob = getBlob.bind(this);
+    request = request.bind(this);
     secureRequest = secureRequest.bind(this);
     mock = mock.bind(this);
     getFormResponse = getFormResponse.bind(this);

@@ -277,11 +277,11 @@ export async function postRecord(
         throw new SkapiError(['INVALID_PARAMETER', '"config" argument is required.']);
     }
 
-    let { formData } = config;
     let fetchOptions: Record<string, any> = {};
 
-    if (typeof formData === 'function') {
-        fetchOptions.formData = formData;
+    if (typeof config?.formData === 'function') {
+        fetchOptions.formData = config.formData;
+        delete config.formData;
     }
 
     config = validator.Params(config || {}, {
@@ -363,7 +363,7 @@ export async function postRecord(
 
             return v;
         }
-    }, [], ['response', 'formData', 'onerror']);
+    }, [], ['response', 'onerror']);
 
     if (typeof config?.access_group === 'number' && this.user.access_group < config.access_group) {
         throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
@@ -375,7 +375,6 @@ export async function postRecord(
 
     // callbacks should be removed after checkparams
     delete config.response;
-    delete config.formData;
     delete config.onerror;
 
     if (config?.table === '') {
