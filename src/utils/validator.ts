@@ -209,7 +209,7 @@ function Params(
         return obj && typeof obj === 'object' && !Array.isArray(obj) && !Object.keys(obj).length;
     }
 
-    let _params = params; // processed params
+    let _params = params; // params to process
     let val: any; // value to return
     let errToThrow: any = null; // error msg to output
     let isInvalid = _parentKey ? ` in "${_parentKey}" is invalid.` : '. Parameter should be type <object>.';

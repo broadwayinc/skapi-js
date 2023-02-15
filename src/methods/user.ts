@@ -712,7 +712,7 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
         fetchOptions.ascending = false;
     }
 
-    let isAdmin = await this.checkAdmin();
+    let isAdmin = await checkAdmin.bind(this)();
 
     if (isAdmin && !params.hasOwnProperty('service')) {
         throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
