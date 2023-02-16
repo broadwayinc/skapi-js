@@ -92,6 +92,7 @@ export async function request(
                 case 'mock':
                 case 'get-services':
                 case 'service':
+                case 'grant-access':
                     return {
                         public: admin.admin_public,
                         private: admin.admin_private
