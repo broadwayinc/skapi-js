@@ -1,5 +1,4 @@
 import {
-    SubscriptionGroup,
     DatabaseResponse,
     FetchOptions,
     FormSubmitCallback,
@@ -9,6 +8,12 @@ import {
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { request } from './request';
+
+type SubscriptionGroup = {
+    user_id: string;
+    /** Number range: 0 ~ 99. '*' means all groups. */
+    group?: number | '*';
+};
 
 function subscriptionGroupCheck(option: SubscriptionGroup) {
     option = validator.Params(option, {
