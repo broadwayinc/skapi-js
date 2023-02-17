@@ -1,52 +1,84 @@
+export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
 
-export type GetRecordQuery = {
-    service?: string;
-    /** When record_id is given, all other parameter is irrelevant. */
-    record_id?: string;
-    table?: string;
+type Subscription = {
+    user_id: string;
+    /** Number range: 0 ~ 99 */
+    group: number;
+}
+
+type DatabaseTable = {
+    /** Not allowed: Special characters. Allowed: White space. periods.*/
+    name: string;
+    /** Number range: 0 ~ 99 */
     access_group?: number | 'private';
-    subscription?: {
-        user_id: string;
-        group: number;
-    },
-    index?: {
-        name: string | '$updated' | '$uploaded' | '$referenced_count';
+}
+
+type Database<Ref, Idx> = {
+    /** @ignore */
+    service?: string; // Only for admins.
+    reference?: Ref;
+    index?: Idx;
+}
+
+export type GetRecordQuery = Database<
+    /** Referenced record ID | user ID. */
+    string,
+    {
+        /** Not allowed: White space, special characters. Allowed: Periods. */
+        name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
+        /** Not allowed: Periods, special characters. Allowed: White space. */
         value: string | number | boolean;
         condition?: Condition;
         range?: string | number | boolean;
-    };
-    tag?: string;
-    /** User ID / Record ID */
-    reference?: string;
-};
-
-export type PostRecordConfig = {
-    /** Record id to be updated. If omited, New record is uploaded. */
+    }
+> & {
+    /** Optional only if record_id is present. */
+    table?: DatabaseTable & { subscription?: Subscription; };
     record_id?: string;
-    table: string;
-    /** 0: Public / 1: For authenticated users / 'private': Only uploaders */
-    access_group: number | 'private';
-    /** Number range: 0 ~ 99 */
-    subscription_group: number;
-    reference?: {
-        /** If 0 is given, record cannot be referenced. If null, is infinite. */
-        reference_limit?: number | null;
-        allow_multiple_reference: boolean;
-    };
-    index: {
-        /** White space not allowed. */
-        name: string;
-        value: string | number | boolean;
-    };
-    tags?: string | string[];
+    /** Not allowed: Periods, special characters. Allowed: White space. */
+    tag?: string;
 };
 
-export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+type RecordConfig = Database<
+    {
+        /** referenced record_id */
+        record_id: string;
+        /** If 0 is given, the record cannot be referenced. If null, can be referenced infinite times. */
+        reference_limit?: number | null;
+        /** If false, prevents same user referencing this record multiple times. */
+        allow_multiple_reference?: boolean;
+    },
+    {
+        /** Not allowed: White space, special characters. Allowed: Periods. */
+        name: string;
+        /** Not allowed: Periods, special characters. Allowed: White space. */
+        value: string | number | boolean;
+    }
+>
+
+export type PostRecordConfig = RecordConfig & {
+    /** Optional only if record_id is present. */
+    table?: DatabaseTable & { subscription_group?: number; };
+    record_id?: string;
+    /** Not allowed: Periods, special characters. Allowed: White space. */
+    tags?: string | string[];
+}
+
+export type RecordData = RecordConfig & {
+    table: DatabaseTable & { subscription_group?: number; };
+    record_id: string;
+    user_id: string;
+    updated: number;
+    uploaded: number;
+    referenced_count: number;
+    data?: Record<string, any>;
+    tags?: string[];
+};
 
 export type Connection = {
-    /** Connection locale */
+    /** User's locale */
     locale: string;
-    /** User ID of the service owner */
+    /** Service owner's ID */
     owner: string;
     /** E-Mail address of the service owner */
     email: string;
@@ -157,38 +189,6 @@ export interface User extends UserProfile {
     timestamp: number;
 }
 
-export type RecordData = {
-    record_id: string;
-    table: string;
-    access_group: number | 'private';
-    subscription: {
-        /** Subscription id of current record */
-        user_id: string;
-        /** Subscription group or current record */
-        group: number;
-    };
-    /** Uploaded timestamp */
-    uploaded: number;
-    /** User id of the record owner */
-    user_id: string;
-    /** Updated timestamp */
-    updated: number;
-    /** Number of record referencing this record. */
-    referenced_count: number;
-    reference?: {
-        /** Record id that current record is referencing. */
-        record_id: string;
-        allow_multi_reference: boolean;
-        reference_limit: number;
-    };
-    data?: any;
-    index?: {
-        name: string;
-        value: string | number | boolean;
-    };
-    tags?: string[];
-};
-
 export type QueryParams = {
     /** Index name to search. */
     searchFor: string;
@@ -201,21 +201,21 @@ export type QueryParams = {
 };
 
 export type FetchOptions = {
-    /** Number of records to fetch per call */
+    /** Maximum number of records to fetch per call */
     limit?: number;
-    /** Fetch next batch of data. Only works on paginated queries. */
+    /** Fetch next batch of data. Will return empty list if there is nothing more to fetch. */
     fetchMore?: boolean;
     /** Result in ascending order if true, decending when false. */
     ascending?: boolean;
-    /** StartKey key object can be used to query from the certain page of fetch. If refresh is true, will overwrite startKey to start. Only works on paginated queries.*/
+    /** Start key to be used to query from the certain batch of fetch. */
     startKey?: string;
 };
 
 export type DatabaseResponse = {
     list: any[];
-    startKey: Record<string, any> | 'end';
+    startKey: string;
     endOfList: boolean;
-    startKey_list: any[];
+    startKey_list: string[];
 };
 
 export type Service = {
@@ -270,12 +270,6 @@ export type Service = {
         /** Sets template of welcome E-Mail. */
         template_welcome: string;
     };
-    /** Number of user in the service. */
+    /** Number of users in the service. */
     users: number;
-};
-
-export type SubscriptionGroup = {
-    user_id: string;
-    /** Number range: 0 ~ 99 */
-    group: number | '*';
 };
