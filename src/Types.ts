@@ -1,79 +1,89 @@
 export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
 
-type Subscription = {
-    user_id: string;
-    /** Number range: 0 ~ 99 */
-    group: number;
-}
-
-type DatabaseTable = {
-    /** Not allowed: Special characters. Allowed: White space. periods.*/
-    name: string;
-    /** Number range: 0 ~ 99 */
-    access_group?: number | 'private';
-}
-
-type Database<Ref, Idx> = {
+type Database<Tbl, Idx, Ref> = {
     /** @ignore */
     service?: string; // Only for admins.
+    record_id?: string;
+    table?: Tbl;
     reference?: Ref;
-    index?: Idx;
-}
-
-export type GetRecordQuery = Database<
-    /** Referenced record ID | user ID. */
-    string,
-    {
+    index?: {
         /** Not allowed: White space, special characters. Allowed: Periods. */
         name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
         /** Not allowed: Periods, special characters. Allowed: White space. */
         value: string | number | boolean;
-        condition?: Condition;
-        range?: string | number | boolean;
-    }
-> & {
-    /** Optional only if record_id is present. */
-    table?: DatabaseTable & { subscription?: Subscription; };
-    record_id?: string;
-    /** Not allowed: Periods, special characters. Allowed: White space. */
-    tag?: string;
+    } & Idx;
 };
 
-type RecordConfig = Database<
+export type GetRecordQuery = Database<
     {
-        /** referenced record_id */
-        record_id: string;
-        /** If 0 is given, the record cannot be referenced. If null, can be referenced infinite times. */
-        reference_limit?: number | null;
-        /** If false, prevents same user referencing this record multiple times. */
-        allow_multiple_reference?: boolean;
+        /** Not allowed: Special characters. Allowed: White space. periods.*/
+        name: string;
+        /** Number range: 0 ~ 99 */
+        access_group: number | 'private';
+        subscription?: {
+            user_id: string;
+            /** Number range: 0 ~ 99 */
+            group: number;
+        };
     },
     {
-        /** Not allowed: White space, special characters. Allowed: Periods. */
+        condition?: Condition;
+        range?: string | number | boolean;
+    },
+    /** Referenced record ID | user ID. */
+    string
+> & { tag?: string; };
+
+export type PostRecordConfig = Database<
+    {
+        /** Not allowed: Special characters. Allowed: White space. periods.*/
         name: string;
-        /** Not allowed: Periods, special characters. Allowed: White space. */
-        value: string | number | boolean;
+        /** Number range: 0 ~ 99 */
+        access_group: number | 'private';
+        subscription_group?: number;
+    },
+    {},
+    /** Referenced record ID | user ID. */
+    {
+        record_id: string;
+        reference_limit: number;
+        allow_multiple_reference: boolean;
     }
->
+> & { tags?: string[]; };
 
-export type PostRecordConfig = RecordConfig & {
-    /** Optional only if record_id is present. */
-    table?: DatabaseTable & { subscription_group?: number; };
-    record_id?: string;
-    /** Not allowed: Periods, special characters. Allowed: White space. */
-    tags?: string | string[];
-}
-
-export type RecordData = RecordConfig & {
-    table: DatabaseTable & { subscription_group?: number; };
+export type RecordData = {
+    service: string;
     record_id: string;
+    /** Uploader's user ID. */
     user_id: string;
     updated: number;
     uploaded: number;
-    referenced_count: number;
+    table: {
+        /** Not allowed: Special characters. Allowed: White space. periods.*/
+        name: string;
+        /** Number range: 0 ~ 99 */
+        access_group: number | 'private';
+        subscription?: {
+            user_id: string;
+            /** Number range: 0 ~ 99 */
+            group: number;
+        };
+    },
+    reference: {
+        record_id?: string;
+        reference_limit: number;
+        allow_multiple_reference: boolean;
+        referenced_count: number;
+    },
+    index?: {
+        name: string;
+        value: string | number | boolean;
+    },
     data?: Record<string, any>;
     tags?: string[];
+    ip: string
 };
+
 
 export type Connection = {
     /** User's locale */

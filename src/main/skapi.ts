@@ -149,6 +149,7 @@ export default class Skapi {
     }
 
     constructor(service_id: string, service_owner: string, options?: { autoLogin: boolean; }) {
+        console.log('%cskapi nightly build-1', 'color: blue');
         if (typeof service_id !== 'string' || typeof service_owner !== 'string') {
             throw new SkapiError('"service_id" and "service_owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
