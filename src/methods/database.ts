@@ -23,9 +23,20 @@ function normalizeRecord(record: Record<string, any>): RecordData {
     }
 
     const output: Record<string, any> = {
-        config: {
-            reference_limit: null
-        }
+        service: '',
+        user_id: '',
+        updated: 0,
+        uploaded: 0,
+        table: {
+            name: '',
+            access_group: 0
+        },
+        reference: {
+            reference_limit: null,
+            allow_multiple_reference: true,
+            referenced_count: 0
+        },
+        ip: ''
     };
 
     const keys = {
@@ -45,10 +56,10 @@ function normalizeRecord(record: Record<string, any>): RecordData {
         'tbl': (r: string) => {
             if (!r) return;
             let rSplit = r.split('/');
-            output.table = rSplit[0];
-            output.access_group = rSplit[2] == '**' ? 'private' : parseInt(rSplit[2]);
+            output.table.name = rSplit[0];
+            output.table.access_group = rSplit[2] == '**' ? 'private' : parseInt(rSplit[2]);
             if (rSplit?.[3]) {
-                output.subscription = {
+                output.table.subscription = {
                     user_id: rSplit[3],
                     group: parseInt(rSplit[4])
                 };
@@ -66,9 +77,6 @@ function normalizeRecord(record: Record<string, any>): RecordData {
         },
         'ref': (r: string) => {
             if (!r) return;
-            if (!output.hasOwnProperty('reference')) {
-                output.reference = {};
-            }
             output.reference.record_id = r.split('/')[0];
         },
         'tags': (r: string[]) => {
@@ -78,19 +86,13 @@ function normalizeRecord(record: Record<string, any>): RecordData {
             output.updated = r;
         },
         'acpt_mrf': (r: boolean) => {
-            if (!output.hasOwnProperty('reference')) {
-                output.reference = {};
-            }
             output.reference.allow_multiple_reference = r;
         },
         'ref_limt': (r: number) => {
-            if (!output.hasOwnProperty('reference')) {
-                output.reference = {};
-            }
             output.reference.reference_limit = r;
         },
         'rfd': (r: number) => {
-            output.referenced_count = r;
+            output.reference.referenced_count = r;
         },
         'data': (r: any) => {
             let data = r;
@@ -151,21 +153,23 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
     };
 
     const struct = {
-        table: 'string',
-        reference: 'string',
-        access_group: ['number', 'private'],
-        subscription: {
-            user_id: (v: string) => validator.UserId(v, 'User ID in "subscription.user_id"'),
-            group: (v: number) => {
-                if (typeof v !== 'number') {
-                    throw new SkapiError('"subscription.group" should be type: number.', { code: 'INVALID_PARAMETER' });
+        table: {
+            name: 'string',
+            access_group: ['number', 'private'],
+            subscription: {
+                user_id: (v: string) => validator.UserId(v, 'User ID in "subscription.user_id"'),
+                group: (v: number) => {
+                    if (typeof v !== 'number') {
+                        throw new SkapiError('"subscription.group" should be type: number.', { code: 'INVALID_PARAMETER' });
+                    }
+                    if (v > 99 || v < 0) {
+                        throw new SkapiError('"subscription.group" should be within range: 0 ~ 99.', { code: 'INVALID_PARAMETER' });
+                    }
+                    return v;
                 }
-                if (v > 99 || v < 0) {
-                    throw new SkapiError('"subscription.group" should be within range: 0 ~ 99.', { code: 'INVALID_PARAMETER' });
-                }
-                return v;
             }
         },
+        reference: 'string',
         index: {
             name: (v: string) => {
                 if (typeof v !== 'string') {
@@ -247,12 +251,12 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
         }
 
         query = validator.Params(query || {}, struct, ref_user ? [] : ['table']);
-        if (query?.subscription && !this.session) {
+        if (query.table.subscription && !this.session) {
             throw new SkapiError('Requires login.', { code: 'INVALID_REQUEST' });
         }
     }
 
-    let auth = query.hasOwnProperty('access_group') && query.access_group ? true : !!this.__user;
+    let auth = query.hasOwnProperty('access_group') && query.table.access_group ? true : !!this.__user;
     let result = await request.bind(this)(
         'get-records',
         query,
@@ -286,9 +290,11 @@ export async function postRecord(
 
     config = validator.Params(config || {}, {
         record_id: 'string',
-        access_group: ['number', 'private'],
-        table: 'string',
-        subscription_group: ['number', null],
+        table: {
+            name: 'string',
+            subscription_group: ['number', null],
+            access_group: ['number', 'private']
+        },
         reference: {
             record_id: ['string', null],
             reference_limit: (v: number) => {
@@ -335,59 +341,44 @@ export async function postRecord(
             }
 
             throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
-        },
-        private_access: (v: string | string[]) => {
-            let param = 'config.private_access';
-
-            if (v === null) {
-                return null;
-            }
-
-            if (v && typeof v === 'string') {
-                v = [v];
-            }
-
-            if (Array.isArray(v)) {
-                for (let u of v) {
-                    validator.UserId(u, `User ID in "${param}"`);
-
-                    if (this.__user && u === this.__user.user_id) {
-                        throw new SkapiError(`"${param}" should not be the uploader's user ID.`, { code: 'INVALID_PARAMETER' });
-                    }
-                }
-            }
-
-            else {
-                throw new SkapiError(`"${param}" should be an array of user ID.`, { code: 'INVALID_PARAMETER' });
-            }
-
-            return v;
         }
     }, [], ['response', 'onerror']);
 
-    if (typeof config?.access_group === 'number' && this.user.access_group < config.access_group) {
-        throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
+    if (!config?.table && !config?.record_id) {
+        throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (typeof config?.subscription_group === 'number' && config.subscription_group < 0 || config.subscription_group > 99) {
-        throw new SkapiError("Subscription group should be within range: 0 ~ 99", { code: 'INVALID_PARAMETER' });
+    if (config.table) {
+        if (typeof config.table.access_group === 'number' && this.user.access_group < config.table.access_group) {
+            throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
+        }
+
+        if (typeof config.table.subscription_group === 'number' && config.table.subscription_group < 0 || config.table.subscription_group > 99) {
+            throw new SkapiError("Subscription group should be within range: 0 ~ 99", { code: 'INVALID_PARAMETER' });
+        }
+
+        if (!config.table.name) {
+            throw new SkapiError('"table.name" cannot be empty string.', { code: 'INVALID_PARAMETER' });
+        }
+
+        if (isAdmin) {
+            if (config.table.access_group === 'private') {
+                throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
+            }
+
+            if (config.table.hasOwnProperty('subscription_group')) {
+                throw new SkapiError('Service owner cannot write to subscription table.', { code: 'INVALID_REQUEST' });
+            }
+        }
     }
 
     // callbacks should be removed after checkparams
     delete config.response;
     delete config.onerror;
 
-    if (config?.table === '') {
-        throw new SkapiError('"table" cannot be empty string.', { code: 'INVALID_PARAMETER' });
-    }
-
-    if (!config?.table && !config?.record_id) {
-        throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
-    }
-
-    if (config?.index) {
+    if (config.index) {
         // index name allows periods. white space is invalid.
-        if (!config.index?.name || typeof config.index?.name !== 'string') {
+        if (!config.index.name || typeof config.index.name !== 'string') {
             throw new SkapiError('"index.name" is required. type: string.', { code: 'INVALID_PARAMETER' });
         }
 
@@ -406,16 +397,6 @@ export async function postRecord(
             if (config.index.value > __index_number_range || config.index.value < -__index_number_range) {
                 throw new SkapiError(`Number value should be within range -${__index_number_range} ~ +${__index_number_range}`, { code: 'INVALID_PARAMETER' });
             }
-        }
-    }
-
-    if (isAdmin) {
-        if (config?.access_group === 'private') {
-            throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (config.hasOwnProperty('subscription_group')) {
-            throw new SkapiError('Service owner cannot write to subscription table.', { code: 'INVALID_REQUEST' });
         }
     }
 

@@ -439,7 +439,7 @@ export async function resetPassword(form: Form | {
         code = code.toString();
     }
 
-    return new Promise(async function (res, rej) {
+    return new Promise(async (res, rej) => {
         let cognitoUser = (await authentication.bind(this)().createCognitoUser(params.email)).cognitoUser;
 
         cognitoUser.confirmPassword(code, new_password, {
