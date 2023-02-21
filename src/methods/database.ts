@@ -251,7 +251,7 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
         }
 
         query = validator.Params(query || {}, struct, ref_user ? [] : ['table']);
-        if (query.table.subscription && !this.session) {
+        if (query.table?.subscription && !this.session) {
             throw new SkapiError('Requires login.', { code: 'INVALID_REQUEST' });
         }
     }
@@ -353,10 +353,6 @@ export async function postRecord(
             throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
         }
 
-        if (typeof config.table.subscription_group === 'number' && config.table.subscription_group < 0 || config.table.subscription_group > 99) {
-            throw new SkapiError("Subscription group should be within range: 0 ~ 99", { code: 'INVALID_PARAMETER' });
-        }
-
         if (!config.table.name) {
             throw new SkapiError('"table.name" cannot be empty string.', { code: 'INVALID_PARAMETER' });
         }
@@ -369,6 +365,10 @@ export async function postRecord(
             if (config.table.hasOwnProperty('subscription_group')) {
                 throw new SkapiError('Service owner cannot write to subscription table.', { code: 'INVALID_REQUEST' });
             }
+        }
+
+        if (typeof config.table?.subscription_group === 'number' && config.table.subscription_group < 0 || config.table.subscription_group > 99) {
+            throw new SkapiError("Subscription group should be within range: 0 ~ 99", { code: 'INVALID_PARAMETER' });
         }
     }
 
