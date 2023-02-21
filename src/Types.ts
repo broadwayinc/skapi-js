@@ -81,7 +81,7 @@ export type RecordData = {
     },
     data?: Record<string, any>;
     tags?: string[];
-    ip: string
+    ip: string;
 };
 
 
