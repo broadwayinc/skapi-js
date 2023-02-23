@@ -453,8 +453,9 @@ export async function resetPassword(form: Form | {
     });
 }
 
-export async function verifyAttribute(attribute: string, form, code?: string): Promise<string> {
+export async function verifyAttribute(attribute: string, form: Form & { code: string; }): Promise<string> {
     await this.__connection;
+    let code: string;
 
     if (!cognitoUser) {
         throw new SkapiError('The user has to be logged in.', { code: 'INVALID_REQUEST' });
@@ -466,7 +467,7 @@ export async function verifyAttribute(attribute: string, form, code?: string): P
         }
 
         code = (form ? validator.Params(form, {
-            code: ['number', 'string']
+            code: ['string']
         }) : {}).code || '';
     }
     else {
@@ -817,4 +818,14 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
     }
 
     return request.bind(this)('get-users', params, { auth: true, fetchOptions });
+}
+
+export async function lastVerifiedEmail(params: { recover: boolean; }): Promise<string | UserProfile> {
+    await this.__connection;
+    let res = await request.bind(this)('last-verified-email', params, { auth: true });
+    if (res.includes('SUCCESS')) {
+        await authentication.bind(this)().getSession({ refreshToken: true });
+        return this.user;
+    }
+    return res;
 }

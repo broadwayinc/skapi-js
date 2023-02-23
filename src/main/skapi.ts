@@ -47,7 +47,8 @@ import {
     updateProfile,
     getUsers,
     setUserPool,
-    userPool
+    userPool,
+    lastVerifiedEmail
 } from '../methods/user';
 
 export default class Skapi {
@@ -360,6 +361,9 @@ export default class Skapi {
     @formHandler()
     verifyPhoneNumber(...args) {
         return verifyAttribute.bind(this)('phone_number', ...args);
+    }
+    lastVerifiedEmail(...args) {
+        return lastVerifiedEmail.bind(this)(...args);
     }
     @formHandler()
     forgotPassword(...args) { return forgotPassword.bind(this)(...args); }
