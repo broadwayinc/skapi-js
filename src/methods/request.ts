@@ -25,7 +25,6 @@ export async function request(
         contentType?: string;
     }
 ): Promise<any> {
-
     options = options || {};
 
     let {
