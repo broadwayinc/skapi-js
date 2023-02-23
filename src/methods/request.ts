@@ -92,6 +92,7 @@ export async function request(
                 case 'get-services':
                 case 'service':
                 case 'grant-access':
+                case 'last-verified-email':
                     return {
                         public: admin.admin_public,
                         private: admin.admin_private
