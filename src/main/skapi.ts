@@ -48,7 +48,8 @@ import {
     getUsers,
     setUserPool,
     userPool,
-    lastVerifiedEmail
+    lastVerifiedEmail,
+    requestUsernameChange
 } from '../methods/user';
 
 export default class Skapi {
@@ -384,4 +385,5 @@ export default class Skapi {
     @formHandler()
     subscribeNewsletter(...args) { return subscribeNewsletter.bind(this)(...args); }
     getNewsletters = getNewsletters.bind(this);
+    requestUsernameChange(...args) { return requestUsernameChange.bind(this)(...args); }
 }
