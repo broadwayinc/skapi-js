@@ -820,7 +820,15 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
     return request.bind(this)('get-users', params, { auth: true, fetchOptions });
 }
 
-export async function lastVerifiedEmail(params: { recover: boolean; }): Promise<string | UserProfile> {
+/**
+ * Not official. Bleeding edge.<br>
+ * Retrieves, reverts e-mail to last verified email.<br>
+ * @returns Last verified e-mail address, or updated userProfile when params.revert is true.
+ */
+export async function lastVerifiedEmail(params?: {
+    /** Reverts to last verified e-mail when true. */
+    revert: boolean;
+}): Promise<string | UserProfile> {
     await this.__connection;
     let res = await request.bind(this)('last-verified-email', params, { auth: true });
     if (res.includes('SUCCESS')) {
@@ -831,15 +839,19 @@ export async function lastVerifiedEmail(params: { recover: boolean; }): Promise<
 }
 
 /**
- * (Not official. Bleeding edge.)
- * Requests username(e-mail) change.
- * skapi server will send username change confirmation e-mail to user.
- * Username will not be changed when the user did not confirm.
- * Confirmation e-mail is valid within 24 hours.
- * In order to update user's email status after user has click on the email link, you can run skapi.getProfile( { refreshToken: true } )
- * @returns 'SUCCESS: ...'
+ * Not official. Bleeding edge.<br>
+ * Requests username(e-mail) change.<br>
+ * skapi server will send username change confirmation e-mail to user.<br>
+ * Username will not be changed when the user did not confirm.<br>
+ * Confirmation e-mail is valid within 24 hours.<br>
+ * In order to update user's email status after user has click on the email link, you can run skapi.getProfile( { refreshToken: true } )<br>
  */
-export async function requestUsernameChange(params: { redirect: string; username: string; }): Promise<'SUCCESS: ...'> {
+export async function requestUsernameChange(params: {
+    /** Redirect URL when user clicks on the link. */
+    redirect?: string;
+    /** username(e-mail) user wish to change to. */
+    username: string;
+}): Promise<'SUCCESS: ...'> {
     await this.__connection;
 
     params = validator.Params(params, {
