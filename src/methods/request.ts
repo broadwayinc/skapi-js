@@ -93,6 +93,7 @@ export async function request(
                 case 'service':
                 case 'grant-access':
                 case 'last-verified-email':
+                case 'request-username-change':
                     return {
                         public: admin.admin_public,
                         private: admin.admin_private
