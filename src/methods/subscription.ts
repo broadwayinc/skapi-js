@@ -261,7 +261,7 @@ export async function getSubscribers(option: SubscriptionGroup, fetchOptions: Fe
  * ```
  */
 export function subscribeNewsletter(
-    form: Form | {
+    form: Form<{
         /** Newsletter subscriber's E-Mail. 64 character max. */
         email: string,
         /**
@@ -271,7 +271,7 @@ export function subscribeNewsletter(
          * Refer: <a href="www.google.com">Setting up E-Mail templates</a><br>
          */
         bypassWelcome: boolean;
-    },
+    }>,
     fetchOptions: FormSubmitCallback
 ): Promise<string> {
     let params = validator.Params(

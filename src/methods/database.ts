@@ -152,6 +152,12 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
         '$referenced_count': 'number'
     };
 
+    if (typeof query?.table === 'string') {
+        query.table = {
+            name: query.table
+        };
+    }
+
     const struct = {
         table: {
             name: 'string',
@@ -273,7 +279,7 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
 };
 
 export async function postRecord(
-    form: Form | null | undefined,
+    form: Form<Record<string, any>> | null | undefined,
     config: PostRecordConfig & FormSubmitCallback
 ): Promise<RecordData> {
     let isAdmin = await this.checkAdmin();

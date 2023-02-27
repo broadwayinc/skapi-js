@@ -19,7 +19,7 @@ export type GetRecordQuery = Database<
         /** Not allowed: Special characters. Allowed: White space. periods.*/
         name: string;
         /** Number range: 0 ~ 99 */
-        access_group: number | 'private';
+        access_group?: number | 'private';
         subscription?: {
             user_id: string;
             /** Number range: 0 ~ 99 */
@@ -108,7 +108,7 @@ export type FormSubmitCallback = {
     formData?(formData: FormData): Promise<FormData> | FormData;
 };
 
-export type Form = HTMLFormElement | FormData | SubmitEvent | Record<string, any>;
+export type Form<T> = HTMLFormElement | FormData | SubmitEvent | T;
 
 export type Newsletters = {
     /** Newsletter id */
@@ -132,17 +132,9 @@ export type Newsletters = {
     url: string;
 };
 
-export type UserProfile = {
-    /** Service id of the user account. */
-    service: string;
-    /** User ID of the service owner. */
-    service_owner?: string;
-    /** Access level of the user's account. */
-    access_group?: number;
-    /** User's ID. */
-    user_id: string;
-    /** Country code of where user signed up from. */
-    locale: string;
+export type UserAttributes = {
+    /** User's name */
+    name?: string;
     /**
      * User's E-Mail for signin.<br>
      * 64 character max.<br>
@@ -151,8 +143,6 @@ export type UserProfile = {
      * E-Mail should be verified to set to public.
      * */
     email?: string;
-    /** Shows true when user has verified their E-Mail. */
-    email_verified?: boolean;
     /**
      * User's phone number. Format: "+0012341234"<br>
      * When phone number is changed, phone number verified state will be changed to false.<br>
@@ -160,11 +150,6 @@ export type UserProfile = {
      * Phone number should be verified to set to public.
      */
     phone_number?: string;
-    /** Shows true when user has verified their phone number. */
-    phone_number_verified?: boolean;
-
-    /** User's name */
-    name?: string;
     /** User's address */
     address?: string;
     /**
@@ -174,21 +159,38 @@ export type UserProfile = {
     gender?: string;
     /** User's birthdate. String format: "1969-07-16" */
     birthdate?: string;
-    /** User has subscribed to service e-mail when positive number. E-mail should be verified. */
-    email_subscription?: number;
-    /** User's E-mail is public when positive number. E-Mail should be verified. */
+    /** User's E-mail is public when true. E-Mail should be verified. */
     email_public?: boolean;
-    /** User's phone number is public when positive number. Phone number should be verified. */
+    /** User's phone number is public when true. Phone number should be verified. */
     phone_number_public?: boolean;
-    /** User's address is public when positive number. */
+    /** User's address is public when true. */
     address_public?: boolean;
-    /** User's gender is public when positive number. */
+    /** User's gender is public when true. */
     gender_public?: boolean;
-    /** User's birthdate is public when positive number. */
+    /** User's birthdate is public when true. */
     birthdate_public?: boolean;
+    /** User has subscribed to service e-mail when positive number. Number value is the access group of the user account. E-mail should be verified. */
+    email_subscription?: number;
+};
+
+export type UserProfile = {
+    /** Service id of the user account. */
+    service: string;
+    /** User ID of the service owner. */
+    service_owner?: string;
+    /** Access level of the user's account. */
+    access_group?: number;
+    /** User's ID. */
+    user_id: string;
+    /** Country code of where user first signed up from. */
+    locale: string;
+    /** Shows true when user has verified their E-Mail. */
+    email_verified?: boolean;
+    /** Shows true when user has verified their phone number. */
+    phone_number_verified?: boolean;
     /** Shows 'PASS' if the user's account signup was successful.  */
     signup_ticket?: string;
-};
+} & UserAttributes;
 
 export interface User extends UserProfile {
     /** Last login time */

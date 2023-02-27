@@ -13,7 +13,8 @@ import {
     UserProfile,
     FetchOptions,
     DatabaseResponse,
-    QueryParams
+    QueryParams,
+    UserAttributes
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from './request';
@@ -311,12 +312,12 @@ export async function recoverAccount(
 }
 
 export async function login(
-    form: Form | {
+    form: Form<{
         /** E-Mail for signin. 64 character max. */
         email: string;
         /** Password for signin. Should be at least 6 characters. */
         password: string;
-    },
+    }>,
     option?: FormSubmitCallback): Promise<User> {
     await this.__connection;
     await logout.bind(this)();
@@ -329,7 +330,7 @@ export async function login(
 }
 
 export async function signup(
-    form: Form | UserProfile & { email: String, password: String; },
+    form: Form<UserAttributes & { email: String, password: String; }>,
     option?: {
         /**
          * When true, the service will send out confirmation E-Mail.
@@ -416,14 +417,14 @@ export async function disableAccount() {
     return result;
 }
 
-export async function resetPassword(form: Form | {
+export async function resetPassword(form: Form<{
     /** Signin E-Mail */
     email: string;
     /** The verification code user has received. */
     code: string | number;
     /** New password to set. Verification code is required. */
     new_password: string;
-}, option?: FormSubmitCallback): Promise<"SUCCESS: New password has been set."> {
+}>, option?: FormSubmitCallback): Promise<"SUCCESS: New password has been set."> {
 
     await this.__connection;
 
@@ -453,7 +454,7 @@ export async function resetPassword(form: Form | {
     });
 }
 
-export async function verifyAttribute(attribute: string, form: Form & { code: string; }): Promise<string> {
+async function verifyAttribute(attribute: string, form: Form<{ code: string; }>): Promise<string> {
     await this.__connection;
     let code: string;
 
@@ -516,11 +517,19 @@ export async function verifyAttribute(attribute: string, form: Form & { code: st
     });
 }
 
+export async function verifyPhoneNumber(form: Form<{ code: string; }>) {
+    return verifyAttribute.bind(this)('phone_number', form);
+}
+
+export async function verifyEmail(form: Form<{ code: string; }>) {
+    return verifyAttribute.bind(this)('phone_number', form);
+}
+
 export async function forgotPassword(
-    form: Form | {
+    form: Form<{
         /** Signin E-Mail. */
         email: string;
-    },
+    }>,
     option?: FormSubmitCallback): Promise<"SUCCESS: Verification code has been sent."> {
 
     await this.__connection;
@@ -587,7 +596,7 @@ export async function changePassword(params: {
     return 'SUCCESS: Password has been changed.';
 }
 
-export async function updateProfile(form: Form | UserProfile, option?: FormSubmitCallback) {
+export async function updateProfile(form: Form<UserProfile>, option?: FormSubmitCallback) {
     await this.__connection;
     if (!this.session) {
         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
