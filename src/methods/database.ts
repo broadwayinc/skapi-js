@@ -294,6 +294,16 @@ export async function postRecord(
         delete config.formData;
     }
 
+    if (typeof config.table === 'string') {
+        config.table = {
+            name: config.table
+        };
+        
+        if (!config.record_id) {
+            config.table.access_group = 0;
+        }
+    }
+
     config = validator.Params(config || {}, {
         record_id: 'string',
         table: {
