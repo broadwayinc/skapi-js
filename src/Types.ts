@@ -19,7 +19,7 @@ export type GetRecordQuery = Database<
         /** Not allowed: Special characters. Allowed: White space. periods.*/
         name: string;
         /** Number range: 0 ~ 99 */
-        access_group?: number | 'private';
+        access_group?: number | 'private' | 'public' | 'authorized';
         subscription?: {
             user_id: string;
             /** Number range: 0 ~ 99 */
@@ -39,7 +39,7 @@ export type PostRecordConfig = Database<
         /** Not allowed: Special characters. Allowed: White space. periods.*/
         name: string;
         /** Number range: 0 ~ 99 */
-        access_group?: number | 'private';
+        access_group?: number | 'private' | 'public' | 'authorized';
         subscription_group?: number;
     },
     {},
@@ -62,7 +62,7 @@ export type RecordData = {
         /** Not allowed: Special characters. Allowed: White space. periods.*/
         name: string;
         /** Number range: 0 ~ 99 */
-        access_group: number | 'private';
+        access_group?: number | 'private' | 'public' | 'authorized';
         subscription?: {
             user_id: string;
             /** Number range: 0 ~ 99 */

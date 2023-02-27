@@ -298,7 +298,7 @@ export async function postRecord(
         config.table = {
             name: config.table
         };
-        
+
         if (!config.record_id) {
             config.table.access_group = 0;
         }
@@ -309,7 +309,7 @@ export async function postRecord(
         table: {
             name: 'string',
             subscription_group: ['number', null],
-            access_group: ['number', 'private']
+            access_group: ['number', 'private', 'public', 'authorized']
         },
         reference: {
             record_id: ['string', null],
@@ -365,8 +365,18 @@ export async function postRecord(
     }
 
     if (config.table) {
-        if (typeof config.table.access_group === 'number' && this.user.access_group < config.table.access_group) {
-            throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
+        if (typeof config.table.access_group === 'number') {
+            if (this.user.access_group < config.table.access_group) {
+                throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
+            }
+        }
+        
+        else if (config.table.access_group === 'public') {
+            config.table.access_group = 0;
+        }
+
+        else if (config.table.access_group === 'authorized') {
+            config.table.access_group = 1;
         }
 
         if (!config.table.name) {
