@@ -39,7 +39,7 @@ export type PostRecordConfig = Database<
         /** Not allowed: Special characters. Allowed: White space. periods.*/
         name: string;
         /** Number range: 0 ~ 99 */
-        access_group: number | 'private';
+        access_group?: number | 'private';
         subscription_group?: number;
     },
     {},
