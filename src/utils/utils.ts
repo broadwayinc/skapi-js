@@ -159,7 +159,7 @@ class MD5 {
     }
 }
 
-function extractFormMeta(form: Form) {
+function extractFormMeta(form: Form<any>) {
     // creates meta object to post
 
     function appendData(meta, key, val) {

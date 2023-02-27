@@ -41,7 +41,8 @@ import {
     signup,
     disableAccount,
     resetPassword,
-    verifyAttribute,
+    verifyEmail,
+    verifyPhoneNumber,
     forgotPassword,
     changePassword,
     updateProfile,
@@ -357,11 +358,11 @@ export default class Skapi {
     disableAccount = disableAccount.bind(this);
     @formHandler()
     verifyEmail(...args) {
-        return verifyAttribute.bind(this)('email', ...args);
+        return verifyEmail.bind(this)('email', ...args);
     }
     @formHandler()
     verifyPhoneNumber(...args) {
-        return verifyAttribute.bind(this)('phone_number', ...args);
+        return verifyPhoneNumber.bind(this)('phone_number', ...args);
     }
     lastVerifiedEmail(...args) {
         return lastVerifiedEmail.bind(this)(...args);

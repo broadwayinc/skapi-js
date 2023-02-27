@@ -14,7 +14,7 @@ const __pendingRequest: Record<string, Promise<any>> = {};
 
 export async function request(
     url: string,
-    data: Form = null,
+    data: Form<any> | null = null,
     options?: {
         fetchOptions?: FetchOptions & FormSubmitCallback;
         auth?: boolean;
@@ -779,7 +779,7 @@ export function formHandler() {
         const fn = descriptor.value;
 
         descriptor.value = function (...arg: any[]) {
-            let form: Form | Record<string, any> = arg[0];
+            let form: Form<any> = arg[0];
             let option: FormSubmitCallback = arg?.[1] || {};
             let routeWithDataKey = true;
             let formEl = null;
