@@ -428,6 +428,7 @@ async function update_startKey_keys(option: Record<string, any>) {
     }
 
     if (
+        !fetched ||
         typeof fetched !== 'object' ||
         !fetched.hasOwnProperty('startKey') ||
         !hashedParam ||
