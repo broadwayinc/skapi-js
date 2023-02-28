@@ -761,7 +761,7 @@ export async function getBlob(params: { url: string; }, option?: { service: stri
 
 export async function getFormResponse(): Promise<any> {
     await this.__connection;
-    let responseKey = `${this.service}:${MD5.hash(window.location.href)}`;
+    let responseKey = `${this.service}:${MD5.hash(window.location.href.split('?')[0])}`;
     let stored = window.sessionStorage.getItem(responseKey);
     if (stored !== null) {
         try {
@@ -785,7 +785,6 @@ export function formHandler() {
             let routeWithDataKey = true;
             let formEl = null;
             let actionDestination = '';
-
             if (form instanceof SubmitEvent) {
                 form.preventDefault();
 
@@ -793,7 +792,6 @@ export function formHandler() {
                 formEl = form.target as HTMLFormElement;
                 let href = new URL(formEl.action);
                 actionDestination = href.href;
-
                 if (!formEl.action || href.href === currentUrl) {
                     routeWithDataKey = false;
                 }
