@@ -337,7 +337,7 @@ export default class Skapi {
     request = request.bind(this);
     secureRequest = secureRequest.bind(this);
     @formHandler()
-    mock(...args) { return mock.bind(this); };
+    mock(...args) { return mock.bind(this)(...args); };
     getFormResponse = getFormResponse.bind(this);
     @formHandler()
     postRecord(...args) { return postRecord.bind(this)(...args); }
