@@ -6,7 +6,8 @@ import {
 } from '../Types';
 import SkapiError from '../main/error';
 import {
-    MD5
+    MD5,
+    extractFormMeta
 } from '../utils/utils';
 import validator from '../utils/validator';
 
@@ -195,12 +196,13 @@ export async function request(
     }
 
     else {
-        // add required to data
         if (!data) {
+            // set data to required parameter
             data = required;
         }
         else if (isForm) {
             for (let k in required) {
+                // add required to from
                 if (required[k] !== undefined) {
                     data.set(k, new Blob([JSON.stringify(required[k])], {
                         type: 'application/json'
@@ -209,6 +211,7 @@ export async function request(
             }
         }
         else {
+            // add required to data
             data = Object.assign(required, data);
         }
     }
@@ -738,9 +741,9 @@ export async function secureRequest<RequestParams = {
     return await request.bind(this)('post-secure', params, { auth: true });
 }
 
-export async function mock(data: any | {
+export async function mock(data: Form<any | {
     raise?: 'ERR_INVALID_REQUEST' | 'ERR_INVALID_PARAMETER' | 'SOMETHING_WENT_WRONG' | 'ERR_EXISTS' | 'ERR_NOT_EXISTS';
-},
+}>,
     formCallback?: FormSubmitCallback,
     options?: {
         auth?: boolean;
@@ -750,6 +753,30 @@ export async function mock(data: any | {
         responseType?: string;
         contentType?: string;
     }): Promise<{ mockResponse: Record<string, any>; }> {
+    options = options || {};
+    if (data instanceof SubmitEvent) {
+        let formData = new FormData((data.target as HTMLFormElement));
+        let formMeta = extractFormMeta(data);
+        if (Object.keys(formMeta.meta).length) {
+            options.meta = formMeta.meta;
+        }
+
+        let formToRemove = [];
+        for (const pair of formData.entries()) {
+            if (!formMeta.files.includes(pair[0])) {
+                formToRemove.push(pair[0]);
+            }
+        }
+
+        if (formToRemove.length) {
+            for (let f of formToRemove) {
+                formData.delete(f);
+            }
+        }
+
+        data = formData;
+    }
+    console.log({data,options})
     return request.bind(this)('mock', data, options);
 }
 
