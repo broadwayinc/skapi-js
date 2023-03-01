@@ -35,6 +35,8 @@ export async function request(
         bypassAwaitConnection = false
     } = options;
 
+    options.method = options.method.toLowerCase();
+
     let __connection = bypassAwaitConnection ? null : (await this.__connection);
     let token = auth ? this.session?.idToken?.jwtToken : null; // idToken
 
