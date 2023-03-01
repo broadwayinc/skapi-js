@@ -738,15 +738,18 @@ export async function secureRequest<RequestParams = {
     return await request.bind(this)('post-secure', params, { auth: true });
 }
 
-export async function mock(data: any, options?: {
-    fetchOptions?: FetchOptions & FormSubmitCallback;
-    auth?: boolean;
-    method?: string;
-    meta?: Record<string, any>;
-    bypassAwaitConnection?: boolean;
-    responseType?: string;
-    contentType?: string;
-}): Promise<{ mockResponse: Record<string, any>; }> {
+export async function mock(data: any | {
+    raise?: 'ERR_INVALID_REQUEST' | 'ERR_INVALID_PARAMETER' | 'SOMETHING_WENT_WRONG' | 'ERR_EXISTS' | 'ERR_NOT_EXISTS';
+},
+    formCallback?: FormSubmitCallback,
+    options?: {
+        auth?: boolean;
+        method?: string;
+        meta?: Record<string, any>;
+        bypassAwaitConnection?: boolean;
+        responseType?: string;
+        contentType?: string;
+    }): Promise<{ mockResponse: Record<string, any>; }> {
     return request.bind(this)('mock', data, options);
 }
 

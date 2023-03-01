@@ -37,7 +37,7 @@ export type GetRecordQuery = Database<
 export type PostRecordConfig = Database<
     {
         /** Not allowed: Special characters. Allowed: White space. periods.*/
-        name: string;
+        name?: string;
         /** Number range: 0 ~ 99 */
         access_group?: number | 'private' | 'public' | 'authorized';
         subscription_group?: number;
@@ -171,6 +171,8 @@ export type UserAttributes = {
     birthdate_public?: boolean;
     /** User has subscribed to service e-mail when positive number. Number value is the access group of the user account. E-mail should be verified. */
     email_subscription?: number;
+    /** Additional string value that can be used freely. */
+    misc: string;
 };
 
 export type UserProfile = {
