@@ -359,11 +359,11 @@ export default class Skapi {
     disableAccount = disableAccount.bind(this);
     @formHandler()
     verifyEmail(...args) {
-        return verifyEmail.bind(this)('email', ...args);
+        return verifyEmail.bind(this)(...args);
     }
     @formHandler()
     verifyPhoneNumber(...args) {
-        return verifyPhoneNumber.bind(this)('phone_number', ...args);
+        return verifyPhoneNumber.bind(this)(...args);
     }
     lastVerifiedEmail(...args) {
         return lastVerifiedEmail.bind(this)(...args);
