@@ -35,7 +35,7 @@ export async function request(
         bypassAwaitConnection = false
     } = options;
 
-    options.method = options.method.toLowerCase();
+    method = method.toLowerCase();
 
     let __connection = bypassAwaitConnection ? null : (await this.__connection);
     let token = auth ? this.session?.idToken?.jwtToken : null; // idToken
@@ -586,7 +586,7 @@ async function _get(url: string, params: Record<string, any>, option: RequestIni
         option
     );
 
-    return this._fetch(url, opt, responseType);
+    return _fetch(url, opt, responseType);
 };
 
 
