@@ -467,6 +467,10 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>)
             throw new SkapiError(`No ${attribute === 'email' ? 'e-mail' : 'phone number'} to verify`, { code: 'INVALID_REQUEST' });
         }
 
+        if (this.__user?.[`${attribute}_verified`]) {
+            return `SUCCESS: "${attribute}" is verified.`;
+        }
+
         code = (form ? validator.Params(form, {
             code: ['string']
         }) : {}).code || '';
@@ -517,11 +521,11 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>)
     });
 }
 
-export async function verifyPhoneNumber(form: Form<{ code: string; }>) {
+export function verifyPhoneNumber(form: Form<{ code: string; }>) {
     return verifyAttribute.bind(this)('phone_number', form);
 }
 
-export async function verifyEmail(form: Form<{ code: string; }>) {
+export function verifyEmail(form: Form<{ code: string; }>) {
     return verifyAttribute.bind(this)('email', form);
 }
 
