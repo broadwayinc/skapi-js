@@ -576,24 +576,21 @@ export async function changePassword(params: {
     validator.Password(p.current_password);
     validator.Password(p.new_password);
 
-    if (p.new_password !== p.current_password) {
-        return new Promise((res, rej) => {
-            cognitoUser.changePassword(
-                p.current_password,
-                p.new_password,
-                (err: any, result: any) => {
-                    if (err) {
-                        if (err?.code === "InvalidParameterException") {
-                            rej(new SkapiError('Invalid password parameter.', { code: 'INVALID_PARAMETER' }));
-                        }
-                        rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || err?.name }));
+    return new Promise((res, rej) => {
+        cognitoUser.changePassword(
+            p.current_password,
+            p.new_password,
+            (err: any, result: any) => {
+                if (err) {
+                    if (err?.code === "InvalidParameterException") {
+                        rej(new SkapiError('Invalid password parameter.', { code: 'INVALID_PARAMETER' }));
                     }
+                    rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || err?.name }));
+                }
 
-                    res('SUCCESS: Password has been changed.');
-                });
-        });
-    }
-    return 'SUCCESS: Password has been changed.';
+                res('SUCCESS: Password has been changed.');
+            });
+    });
 }
 
 export async function updateProfile(form: Form<UserProfile>, option?: FormSubmitCallback) {
