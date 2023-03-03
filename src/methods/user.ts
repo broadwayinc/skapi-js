@@ -522,7 +522,7 @@ export async function verifyPhoneNumber(form: Form<{ code: string; }>) {
 }
 
 export async function verifyEmail(form: Form<{ code: string; }>) {
-    return verifyAttribute.bind(this)('phone_number', form);
+    return verifyAttribute.bind(this)('email', form);
 }
 
 export async function forgotPassword(
