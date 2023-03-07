@@ -146,6 +146,8 @@ function normalizeTypedString(v: string) {
 }
 
 export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOptions): Promise<DatabaseResponse> {
+    await this.__connection;
+
     const indexTypes = {
         '$updated': 'number',
         '$uploaded': 'number',
@@ -154,14 +156,15 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
 
     if (typeof query?.table === 'string') {
         query.table = {
-            name: query.table
+            name: query.table,
+            access_group: 0
         };
     }
 
     const struct = {
         table: {
             name: 'string',
-            access_group: ['number', 'private'],
+            access_group: ['number', 'private', 'authorized'],
             subscription: {
                 user_id: (v: string) => validator.UserId(v, 'User ID in "subscription.user_id"'),
                 group: (v: number) => {
@@ -241,6 +244,28 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
         tag: 'string'
     };
 
+    if (query?.table) {
+        if (query.table.access_group === 'public') {
+            query.table.access_group = 0;
+        }
+
+        else if (query.table.access_group === 'authorized') {
+            query.table.access_group = 1;
+        }
+
+        if (typeof query.table.access_group === 'number') {
+            if (!this.user) {
+                if (0 < query.table.access_group) {
+                    throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
+                }
+            }
+
+            else if (this.user.access_group < query.table.access_group) {
+                throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
+            }
+        }
+    }
+
     if (query?.record_id) {
         validator.specialChars(query.record_id, 'record_id', false, false);
         query = { record_id: query.record_id, service: query?.service };
@@ -285,6 +310,10 @@ export async function postRecord(
     let isAdmin = await this.checkAdmin();
     if (!config) {
         throw new SkapiError(['INVALID_PARAMETER', '"config" argument is required.']);
+    }
+
+    if (!this.user) {
+        throw new SkapiError(['INVALID_REQUEST', 'Login is required.']);
     }
 
     let fetchOptions: Record<string, any> = {};
@@ -365,18 +394,18 @@ export async function postRecord(
     }
 
     if (config.table) {
-        if (typeof config.table.access_group === 'number') {
-            if (this.user.access_group < config.table.access_group) {
-                throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
-            }
-        }
-        
-        else if (config.table.access_group === 'public') {
+        if (config.table.access_group === 'public') {
             config.table.access_group = 0;
         }
 
         else if (config.table.access_group === 'authorized') {
             config.table.access_group = 1;
+        }
+
+        if (typeof config.table.access_group === 'number') {
+            if (this.user.access_group < config.table.access_group) {
+                throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
+            }
         }
 
         if (!config.table.name) {
