@@ -23,7 +23,6 @@ function normalizeRecord(record: Record<string, any>): RecordData {
     }
 
     const output: Record<string, any> = {
-        service: '',
         user_id: '',
         updated: 0,
         uploaded: 0,
@@ -62,6 +61,25 @@ function normalizeRecord(record: Record<string, any>): RecordData {
                 output.table.subscription = {
                     user_id: rSplit[3],
                     group: parseInt(rSplit[4])
+                };
+            }
+        },
+        'usr_tbl': (r: string) => {
+            // user-id/table/service/group(** | group)[/subscription(user id)/group(00 - 99)][/tag]
+            let rSplit = r.split('/');
+            output.user_id = rSplit[0];
+            output.table.name = rSplit[1];
+            output.access_group = rSplit[3] == '**' ? 'private' : parseInt(rSplit[2]);
+            if (rSplit?.[3]) {
+                output.table.subscription = {
+                    user_id: rSplit[3],
+                    group: parseInt(rSplit[4])
+                };
+            }
+            if (rSplit?.[4]) {
+                output.table.subscription = {
+                    user_id: rSplit[4],
+                    group: parseInt(rSplit[5])
                 };
             }
         },

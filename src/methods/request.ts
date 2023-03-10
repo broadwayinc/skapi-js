@@ -778,7 +778,7 @@ export async function mock(data: Form<any | {
 
         data = formData;
     }
-    console.log({data,options})
+    
     return request.bind(this)('mock', data, options);
 }
 
