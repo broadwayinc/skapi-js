@@ -161,7 +161,7 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
     const struct = {
         table: {
             name: 'string',
-            access_group: ['number', 'private'],
+            access_group: ['number', 'private', 'public', 'authorized'],
             subscription: {
                 user_id: (v: string) => validator.UserId(v, 'User ID in "subscription.user_id"'),
                 group: (v: number) => {
