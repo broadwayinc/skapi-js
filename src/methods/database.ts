@@ -24,6 +24,7 @@ function normalizeRecord(record: Record<string, any>): RecordData {
 
     const output: Record<string, any> = {
         user_id: '',
+        record_id: '',
         updated: 0,
         uploaded: 0,
         table: {
