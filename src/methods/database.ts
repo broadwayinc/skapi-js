@@ -70,12 +70,6 @@ function normalizeRecord(record: Record<string, any>): RecordData {
             output.user_id = rSplit[0];
             output.table.name = rSplit[1];
             output.access_group = rSplit[3] == '**' ? 'private' : parseInt(rSplit[2]);
-            if (rSplit?.[3]) {
-                output.table.subscription = {
-                    user_id: rSplit[3],
-                    group: parseInt(rSplit[4])
-                };
-            }
             if (rSplit?.[4]) {
                 output.table.subscription = {
                     user_id: rSplit[4],
@@ -130,7 +124,9 @@ function normalizeRecord(record: Record<string, any>): RecordData {
     }
 
     for (let k in keys) {
-        keys[k](record[k]);
+        if (record.hasOwnProperty(k)) {
+            keys[k](record[k]);
+        }
     }
 
     return output as RecordData;
