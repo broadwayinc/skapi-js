@@ -35,7 +35,7 @@ let skapi = new Skapi('your_service_id', 'your_user_id');
 For HTML projects:
 ```
 <head>
-  <script src="https://broadwayinc.dev/jslib/skapi/latest/skapi.js">
+  <script src="https://broadwayinc.dev/lib/js/skapi/latest/skapi.js">
 </head>
 <script>
     let skapi = new Skapi('your_service_id', 'your_user_id');

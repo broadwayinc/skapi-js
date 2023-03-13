@@ -56,7 +56,7 @@ import {
 export default class Skapi {
     // privates
     private __disabledAccount: string | null = null;
-    private __serviceHash: Record<string, string> = {};
+    // private __serviceHash: Record<string, string> = {};
     private __cached_requests: {
         /** Cached url requests */
         [url: string]: {
@@ -71,7 +71,7 @@ export default class Skapi {
         };
     } = {};
     private __request_signup_confirmation: string | null = null;
-    private service: string;
+    private service_id: string;
     private service_owner: string;
 
     // true when session is stored successfully to session storage
@@ -164,13 +164,15 @@ export default class Skapi {
             validator.UserId(service_owner, '"service_owner"');
         }
 
-        this.service = service_id;
+        this.service_id = service_id;
         this.service_owner = service_owner;
 
         let autoLogin = options?.autoLogin || false;
 
         // get endpoints
-        const cdn_domain = 'https://dkls9pxkgz855.cloudfront.net'; // don't change this
+
+        const target_cdn = 'd1h765tqb4s5ov';
+        const cdn_domain = `https://${target_cdn}.cloudfront.net`; // don't change this
         let sreg = service_id.substring(0, 4);
 
         this.admin_endpoint = fetch(`${cdn_domain}/${sreg}/admin.json`)
@@ -280,28 +282,28 @@ export default class Skapi {
 
         })().catch(err => { throw err; });
     }
-
-    async updateConnection(params?: { request_hash: string; }): Promise<Connection> {
+    async updateConnection(): Promise<Connection> {
+        // async updateConnection(params?: { request_hash: string; }): Promise<Connection> {
         let request_hash = null;
         let connectedService: Record<string, any> = {};
 
-        if (params?.request_hash) {
-            // hash request
+        // if (params?.request_hash) {
+        //     // hash request
 
-            if (this.__serviceHash[params.request_hash]) {
-                // has hash
-                Object.assign(connectedService, { hash: this.__serviceHash[params.request_hash] });
-            }
+        //     if (this.__serviceHash[params.request_hash]) {
+        //         // has hash
+        //         Object.assign(connectedService, { hash: this.__serviceHash[params.request_hash] });
+        //     }
 
-            else {
-                // request signin hash
-                request_hash = {
-                    request_hash: validator.Email(params.request_hash)
-                };
-            }
-        }
+        //     else {
+        //         // request signin hash
+        //         request_hash = {
+        //             request_hash: validator.Email(params.request_hash)
+        //         };
+        //     }
+        // }
 
-        if (!this.connection || this.connection.service !== this.service || request_hash) {
+        if (!this.connection || this.connection.service !== this.service_id || request_hash) {
             // has hash request or need new connection request
 
             if (request_hash === null) {
@@ -310,18 +312,18 @@ export default class Skapi {
 
             // assign service id and owner to request
             Object.assign(request_hash, {
-                service: this.service,
+                service: this.service_id,
                 service_owner: this.service_owner
             });
         }
 
         // post request if needed
-        Object.assign(connectedService, (request_hash ? await request.bind(this)('service', request_hash, { bypassAwaitConnection: true }) : this.connection));
+        Object.assign(connectedService, (request_hash ? await request.bind(this)('service', request_hash, { bypassAwaitConnection: true, method: 'get' }) : this.connection));
 
-        if (params?.request_hash) {
-            // cache hash if needed
-            this.__serviceHash[params.request_hash] = connectedService.hash;
-        }
+        // if (params?.request_hash) {
+        //     // cache hash if needed
+        //     this.__serviceHash[params.request_hash] = connectedService.hash;
+        // }
 
         // deep copy, save connection service info without hash
         let connection = JSON.parse(JSON.stringify(connectedService));

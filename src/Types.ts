@@ -92,14 +92,12 @@ export type Connection = {
     owner: string;
     /** E-Mail address of the service owner */
     email: string;
-    /** Service id */
+    /** Service ID */
     service: string;
     /** Service region */
     region: string;
     /** 13 digits timestamp of the service creation */
     timestamp: number;
-    /** Hash string for authentication */
-    hash: string;
 };
 
 export type FormSubmitCallback = {

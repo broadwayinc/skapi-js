@@ -18,6 +18,7 @@ import {
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from './request';
+import { MD5 } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
 export let userPool: CognitoUserPool | null = null;
@@ -38,7 +39,7 @@ export function authentication() {
             for (let i of (attr as CognitoUserAttribute[])) {
                 normalized_user_attribute_keys[i.Name] = i.Value;
 
-                if (i.Name === 'custom:service' && normalized_user_attribute_keys[i.Name] !== this.service)
+                if (i.Name === 'custom:service' && normalized_user_attribute_keys[i.Name] !== this.service_id)
                     throw new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' });
             }
 
@@ -170,14 +171,15 @@ export function authentication() {
 
     const createCognitoUser = async (email: string) => {
         if (!email) throw new SkapiError('E-Mail is required.', { code: 'INVALID_PARAMETER' });
-        let hash = this.__serviceHash[email] || (await this.updateConnection({ request_hash: email })).hash;
+        // let hash = this.__serviceHash[email] || (await this.updateConnection({ request_hash: email })).hash;
+        let username = this.service_id + '-' + MD5.hash(email);
 
         return {
             cognitoUser: new CognitoUser({
-                Username: hash,
+                Username: username,
                 Pool: userPool
             }),
-            cognitoUsername: hash
+            cognitoUsername: username
         };
     };
 
@@ -237,7 +239,7 @@ export async function getProfile(options?: { refreshToken: boolean; }) {
 
 export async function checkAdmin() {
     await this.__connection;
-    if (this.__user?.service === this.service) {
+    if (this.__user?.service === this.service_id) {
         // logged in
         return this.__user?.service_owner === this.host;
     } else {
@@ -615,7 +617,8 @@ export async function updateProfile(form: Form<UserProfile>, option?: FormSubmit
         address_public: 'boolean',
         gender_public: 'boolean',
         birthdate_public: 'boolean',
-        email_subscription: 'boolean'
+        email_subscription: 'boolean',
+        misc: 'string'
     });
 
     if (params && typeof params === 'object' && !Object.keys(params).length) {
@@ -624,7 +627,8 @@ export async function updateProfile(form: Form<UserProfile>, option?: FormSubmit
 
     // set alternative signin email
     if (params.email) {
-        params['preferred_username'] = (await this.updateConnection({ request_hash: params.email })).hash;
+        // params['preferred_username'] = (await this.updateConnection({ request_hash: params.email })).hash;
+        params['preferred_username'] = this.service_id + '-' + MD5.hash(params.email);
     }
 
     let collision = [
@@ -655,7 +659,8 @@ export async function updateProfile(form: Form<UserProfile>, option?: FormSubmit
             'address_public',
             'gender_public',
             'birthdate_public',
-            'email_subscription'
+            'email_subscription',
+            'misc'
         ];
 
         if (customAttr.includes(k)) {
@@ -752,9 +757,9 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
             }
             return v;
         },
-        'suspended': (v: boolean) => {
+        'approved': (v: boolean) => {
             if (v) {
-                return 'by_admin:suspended';
+                return 'by_admin:approved';
             }
             else {
                 return 'by_admin:approved';
@@ -778,7 +783,7 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
             'timestamp',
             'access_group',
             'email_subscription',
-            'suspended'
+            'approved'
         ],
         condition: ['>', '>=', '=', '<', '<=', 'gt', 'gte', 'eq', 'lt', 'lte', () => '='],
         value: (v: any) => {
