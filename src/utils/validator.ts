@@ -191,7 +191,7 @@ function Params(
         bypassCheck = bypassCheck.concat([
             // list of default key names to bypass
             'service',
-            'service_owner',
+            'owner',
             // 'alertError',
             // 'response',
             // 'startKey'

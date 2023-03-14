@@ -39,7 +39,7 @@ export function authentication() {
             for (let i of (attr as CognitoUserAttribute[])) {
                 normalized_user_attribute_keys[i.Name] = i.Value;
 
-                if (i.Name === 'custom:service' && normalized_user_attribute_keys[i.Name] !== this.service_id)
+                if (i.Name === 'custom:service' && normalized_user_attribute_keys[i.Name] !== this.service)
                     throw new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' });
             }
 
@@ -172,7 +172,7 @@ export function authentication() {
     const createCognitoUser = async (email: string) => {
         if (!email) throw new SkapiError('E-Mail is required.', { code: 'INVALID_PARAMETER' });
         // let hash = this.__serviceHash[email] || (await this.updateConnection({ request_hash: email })).hash;
-        let username = this.service_id + '-' + MD5.hash(email);
+        let username = this.service + '-' + MD5.hash(email);
 
         return {
             cognitoUser: new CognitoUser({
@@ -239,9 +239,9 @@ export async function getProfile(options?: { refreshToken: boolean; }) {
 
 export async function checkAdmin() {
     await this.__connection;
-    if (this.__user?.service === this.service_id) {
+    if (this.__user?.service === this.service) {
         // logged in
-        return this.__user?.service_owner === this.host;
+        return this.__user?.owner === this.host;
     } else {
         // not logged
         await logout.bind(this)();
@@ -628,7 +628,7 @@ export async function updateProfile(form: Form<UserProfile>, option?: FormSubmit
     // set alternative signin email
     if (params.email) {
         // params['preferred_username'] = (await this.updateConnection({ request_hash: params.email })).hash;
-        params['preferred_username'] = this.service_id + '-' + MD5.hash(params.email);
+        params['preferred_username'] = this.service + '-' + MD5.hash(params.email);
     }
 
     let collision = [
