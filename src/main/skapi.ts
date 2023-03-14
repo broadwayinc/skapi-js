@@ -71,8 +71,8 @@ export default class Skapi {
         };
     } = {};
     private __request_signup_confirmation: string | null = null;
-    private service_id: string;
-    private service_owner: string;
+    private service: string;
+    private owner: string;
 
     // true when session is stored successfully to session storage
     // this property prevents duplicate stores when window closes on some device
@@ -151,21 +151,21 @@ export default class Skapi {
         return this.connection;
     }
 
-    constructor(service_id: string, service_owner: string, options?: { autoLogin: boolean; }) {
-        if (typeof service_id !== 'string' || typeof service_owner !== 'string') {
-            throw new SkapiError('"service_id" and "service_owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
+    constructor(service_id: string, owner: string, options?: { autoLogin: boolean; }) {
+        if (typeof service_id !== 'string' || typeof owner !== 'string') {
+            throw new SkapiError('"service_id" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
 
-        if (!service_id || !service_owner) {
-            throw new SkapiError('"service_id" and "service_owner" is required', { code: 'INVALID_PARAMETER' });
+        if (!service_id || !owner) {
+            throw new SkapiError('"service_id" and "owner" is required', { code: 'INVALID_PARAMETER' });
         }
 
-        if (service_owner !== this.host) {
-            validator.UserId(service_owner, '"service_owner"');
+        if (owner !== this.host) {
+            validator.UserId(owner, '"owner"');
         }
 
-        this.service_id = service_id;
-        this.service_owner = service_owner;
+        this.service = service_id;
+        this.owner = owner;
 
         let autoLogin = options?.autoLogin || false;
 
@@ -201,7 +201,7 @@ export default class Skapi {
                 throw new Error(`This browser does not support skapi.`);
             }
 
-            const restore = JSON.parse(window.sessionStorage.getItem(`${service_id}#${service_owner}`) || 'null');
+            const restore = JSON.parse(window.sessionStorage.getItem(`${service_id}#${owner}`) || 'null');
 
             if (restore?.connection) {
                 // apply all data to class properties
@@ -266,7 +266,7 @@ export default class Skapi {
                             data[k] = this[k];
                         }
 
-                        window.sessionStorage.setItem(`${service_id}#${service_owner}`, JSON.stringify(data));
+                        window.sessionStorage.setItem(`${service_id}#${owner}`, JSON.stringify(data));
                         this.__class_properties_has_been_cached = true;
                     }
                 };
@@ -303,7 +303,7 @@ export default class Skapi {
         //     }
         // }
 
-        if (!this.connection || this.connection.service !== this.service_id || request_hash) {
+        if (!this.connection || this.connection.service !== this.service || request_hash) {
             // has hash request or need new connection request
 
             if (request_hash === null) {
@@ -312,8 +312,8 @@ export default class Skapi {
 
             // assign service id and owner to request
             Object.assign(request_hash, {
-                service: this.service_id,
-                service_owner: this.service_owner
+                service: this.service,
+                owner: this.owner
             });
         }
 

@@ -122,8 +122,8 @@ export async function request(
     };
 
     let endpoint = isExternalUrl || (await getEndpoint(url, !!auth));
-    let service = this.session?.attributes?.['custom:service'] || __connection?.service || this.service_id;
-    let service_owner = this.session?.attributes?.['custom:service_owner'] || __connection?.owner || this.service_owner;
+    let service = this.session?.attributes?.['custom:service'] || __connection?.service || this.service;
+    let owner = this.session?.attributes?.['custom:owner'] || __connection?.owner || this.owner;
 
     if (meta) {
         if (typeof meta === 'object' && !Array.isArray(meta)) {
@@ -139,7 +139,7 @@ export async function request(
     }
 
     /* compose meta to send */
-    let required = { service, service_owner };
+    let required = { service, owner };
 
     // set fetch options
     let fetchOptions = {};
@@ -358,7 +358,7 @@ function load_startKey_keys(option: {
             return MD5.hash(url + '/' + JSON.stringify(orderObjectKeys(params)));
         }
 
-        return MD5.hash(url + '/' + this.service_id);
+        return MD5.hash(url + '/' + this.service);
     })();
 
     if (!fetchMore && this.__startKey_list?.[url]?.[hashedParams]) {
@@ -793,7 +793,7 @@ export async function getBlob(params: { url: string; }, option?: { service: stri
 
 export async function getFormResponse(): Promise<any> {
     await this.__connection;
-    let responseKey = `${this.service_id}:${MD5.hash(window.location.href.split('?')[0])}`;
+    let responseKey = `${this.service}:${MD5.hash(window.location.href.split('?')[0])}`;
     let stored = window.sessionStorage.getItem(responseKey);
     if (stored !== null) {
         try {
@@ -839,7 +839,7 @@ export function formHandler() {
 
                 if (formEl) {
                     if (routeWithDataKey) {
-                        window.sessionStorage.setItem(`${this.service_id}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
+                        window.sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
                         window.location.href = actionDestination;
                     }
                 }

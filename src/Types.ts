@@ -177,7 +177,7 @@ export type UserProfile = {
     /** Service id of the user account. */
     service: string;
     /** User ID of the service owner. */
-    service_owner?: string;
+    owner?: string;
     /** Access level of the user's account. */
     access_group?: number;
     /** User's ID. */

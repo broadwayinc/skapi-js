@@ -93,7 +93,7 @@ async function getSub(
     });
 
     if (isNewsletterSub && !params?.subscription) {
-        params.subscription = this.service_id;
+        params.subscription = this.service;
     }
 
     if (!params.subscriber && !params.subscription) {
