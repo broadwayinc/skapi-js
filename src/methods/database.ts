@@ -160,7 +160,7 @@ function normalizeTypedString(v: string) {
     }
 }
 
-export async function getSignedUrl(params: { key: string, record_id: string; }) {
+export async function getSignedUrl(params: { key: string; record_id: string; }) {
     await this.__connection;
     params = validator.Params(params, {
         key: 'string',
