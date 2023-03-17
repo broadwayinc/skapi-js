@@ -111,6 +111,7 @@ export async function request(
                 case 'get-tag':
                 case 'get-index':
                 case 'storage-info':
+                case 'get-signed-url':
                     return {
                         private: record.record_private,
                         public: record.record_public

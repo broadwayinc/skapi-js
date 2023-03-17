@@ -11,7 +11,8 @@ import {
     deleteRecords,
     getTable,
     getIndex,
-    getTag
+    getTag,
+    getSignedUrl
 } from '../methods/database';
 import {
     request,
@@ -377,17 +378,18 @@ export default class Skapi {
     @formHandler()
     updateProfile(...args) { return updateProfile.bind(this)(...args); }
     @formHandler()
-    async subscribe(...args) { return subscribe.bind(this)(...args); }
+    subscribe(...args) { return subscribe.bind(this)(...args); }
     @formHandler()
-    async unsubscribe(...args) { return unsubscribe.bind(this)(...args); }
+    unsubscribe(...args) { return unsubscribe.bind(this)(...args); }
     @formHandler()
-    async blockSubscriber(...args) { return blockSubscriber.bind(this)(...args); }
+    blockSubscriber(...args) { return blockSubscriber.bind(this)(...args); }
     @formHandler()
-    async unblockSubscriber(...args) { return unblockSubscriber.bind(this)(...args); }
+    unblockSubscriber(...args) { return unblockSubscriber.bind(this)(...args); }
     getSubscriptions = getSubscribers.bind(this);
     getSubscribers = getSubscribers.bind(this);
     @formHandler()
     subscribeNewsletter(...args) { return subscribeNewsletter.bind(this)(...args); }
     getNewsletters = getNewsletters.bind(this);
     requestUsernameChange(...args) { return requestUsernameChange.bind(this)(...args); }
+    getSignedUrl(...args) { return getSignedUrl.bind(this)(...args); }
 }

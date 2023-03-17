@@ -160,6 +160,15 @@ function normalizeTypedString(v: string) {
     }
 }
 
+export async function getSignedUrl(params: { key: string, record_id: string; }) {
+    await this.__connection;
+    params = validator.Params(params, {
+        key: 'string',
+        record_id: 'string'
+    }, ['key']);
+    return request.bind(this)('get-signed-url', params, { auth: true });
+}
+
 export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOptions): Promise<DatabaseResponse> {
     await this.__connection;
 
