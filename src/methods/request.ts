@@ -257,7 +257,7 @@ export async function request(
             }
 
             if (meta) {
-                headers["Content-Meta"] = JSON.stringify(meta);
+                headers["Content-Meta"] = Buffer.from(typeof meta === 'string' ? meta : JSON.stringify(meta)).toString('base64');
             }
 
             if (options.hasOwnProperty('contentType')) {
@@ -778,7 +778,7 @@ export async function mock(data: Form<any | {
 
         data = formData;
     }
-    
+
     return request.bind(this)('mock', data, options);
 }
 
