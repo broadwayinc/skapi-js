@@ -168,7 +168,7 @@ export default class Skapi {
         this.service = service_id;
         this.owner = owner;
 
-        let autoLogin = options?.autoLogin || false;
+        let autoLogin = options?.autoLogin || true;
 
         // get endpoints
 
