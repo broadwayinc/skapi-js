@@ -9,7 +9,7 @@ import {
     PostRecordConfig
 } from '../Types';
 import SkapiError from '../main/error';
-import { extractFormMeta } from '../utils/utils';
+import { extractFormMeta, generateRandom } from '../utils/utils';
 import validator from '../utils/validator';
 import { request } from './request';
 
@@ -160,14 +160,92 @@ function normalizeTypedString(v: string) {
     }
 }
 
-export async function getSignedUrl(params: { key: string; record_id: string; reserved_key: string; }) {
+export async function uploadFiles(fileList: FileList, params: {
+    service?: string; record_id: string; progress: (e: {
+        progress: number,
+        currentFile: File,
+        completed: File[];
+    }) => void;
+}) {
     await this.__connection;
-    params = validator.Params(params, {
-        key: 'string',
-        record_id: 'string',
-        reserved_key: 'string'
-    }, ['key']);
-    return request.bind(this)('get-signed-url', params, { auth: true });
+
+    let reserved_key = generateRandom();
+
+    let getSignedParams: Record<string, any> = {
+        reserved_key,
+        service: params?.service || this.service
+    };
+
+    if (params?.record_id) {
+        getSignedParams.record_id = params.record_id;
+    }
+
+    function fetchProgress(url: string, opts: { headers?: Record<string, any>; body: FormData; }, onProgress?: (e: ProgressEvent) => void) {
+        return new Promise((res, rej) => {
+            let xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) {   //if complete
+                    if (xhr.status >= 200 || xhr.status <= 299) {  //check if "OK" (200)
+                        //success
+                    } else {
+                        rej(xhr.status); //otherwise, some other code was returned
+                    }
+                }
+            };
+
+            xhr.open('POST', url);
+
+            for (var k in opts.headers || {}) {
+                xhr.setRequestHeader(k, opts.headers[k]);
+            }
+
+            xhr.onload = (e: any) => res(e.target.responseText);
+            xhr.onerror = rej;
+            xhr.onabort = () => rej('aborted');
+            xhr.ontimeout = () => rej('timeout');
+
+            // xhr.addEventListener('error', rej);
+            if (xhr.upload && onProgress) {
+                xhr.upload.onprogress = onProgress;
+            }
+
+            xhr.send(opts.body);
+        });
+    }
+
+    let completed = [];
+    for (let f of fileList) {
+        let signedParams = Object.assign({
+            key: f.name
+        }, getSignedParams);
+
+        let { fields, url } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
+
+        let form = new FormData();
+
+        for (let name in fields) {
+            form.append(name, fields[name]);
+        }
+
+        form.append('file', f);
+
+        await fetchProgress(
+            url,
+            {
+                body: form
+            },
+            (p: ProgressEvent) => {
+                let cb = params.progress || null;
+                if (typeof cb === 'function') {
+                    cb({ progress: p.loaded / p.total * 100, currentFile: f, completed });
+                }
+            }
+        ).catch(err => { throw { completed, error: err, failed: f }; });
+
+        completed.push(f);
+    }
+
+    return { completed };
 }
 
 export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOptions): Promise<DatabaseResponse> {

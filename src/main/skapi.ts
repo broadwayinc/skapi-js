@@ -12,7 +12,7 @@ import {
     getTable,
     getIndex,
     getTag,
-    getSignedUrl
+    uploadFiles
 } from '../methods/database';
 import {
     request,
@@ -391,5 +391,5 @@ export default class Skapi {
     subscribeNewsletter(...args) { return subscribeNewsletter.bind(this)(...args); }
     getNewsletters = getNewsletters.bind(this);
     requestUsernameChange(...args) { return requestUsernameChange.bind(this)(...args); }
-    getSignedUrl(...args) { return getSignedUrl.bind(this)(...args); }
+    uploadFiles(...args) { return uploadFiles.bind(this)(...args); }
 }
