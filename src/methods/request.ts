@@ -125,7 +125,7 @@ export async function request(
     let endpoint = isExternalUrl || (await getEndpoint(url, !!auth));
     let service = this.session?.attributes?.['custom:service'] || __connection?.service || this.service;
     let owner = this.session?.attributes?.['custom:owner'] || __connection?.owner || this.owner;
-
+    
     if (meta) {
         if (typeof meta === 'object' && !Array.isArray(meta)) {
             meta = JSON.parse(JSON.stringify(meta));
