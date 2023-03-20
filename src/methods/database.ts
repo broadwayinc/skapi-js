@@ -56,6 +56,7 @@ function normalizeRecord(record: Record<string, any>): RecordData {
         'tbl': (r: string) => {
             if (!r) return;
             let rSplit = r.split('/');
+            // table/service/group(** | group)/[subscription(user id)/group(00 - 99)]/[tag]
             output.table.name = rSplit[0];
             output.table.access_group = rSplit[2] == '**' ? 'private' : parseInt(rSplit[2]);
             if (rSplit?.[3]) {
@@ -70,7 +71,7 @@ function normalizeRecord(record: Record<string, any>): RecordData {
             let rSplit = r.split('/');
             output.user_id = rSplit[0];
             output.table.name = rSplit[1];
-            output.table.access_group = rSplit[3] == '**' ? 'private' : parseInt(rSplit[2]);
+            output.table.access_group = rSplit[3] == '**' ? 'private' : parseInt(rSplit[3]);
             if (rSplit?.[4]) {
                 output.table.subscription = {
                     user_id: rSplit[4],
@@ -129,7 +130,7 @@ function normalizeRecord(record: Record<string, any>): RecordData {
             keys[k](record[k]);
         }
     }
-
+    
     return output as RecordData;
 }
 
