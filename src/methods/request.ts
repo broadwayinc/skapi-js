@@ -258,7 +258,7 @@ export async function request(
             }
 
             if (meta) {
-                headers["Content-Meta"] = Buffer.from(typeof meta === 'string' ? meta : JSON.stringify(meta)).toString('base64');
+                headers["Content-Meta"] = btoa(typeof meta === 'string' ? meta : JSON.stringify(meta));
             }
 
             if (options.hasOwnProperty('contentType')) {
