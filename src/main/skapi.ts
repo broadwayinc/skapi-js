@@ -153,6 +153,9 @@ export default class Skapi {
     }
 
     constructor(service_id: string, owner: string, options?: { autoLogin: boolean; }) {
+
+        console.log('skapi version: 0.1.9');
+
         if (typeof service_id !== 'string' || typeof owner !== 'string') {
             throw new SkapiError('"service_id" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
