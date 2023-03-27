@@ -130,7 +130,7 @@ function normalizeRecord(record: Record<string, any>): RecordData {
             keys[k](record[k]);
         }
     }
-    
+
     return output as RecordData;
 }
 
@@ -572,16 +572,36 @@ export async function postRecord(
             options.meta.data = formMeta.meta;
         }
 
-        let formToRemove = [];
-        for (const pair of formData.entries()) {
-            if (!formMeta.files.includes(pair[0])) {
-                formToRemove.push(pair[0]);
+        let formToRemove = {
+
+        };
+
+        for (let [key, value] of formData.entries()) {
+            if (formMeta.meta.hasOwnProperty(key) && !(value instanceof Blob)) {
+                let f = formData.getAll(key);
+                let f_idx = f.indexOf(value);
+                if (formToRemove.hasOwnProperty(key)) {
+                    formToRemove[key].push(f_idx);
+                }
+                else {
+                    formToRemove[key] = [f_idx];
+                }
             }
         }
 
-        if (formToRemove.length) {
-            for (let f of formToRemove) {
-                formData.delete(f);
+        if (Object.keys(formToRemove).length) {
+            for (let key in formToRemove) {
+                let values = formData.getAll(key);
+                let val_len = values.length;
+                while (val_len--) {
+                    if (formToRemove[key].includes(val_len)) {
+                        values.splice(val_len, 1);
+                    }
+                }
+                formData.delete(key);
+                for (let dat of values) {
+                    formData.append(key, dat, dat instanceof File ? dat.name : null);
+                }
             }
         }
 
