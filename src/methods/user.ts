@@ -323,7 +323,7 @@ export async function login(
     option?: FormSubmitCallback & { logout: boolean; }): Promise<User> {
     await this.__connection;
 
-    if (option.logout === false) {
+    if (option?.logout === false) {
         let to_be_erased = {
             '__startKey_list': {},
             '__cached_requests': {}
