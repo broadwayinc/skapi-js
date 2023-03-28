@@ -193,8 +193,8 @@ export type UserProfile = {
 } & UserAttributes;
 
 export interface User extends UserProfile {
-    /** Last login time */
-    log: number;
+    // /** Last login time */
+    // log: number;
     /** Number of the user's subscribers. */
     subscribers: number;
     /** Timestamp of user signup time. */

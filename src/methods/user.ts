@@ -320,9 +320,24 @@ export async function login(
         /** Password for signin. Should be at least 6 characters. */
         password: string;
     }>,
-    option?: FormSubmitCallback): Promise<User> {
+    option?: FormSubmitCallback & { logout: boolean; }): Promise<User> {
     await this.__connection;
-    await logout.bind(this)();
+
+    if (option.logout === false) {
+        let to_be_erased = {
+            '__startKey_list': {},
+            '__cached_requests': {}
+        };
+
+        for (let k in to_be_erased) {
+            this[k] = to_be_erased[k];
+        }
+    }
+    
+    else {
+        await logout.bind(this)();
+    }
+
     let params = validator.Params(form, {
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v)
