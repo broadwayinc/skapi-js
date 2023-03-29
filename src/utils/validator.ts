@@ -66,8 +66,8 @@ function Email(email: string, paramName: string = 'email') {
         throw new SkapiError(`"${paramName}"should be type: string.`, { code: 'INVALID_PARAMETER' });
     }
 
-    else if (email.length < 5 || email.length > 64) {
-        throw new SkapiError(`"${paramName}" should be at least 5 characters and max 64 characters.`, { code: 'INVALID_PARAMETER' });
+    else if (email.length < 5) {
+        throw new SkapiError(`"${paramName}" should be at least 5 characters.`, { code: 'INVALID_PARAMETER' });
     }
 
     else if (/^[a-zA-Z0-9.!#$%&'+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z]+[a-zA-Z0-9-]+)$/.test(email)) {
