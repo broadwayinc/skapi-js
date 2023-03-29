@@ -1,6 +1,6 @@
 export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
 
-type Database<Tbl, Idx, Ref> = {
+type Database<Tbl, Ref, Idx> = {
     /** @ignore */
     service?: string; // Only for admins.
     record_id?: string;
@@ -26,12 +26,12 @@ export type GetRecordQuery = Database<
             group: number;
         };
     },
+    /** Referenced record ID | user ID. */
+    string,
     {
         condition?: Condition;
         range?: string | number | boolean;
-    },
-    /** Referenced record ID | user ID. */
-    string
+    }
 > & { tag?: string; };
 
 export type PostRecordConfig = Database<
@@ -42,13 +42,13 @@ export type PostRecordConfig = Database<
         access_group?: number | 'private' | 'public' | 'authorized';
         subscription_group?: number;
     },
-    {},
     /** Referenced record ID | user ID. */
     {
         record_id: string;
         reference_limit: number;
         allow_multiple_reference: boolean;
-    }
+    },
+    null
 > & { tags?: string[]; };
 
 export type RecordData = {
@@ -167,8 +167,8 @@ export type UserAttributes = {
     gender_public?: boolean;
     /** User's birthdate is public when true. */
     birthdate_public?: boolean;
-    /** User has subscribed to service e-mail when positive number. Number value is the access group of the user account. E-mail should be verified. */
-    email_subscription?: number;
+    // /** User has subscribed to service e-mail when positive number. Number value is the access group of the user account. E-mail should be verified. */
+    // email_subscription?: number;
     /** Additional string value that can be used freely. */
     misc: string;
 };
@@ -188,7 +188,7 @@ export type UserProfile = {
     email_verified?: boolean;
     /** Shows true when user has verified their phone number. */
     phone_number_verified?: boolean;
-    /** Shows 'PASS' if the user's account signup was successful.  */
+    /** Shows 'PASS' if the user's account signup was successful. 'MEMBER' if signup confirmation was successful. */
     signup_ticket?: string;
 } & UserAttributes;
 
