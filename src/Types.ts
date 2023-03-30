@@ -6,12 +6,7 @@ type Database<Tbl, Ref, Idx> = {
     record_id?: string;
     table?: Tbl;
     reference?: Ref;
-    index?: {
-        /** Not allowed: White space, special characters. Allowed: Periods. */
-        name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
-        /** Not allowed: Periods, special characters. Allowed: White space. */
-        value: string | number | boolean;
-    } & Idx;
+    index?: Idx;
 };
 
 export type GetRecordQuery = Database<
@@ -28,7 +23,12 @@ export type GetRecordQuery = Database<
     },
     /** Referenced record ID | user ID. */
     string,
-    {
+    /** Index condition and range cannot be used simultaneously.*/
+    {   
+        /** Not allowed: White space, special characters. Allowed: Periods. */
+        name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
+        /** Not allowed: Periods, special characters. Allowed: White space. */
+        value: string | number | boolean;
         condition?: Condition;
         range?: string | number | boolean;
     }
@@ -45,10 +45,18 @@ export type PostRecordConfig = Database<
     /** Referenced record ID | user ID. */
     {
         record_id: string;
-        reference_limit: number;
+        /** Default: null (Infinite) */
+        reference_limit: number | null;
+        /** Default: true */
         allow_multiple_reference: boolean;
     },
-    null
+    /** null removes index */
+    {
+        /** Not allowed: White space, special characters. Allowed: Periods. */
+        name: string;
+        /** Not allowed: Periods, special characters. Allowed: White space. */
+        value: string | number | boolean;
+    } | null
 > & { tags?: string[]; };
 
 export type RecordData = {
@@ -59,7 +67,6 @@ export type RecordData = {
     updated: number;
     uploaded: number;
     table: {
-        /** Not allowed: Special characters. Allowed: White space. periods.*/
         name: string;
         /** Number range: 0 ~ 99 */
         access_group?: number | 'private' | 'public' | 'authorized';
@@ -193,8 +200,6 @@ export type UserProfile = {
 } & UserAttributes;
 
 export interface User extends UserProfile {
-    // /** Last login time */
-    // log: number;
     /** Number of the user's subscribers. */
     subscribers: number;
     /** Timestamp of user signup time. */
