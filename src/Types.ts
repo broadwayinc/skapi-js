@@ -1,6 +1,12 @@
 export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
 
-type Database<Tbl, Ref, Idx> = {
+export type SubscriptionGroup<T> = {
+    user_id: string;
+    /** Number range: 0 ~ 99. '*' means all groups. */
+    group?: T;
+};
+
+export type Database<Tbl, Ref, Idx> = {
     /** @ignore */
     service?: string; // Only for admins.
     record_id?: string;
@@ -48,7 +54,7 @@ export type PostRecordConfig = Database<
         reference_limit: number;
         allow_multiple_reference: boolean;
     },
-    null
+    {}
 > & { tags?: string[]; };
 
 export type RecordData = {

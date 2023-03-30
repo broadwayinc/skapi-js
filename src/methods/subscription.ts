@@ -3,19 +3,14 @@ import {
     FetchOptions,
     FormSubmitCallback,
     Form,
-    Newsletters
+    Newsletters,
+    SubscriptionGroup
 } from '../Types';
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { request } from './request';
 
-type SubscriptionGroup = {
-    user_id: string;
-    /** Number range: 0 ~ 99. '*' means all groups. */
-    group?: number | '*';
-};
-
-function subscriptionGroupCheck(option: SubscriptionGroup) {
+function subscriptionGroupCheck(option: SubscriptionGroup<number | '*'>) {
     option = validator.Params(option, {
         user_id: (v: string) => validator.UserId(v, '"user_id"'),
         group: (v: number | string) => {
@@ -131,12 +126,12 @@ async function getSub(
  * })
  * ```
  */
-export async function subscribe(option: SubscriptionGroup) {
+export async function subscribe(option: SubscriptionGroup<number>) {
     await this.__connection;
     let { user_id, group } = subscriptionGroupCheck.bind(this)(option);
 
-    if (group === '*') {
-        throw new SkapiError('Cannot subscribe to all groups at once.', { code: 'INVALID_PARAMETER' });
+    if (typeof group !== 'number') {
+        throw new SkapiError('"group" should be type: number.', { code: 'INVALID_PARAMETER' });
     }
 
     return await request.bind(this)('subscription', {
@@ -155,7 +150,7 @@ export async function subscribe(option: SubscriptionGroup) {
  * })
  * ```
  */
-export async function unsubscribe(option: SubscriptionGroup) {
+export async function unsubscribe(option: SubscriptionGroup<number | '*'>) {
     await this.__connection;
     let { user_id, group } = subscriptionGroupCheck.bind(this)(option);
 
@@ -179,7 +174,7 @@ export async function unsubscribe(option: SubscriptionGroup) {
  * })
  * ```
  */
-export async function blockSubscriber(option: SubscriptionGroup): Promise<string> {
+export async function blockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<string> {
     await this.__connection;
     let { user_id, group } = subscriptionGroupCheck.bind(this)(option);
     return await request.bind(this)('subscription', { block: user_id, group }, { auth: true });
@@ -200,13 +195,13 @@ export async function blockSubscriber(option: SubscriptionGroup): Promise<string
  * })
  * ```
  */
-export async function unblockSubscriber(option: SubscriptionGroup): Promise<string> {
+export async function unblockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<string> {
     await this.__connection;
     let { user_id, group } = subscriptionGroupCheck.bind(this)(option);
     return await request.bind(this)('subscription', { unblock: user_id, group }, { auth: true });
 }
 
-export async function getSubscriptions(option: SubscriptionGroup, fetchOptions: FetchOptions): Promise<DatabaseResponse> {
+export async function getSubscriptions(option: SubscriptionGroup<number>, fetchOptions: FetchOptions): Promise<DatabaseResponse> {
     await this.__connection;
     option = validator.Params(option, {
         user_id: (v: string) => {
@@ -231,7 +226,7 @@ export async function getSubscriptions(option: SubscriptionGroup, fetchOptions: 
     }, fetchOptions);
 };
 
-export async function getSubscribers(option: SubscriptionGroup, fetchOptions: FetchOptions): Promise<DatabaseResponse> {
+export async function getSubscribers(option: SubscriptionGroup<number>, fetchOptions: FetchOptions): Promise<DatabaseResponse> {
     await this.__connection;
     option = validator.Params(option, {
         user_id: (v: string) => validator.UserId(v, '"user_id"'),
