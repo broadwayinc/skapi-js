@@ -241,6 +241,20 @@ export async function getSubscribers(option: SubscriptionGroup<number>, fetchOpt
     return getSub.bind(this)(subParams, fetchOptions);
 };
 
+export async function getNewsletterSubscription(params: {
+    group?: number;
+}) {
+    await this.__connection;
+
+    params = validator.Params(
+        params,
+        {
+            group: 'number'
+        }
+    );
+
+    return request.bind(this)('get-newsletter-subscription', params, { auth: true });
+}
 /**
  * Anyone who submits their E-Mail address will receive newsletters from you.<br>
  * The newsletters you send out will have unsubscribe link at the bottom.<br>

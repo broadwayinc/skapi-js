@@ -96,6 +96,7 @@ export async function request(
                 case 'service':
                 case 'grant-access':
                 case 'last-verified-email':
+                case 'get-newsletter-subscription':
                 case 'request-username-change':
                     return {
                         public: admin.admin_public,
@@ -349,7 +350,7 @@ function load_startKey_keys(option: {
                 if (_obj.hasOwnProperty('limit')) {
                     delete _obj.limit;
                 }
-                
+
                 for (let k in _obj) {
                     if (_obj[k] && typeof _obj[k] === 'object') {
                         _obj[k] = sortObject(obj[k]);

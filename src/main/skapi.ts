@@ -30,7 +30,8 @@ import {
     getSubscribers,
     subscribeNewsletter,
     getNewsletters,
-    unsubscribeNewsletter
+    unsubscribeNewsletter,
+    getNewsletterSubscription
 } from '../methods/subscription';
 import {
     checkAdmin,
@@ -155,7 +156,7 @@ export default class Skapi {
 
     constructor(service_id: string, owner: string, options?: { autoLogin: boolean; }) {
 
-        console.log('skapi version: 0.1.16');
+        console.log('skapi version: 0.1.17');
 
         if (typeof service_id !== 'string' || typeof owner !== 'string') {
             throw new SkapiError('"service_id" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
@@ -395,6 +396,7 @@ export default class Skapi {
     subscribeNewsletter(...args) { return subscribeNewsletter.bind(this)(...args); }
     unsubscribeNewsletter(...args) { return unsubscribeNewsletter.bind(this)(...args); }
     getNewsletters = getNewsletters.bind(this);
+    getNewsletterSubscription = getNewsletterSubscription.bind(this);
     requestUsernameChange(...args) { return requestUsernameChange.bind(this)(...args); }
     uploadFiles(...args) { return uploadFiles.bind(this)(...args); }
 }
