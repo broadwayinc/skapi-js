@@ -257,7 +257,7 @@ export async function request(
             }
 
             if (meta) {
-                headers["Content-Meta"] = btoa(encodeURIComponent(typeof meta === 'string' ? meta : JSON.stringify(meta)));
+                headers["Content-Meta"] = window.btoa(encodeURIComponent(typeof meta === 'string' ? meta : JSON.stringify(meta)));
             }
 
             if (options.hasOwnProperty('contentType')) {
@@ -346,6 +346,10 @@ function load_startKey_keys(option: {
                 };
 
                 let _obj = sortObject(obj);
+                if (_obj.hasOwnProperty('limit')) {
+                    delete _obj.limit;
+                }
+                
                 for (let k in _obj) {
                     if (_obj[k] && typeof _obj[k] === 'object') {
                         _obj[k] = sortObject(obj[k]);
