@@ -250,40 +250,61 @@ export async function getSubscribers(option: SubscriptionGroup, fetchOptions: Fe
  * Anyone who submits their E-Mail address will receive newsletters from you.<br>
  * The newsletters you send out will have unsubscribe link at the bottom.<br>
  * Both Signed and unsigned users can subscribe to your newsletter.<br>
- * Refer: <a href='www.google.com'>Sending out newsletters</a>
+ * Signed users can also subscribe to groups other than 0.
  * ```
  * let params = {
- *      email: 'visitors@email.com',
- *      bypassWelcome: false // Send out welcome E-Mails on submit
+ *      email: 'visitors@email.com'
  * };
  * 
  * skapi.subscribeNewsletter(params);
  * ```
  */
-export function subscribeNewsletter(
+export async function subscribeNewsletter(
     form: Form<{
-        /** Newsletter subscriber's E-Mail. 64 character max. */
-        email: string,
-        /**
-         * Subscriber will receive a welcome E-Mail if set to false.<br>
-         * The welcome E-Mail is the same E-Mail that is sent when the new user successfully creates an account on your web services.<br>
-         * To save your operation cost, it is advised to redirect the users to your welcome page once subscription is successful.<br>
-         * Refer: <a href="www.google.com">Setting up E-Mail templates</a><br>
-         */
-        bypassWelcome: boolean;
+        email: string;
+        group?: number;
+        redirect?: string;
     }>,
     fetchOptions: FormSubmitCallback
 ): Promise<string> {
+    await this.__connection;
+
     let params = validator.Params(
         form || {},
         {
             email: (v: string) => validator.Email(v),
-            bypassWelcome: ['boolean', () => true]
+            group: ['number', () => 0],
+            redirect: (v: string) => validator.Url(v)
         },
-        ['email']
+        this.__user ? [] : ['email']
     );
 
-    return request.bind(this)('subscribe-newsletter', params, { fetchOptions });
+    return request.bind(this)('subscribe-newsletter', params, { fetchOptions, auth: !!this.__user });
+}
+
+/**
+ * Only signed users can unsubscribe newsletter via api.
+ * if form.group is null, unsubscribes from all groups.
+ */
+export async function unsubscribeNewsletter(
+    params: { group: number | null; },
+    fetchOptions: FormSubmitCallback
+): Promise<string> {
+    await this.__connection;
+
+    params = validator.Params(
+        params,
+        {
+            group: ['number']
+        },
+        ['group']
+    );
+
+    let param_send = Object.assign({
+        action: 'unsubscribe'
+    }, params);
+
+    return request.bind(this)('subscribe-newsletter', param_send, { fetchOptions, auth: true });
 }
 
 export async function getNewsletters(

@@ -29,7 +29,8 @@ import {
     unblockSubscriber,
     getSubscribers,
     subscribeNewsletter,
-    getNewsletters
+    getNewsletters,
+    unsubscribeNewsletter
 } from '../methods/subscription';
 import {
     checkAdmin,
@@ -392,6 +393,7 @@ export default class Skapi {
     getSubscribers = getSubscribers.bind(this);
     @formHandler()
     subscribeNewsletter(...args) { return subscribeNewsletter.bind(this)(...args); }
+    unsubscribeNewsletter(...args) { return unsubscribeNewsletter.bind(this)(...args); }
     getNewsletters = getNewsletters.bind(this);
     requestUsernameChange(...args) { return requestUsernameChange.bind(this)(...args); }
     uploadFiles(...args) { return uploadFiles.bind(this)(...args); }
