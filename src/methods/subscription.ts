@@ -245,15 +245,37 @@ export async function getNewsletterSubscription(params: {
     group?: number;
 }) {
     await this.__connection;
+    let isAdmin = await this.checkAdmin();
 
     params = validator.Params(
         params,
         {
+            user_id: v => {
+                if (v !== this.__user.user_id && !isAdmin) {
+                    throw new SkapiError(`No access.`, { code: 'INVALID_REQUEST' });
+                }
+
+                return v;
+            },
             group: 'number'
         }
     );
 
-    return request.bind(this)('get-newsletter-subscription', params, { auth: true });
+    let { list } = await request.bind(this)('get-newsletter-subscription', params, { auth: true });
+    let result = [];
+    for (let sub of list) {
+        //normalize
+        let subt = sub['subt'].split('#');
+        let group = parseInt(subt[1]);
+
+        result.push({
+            timestamp: sub['stmp'],
+            group,
+            subscribed_email: subt[2]
+        });
+    }
+
+    return result;
 }
 /**
  * Anyone who submits their E-Mail address will receive newsletters from you.<br>
@@ -380,18 +402,13 @@ export async function getNewsletters(
             return v;
         },
         condition: ['>', '>=', '=', '<', '<=', 'gt', 'gte', 'eq', 'lt', 'lte', () => '='],
-        group: (x: string | number) => {
-            if (x !== 'newsletter' && !this.session) {
+        group: (x: number) => {
+            if (!this.session) {
                 throw new SkapiError('User should be logged in.', { code: 'INVALID_REQUEST' });
             }
-            if (typeof x === 'string' && x !== 'newsletter') {
-                throw new SkapiError('Group should be either "newsletter" or access group number.', { code: 'INVALID_PARAMETER' });
-            }
+
             if (!isAdmin && x > parseInt(this.session.idToken.payload.access_group)) {
                 throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
-            }
-            if (x === 'newsletter') {
-                return 0;
             }
 
             return x;
