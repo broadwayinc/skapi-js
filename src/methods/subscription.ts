@@ -292,7 +292,7 @@ export async function getNewsletterSubscription(params: {
  */
 export async function subscribeNewsletter(
     form: Form<{
-        email: string;
+        email?: string;
         group?: number;
         redirect?: string;
     }>,
