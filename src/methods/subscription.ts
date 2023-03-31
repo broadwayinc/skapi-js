@@ -243,7 +243,11 @@ export async function getSubscribers(option: SubscriptionGroup<number>, fetchOpt
 
 export async function getNewsletterSubscription(params: {
     group?: number;
-}) {
+}): Promise<{
+    timestamp: number;
+    group: number;
+    subscribed_email: string;
+}[]> {
     await this.__connection;
     let isAdmin = await this.checkAdmin();
 

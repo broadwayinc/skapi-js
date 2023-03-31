@@ -55,7 +55,7 @@ export function authentication() {
             'address_public',
             'birthdate_public',
             'email_public',
-            'email_subscription',
+            // 'email_subscription',
             'gender_public',
             'phone_number_public',
             'access_group'
@@ -64,7 +64,7 @@ export function authentication() {
                 if (user.hasOwnProperty(k.split('_')[0])) user[k] = user.hasOwnProperty(k) ? !!Number(user[k]) : false;
                 else delete user[k];
             }
-            else if (k === 'email_subscription') user[k] = user.hasOwnProperty(k) ? !!Number(user[k]) : false;
+            // else if (k === 'email_subscription') user[k] = user.hasOwnProperty(k) ? !!Number(user[k]) : false;
             else user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
         }
 
@@ -632,7 +632,7 @@ export async function updateProfile(form: Form<UserProfile>, option?: FormSubmit
         address_public: 'boolean',
         gender_public: 'boolean',
         birthdate_public: 'boolean',
-        email_subscription: 'boolean',
+        // email_subscription: 'boolean',
         misc: 'string'
     });
 
@@ -647,7 +647,7 @@ export async function updateProfile(form: Form<UserProfile>, option?: FormSubmit
     }
 
     let collision = [
-        ['email_subscription', 'email_verified', "User's E-Mail should be verified to set"],
+        // ['email_subscription', 'email_verified', "User's E-Mail should be verified to set"],
         ['email_public', 'email_verified', "User's E-Mail should be verified to set"],
         ['phone_number_public', 'phone_number_verified', "User's phone number should be verified to set"]
     ];
@@ -674,7 +674,7 @@ export async function updateProfile(form: Form<UserProfile>, option?: FormSubmit
             'address_public',
             'gender_public',
             'birthdate_public',
-            'email_subscription',
+            // 'email_subscription',
             'misc'
         ];
 
@@ -766,12 +766,12 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
         'subscribers': 'number',
         'timestamp': 'number',
         'access_group': 'number',
-        'email_subscription': (v: number) => {
-            if (!isAdmin) {
-                throw new SkapiError('Only admin is allowed to search "email_subscription".', { code: 'INVALID_REQUEST' });
-            }
-            return v;
-        },
+        // 'email_subscription': (v: number) => {
+        //     if (!isAdmin) {
+        //         throw new SkapiError('Only admin is allowed to search "email_subscription".', { code: 'INVALID_REQUEST' });
+        //     }
+        //     return v;
+        // },
         'approved': (v: boolean) => {
             if (v) {
                 return 'by_admin:approved';
