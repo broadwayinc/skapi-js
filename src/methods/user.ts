@@ -797,7 +797,7 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
             'subscribers',
             'timestamp',
             'access_group',
-            'email_subscription',
+            // 'email_subscription',
             'approved'
         ],
         condition: ['>', '>=', '=', '<', '<=', 'gt', 'gte', 'eq', 'lt', 'lte', () => '='],
