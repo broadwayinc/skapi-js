@@ -230,6 +230,30 @@ export async function request(
             data = cb;
         }
 
+        if (data instanceof FormData) {
+            let totalFileSize = 0;
+
+            for (let pair of data.entries()) {
+                let v: any = pair[1];
+
+                if (v instanceof File) {
+                    totalFileSize += Math.round((v.size / 1024));
+                }
+
+                else if (v instanceof FileList) {
+                    if (v && v.length > 0) {
+                        for (let idx = 0; idx <= v.length - 1; idx++) {
+                            totalFileSize += Math.round((v.item(idx).size / 1024));
+                        }
+                    }
+                }
+            }
+
+            if (totalFileSize > 5120) {
+                throw new SkapiError('Files cannot exceed 5MB. Use skapi.uploadFiles(...) instead.', { code: 'INVALID_REQUEST' });
+            }
+        }
+
         else {
             throw new SkapiError('Callback for extractFormData() should return FormData', { code: 'INVALID_PARAMETER' });
         }
