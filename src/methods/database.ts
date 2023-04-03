@@ -405,7 +405,7 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
     for (let i in result.list) { result.list[i] = normalizeRecord(result.list[i]); };
 
     return result;
-};
+}
 
 export async function postRecord(
     form: Form<Record<string, any>> | null | undefined,
@@ -651,7 +651,7 @@ export async function getTable(
     }
 
     return res;
-};
+}
 
 export async function getIndex(
     query: {
@@ -749,7 +749,7 @@ export async function getIndex(
     }
 
     return res;
-};
+}
 
 export async function getTag(
     query: {
@@ -788,7 +788,7 @@ export async function getTag(
     }
 
     return res;
-};
+}
 
 /**
 * Deletes specific records or bulk of records under certain table, access group.
@@ -922,4 +922,4 @@ export async function deleteRecords(params: {
     }
 
     return await request.bind(this)('del-records', params, { auth: true });
-};
+}
