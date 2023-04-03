@@ -237,19 +237,19 @@ export async function request(
                 let v: any = pair[1];
 
                 if (v instanceof File) {
-                    totalFileSize += Math.round((v.size / 1000));
+                    totalFileSize += v.size;
                 }
 
                 else if (v instanceof FileList) {
                     if (v && v.length > 0) {
                         for (let idx = 0; idx <= v.length - 1; idx++) {
-                            totalFileSize += Math.round((v.item(idx).size / 1000));
+                            totalFileSize += v.item(idx).size;
                         }
                     }
                 }
             }
 
-            if (totalFileSize > 4000) {
+            if (totalFileSize > 4200000) {
                 throw new SkapiError('Files cannot exceed 4MB. Use skapi.uploadFiles(...) instead.', { code: 'INVALID_REQUEST' });
             }
         }

@@ -159,14 +159,14 @@ class MD5 {
     }
 }
 
-function generateRandom(length=6) {
+function generateRandom(length = 6) {
     let result = '';
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     const charactersLength = characters.length;
     let counter = 0;
     while (counter < length) {
-      result += characters.charAt(Math.floor(Math.random() * charactersLength));
-      counter += 1;
+        result += characters.charAt(Math.floor(Math.random() * charactersLength));
+        counter += 1;
     }
     return result;
 }
@@ -231,7 +231,7 @@ function extractFormMeta(form: Form<any>) {
                     files.push(name);
                 }
 
-                totalFileSize += Math.round((v.size / 1000));
+                totalFileSize += v.size;
             }
 
             else if (v instanceof FileList) {
@@ -241,7 +241,7 @@ function extractFormMeta(form: Form<any>) {
 
                 if (v && v.length > 0) {
                     for (let idx = 0; idx <= v.length - 1; idx++) {
-                        totalFileSize += Math.round((v.item(idx).size / 1000));
+                        totalFileSize += v.item(idx).size;
                     }
                 }
             }
@@ -306,7 +306,7 @@ function extractFormMeta(form: Form<any>) {
 
                     if (i.files && i.files.length > 0) {
                         for (let idx = 0; idx <= i.files.length - 1; idx++) {
-                            totalFileSize += Math.round((i.files.item(idx).size / 1000));
+                            totalFileSize += i.files.item(idx).size;
                         }
                     }
                 }
@@ -317,7 +317,7 @@ function extractFormMeta(form: Form<any>) {
             }
         }
 
-        if (totalFileSize > 4000) {
+        if (totalFileSize > 4200000) {
             throw new SkapiError('Files cannot exceed 4MB. Use skapi.uploadFiles(...) instead.', { code: 'INVALID_REQUEST' });
         }
 
