@@ -231,7 +231,7 @@ function extractFormMeta(form: Form<any>) {
                     files.push(name);
                 }
 
-                totalFileSize += Math.round((v.size / 1024));
+                totalFileSize += Math.round((v.size / 1000));
             }
 
             else if (v instanceof FileList) {
@@ -241,7 +241,7 @@ function extractFormMeta(form: Form<any>) {
 
                 if (v && v.length > 0) {
                     for (let idx = 0; idx <= v.length - 1; idx++) {
-                        totalFileSize += Math.round((v.item(idx).size / 1024));
+                        totalFileSize += Math.round((v.item(idx).size / 1000));
                     }
                 }
             }
@@ -251,7 +251,7 @@ function extractFormMeta(form: Form<any>) {
             }
         }
 
-        if (totalFileSize > 5120) {
+        if (totalFileSize > 5000) {
             throw new SkapiError('Files cannot exceed 5MB. Use skapi.uploadFiles(...) instead.', { code: 'INVALID_REQUEST' });
         }
 
@@ -306,7 +306,7 @@ function extractFormMeta(form: Form<any>) {
 
                     if (i.files && i.files.length > 0) {
                         for (let idx = 0; idx <= i.files.length - 1; idx++) {
-                            totalFileSize += Math.round((i.files.item(idx).size / 1024));
+                            totalFileSize += Math.round((i.files.item(idx).size / 1000));
                         }
                     }
                 }
@@ -317,7 +317,7 @@ function extractFormMeta(form: Form<any>) {
             }
         }
 
-        if (totalFileSize > 5120) {
+        if (totalFileSize > 5000) {
             throw new SkapiError('Files cannot exceed 5MB. Use skapi.uploadFiles(...) instead.', { code: 'INVALID_REQUEST' });
         }
 
