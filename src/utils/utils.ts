@@ -317,8 +317,8 @@ function extractFormMeta(form: Form<any>) {
             }
         }
 
-        if (totalFileSize > 5000) {
-            throw new SkapiError('Files cannot exceed 5MB. Use skapi.uploadFiles(...) instead.', { code: 'INVALID_REQUEST' });
+        if (totalFileSize > 4000) {
+            throw new SkapiError('Files cannot exceed 4MB. Use skapi.uploadFiles(...) instead.', { code: 'INVALID_REQUEST' });
         }
 
         return { meta, files };
