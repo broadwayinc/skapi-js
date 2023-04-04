@@ -57,6 +57,9 @@ import {
 } from '../methods/user';
 
 export default class Skapi {
+    // current version
+    version = '0.1.24';
+
     // privates
     private __disabledAccount: string | null = null;
     // private __serviceHash: Record<string, string> = {};
@@ -74,18 +77,18 @@ export default class Skapi {
         };
     } = {};
     private __request_signup_confirmation: string | null = null;
-    private service: string;
-    private owner: string;
+    service: string;
+    owner: string;
 
     // true when session is stored successfully to session storage
     // this property prevents duplicate stores when window closes on some device
     private __class_properties_has_been_cached = false;
-    private session: Record<string, any> | null = null;
+    session: Record<string, any> | null = null;
 
     /** Current logged in user object. null if not logged. */
     __user: User | null = null;
 
-    get user() {
+    get user(): User | null {
         if (this.__user && Object.keys(this.__user).length) {
             return JSON.parse(JSON.stringify(this.__user));
         }
@@ -99,8 +102,8 @@ export default class Skapi {
     }
 
     connection: Connection | null = null;
-    host: string = 'skapi';
-    hostDomain: string = 'skapi.com';
+    host = 'skapi';
+    hostDomain = 'skapi.com';
     admin_endpoint: Promise<Record<string, any>>;
     record_endpoint: Promise<Record<string, any>>;
 
@@ -156,7 +159,7 @@ export default class Skapi {
 
     constructor(service_id: string, owner: string, options?: { autoLogin: boolean; }) {
 
-        console.log('skapi version: 0.1.24');
+        console.log(`skapi version: ${this.version}`);
 
         if (typeof service_id !== 'string' || typeof owner !== 'string') {
             throw new SkapiError('"service_id" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
