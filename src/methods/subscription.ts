@@ -244,6 +244,7 @@ export async function getSubscribers(option: SubscriptionGroup<number>, fetchOpt
 export async function getNewsletterSubscription(params: {
     group?: number;
 }): Promise<{
+    active: boolean;
     timestamp: number;
     group: number;
     subscribed_email: string;
@@ -270,12 +271,20 @@ export async function getNewsletterSubscription(params: {
     for (let sub of list) {
         //normalize
         let subt = sub['subt'].split('#');
-        let group = parseInt(subt[1]);
+        let active = true;
+
+        if (subt[0].charAt(0) === '@') {
+            active = false;
+            subt[0] = subt[0].substring(1);
+        }
+
+        let group = parseInt(subt[0]);
 
         result.push({
             timestamp: sub['stmp'],
             group,
-            subscribed_email: subt[2]
+            subscribed_email: subt[1],
+            active
         });
     }
 
