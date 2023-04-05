@@ -295,6 +295,7 @@ export async function getNewsletterSubscription(params: {
  * The newsletters you send out will have unsubscribe link at the bottom.<br>
  * Both Signed and unsigned users can subscribe to your newsletter.<br>
  * Signed users can also subscribe to groups other than 0.
+ * redirect is for newsletter subscribe confirmation link which it will only be sent to group 0 subscribers.
  * ```
  * let params = {
  *      email: 'visitors@email.com'
