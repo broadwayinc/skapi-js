@@ -266,7 +266,7 @@ export async function getNewsletterSubscription(params: {
         }
     );
 
-    let { list } = await request.bind(this)('get-newsletter-subscription', params, { auth: true });
+    let list = await request.bind(this)('get-newsletter-subscription', params, { auth: true });
     let result = [];
     for (let sub of list) {
         //normalize

@@ -501,7 +501,7 @@ export async function postRecord(
         if (config.table.access_group === 'public') {
             config.table.access_group = 0;
         }
-
+        
         else if (config.table.access_group === 'authorized') {
             config.table.access_group = 1;
         }
