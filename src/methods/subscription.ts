@@ -332,8 +332,7 @@ export async function subscribeNewsletter(
  * if form.group is null, unsubscribes from all groups.
  */
 export async function unsubscribeNewsletter(
-    params: { group: number | null; },
-    fetchOptions: FormSubmitCallback
+    params: { group: number | null; }
 ): Promise<string> {
     await this.__connection;
 
@@ -349,7 +348,7 @@ export async function unsubscribeNewsletter(
         action: 'unsubscribe'
     }, params);
 
-    return request.bind(this)('subscribe-newsletter', param_send, { fetchOptions, auth: true });
+    return request.bind(this)('subscribe-newsletter', param_send);
 }
 
 export async function getNewsletters(
