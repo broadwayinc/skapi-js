@@ -20,7 +20,8 @@ import {
     mock,
     getBlob,
     getFormResponse,
-    formHandler
+    formHandler,
+    getConnection
 } from '../methods/request';
 import {
     subscribe,
@@ -151,11 +152,6 @@ export default class Skapi {
     };
 
     __connection: Promise<Connection | null>;
-
-    async getConnection(): Promise<Connection | null> {
-        await this.__connection;
-        return this.connection;
-    }
 
     constructor(service_id: string, owner: string, options?: { autoLogin: boolean; }) {
 
@@ -291,57 +287,17 @@ export default class Skapi {
 
         })().catch(err => { throw err; });
     }
+
     async updateConnection(): Promise<Connection> {
-        // async updateConnection(params?: { request_hash: string; }): Promise<Connection> {
-        let request_hash = null;
-        let connectedService: Record<string, any> = {};
+        this.connection = await request.bind(this)('service', {
+            service: this.service,
+            owner: this.owner
+        }, { bypassAwaitConnection: true, method: 'get' });
 
-        // if (params?.request_hash) {
-        //     // hash request
-
-        //     if (this.__serviceHash[params.request_hash]) {
-        //         // has hash
-        //         Object.assign(connectedService, { hash: this.__serviceHash[params.request_hash] });
-        //     }
-
-        //     else {
-        //         // request signin hash
-        //         request_hash = {
-        //             request_hash: validator.Email(params.request_hash)
-        //         };
-        //     }
-        // }
-
-        if (!this.connection || this.connection.service !== this.service || request_hash) {
-            // has hash request or need new connection request
-
-            if (request_hash === null) {
-                request_hash = {};
-            }
-
-            // assign service id and owner to request
-            Object.assign(request_hash, {
-                service: this.service,
-                owner: this.owner
-            });
-        }
-
-        // post request if needed
-        Object.assign(connectedService, (request_hash ? await request.bind(this)('service', request_hash, { bypassAwaitConnection: true, method: 'get' }) : this.connection));
-
-        // if (params?.request_hash) {
-        //     // cache hash if needed
-        //     this.__serviceHash[params.request_hash] = connectedService.hash;
-        // }
-
-        // deep copy, save connection service info without hash
-        let connection = JSON.parse(JSON.stringify(connectedService));
-        delete connection.hash;
-        this.connection = connection;
-
-        return connectedService as Connection;
+        return this.connection;
     }
 
+    getConnection = getConnection.bind(this);
     getProfile = getProfile.bind(this);
     checkAdmin = checkAdmin.bind(this);
     getBlob = getBlob.bind(this);

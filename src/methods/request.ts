@@ -3,6 +3,7 @@ import {
     FormSubmitCallback,
     FetchOptions,
     DatabaseResponse,
+    Connection
 } from '../Types';
 import SkapiError from '../main/error';
 import {
@@ -12,6 +13,11 @@ import {
 import validator from '../utils/validator';
 
 const __pendingRequest: Record<string, Promise<any>> = {};
+
+export async function getConnection(): Promise<Connection | null> {
+    await this.__connection;
+    return this.connection;
+}
 
 export async function request(
     url: string,
