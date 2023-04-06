@@ -21,12 +21,16 @@ import { request } from './request';
 import { MD5 } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
+
+/** @ignore */
 export let userPool: CognitoUserPool | null = null;
 
+/** @ignore */
 export function setUserPool(params: { UserPoolId: string; ClientId: string; }) {
     userPool = new CognitoUserPool(params);
 }
 
+/** @ignore */
 export function authentication() {
     if (!userPool) throw new SkapiError('User pool is missing', { code: 'INVALID_REQUEST' });
 
@@ -227,7 +231,7 @@ export function authentication() {
     return { getSession, authenticateUser, createCognitoUser, getUser };
 }
 
-export async function getProfile(options?: { refreshToken: boolean; }) {
+export async function getProfile(options?: { refreshToken: boolean; }): Promise<User | null> {
     await this.__connection;
     try {
         await authentication.bind(this)().getSession(options);
@@ -237,6 +241,7 @@ export async function getProfile(options?: { refreshToken: boolean; }) {
     }
 }
 
+/** @ignore */
 export async function checkAdmin() {
     await this.__connection;
     if (this.__user?.service === this.service) {
@@ -333,7 +338,7 @@ export async function login(
             this[k] = to_be_erased[k];
         }
     }
-    
+
     else {
         await logout.bind(this)();
     }
