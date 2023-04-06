@@ -14,11 +14,16 @@ import validator from '../utils/validator';
 
 const __pendingRequest: Record<string, Promise<any>> = {};
 
+/**
+ * When skapi instance is created via new Skapi(...) skapi immediately connects the browser to the server.
+ * You can use getConnection() when you need to await for connection to be established.
+ */
 export async function getConnection(): Promise<Connection | null> {
     await this.__connection;
     return this.connection;
 }
 
+/** @ignore */
 export async function request(
     url: string,
     data: Form<any> | null = null,
@@ -841,6 +846,7 @@ export async function getFormResponse(): Promise<any> {
     throw new SkapiError("Form response doesn't exist.", { code: 'NOT_EXISTS' });
 };
 
+/** @ignore */
 export function formHandler() {
     // wraps methods that requires form handling
     return function (target: object, propertyKey: string, descriptor: any) {
