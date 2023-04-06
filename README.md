@@ -1,6 +1,6 @@
 # skapi
 
-skapi is a backend framework for frontend developers.
+skapi is a serverless backend API for JAM stack developers.
 
 Build fast and scalable web services based on skapi's serverless technology.
 
@@ -15,37 +15,17 @@ skapi is built to work well on both plain HTML and Webpack projects.
 - Authentication for web services.
 - Cloud storage.
 - E-Mail newsletters to customers.
+- Web hosting.
 
 <br>
  
 # Getting started
 
-For webpack running projects:
-```
-$ npm i skapi-js
-```
-
-<br>
-
-```
-import {Skapi} from 'skapi-js';
-let skapi = new Skapi('your_service_id', 'your_user_id');
-```
-
-For HTML projects:
 ```
 <head>
-  <script src="https://broadwayinc.dev/lib/js/skapi/latest/skapi.js">
+  <script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js">
 </head>
 <script>
-    let skapi = new Skapi('your_service_id', 'your_user_id');
+    const skapi = new Skapi('your_service_id', 'your_user_id');
 </script>
 ```
-
-<br>
-
-# Notice
-
-We have just released an alpha!
-
-Check out our website: https://skapi.com
