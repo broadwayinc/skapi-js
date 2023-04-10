@@ -287,6 +287,9 @@ export async function resendSignupConfirmation(
     if (redirect) {
         validator.Url(redirect);
     }
+    else {
+        redirect = undefined;
+    }
 
     let resend = await request.bind(this)("confirm-signup", {
         username: this.__request_signup_confirmation,
