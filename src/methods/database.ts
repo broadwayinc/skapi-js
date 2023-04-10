@@ -46,7 +46,7 @@ function normalizeRecord(record: Record<string, any>): RecordData {
         'rec': (r: string) => {
             if (!r) return;
             output.record_id = r;
-            let base62timestamp = r.substring(0, r.length - 4); // id: [base62 timestamp][random 5 char][suid]
+            let base62timestamp = r.substring(0, r.length - 10); // id: [base62 timestamp][random 6 char][suid 4 char]
             let uploaded = base_decode(base62timestamp);
             output.uploaded = uploaded;
         },
