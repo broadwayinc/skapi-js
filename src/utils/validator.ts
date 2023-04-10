@@ -268,16 +268,16 @@ function Params(
         }
     }
 
-    else if (isObjectWithKeys(struct) && isObjectWithKeys(_params)) {
+    if (allowNullStruct && _params === null) {
+        return null;
+    }
+
+    if (isObjectWithKeys(struct) && isObjectWithKeys(_params)) {
         for (let s in struct) {
             // loop through structure keys
             let structValue = struct[s];
 
-            if (allowNullStruct && _params[s] === null) {
-                _params[s] = null;
-            }
-
-            else if (_params.hasOwnProperty(s) && typeof _params[s] != 'undefined') {
+            if (_params.hasOwnProperty(s) && typeof _params[s] != 'undefined') {
                 // recurse to check data type
                 _params[s] = Params(_params[s], structValue, null, null, s);
             }
