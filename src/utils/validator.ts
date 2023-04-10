@@ -180,7 +180,7 @@ function Params(
     required: string[] | null = null,
     bypassCheck: string[] | null = [],
     _parentKey: string | null = null,
-    allowNullStruct:boolean = false
+    allowNullStruct: boolean = false
 ): any {
     // struct = {
     //     a: 'boolean',
@@ -268,16 +268,16 @@ function Params(
         }
     }
 
-    if (allowNullStruct && isObjectWithKeys(struct) && _params === null) {
-        return null;
-    }
-
     else if (isObjectWithKeys(struct) && isObjectWithKeys(_params)) {
         for (let s in struct) {
             // loop through structure keys
             let structValue = struct[s];
 
-            if (_params.hasOwnProperty(s) && typeof _params[s] != 'undefined') {
+            if (allowNullStruct && _params[s] === null) {
+                _params[s] = null;
+            }
+
+            else if (_params.hasOwnProperty(s) && typeof _params[s] != 'undefined') {
                 // recurse to check data type
                 _params[s] = Params(_params[s], structValue, null, null, s);
             }
