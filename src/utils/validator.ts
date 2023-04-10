@@ -179,8 +179,7 @@ function Params(
     struct: Record<string, any>,
     required: string[] | null = null,
     bypassCheck: string[] | null = [],
-    _parentKey: string | null = null,
-    allowNullStruct: boolean = false
+    _parentKey: string | null = null
 ): any {
     // struct = {
     //     a: 'boolean',
@@ -268,16 +267,16 @@ function Params(
         }
     }
 
-    if (allowNullStruct && _params === null) {
-        return null;
-    }
-
     if (isObjectWithKeys(struct) && isObjectWithKeys(_params)) {
         for (let s in struct) {
             // loop through structure keys
             let structValue = struct[s];
+            if (_params.hasOwnProperty(s) && _params[s] === null) {
+                // null is accepted in object structure
+                _params[s] = null;
+            }
 
-            if (_params.hasOwnProperty(s) && typeof _params[s] != 'undefined') {
+            else if (_params.hasOwnProperty(s) && typeof _params[s] !== 'undefined') {
                 // recurse to check data type
                 _params[s] = Params(_params[s], structValue, null, null, s);
             }
