@@ -436,7 +436,7 @@ export async function postRecord(
             config.table.access_group = 0;
         }
     }
-
+    console.log(JSON.parse(JSON.stringify(config)));
     config = validator.Params(config || {}, {
         record_id: 'string',
         table: {
@@ -492,7 +492,7 @@ export async function postRecord(
             throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
         }
     }, [], ['response', 'onerror'], null, true);
-
+    console.log(JSON.parse(JSON.stringify(config)));
     if (!config?.table && !config?.record_id) {
         throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
     }
