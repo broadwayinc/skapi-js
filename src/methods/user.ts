@@ -360,8 +360,9 @@ export async function signup(
         /**
          * When true, the service will send out confirmation E-Mail.
          * User will not be able to signin to their account unless they have confirm their email.
+         * Parameter also accepts URL string for user to be taken to when clicked on confirmation link.
          */
-        confirmation?: boolean;
+        confirmation?: boolean | string;
         /**
          * Automatically login to account after signup. Will not work if E-Mail confirmation is required.
          */
