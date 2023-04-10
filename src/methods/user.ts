@@ -772,7 +772,7 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
             }
             return v;
         },
-        'subscribers': 'number',
+        // 'subscribers': 'number',
         'timestamp': 'number',
         'access_group': 'number',
         // 'email_subscription': (v: number) => {
