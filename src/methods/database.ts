@@ -491,7 +491,7 @@ export async function postRecord(
 
             throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
         }
-    }, [], ['response', 'onerror']);
+    }, [], ['response', 'onerror'], null, true);
 
     if (!config?.table && !config?.record_id) {
         throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
@@ -501,7 +501,7 @@ export async function postRecord(
         if (config.table.access_group === 'public') {
             config.table.access_group = 0;
         }
-        
+
         else if (config.table.access_group === 'authorized') {
             config.table.access_group = 1;
         }

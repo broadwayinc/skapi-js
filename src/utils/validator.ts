@@ -179,7 +179,8 @@ function Params(
     struct: Record<string, any>,
     required: string[] | null = null,
     bypassCheck: string[] | null = [],
-    _parentKey: string | null = null
+    _parentKey: string | null = null,
+    allowNullStruct:boolean = false
 ): any {
     // struct = {
     //     a: 'boolean',
@@ -267,7 +268,11 @@ function Params(
         }
     }
 
-    if (isObjectWithKeys(struct) && isObjectWithKeys(_params)) {
+    if (allowNullStruct && isObjectWithKeys(struct) && _params === null) {
+        return null;
+    }
+
+    else if (isObjectWithKeys(struct) && isObjectWithKeys(_params)) {
         for (let s in struct) {
             // loop through structure keys
             let structValue = struct[s];
