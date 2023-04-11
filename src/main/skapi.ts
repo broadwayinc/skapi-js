@@ -71,7 +71,7 @@ export default class Skapi {
             [hashedParams: string]: DatabaseResponse;
         };
     } = {};
-    private __startKey_list: {
+    private __startKeyHistory: {
         /** List of startkeys */
         [url: string]: {
             [hashedParams: string]: string[];
@@ -260,7 +260,7 @@ export default class Skapi {
                     let data: Record<string, any> = {};
 
                     const to_be_cached = [
-                        '__startKey_list', // startKey key : {}
+                        '__startKeyHistory', // startKey key : {}
                         '__cached_requests', // cached records : {}
                         '__request_signup_confirmation', // for resend signup confirmation : null
                         'connection', // service info : null
