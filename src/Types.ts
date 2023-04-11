@@ -111,6 +111,8 @@ export type Connection = {
     region: string;
     /** 13 digits timestamp of the service creation */
     timestamp: number;
+    /** Connected user's IP address */
+    ip: string;
 };
 
 export type FormSubmitCallback = {
