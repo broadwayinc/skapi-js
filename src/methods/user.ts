@@ -264,7 +264,7 @@ export async function logout(): Promise<'SUCCESS: The user has been logged out.'
 
     let to_be_erased = {
         'session': null,
-        '__startKey_list': {},
+        '__startKeyHistory': {},
         '__cached_requests': {},
         '__user': null
     };
@@ -333,7 +333,7 @@ export async function login(
 
     if (option?.logout === false) {
         let to_be_erased = {
-            '__startKey_list': {},
+            '__startKeyHistory': {},
             '__cached_requests': {}
         };
 

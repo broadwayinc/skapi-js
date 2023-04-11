@@ -240,7 +240,7 @@ export type DatabaseResponse = {
     list: any[];
     startKey: string;
     endOfList: boolean;
-    startKey_list: string[];
+    startKeyHistory: string[];
 };
 
 export type Service = {

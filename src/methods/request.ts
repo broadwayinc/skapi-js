@@ -401,7 +401,7 @@ function load_startKey_keys(option: {
         return MD5.hash(url + '/' + this.service);
     })();
 
-    if (!fetchMore && this.__startKey_list?.[url]?.[hashedParams]) {
+    if (!fetchMore && this.__startKeyHistory?.[url]?.[hashedParams]) {
         // init cache, init startKey
 
         if (this.__cached_requests?.[url] && this.__cached_requests?.[url]?.[hashedParams]) {
@@ -409,9 +409,9 @@ function load_startKey_keys(option: {
             delete this.__cached_requests[url][hashedParams];
         }
 
-        if (Array.isArray(this.__startKey_list[url][hashedParams]) && this.__startKey_list[url][hashedParams].length) {
+        if (Array.isArray(this.__startKeyHistory[url][hashedParams]) && this.__startKeyHistory[url][hashedParams].length) {
             // delete cache of all startkeys
-            for (let p of this.__startKey_list[url][hashedParams]) {
+            for (let p of this.__startKeyHistory[url][hashedParams]) {
                 let hashedParams_cached = hashedParams + '/' + MD5.hash(JSON.stringify(p));
                 if (this.__cached_requests?.[url] && this.__cached_requests?.[url]?.[hashedParams_cached]) {
                     delete this.__cached_requests[url][hashedParams_cached];
@@ -420,18 +420,18 @@ function load_startKey_keys(option: {
         }
 
         // delete start key lists
-        delete this.__startKey_list[url][hashedParams];
+        delete this.__startKeyHistory[url][hashedParams];
 
         return hashedParams;
     }
 
-    if (!Array.isArray(this.__startKey_list?.[url]?.[hashedParams])) {
+    if (!Array.isArray(this.__startKeyHistory?.[url]?.[hashedParams])) {
         // startkey does not exists
         return hashedParams;
     }
 
     // hashed params exists
-    let list_of_startKeys = this.__startKey_list[url][hashedParams]; // [{<startKey key>}, ...'end']
+    let list_of_startKeys = this.__startKeyHistory[url][hashedParams]; // [{<startKey key>}, ...'end']
     let last_startKey_key = list_of_startKeys[list_of_startKeys.length - 1];
     let cache_hashedParams = hashedParams;
     if (last_startKey_key) {
@@ -442,7 +442,7 @@ function load_startKey_keys(option: {
                 list: [],
                 startKey: 'end',
                 endOfList: true,
-                startKey_list: this.__startKey_list[url][hashedParams]
+                startKeyHistory: this.__startKeyHistory[url][hashedParams]
             };
         }
 
@@ -486,7 +486,7 @@ async function update_startKey_keys(option: Record<string, any>) {
     // has start key
     // startkey is key for next fetch
 
-    // this.__startKey_list[url] = {
+    // this.__startKeyHistory[url] = {
     //     [hashedParam]: ['{<startKey key>}', ...'end'],
     //     ...
     // }
@@ -496,9 +496,9 @@ async function update_startKey_keys(option: Record<string, any>) {
     //     ...
     // }
 
-    if (!this.__startKey_list.hasOwnProperty(url)) {
+    if (!this.__startKeyHistory.hasOwnProperty(url)) {
         // create url key to store startKey key list if it doesnt exists
-        this.__startKey_list[url] = {};
+        this.__startKeyHistory[url] = {};
     }
 
     if (!this.__cached_requests?.[url]) {
@@ -507,18 +507,18 @@ async function update_startKey_keys(option: Record<string, any>) {
 
     this.__cached_requests[url][hashedParam] = fetched;
 
-    if (!this.__startKey_list[url].hasOwnProperty(hashedParam)) {
-        this.__startKey_list[url][hashedParam] = [];
+    if (!this.__startKeyHistory[url].hasOwnProperty(hashedParam)) {
+        this.__startKeyHistory[url][hashedParam] = [];
     }
 
     let startKey_string = fetched.startKey === 'end' ? 'end' : JSON.stringify(fetched.startKey);
-    if (!this.__startKey_list[url][hashedParam].includes(startKey_string)) {
-        this.__startKey_list[url][hashedParam].push(startKey_string);
+    if (!this.__startKeyHistory[url][hashedParam].includes(startKey_string)) {
+        this.__startKeyHistory[url][hashedParam].push(startKey_string);
     }
 
     this.__cached_requests[url][hashedParam] = fetched;
 
-    return Object.assign({ startKey_list: this.__startKey_list[url][hashedParam] }, fetched);
+    return Object.assign({ startKeyHistory: this.__startKeyHistory[url][hashedParam] }, fetched);
 };
 
 async function _fetch(url: string, opt: RequestInit, responseType: string) {
