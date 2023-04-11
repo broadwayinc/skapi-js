@@ -796,29 +796,13 @@ export async function mock(data: Form<any | {
         contentType?: string;
     }): Promise<{ mockResponse: Record<string, any>; }> {
     options = options || {};
-    if (data instanceof SubmitEvent) {
-        let formData = new FormData((data.target as HTMLFormElement));
-        let formMeta = extractFormMeta(data);
-        if (Object.keys(formMeta.meta).length) {
-            options.meta = formMeta.meta;
-        }
+    if (formCallback && formCallback?.formData && typeof formCallback.formData === 'function') {
+        let fetchOptions = {
+            formData: formCallback.formData
+        };
 
-        let formToRemove = [];
-        for (const pair of formData.entries()) {
-            if (!formMeta.files.includes(pair[0])) {
-                formToRemove.push(pair[0]);
-            }
-        }
-
-        if (formToRemove.length) {
-            for (let f of formToRemove) {
-                formData.delete(f);
-            }
-        }
-
-        data = formData;
+        Object.assign(options, fetchOptions);
     }
-
     return request.bind(this)('mock', data, options);
 }
 
