@@ -541,7 +541,9 @@ export async function postRecord(
             throw new SkapiError('"index.name" is required. type: string.', { code: 'INVALID_PARAMETER' });
         }
 
-        validator.specialChars(config.index.name, 'index name', true);
+        if (!['$uploaded', '$updated', '$referenced_count', '$user_id'].includes(config.index.name)) {
+            validator.specialChars(config.index.name, 'index name', true);
+        }
 
         if (!config.index.hasOwnProperty('value')) {
             throw new SkapiError('"index.value" is required.', { code: 'INVALID_PARAMETER' });
