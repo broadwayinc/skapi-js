@@ -137,6 +137,7 @@ function Url(url: string | string[]) {
         return check(url);
     }
 }
+
 function specialChars(
     string: string | string[],
     p = 'parameter',
