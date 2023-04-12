@@ -29,6 +29,8 @@ import {
     blockSubscriber,
     unblockSubscriber,
     getSubscribers,
+    getSubscribedTo,
+    getSubscriptions,
     subscribeNewsletter,
     getNewsletters,
     unsubscribeNewsletter,
@@ -349,8 +351,9 @@ export default class Skapi {
     blockSubscriber(...args) { return blockSubscriber.bind(this)(...args); }
     @formHandler()
     unblockSubscriber(...args) { return unblockSubscriber.bind(this)(...args); }
-    getSubscriptions = getSubscribers.bind(this);
+    getSubscribedTo = getSubscribedTo.bind(this);
     getSubscribers = getSubscribers.bind(this);
+    getSubscriptions = getSubscriptions.bind(this);
     @formHandler()
     subscribeNewsletter(...args) { return subscribeNewsletter.bind(this)(...args); }
     unsubscribeNewsletter(...args) { return unsubscribeNewsletter.bind(this)(...args); }

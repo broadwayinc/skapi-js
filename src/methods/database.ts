@@ -358,7 +358,7 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
         }
 
         if (typeof query.table.access_group === 'number') {
-            if (!this.user) {
+            if (!this.__user) {
                 if (0 < query.table.access_group) {
                     throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
                 }

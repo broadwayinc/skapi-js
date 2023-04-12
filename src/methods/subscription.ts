@@ -10,6 +10,7 @@ import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { request } from './request';
 
+/** @ignore */
 function subscriptionGroupCheck(option: SubscriptionGroup<number | '*'>) {
     option = validator.Params(option, {
         user_id: (v: string) => validator.UserId(v, '"user_id"'),
@@ -37,11 +38,11 @@ function subscriptionGroupCheck(option: SubscriptionGroup<number | '*'>) {
     return option;
 };
 
-async function getSub(
+export async function getSubscriptions(
     params: {
-        /** Subscribers user id | E-Mail for newsletter subscribers. */
+        /** Subscribers user id. */
         subscriber?: string;
-        /** Subscription id. User id that subscriber has subscribed to. */
+        /** User ID of the subscription. User id that subscriber has subscribed to. */
         subscription?: string;
         /** subscription group. if omitted, will fetch all groups. */
         group?: number | '*';
@@ -52,50 +53,18 @@ async function getSub(
     /** @ignore */
     _mapper?: Function
 ): Promise<DatabaseResponse> {
-    let isNewsletterSub = false;
-
     params = validator.Params(params, {
-        subscriber: (v: string) => {
-            try {
-                return validator.UserId(v, 'User ID in "subscriber"');
-            } catch (err) {
-            }
-
-            try {
-                let isEmail = validator.Email(v);
-                isNewsletterSub = true;
-                return isEmail;
-            } catch (err) {
-            }
-
-            throw new SkapiError('"subscriber" should be either valid user ID or E-Mail.', { code: 'INVALID_PARAMETER' });
-        },
+        subscriber: (v: string) => validator.UserId(v, 'User ID in "subscriber"'),
         group: 'number',
-        subscription: (v: string) => {
-            // can be
-            try {
-                return validator.UserId(v, 'User ID in "subscription"');
-            } catch (err) {
-            }
-
-            if (typeof v === 'string' && v.length === 14) {
-                return v;
-            }
-
-            throw new SkapiError('"subscriber" should be either valid service ID or user ID.', { code: 'INVALID_PARAMETER' });
-        },
+        subscription: (v: string) => validator.UserId(v, 'User ID in "subscription"'),
         blocked: 'boolean'
     });
-
-    if (isNewsletterSub && !params?.subscription) {
-        params.subscription = this.service;
-    }
 
     if (!params.subscriber && !params.subscription) {
         throw new SkapiError('At least either "subscriber" or "subscription" should have a value.', { code: 'INVALID_PARAMETER' });
     }
 
-    let response = await request.bind(this)('get-subscription', params, Object.assign({ auth: !isNewsletterSub }, { fetchOptions }));
+    let response = await request.bind(this)('get-subscription', params, Object.assign({ auth: true }, { fetchOptions }));
 
     response.list = response.list.map(_mapper || ((s: Record<string, any>) => {
         let subscription: Record<string, any> = {};
@@ -119,7 +88,7 @@ async function getSub(
  * Refer: <a href='www.google.com'>How to use subscription systems</a><br>
  * 
  * ```
- * // user subscribes to another user with email subscription
+ * // user subscribes as group 1 to another user.
  * await skapi.subscribe({
  *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
  *     group: 1
@@ -141,9 +110,9 @@ export async function subscribe(option: SubscriptionGroup<number>) {
 }
 
 /**
- * Unsubscribes user's account from another account or service.
+ * Unsubscribes user's account from another account.
  * ```
- * // user unsubscribes from another user
+ * // user unsubscribes from group 2 of another user.
  * await skapi.unsubscribe({
  *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
  *     group: 2
@@ -201,44 +170,38 @@ export async function unblockSubscriber(option: SubscriptionGroup<number | '*'>)
     return await request.bind(this)('subscription', { unblock: user_id, group }, { auth: true });
 }
 
-export async function getSubscriptions(option: SubscriptionGroup<number>, fetchOptions: FetchOptions): Promise<DatabaseResponse> {
-    await this.__connection;
-    option = validator.Params(option, {
-        user_id: (v: string) => {
-            try {
-                return validator.UserId(v, '"user_id"');
-            } catch (err) {
-            }
-
-            try {
-                return validator.Email(v);
-            } catch (err) {
-            }
-
-            throw new SkapiError('"subscriber" should be either valid user ID or E-Mail.', { code: 'INVALID_PARAMETER' });
-        },
-        group: 'number'
-    }) || {};
-
-    return getSub.bind(this)({
-        subscriber: option.user_id || this.__user?.user_id,
-        group: option.group
-    }, fetchOptions);
-};
-
-export async function getSubscribers(option: SubscriptionGroup<number>, fetchOptions: FetchOptions): Promise<DatabaseResponse> {
+/** @ignore */
+export async function getSubscribedTo(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse> {
     await this.__connection;
     option = validator.Params(option, {
         user_id: (v: string) => validator.UserId(v, '"user_id"'),
-        group: 'number'
+        group: 'number',
+        blocked: 'boolean'
+    }) || {};
+
+    return getSubscriptions.bind(this)({
+        subscriber: option.user_id || this.__user?.user_id,
+        group: option.group,
+        blocked: option.blocked
+    }, fetchOptions);
+};
+
+/** @ignore */
+export async function getSubscribers(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse> {
+    await this.__connection;
+    option = validator.Params(option, {
+        user_id: (v: string) => validator.UserId(v, '"user_id"'),
+        group: 'number',
+        blocked: 'boolean'
     }) || {};
 
     let subParams = {
         subscription: option.user_id || this.__user?.user_id,
-        group: option.group
+        group: option.group,
+        blocked: option.blocked
     };
 
-    return getSub.bind(this)(subParams, fetchOptions);
+    return getSubscriptions.bind(this)(subParams, fetchOptions);
 };
 
 export async function getNewsletterSubscription(params: {
