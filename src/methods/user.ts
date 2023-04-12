@@ -285,7 +285,7 @@ export async function resendSignupConfirmation(
     }
 
     if (redirect) {
-        validator.Url(redirect);
+        redirect = validator.Url(redirect);
     }
     else {
         redirect = undefined;
