@@ -306,10 +306,6 @@ export default class Skapi {
     request = request.bind(this);
     secureRequest = secureRequest.bind(this);
     getFormResponse = getFormResponse.bind(this);
-    @formHandler()
-    postRecord(...args) { return postRecord.bind(this)(...args); };
-    @formHandler()
-    mock(...args) { return mock.bind(this)(...args); };
     getRecords = getRecords.bind(this);
     getTable = getTable.bind(this);
     getIndex = getIndex.bind(this);
@@ -319,30 +315,36 @@ export default class Skapi {
     resendSignupConfirmation = resendSignupConfirmation.bind(this);
     recoverAccount = recoverAccount.bind(this);
     getUsers = getUsers.bind(this);
+    disableAccount = disableAccount.bind(this);
+    lastVerifiedEmail = lastVerifiedEmail.bind(this);
+    getSubscribedTo = getSubscribedTo.bind(this);
+    getSubscribers = getSubscribers.bind(this);
+    getSubscriptions = getSubscriptions.bind(this);
+    unsubscribeNewsletter = unsubscribeNewsletter.bind(this);
+    getNewsletters = getNewsletters.bind(this);
+    getNewsletterSubscription = getNewsletterSubscription.bind(this);
+    requestUsernameChange = requestUsernameChange.bind(this);
+    uploadFiles = uploadFiles.bind(this);
+    @formHandler()
+    mock(...args) { return mock.bind(this)(...args); }
     @formHandler()
     login(...args) { return login.bind(this)(...args); }
     @formHandler()
     signup(...args) { return signup.bind(this)(...args); }
     @formHandler()
     resetPassword(...args) { return resetPassword.bind(this)(...args); }
-    disableAccount = disableAccount.bind(this);
     @formHandler()
-    verifyEmail(...args) {
-        return verifyEmail.bind(this)(...args);
-    }
+    verifyEmail(...args) { return verifyEmail.bind(this)(...args); }
     @formHandler()
-    verifyPhoneNumber(...args) {
-        return verifyPhoneNumber.bind(this)(...args);
-    }
-    lastVerifiedEmail(...args) {
-        return lastVerifiedEmail.bind(this)(...args);
-    }
+    verifyPhoneNumber(...args) { return verifyPhoneNumber.bind(this)(...args); }
     @formHandler()
     forgotPassword(...args) { return forgotPassword.bind(this)(...args); }
     @formHandler()
     changePassword(...args) { return changePassword.bind(this)(...args); }
     @formHandler()
     updateProfile(...args) { return updateProfile.bind(this)(...args); }
+    @formHandler()
+    postRecord(...args) { return postRecord.bind(this)(...args); }
     @formHandler()
     subscribe(...args) { return subscribe.bind(this)(...args); }
     @formHandler()
@@ -351,14 +353,6 @@ export default class Skapi {
     blockSubscriber(...args) { return blockSubscriber.bind(this)(...args); }
     @formHandler()
     unblockSubscriber(...args) { return unblockSubscriber.bind(this)(...args); }
-    getSubscribedTo = getSubscribedTo.bind(this);
-    getSubscribers = getSubscribers.bind(this);
-    getSubscriptions = getSubscriptions.bind(this);
     @formHandler()
     subscribeNewsletter(...args) { return subscribeNewsletter.bind(this)(...args); }
-    unsubscribeNewsletter(...args) { return unsubscribeNewsletter.bind(this)(...args); }
-    getNewsletters = getNewsletters.bind(this);
-    getNewsletterSubscription = getNewsletterSubscription.bind(this);
-    requestUsernameChange(...args) { return requestUsernameChange.bind(this)(...args); }
-    uploadFiles(...args) { return uploadFiles.bind(this)(...args); }
 }
