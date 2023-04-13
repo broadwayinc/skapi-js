@@ -853,14 +853,12 @@ export async function deleteRecords(params: {
     service?: string;
     /** Record ID(s) to delete. Table parameter is not needed when record_id is given. */
     record_id?: string | string[];
-    /** Access group number. */
-    access_group?: number | 'private';
     table?: {
         /** Table name. */
         name: string;
-        /** @ignore */
+        /** Access group number. */
+        access_group?: number | 'private' | 'public' | 'authorized';
         subscription?: string;
-        /** @ignore */
         subscription_group?: number;
     };
 }): Promise<string> {
@@ -869,17 +867,17 @@ export async function deleteRecords(params: {
         throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (!isAdmin && !params?.table) {
-        throw new SkapiError('"table" is required.', { code: 'INVALID_PARAMETER' });
-    }
-
     if (params?.record_id) {
         return await request.bind(this)('del-records', {
-            service: params.service,
+            service: params.service || this.service,
             record_id: (v => {
-                let id = validator.specialChars(v, 'record_id', false);
+                let id = validator.specialChars(v, 'record_id', false, false);
                 if (typeof id === 'string') {
                     return [id];
+                }
+
+                if (id.length > 100) {
+                    throw new SkapiError('"record_id" should not exceed 100 items.', { code: 'INVALID_PARAMETER' });
                 }
 
                 return id;
@@ -893,34 +891,55 @@ export async function deleteRecords(params: {
         }
 
         let struct = {
-            access_group: ['number', 'private'],
-            table: {
-                name: 'string',
-                subscription: (v: string) => {
-                    if (isAdmin) {
-                        // admin targets user id
-                        return validator.UserId((v as string), 'User ID in "table.subscription"');
-                    }
-
-                    throw new SkapiError('"table.subscription" is an invalid parameter key.', { code: 'INVALID_PARAMETER' });
-                },
-                subscription_group: (v: number) => {
-                    if (isAdmin && typeof params?.table?.subscription !== 'string') {
-                        throw new SkapiError('"table.subscription" is required.', { code: 'INVALID_PARAMETER' });
-                    }
-
-                    if (typeof v === 'number') {
-                        if (v > 0 && v < 99) {
+            access_group: (v: number | 'private' | 'public' | 'authorized') => {
+                if (typeof v === 'string' && ['private', 'public', 'authorized'].includes(v)) {
+                    switch (v) {
+                        case 'private':
                             return v;
-                        }
+
+                        case 'public':
+                            return 0;
+
+                        case 'authorized':
+                            return 1;
+                    }
+                }
+
+                else if (typeof v === 'number' && v > 0 && v < 100) {
+                    if (!isAdmin && this.user.access_group < v) {
+                        throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
                     }
 
-                    throw new SkapiError('Subscription group should be between 0 ~ 99.', { code: 'INVALID_PARAMETER' });
+                    return v;
                 }
+
+                throw new SkapiError('Invalid "table.access_group". Access group should be type <number (0~99) | "private" | "public" | "authorized">.', { code: 'INVALID_PARAMETER' });
+            },
+            name: 'string',
+            subscription: (v: string) => {
+                if (isAdmin) {
+                    // admin targets user id
+                    return validator.UserId((v as string), 'User ID in "table.subscription"');
+                }
+
+                throw new SkapiError('"table.subscription" is an invalid parameter key.', { code: 'INVALID_PARAMETER' });
+            },
+            subscription_group: (v: number) => {
+                if (isAdmin && typeof params?.table?.subscription !== 'string') {
+                    throw new SkapiError('"table.subscription" is required.', { code: 'INVALID_PARAMETER' });
+                }
+
+                if (typeof v === 'number') {
+                    if (v > 0 && v < 99) {
+                        return v;
+                    }
+                }
+
+                throw new SkapiError('Subscription group should be between 0 ~ 99.', { code: 'INVALID_PARAMETER' });
             }
         };
 
-        params = validator.Params(params || {}, struct, isAdmin ? ['service'] : ['table', 'access_group']);
+        params.table = validator.Params(params.table || {}, struct);
     }
 
     return await request.bind(this)('del-records', params, { auth: true });
