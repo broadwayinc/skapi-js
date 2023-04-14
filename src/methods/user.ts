@@ -361,13 +361,20 @@ export async function signup(
          * When true, the service will send out confirmation E-Mail.
          * User will not be able to signin to their account unless they have confirm their email.
          * Parameter also accepts URL string for user to be taken to when clicked on confirmation link.
+         * Default is false.
          */
-        confirmation?: boolean | string;
+        signup_confirmation?: boolean | string;
         /**
-         * Automatically login to account after signup. Will not work if E-Mail confirmation is required.
+         * When true, user will be subscribed to the service newsletter (group 1) once they are signed up.
+         * User's signup confirmation is required for this parameter.
+         * Default is false.
+         */
+        email_subscription?: boolean;
+        /**
+         * Automatically login to account after signup. Will not work if signup confirmation is required.
          */
         login?: boolean;
-    } & FormSubmitCallback): Promise<User | "SUCCESS: The account has been created. User's email confirmation is required." | 'SUCCESS: The account has been created.'> {
+    } & FormSubmitCallback): Promise<User | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
 
     await this.logout();
 
@@ -383,12 +390,22 @@ export async function signup(
         address_public: ['boolean', () => false],
         gender_public: ['boolean', () => false],
         birthdate_public: ['boolean', () => false],
-        phone_number_public: ['boolean', () => false],
-        email_subscription: ['boolean', () => false]
+        phone_number_public: ['boolean', () => false]
     }, ['email', 'password']);
 
     option = validator.Params(option || {}, {
-        confirmation: (v: string | boolean) => {
+        email_subscription: (v: boolean) => {
+            if (typeof v !== 'boolean') {
+                throw new SkapiError('"option.email_subscription" should be type: <boolean>.', { code: 'INVALID_PARAMETER' });
+            }
+
+            if (option?.signup_confirmation !== true) {
+                throw new SkapiError('"option.signup_confirmation" is required for email subscription.', { code: 'INVALID_PARAMETER' });
+            }
+
+            return v;
+        },
+        signup_confirmation: (v: string | boolean) => {
             if (typeof v === 'string') {
                 return validator.Url(v);
             }
@@ -396,13 +413,13 @@ export async function signup(
                 return v;
             }
             else {
-                throw new SkapiError('"option.confirmation" should be type: <string | boolean>.', { code: 'INVALID_PARAMETER' });
+                throw new SkapiError('"option.signup_confirmation" should be type: <string | boolean>.', { code: 'INVALID_PARAMETER' });
             }
         },
         login: (v: boolean) => {
             if (typeof v === 'boolean') {
-                if (option.confirmation && v) {
-                    throw new SkapiError('"login" is not allowed when "option.confirmation" is true.', { code: 'INVALID_PARAMETER' });
+                if (option.signup_confirmation && v) {
+                    throw new SkapiError('"login" is not allowed when "option.signup_confirmation" is true.', { code: 'INVALID_PARAMETER' });
                 }
                 return v;
             }
@@ -411,29 +428,30 @@ export async function signup(
     });
 
     let logUser = option?.login || false;
-    let confirmation = option?.confirmation || false;
+    let signup_confirmation = option?.signup_confirmation || false;
 
-    if (!confirmation && params.email_public) {
-        throw new SkapiError('"option.confirmation" should be true if "email_public" is set to true.', { code: 'INVALID_PARAMETER' });
+    if (params.email_public && !signup_confirmation) {
+        throw new SkapiError('"option.signup_confirmation" should be true if "email_public" is set to true.', { code: 'INVALID_PARAMETER' });
     }
 
-    await request.bind(this)("signup", params, { meta: option });
+    params.signup_confirmation = signup_confirmation;
+    params.email_subscription = option?.email_subscription || false;
 
-    if (confirmation) {
-        let u = await authentication.bind(this)().createCognitoUser(params.email);
-        cognitoUser = u.cognitoUser;
-        this.__request_signup_confirmation = u.cognitoUsername;
+    await request.bind(this)("signup", params);
 
-        return "SUCCESS: The account has been created. User's email confirmation is required.";
+    if (signup_confirmation) {
+        // let u = await authentication.bind(this)().createCognitoUser(params.email);
+        // cognitoUser = u.cognitoUser;
+        // this.__request_signup_confirmation = u.cognitoUsername;
+        return "SUCCESS: The account has been created. User's signup confirmation is required.";
     }
 
-    else if (logUser) {
-        return await login.bind(this)({ email: params.email, password: params.password });
+    if (logUser) {
+        // log user in
+        return login.bind(this)({ email: params.email, password: params.password });
     }
 
-    else {
-        return 'SUCCESS: The account has been created.';
-    }
+    return 'SUCCESS: The account has been created.';
 }
 
 export async function disableAccount() {
