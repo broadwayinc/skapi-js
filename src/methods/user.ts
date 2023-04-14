@@ -456,7 +456,7 @@ export async function signup(
 
 export async function disableAccount() {
     await this.__connection;
-    let result = await request.bind(this)('remove-account', { disable: true }, { auth: true });
+    let result = await request.bind(this)('remove-account', { disable: this.__user.user_id }, { auth: true });
     await logout.bind(this)();
     return result;
 }
