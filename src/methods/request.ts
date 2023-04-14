@@ -7,8 +7,7 @@ import {
 } from '../Types';
 import SkapiError from '../main/error';
 import {
-    MD5,
-    extractFormMeta
+    MD5
 } from '../utils/utils';
 import validator from '../utils/validator';
 
@@ -18,9 +17,8 @@ const __pendingRequest: Record<string, Promise<any>> = {};
  * When skapi instance is created via new Skapi(...) skapi immediately connects the browser to the server.
  * You can use getConnection() when you need to await for connection to be established.
  */
-export async function getConnection(): Promise<Connection | null> {
-    await this.__connection;
-    return this.connection;
+export function getConnection(): Promise<Connection | null> {
+    return this.__connection;
 }
 
 /** @ignore */
