@@ -399,7 +399,8 @@ export async function signup(
                 throw new SkapiError('"option.email_subscription" should be type: <boolean>.', { code: 'INVALID_PARAMETER' });
             }
 
-            if (option?.signup_confirmation !== true) {
+            if (!option?.signup_confirmation) {
+                // requires to be url or true
                 throw new SkapiError('"option.signup_confirmation" is required for email subscription.', { code: 'INVALID_PARAMETER' });
             }
 
