@@ -858,6 +858,7 @@ export async function deleteRecords(params: {
         name: string;
         /** Access group number. */
         access_group?: number | 'private' | 'public' | 'authorized';
+        /** @ignore */
         subscription?: string;
         subscription_group?: number;
     };
