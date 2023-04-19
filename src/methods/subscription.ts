@@ -311,7 +311,7 @@ export async function unsubscribeNewsletter(
         action: 'unsubscribe'
     }, params);
 
-    return request.bind(this)('subscribe-newsletter', param_send);
+    return request.bind(this)('subscribe-newsletter', param_send, { auth: true });
 }
 
 export async function getNewsletters(
