@@ -1,31 +1,40 @@
 # skapi
 
-skapi is a serverless backend API for JAM stack developers.
+Serverless-based backend API service designed to simplify your application's security and database management.
 
-Build fast and scalable web services based on skapi's serverless technology.
 
-skapi is built to work well on both plain HTML and Webpack projects.
+## For HTML projects
 
-100% Serverless. No maintenance or CLI installation is required.
+To import skapi into an HTML project, add the following script to the head tag of your HTML file:
 
-<br>
-
-# Features
-- Auto indexed scalable database.
-- Authentication for web services.
-- Cloud storage.
-- E-Mail newsletters to customers.
-- Web hosting.
-
-<br>
- 
-# Getting started
-
-```
+```html
+<!DOCTYPE html>
+<html>
 <head>
-  <script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js">
+    <script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
+    ...
 </head>
+<body>
+    ...
+</body>
 <script>
-    const skapi = new Skapi('your_service_id', 'your_user_id');
+  const skapi = new Skapi('your_service_id', 'your_user_id');
 </script>
+</html>
+```
+
+## For webpack projects
+
+To use skapi in a webpack-based project (such as Vue, React, or Angular), first install skapi-js from npm:
+
+```sh
+$ npm install skapi-js@latest
+```
+
+Then, import the library into your main JavaScript file:
+
+```javascript
+// main.js
+import { Skapi } from 'skapi-js';
+const skapi = new Skapi('your_service_id', 'your_user_id');
 ```
