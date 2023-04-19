@@ -441,9 +441,9 @@ export async function signup(
     await request.bind(this)("signup", params);
 
     if (signup_confirmation) {
-        // let u = await authentication.bind(this)().createCognitoUser(params.email);
-        // cognitoUser = u.cognitoUser;
-        // this.__request_signup_confirmation = u.cognitoUsername;
+        let u = await authentication.bind(this)().createCognitoUser(params.email);
+        cognitoUser = u.cognitoUser;
+        this.__request_signup_confirmation = u.cognitoUsername;
         return "SUCCESS: The account has been created. User's signup confirmation is required.";
     }
 
