@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "0.1.41",
+  "version": "0.1.42",
   "description": "skapi serverless cloud javascript library",
   "main": "./dist/skapi.module.js",
   "files": [
