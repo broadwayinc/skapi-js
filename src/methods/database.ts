@@ -161,14 +161,23 @@ function normalizeTypedString(v: string) {
     }
 }
 
-export async function uploadFiles(fileList: FileList, params: {
-    service?: string; record_id: string; progress: (e: {
-        progress: number,
-        currentFile: File,
-        completed: File[];
-    }) => void;
-}) {
+export async function uploadFiles(
+    fileList: FileList,
+    params: {
+        service?: string;
+        record_id: string;
+        progress: (e: {
+            progress: number,
+            currentFile: File,
+            completed: File[];
+        }) => void;
+    }
+) {
     await this.__connection;
+
+    if (!(fileList instanceof FileList)) {
+        throw new SkapiError('"fileList" should be a FileList', { code: 'INVALID_PARAMETER' });
+    }
 
     let reserved_key = generateRandom();
 
@@ -413,11 +422,11 @@ export async function postRecord(
 ): Promise<RecordData> {
     let isAdmin = await this.checkAdmin();
     if (!config) {
-        throw new SkapiError(['INVALID_PARAMETER', '"config" argument is required.']);
+        throw new SkapiError('"config" argument is required.', { code: 'INVALID_PARAMETER' });
     }
 
     if (!this.user) {
-        throw new SkapiError(['INVALID_REQUEST', 'Login is required.']);
+        throw new SkapiError('Login is required.', { code: 'INVALID_REQUEST' });
     }
 
     let fetchOptions: Record<string, any> = {};

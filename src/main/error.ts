@@ -10,7 +10,7 @@ export default class SkapiError extends Error {
 
         if (Array.isArray(error) && error.length <= 2) {
             super(error[1] || 'Something went wrong.');
-            this.name = error[0] || "SKAPI";
+            this.name = "SKAPI";
             this.code = error[0] || "ERROR";
 
             if (options) {
