@@ -61,7 +61,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '0.1.41';
+    version = '0.1.44';
 
     // privates
     private __disabledAccount: string | null = null;
@@ -174,7 +174,7 @@ export default class Skapi {
         this.service = service_id;
         this.owner = owner;
 
-        let autoLogin = options?.autoLogin || true;
+        let autoLogin = typeof options?.autoLogin === 'boolean' ? options.autoLogin : true;
 
         // get endpoints
 
