@@ -327,19 +327,19 @@ export default class Skapi {
     uploadFiles = uploadFiles.bind(this);
     @formHandler()
     mock(...args) { return mock.bind(this)(...args); }
-    @formHandler()
+    @formHandler({ preventMultipleCalls: true })
     login(...args) { return login.bind(this)(...args); }
-    @formHandler()
+    @formHandler({ preventMultipleCalls: true })
     signup(...args) { return signup.bind(this)(...args); }
-    @formHandler()
+    @formHandler({ preventMultipleCalls: true })
     resetPassword(...args) { return resetPassword.bind(this)(...args); }
-    @formHandler()
+    @formHandler({ preventMultipleCalls: true })
     verifyEmail(...args) { return verifyEmail.bind(this)(...args); }
-    @formHandler()
+    @formHandler({ preventMultipleCalls: true })
     verifyPhoneNumber(...args) { return verifyPhoneNumber.bind(this)(...args); }
-    @formHandler()
+    @formHandler({ preventMultipleCalls: true })
     forgotPassword(...args) { return forgotPassword.bind(this)(...args); }
-    @formHandler()
+    @formHandler({ preventMultipleCalls: true })
     changePassword(...args) { return changePassword.bind(this)(...args); }
     @formHandler()
     updateProfile(...args) { return updateProfile.bind(this)(...args); }

@@ -828,8 +828,12 @@ export async function getFormResponse(): Promise<any> {
     throw new SkapiError("Form response doesn't exist.", { code: 'NOT_EXISTS' });
 };
 
+const pendPromise: Record<string, Promise<any> | null> = {};
+
 /** @ignore */
-export function formHandler() {
+export function formHandler(options?: { preventMultipleCalls: boolean; }) {
+    let { preventMultipleCalls = false } = options || {};
+
     // wraps methods that requires form handling
     return function (target: object, propertyKey: string, descriptor: any) {
         const fn = descriptor.value;
@@ -884,35 +888,51 @@ export function formHandler() {
                 throw is_err;
             }
 
-            try {
-                // execute
-                response = fn.bind(this)(...arg);
-            }
-            catch (err) {
-                let is_err = handleError(err);
-                if (is_err instanceof Error) {
-                    throw is_err;
+            const executeMethod = () => {
+                try {
+                    // execute
+                    response = fn.bind(this)(...arg);
+                }
+                catch (err) {
+                    let is_err = handleError(err);
+                    if (is_err instanceof Error) {
+                        throw is_err;
+                    }
+
+                    return is_err;
                 }
 
-                return is_err;
-            }
+                if (response instanceof Promise) {
+                    // handle promise
+                    return (async () => {
+                        try {
+                            let resolved = await response;
+                            return handleResponse(resolved);
+                        }
+                        catch (err) {
+                            return handleError(err);
+                        }
+                    })();
+                }
+            };
 
-            if (response instanceof Promise) {
-                // handle promise
+            if (preventMultipleCalls) {
                 return (async () => {
-                    try {
-                        let resolved = await response;
-                        return handleResponse(resolved);
+                    if (pendPromise?.[propertyKey] instanceof Promise) {
+                        let res = await pendPromise[propertyKey];
+                        pendPromise[propertyKey] = null;
+                        return res;
                     }
-                    catch (err) {
-                        return handleError(err);
+                    else {
+                        pendPromise[propertyKey] = executeMethod().finally(() => {
+                            pendPromise[propertyKey] = null;
+                        });
+                        return pendPromise[propertyKey];
                     }
                 })();
             }
 
-            else {
-                return handleResponse(response);
-            }
+            return executeMethod();
         };
     };
 }
