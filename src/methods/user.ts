@@ -221,7 +221,17 @@ export function authentication() {
                             }
                         }
 
-                        rej(new SkapiError(error[0], { code: error[1], cause: err }));
+                        let errCode = error[1];
+                        let errMsg = error[0];
+                        let customErr = error[0].split('#');
+
+                        if (customErr.length > 1) {
+                            customErr = customErr[customErr.length - 1].split(':');
+                            errCode = customErr[0];
+                            errMsg = customErr[1];
+                        }
+
+                        rej(new SkapiError(errMsg, { code: errCode, cause: err }));
                     }
                 });
             });
@@ -352,6 +362,9 @@ export async function login(
     }, ['email', 'password']);
 
     return authentication.bind(this)().authenticateUser(params.email, params.password);
+
+    // INVALID_REQUEST: the account has been blacklisted.
+    // NOT_EXISTS: the account does not exist.
 }
 
 export async function signup(
