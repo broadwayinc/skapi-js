@@ -311,7 +311,6 @@ export default class Skapi {
     getIndex = getIndex.bind(this);
     getTag = getTag.bind(this);
     deleteRecords = deleteRecords.bind(this);
-    logout = logout.bind(this);
     resendSignupConfirmation = resendSignupConfirmation.bind(this);
     recoverAccount = recoverAccount.bind(this);
     getUsers = getUsers.bind(this);
@@ -329,6 +328,8 @@ export default class Skapi {
     mock(...args) { return mock.bind(this)(...args); }
     @formHandler({ preventMultipleCalls: true })
     login(...args) { return login.bind(this)(...args); }
+    @formHandler()
+    logout() { return logout.bind(this)(); }
     @formHandler({ preventMultipleCalls: true })
     signup(...args) { return signup.bind(this)(...args); }
     @formHandler({ preventMultipleCalls: true })
