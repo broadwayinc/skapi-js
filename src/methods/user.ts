@@ -43,8 +43,9 @@ export function authentication() {
             for (let i of (attr as CognitoUserAttribute[])) {
                 normalized_user_attribute_keys[i.Name] = i.Value;
 
-                if (i.Name === 'custom:service' && normalized_user_attribute_keys[i.Name] !== this.service)
+                if (i.Name === 'custom:service' && normalized_user_attribute_keys[i.Name] !== this.service) {
                     throw new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' });
+                }
             }
 
             attr = normalized_user_attribute_keys;
@@ -141,7 +142,6 @@ export function authentication() {
 
         return new Promise((res, rej) => {
             cognitoUser = userPool?.getCurrentUser() || null;
-
             if (cognitoUser === null) { rej(null); return; }
 
             cognitoUser.getSession((err: any, session: CognitoUserSession) => {
@@ -150,24 +150,46 @@ export function authentication() {
                 if (!session) { rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' })); return; }
                 // try refresh when invalid token
                 if (refreshToken || !session.isValid()) {
-                    cognitoUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
-                        if (refreshErr) rej(refreshErr);
-                        else {
-                            if (refreshedSession.isValid()) {
-                                this.session = refreshedSession;
-                                normalizeUserAttributes(refreshedSession.getIdToken().payload);
-                                res(refreshedSession);
-                            }
-                            else {
-                                rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
-                                return;
-                            }
+                    let signedOut = false;
+                    try {
+                        let idToken = session.getIdToken().payload;
+                        if (idToken['custom:service'] !== this.service) {
+                            cognitoUser.signOut();
+                            this.session = null;
+                            signedOut = true;
+                            res(null);
                         }
-                    });
+                    } catch (err) {
+                    }
+
+                    if (!signedOut) {
+                        cognitoUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
+                            if (refreshErr) rej(refreshErr);
+                            else {
+                                if (refreshedSession.isValid()) {
+                                    this.session = refreshedSession;
+                                    normalizeUserAttributes(refreshedSession.getIdToken().payload);
+                                    res(refreshedSession);
+                                }
+                                else {
+                                    rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
+                                    return;
+                                }
+                            }
+                        });
+                    }
                 } else {
-                    this.session = session;
-                    normalizeUserAttributes(session.getIdToken().payload);
-                    res(session);
+                    let idToken = session.getIdToken().payload;
+                    if (idToken['custom:service'] !== this.service) {
+                        cognitoUser.signOut();
+                        this.session = null;
+                        res(null);
+                    }
+                    else {
+                        this.session = session;
+                        normalizeUserAttributes(idToken);
+                        res(session);
+                    }
                 }
             });
         });
