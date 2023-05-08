@@ -30,7 +30,7 @@ export type GetRecordQuery = Database<
     /** Referenced record ID | user ID. */
     string,
     /** Index condition and range cannot be used simultaneously.*/
-    {   
+    {
         /** Not allowed: White space, special characters. Allowed: Periods. */
         name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
         /** Not allowed: Periods, special characters. Allowed: White space. */
@@ -164,7 +164,20 @@ export type UserAttributes = {
      */
     phone_number?: string;
     /** User's address */
-    address?: string;
+    address?: string | {
+        // Full mailing address, formatted for display or use on a mailing label. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+        // street_address
+        // Full street address component, which MAY include house number, street name, Post Office Box, and multi-line extended street address information. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+        formatted: string;
+        // City or locality component.
+        locality: string;
+        // State, province, prefecture, or region component.
+        region: string;
+        // Zip code or postal code component.
+        postal_code: string;
+        // Country name component.
+        country: string;
+    };
     /**
      * User's gender. Can be "female" and "male".<br>
      * Other values may be used when neither of the defined values are applicable.

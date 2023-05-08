@@ -663,8 +663,26 @@ export async function updateProfile(form: Form<UserProfile>, option?: FormSubmit
 
     let params = validator.Params(form || {}, {
         email: (v: string) => validator.Email(v),
+        address: (v: any) => {
+            if (!v) return '';
+
+            if (typeof v === 'string') {
+                return v;
+            }
+
+            if (typeof v === 'object') {
+                return JSON.stringify(validator.Params(v, {
+                    formatted: 'string',
+                    locality: 'string',
+                    region: 'string',
+                    postal_code: 'string',
+                    country: 'string'
+                }));
+            }
+
+            return '';
+        },
         name: 'string',
-        address: 'string',
         gender: 'string',
         birthdate: (v: string) => validator.Birthdate(v),
         phone_number: (v: string) => validator.PhoneNumber(v),
