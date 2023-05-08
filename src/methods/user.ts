@@ -36,7 +36,6 @@ export function authentication() {
 
     const normalizeUserAttributes = (attr: any) => {
         let user: any = {};
-
         if (Array.isArray(attr)) {
             // parse attribute structure: [ { Name, Value }, ... ]
             let normalized_user_attribute_keys = {};
@@ -52,8 +51,28 @@ export function authentication() {
         }
 
         for (let k in attr) {
-            if (k.includes('custom:')) user[k.replace('custom:', '')] = attr[k];
-            else user[k] = attr[k];
+            if (k.includes('custom:')) {
+                if (k === 'custom:service' && attr[k] !== this.service) {
+                    throw new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' });
+                }
+                user[k.replace('custom:', '')] = attr[k];
+            }
+            else {
+                if (k === 'address') {
+                    let addr_main = attr[k];
+                    if (addr_main && typeof addr_main === 'object' && Object.keys(addr_main).length) {
+                        if (addr_main?.formatted) {
+                            try {
+                                attr[k] = JSON.parse(addr_main.formatted);
+                            }
+                            catch (err) {
+                                attr[k] = addr_main.formatted;
+                            }
+                        }
+                    }
+                }
+                user[k] = attr[k];
+            }
         }
 
         for (let k of [
@@ -146,7 +165,6 @@ export function authentication() {
 
             cognitoUser.getSession((err: any, session: CognitoUserSession) => {
                 if (err) { rej(err); return; }
-
                 if (!session) { rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' })); return; }
                 // try refresh when invalid token
                 if (refreshToken || !session.isValid()) {
@@ -693,13 +711,7 @@ export async function updateProfile(form: Form<UserProfile>, option?: FormSubmit
             }
 
             if (typeof v === 'object') {
-                return JSON.stringify(validator.Params(v, {
-                    formatted: 'string',
-                    locality: 'string',
-                    region: 'string',
-                    postal_code: 'string',
-                    country: 'string'
-                }));
+                return JSON.stringify(v);
             }
 
             return '';
