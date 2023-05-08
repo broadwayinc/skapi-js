@@ -845,6 +845,10 @@ export async function deleteRecords(params: {
 
     else {
         if (!params?.table) {
+            if (isAdmin) {
+                return null;
+            }
+            
             throw new SkapiError('Either "table" or "record_id" is required.', { code: 'INVALID_PARAMETER' });
         }
 
@@ -897,7 +901,7 @@ export async function deleteRecords(params: {
             }
         };
 
-        params.table = validator.Params(params.table || {}, struct);
+        params.table = validator.Params(params.table || {}, struct, isAdmin ? [] : ['access_group', 'name']);
     }
 
     return await request.bind(this)('del-records', params, { auth: true });
