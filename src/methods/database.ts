@@ -805,62 +805,6 @@ export async function getTag(
     return res;
 }
 
-/**
-* Deletes specific records or bulk of records under certain table, access group.
-* <br>
-* <b>WARNING:</b> Deleted record cannot be restored.
-* 
-* ```
-* // Delete record
-* // users wont be able to delete other users record.
-* await skapi.deleteRecords({
-*     record_id: ['record id 1', 'record id 2']
-* });
-* 
-* // Delete all my record in "MyTable" in access group 1.
-* await skapi.deleteRecords({
-*     access_group: 1,
-*     table: {
-*         name: 'MyTable'
-*     }
-* });
-* 
-* // Delete all record in subscription table of group 1 in "MyTable" in access group 0.
-* await skapi.deleteRecords({
-*     access_group: 0,
-*     table: {
-*         name: 'MyTable',
-*         subscription_group: 1
-*     }
-* });
-* 
-* // (for admin) Delete all record in the service
-* await skapi.deleteRecords({
-*   service: 'xxxxxxxx'
-* });
-* 
-* // (for admin) Delete all record in "MyTable"
-* // admin can delete all records in table regardless access group or subscription tables.
-* await skapi.deleteRecords({
-*   service: 'xxxxxxxx',
-*   table: {
-*       name: 'MyTable'
-*   }
-* });
-* 
-* // admin can delete all records in users subscription table from target access group.
-* await skapi.deleteRecords({
-*   service: 'xxxxxxxx',
-*   access_group: 1,
-*   table: {
-*       name: 'MyTable',
-*       subscription: 'user_id',
-*       subscription_group: 1
-*   }
-* });
-* 
-* ```
-*/
 export async function deleteRecords(params: {
     /** @ignore */
     service?: string;
