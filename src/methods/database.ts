@@ -381,7 +381,11 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
 
     if (query?.record_id) {
         validator.specialChars(query.record_id, 'record_id', false, false);
-        query = { record_id: query.record_id, service: query?.service };
+        let outputObj: Record<string, string> = { record_id: query.record_id };
+        if (query?.service) {
+            outputObj.service = query.service;
+        }
+        query = outputObj;
     }
 
     else {
@@ -915,7 +919,7 @@ export async function deleteRecords(params: {
                     }
                 }
 
-                else if (typeof v === 'number' && v > 0 && v < 100) {
+                else if (typeof v === 'number' && v >= 0 && v < 100) {
                     if (!isAdmin && this.user.access_group < v) {
                         throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
                     }
@@ -940,7 +944,7 @@ export async function deleteRecords(params: {
                 }
 
                 if (typeof v === 'number') {
-                    if (v > 0 && v < 99) {
+                    if (v >= 0 && v < 99) {
                         return v;
                     }
                 }
