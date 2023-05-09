@@ -1,26 +1,15 @@
 # skapi
 
-Serverless-based backend API service designed to simplify your application's security and database management.
-
+Serverless-based backend API service designed to simplify the web development.
 
 ## For HTML projects
 
-To import skapi into an HTML project, add the following script to the head tag of your HTML file:
-
 ```html
 <!DOCTYPE html>
-<html>
-<head>
-    <script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
-    ...
-</head>
-<body>
-    ...
-</body>
+<script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
 <script>
   const skapi = new Skapi('your_service_id', 'your_user_id');
 </script>
-</html>
 ```
 
 ## For webpack projects
