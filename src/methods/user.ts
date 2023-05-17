@@ -820,7 +820,7 @@ export async function updateProfile(form: Form<UserProfile>, option?: FormSubmit
     return this.user;
 }
 
-export async function getUsers(params?: QueryParams | null, fetchOptions?: FetchOptions): Promise<DatabaseResponse> {
+export async function getUsers(params?: QueryParams | null, fetchOptions?: FetchOptions): Promise<DatabaseResponse<UserAttributes>> {
     if (!params) {
         // set default value
         params = {
