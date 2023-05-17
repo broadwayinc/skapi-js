@@ -52,7 +52,13 @@ export async function getSubscriptions(
     fetchOptions?: FetchOptions,
     /** @ignore */
     _mapper?: Function
-): Promise<DatabaseResponse> {
+): Promise<DatabaseResponse<{
+    subscriber: string; // Subscriber ID
+    subscription: string; // Subscription ID
+    group: number; // Subscription group number
+    timestamp: number; // Subscribed UNIX timestamp
+    blocked: boolean; // True when subscriber is blocked by subscription
+}>> {
     params = validator.Params(params, {
         subscriber: (v: string) => validator.UserId(v, 'User ID in "subscriber"'),
         group: 'number',
@@ -171,7 +177,7 @@ export async function unblockSubscriber(option: SubscriptionGroup<number | '*'>)
 }
 
 /** @ignore */
-export async function getSubscribedTo(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse> {
+export async function getSubscribedTo(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any>> {
     await this.__connection;
     option = validator.Params(option, {
         user_id: (v: string) => validator.UserId(v, '"user_id"'),
@@ -187,7 +193,7 @@ export async function getSubscribedTo(option: SubscriptionGroup<number | undefin
 };
 
 /** @ignore */
-export async function getSubscribers(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse> {
+export async function getSubscribers(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any>> {
     await this.__connection;
     option = validator.Params(option, {
         user_id: (v: string) => validator.UserId(v, '"user_id"'),

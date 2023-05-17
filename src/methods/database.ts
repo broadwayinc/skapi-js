@@ -258,7 +258,7 @@ export async function uploadFiles(
     return { completed };
 }
 
-export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOptions): Promise<DatabaseResponse> {
+export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
     await this.__connection;
 
     const indexTypes = {
@@ -642,7 +642,11 @@ export async function getTable(
         condition?: Condition;
     } | null,
     fetchOptions?: FetchOptions
-): Promise<DatabaseResponse> {
+): Promise<DatabaseResponse<{
+    number_of_records: number; // Number of records in the table
+    table: string; // Table name
+    size: number; // Table size
+}>> {
     let res = await request.bind(this)('get-table', validator.Params(query || {}, {
         table: 'string',
         condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
@@ -684,7 +688,18 @@ export async function getIndex(
         };
     } | null,
     fetchOptions?: FetchOptions
-): Promise<DatabaseResponse> {
+): Promise<DatabaseResponse<{
+    table: string; // Table name
+    index: string; // Index name
+    number_of_records: number // Number of records in the index
+    string_count: number // Number of string type value
+    number_count: number // Number of number type value
+    boolean_count: number // Number of boolean type value
+    total_number: number // Sum of all numbers
+    total_bool: number // Number of true(boolean) values
+    average_number: number // Average of all numbers
+    average_bool: number // Percentage of true(boolean) values
+}>> {
     let p = validator.Params(
         query || {},
         {
@@ -776,7 +791,11 @@ export async function getTag(
         condition?: Condition;
     },
     fetchOptions?: FetchOptions
-): Promise<DatabaseResponse> {
+): Promise<DatabaseResponse<{
+    table: string; // Table name
+    tag: string; // Tag
+    number_of_records: string; // Number records tagged
+}>> {
 
     let res = await request.bind(this)(
         'get-tag',

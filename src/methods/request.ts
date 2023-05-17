@@ -350,7 +350,7 @@ function load_startKey_keys(option: {
     params: Record<string, any>;
     url: string;
     fetchMore?: boolean;
-}): string | DatabaseResponse {
+}): string | DatabaseResponse<any> {
     let { params = {}, url, fetchMore = false } = option || {};
     if (params.hasOwnProperty('startKey') && params.startKey) {
         if (

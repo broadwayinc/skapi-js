@@ -249,8 +249,8 @@ export type FetchOptions = {
     startKey?: string;
 };
 
-export type DatabaseResponse = {
-    list: any[];
+export type DatabaseResponse<T> = {
+    list: T[];
     startKey: string;
     endOfList: boolean;
     startKeyHistory: string[];

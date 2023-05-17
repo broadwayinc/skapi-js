@@ -70,7 +70,7 @@ export default class Skapi {
         /** Cached url requests */
         [url: string]: {
             /** Array of data stored in hashed params key */
-            [hashedParams: string]: DatabaseResponse;
+            [hashedParams: string]: DatabaseResponse<any>;
         };
     } = {};
     private __startKeyHistory: {
