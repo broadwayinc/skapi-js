@@ -634,10 +634,10 @@ export async function postRecord(
     return normalizeRecord(await request.bind(this)('post-record', postData, options));
 }
 
-export async function getTable(
+export async function getTables(
+    /** If null fetch all list of tables. */
     query: {
-        /** Table name. If omitted fetch all list of tables. */
-        table?: string;
+        table: string;
         /** Condition operator of table name. */
         condition?: Condition;
     } | null,
@@ -672,7 +672,7 @@ export async function getTable(
     return res;
 }
 
-export async function getIndex(
+export async function getIndexes(
     query: {
         /** Table name */
         table: string;
@@ -781,7 +781,7 @@ export async function getIndex(
     return res;
 }
 
-export async function getTag(
+export async function getTags(
     query: {
         /** Table name */
         table: string;
