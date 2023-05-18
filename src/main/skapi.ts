@@ -9,9 +9,9 @@ import {
     getRecords,
     postRecord,
     deleteRecords,
-    getTable,
-    getIndex,
-    getTag,
+    getTables,
+    getIndexes,
+    getTags,
     uploadFiles
 } from '../methods/database';
 import {
@@ -61,7 +61,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '0.1.53';
+    version = '0.1.54';
 
     // privates
     private __disabledAccount: string | null = null;
@@ -307,9 +307,9 @@ export default class Skapi {
     secureRequest = secureRequest.bind(this);
     getFormResponse = getFormResponse.bind(this);
     getRecords = getRecords.bind(this);
-    getTable = getTable.bind(this);
-    getIndex = getIndex.bind(this);
-    getTag = getTag.bind(this);
+    getTable = getTables.bind(this);
+    getIndex = getIndexes.bind(this);
+    getTag = getTags.bind(this);
     deleteRecords = deleteRecords.bind(this);
     resendSignupConfirmation = resendSignupConfirmation.bind(this);
     recoverAccount = recoverAccount.bind(this);
