@@ -966,8 +966,7 @@ export async function lastVerifiedEmail(params?: {
  * Requests username(e-mail) change.<br>
  * skapi server will send username change confirmation e-mail to user.<br>
  * Username will not be changed when the user did not confirm.<br>
- * Confirmation e-mail is valid within 24 hours.<br>
- * In order to update user's email status after user has click on the email link, you can run skapi.getProfile( { refreshToken: true } )
+ * Confirmation e-mail is valid within 24 hours.
  */
 export async function requestUsernameChange(params: {
     /** Redirect URL when user clicks on the link. */
