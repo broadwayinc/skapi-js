@@ -508,7 +508,7 @@ export async function signup(
     return 'SUCCESS: The account has been created.';
 }
 
-export async function disableAccount() {
+export async function disableAccount(): Promise<'SUCCESS: account has been disabled.'> {
     await this.__connection;
     let result = await request.bind(this)('remove-account', { disable: this.__user.user_id }, { auth: true });
     await logout.bind(this)();
@@ -619,11 +619,11 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>)
     });
 }
 
-export function verifyPhoneNumber(form: Form<{ code: string; }>) {
+export function verifyPhoneNumber(form: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'> {
     return verifyAttribute.bind(this)('phone_number', form);
 }
 
-export function verifyEmail(form: Form<{ code: string; }>) {
+export function verifyEmail(form: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'> {
     return verifyAttribute.bind(this)('email', form);
 }
 
