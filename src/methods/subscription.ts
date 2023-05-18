@@ -101,7 +101,7 @@ export async function getSubscriptions(
  * })
  * ```
  */
-export async function subscribe(option: SubscriptionGroup<number>) {
+export async function subscribe(option: SubscriptionGroup<number>): Promise<'SUCCESS: the user has subscribed.'> {
     await this.__connection;
     let { user_id, group } = subscriptionGroupCheck.bind(this)(option);
 
@@ -125,7 +125,7 @@ export async function subscribe(option: SubscriptionGroup<number>) {
  * })
  * ```
  */
-export async function unsubscribe(option: SubscriptionGroup<number | '*'>) {
+export async function unsubscribe(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: the user has unsubscribed.'> {
     await this.__connection;
     let { user_id, group } = subscriptionGroupCheck.bind(this)(option);
 
@@ -149,7 +149,7 @@ export async function unsubscribe(option: SubscriptionGroup<number | '*'>) {
  * })
  * ```
  */
-export async function blockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<string> {
+export async function blockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: blocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
     await this.__connection;
     let { user_id, group } = subscriptionGroupCheck.bind(this)(option);
     return await request.bind(this)('subscription', { block: user_id, group }, { auth: true });
@@ -170,7 +170,7 @@ export async function blockSubscriber(option: SubscriptionGroup<number | '*'>): 
  * })
  * ```
  */
-export async function unblockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<string> {
+export async function unblockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: unblocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
     await this.__connection;
     let { user_id, group } = subscriptionGroupCheck.bind(this)(option);
     return await request.bind(this)('subscription', { unblock: user_id, group }, { auth: true });
