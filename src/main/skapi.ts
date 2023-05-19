@@ -307,9 +307,9 @@ export default class Skapi {
     secureRequest = secureRequest.bind(this);
     getFormResponse = getFormResponse.bind(this);
     getRecords = getRecords.bind(this);
-    getTable = getTables.bind(this);
-    getIndex = getIndexes.bind(this);
-    getTag = getTags.bind(this);
+    getTables = getTables.bind(this);
+    getIndexes = getIndexes.bind(this);
+    getTags = getTags.bind(this);
     deleteRecords = deleteRecords.bind(this);
     resendSignupConfirmation = resendSignupConfirmation.bind(this);
     recoverAccount = recoverAccount.bind(this);
