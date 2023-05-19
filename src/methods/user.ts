@@ -695,7 +695,7 @@ export async function changePassword(params: {
     });
 }
 
-export async function updateProfile(form: Form<UserProfile>, option?: FormSubmitCallback) {
+export async function updateProfile(form: Form<UserAttributes>, option?: FormSubmitCallback) {
     await this.__connection;
     if (!this.session) {
         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
