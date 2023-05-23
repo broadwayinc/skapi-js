@@ -691,14 +691,14 @@ export async function getIndexes(
 ): Promise<DatabaseResponse<{
     table: string; // Table name
     index: string; // Index name
-    number_of_records: number // Number of records in the index
-    string_count: number // Number of string type value
-    number_count: number // Number of number type value
-    boolean_count: number // Number of boolean type value
-    total_number: number // Sum of all numbers
-    total_bool: number // Number of true(boolean) values
-    average_number: number // Average of all numbers
-    average_bool: number // Percentage of true(boolean) values
+    number_of_records: number; // Number of records in the index
+    string_count: number; // Number of string type value
+    number_count: number; // Number of number type value
+    boolean_count: number; // Number of boolean type value
+    total_number: number; // Sum of all numbers
+    total_bool: number; // Number of true(boolean) values
+    average_number: number; // Average of all numbers
+    average_bool: number; // Percentage of true(boolean) values
 }>> {
     let p = validator.Params(
         query || {},
@@ -725,17 +725,17 @@ export async function getIndexes(
     );
 
     if (p.hasOwnProperty('order')) {
+        if (!p.order?.by) {
+            throw new SkapiError('"order.by" is required.', { code: 'INVALID_PARAMETER' });
+        }
+
+        if (p.order.hasOwnProperty('condition') && !p.order.hasOwnProperty('value')) {
+            throw new SkapiError('"value" is required for "condition".', { code: 'INVALID_PARAMETER' });
+        }
+
         if (p.hasOwnProperty('index')) {
             if (p.index.substring(p.index.length - 1) !== '.') {
-                throw new SkapiError('"index" should be a parent index name of the compound index.', { code: 'INVALID_PARAMETER' });
-            }
-
-            if (!p.order?.by) {
-                throw new SkapiError('"order.by" is required.', { code: 'INVALID_PARAMETER' });
-            }
-
-            if (p.order.hasOwnProperty('condition') && !p.order.hasOwnProperty('value')) {
-                throw new SkapiError('"value" is required for "condition".', { code: 'INVALID_PARAMETER' });
+                throw new SkapiError('"index" should be a parent index name of the compound index when using "order.by"', { code: 'INVALID_PARAMETER' });
             }
         }
     }
@@ -867,7 +867,7 @@ export async function deleteRecords(params: {
             if (isAdmin) {
                 return null;
             }
-            
+
             throw new SkapiError('Either "table" or "record_id" is required.', { code: 'INVALID_PARAMETER' });
         }
 
