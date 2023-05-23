@@ -727,7 +727,7 @@ export async function getIndexes(
     if (p.hasOwnProperty('order')) {
         if (p.hasOwnProperty('index')) {
             if (p.index.substring(p.index.length - 1) !== '.') {
-                throw new SkapiError('"index" should be a parent index name of a compound index.', { code: 'INVALID_PARAMETER' });
+                throw new SkapiError('"index" should be a parent index name of the compound index.', { code: 'INVALID_PARAMETER' });
             }
 
             if (!p.order?.by) {
