@@ -378,6 +378,10 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
             }
         }
     }
+    
+    if (query?.index && !query.index?.name) {
+        throw new SkapiError('"index.name" is required when using "index" parameter.', { code: 'INVALID_REQUEST' });
+    }
 
     if (query?.record_id) {
         validator.specialChars(query.record_id, 'record_id', false, false);
