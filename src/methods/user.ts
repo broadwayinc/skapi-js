@@ -852,7 +852,7 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
         'birthdate': (v: string) => validator.Birthdate(v),
         'locale': (v: string) => {
             if (typeof v !== 'string' || typeof v === 'string' && v.length > 5) {
-                throw new SkapiError('Value of "locale" should be a country code.');
+                throw new SkapiError('Value of "locale" should be a country code.', { code: 'INVALID_PARAMETER' });
             }
             return v;
         },
