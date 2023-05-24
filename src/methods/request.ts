@@ -159,12 +159,12 @@ export async function request(
         // record fetch options
         let fetOpt = validator.Params(
             {
-                limit: options.fetchOptions?.limit || 100,
+                limit: options.fetchOptions?.limit || 50,
                 startKey: options.fetchOptions?.startKey || null,
                 ascending: typeof options.fetchOptions?.ascending === 'boolean' ? options.fetchOptions.ascending : true
             },
             {
-                limit: ['number', () => 100],
+                limit: ['number', () => 50],
                 startKey: null,
                 ascending: ['boolean', () => true]
             }
