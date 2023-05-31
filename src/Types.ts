@@ -198,7 +198,7 @@ export type UserAttributes = {
     // /** User has subscribed to service e-mail when positive number. Number value is the access group of the user account. E-mail should be verified. */
     // email_subscription?: number;
     /** Additional string value that can be used freely. */
-    misc: string;
+    misc?: string;
 };
 
 export type UserProfile = {
