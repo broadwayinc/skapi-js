@@ -382,6 +382,10 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
         }
     }
 
+    if (query?.index && !query.index?.name) {
+        throw new SkapiError('"index.name" is required when using "index" parameter.', { code: 'INVALID_REQUEST' });
+    }
+
     if (query?.record_id) {
         validator.specialChars(query.record_id, 'record_id', false, false);
         let outputObj: Record<string, string> = { record_id: query.record_id };
@@ -501,6 +505,8 @@ export async function postRecord(
                     if (typeof i !== 'string') {
                         throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
                     }
+
+                    validator.specialChars(v, 'tag', false, true);
                 }
                 return v;
             }
