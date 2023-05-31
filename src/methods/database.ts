@@ -190,7 +190,10 @@ export async function uploadFiles(
         getSignedParams.record_id = params.record_id;
     }
 
-    function fetchProgress(url: string, opts: { headers?: Record<string, any>; body: FormData; }, onProgress?: (e: ProgressEvent) => void) {
+    function fetchProgress(
+        url: string,
+        opts: { headers?: Record<string, any>; body: FormData; },
+        onProgress?: (e: ProgressEvent) => void) {
         return new Promise((res, rej) => {
             let xhr = new XMLHttpRequest();
             xhr.onreadystatechange = function () {
