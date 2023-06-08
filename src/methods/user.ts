@@ -443,7 +443,8 @@ export async function signup(
         address_public: ['boolean', () => false],
         gender_public: ['boolean', () => false],
         birthdate_public: ['boolean', () => false],
-        phone_number_public: ['boolean', () => false]
+        phone_number_public: ['boolean', () => false],
+        misc: 'string'
     }, ['email', 'password']);
 
     option = validator.Params(option || {}, {
