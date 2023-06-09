@@ -529,7 +529,7 @@ export async function postRecord(
         }
 
         if (typeof config.table.access_group === 'number') {
-            if (this.user.access_group < config.table.access_group) {
+            if (!isAdmin && this.user.access_group < config.table.access_group) {
                 throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
             }
         }
@@ -896,9 +896,9 @@ export async function deleteRecords(params: {
                 }
 
                 else if (typeof v === 'number' && v >= 0 && v < 100) {
-                    if (!isAdmin && this.user.access_group < v) {
-                        throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
-                    }
+                    // if (!isAdmin && this.user.access_group < v) {
+                    //     throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
+                    // }
 
                     return v;
                 }
