@@ -539,9 +539,9 @@ export async function postRecord(
         }
 
         if (isAdmin) {
-            if (config.table.access_group === 'private') {
-                throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
-            }
+            // if (config.table.access_group === 'private') {
+            //     throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
+            // }
 
             if (config.table.hasOwnProperty('subscription_group')) {
                 throw new SkapiError('Service owner cannot write to subscription table.', { code: 'INVALID_REQUEST' });
