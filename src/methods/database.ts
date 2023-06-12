@@ -934,3 +934,64 @@ export async function deleteRecords(params: {
 
     return await request.bind(this)('del-records', params, { auth: true });
 }
+
+export async function grantPrivateAccess(params: {
+    record_id: string | string[];
+    user_id: string | string[];
+}) {
+    return recordAccess({
+        record_id: params.record_id,
+        user_id: params.user_id,
+        execute: 'add'
+    });
+}
+
+export async function removePrivateAccess(params: {
+    record_id: string | string[];
+    user_id: string | string[];
+}) {
+    return recordAccess({
+        record_id: params.record_id,
+        user_id: params.user_id,
+        execute: 'remove'
+    });
+}
+
+async function recordAccess(params: {
+    record_id: string | string[];
+    user_id: string | string[];
+    execute: 'add' | 'remove';
+}) {
+    let checkList = (v: string, k: string) => {
+        let id = validator.specialChars(v, k, false, false);
+
+        if (typeof id === 'string') {
+            return [id];
+        }
+
+        if (id.length > 100) {
+            throw new SkapiError(`"${k}" should not exceed 100 items.`, { code: 'INVALID_PARAMETER' });
+        }
+
+        return id;
+    };
+
+    let req = validator.Params(params,
+        {
+            record_id: (v: string) => checkList(v, 'record_id'),
+            user_id: (v: string) => checkList(v, 'user_id'),
+            execute: ['add', 'remove']
+        },
+        [
+            'execute',
+            'record_id',
+            'user_id'
+        ]
+    );
+
+    await request.bind(this)(
+        'record-access',
+        req,
+        { auth: true }
+    );
+}

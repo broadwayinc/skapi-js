@@ -12,7 +12,9 @@ import {
     getTables,
     getIndexes,
     getTags,
-    uploadFiles
+    uploadFiles,
+    grantPrivateAccess,
+    removePrivateAccess
 } from '../methods/database';
 import {
     request,
@@ -61,7 +63,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '0.1.64';
+    version = '0.1.65';
 
     // privates
     private __disabledAccount: string | null = null;
@@ -324,6 +326,9 @@ export default class Skapi {
     getNewsletterSubscription = getNewsletterSubscription.bind(this);
     requestUsernameChange = requestUsernameChange.bind(this);
     uploadFiles = uploadFiles.bind(this);
+    grantPrivateAccess = grantPrivateAccess.bind(this);
+    removePrivateAccess = removePrivateAccess.bind(this);
+
     @formHandler()
     mock(...args) { return mock.bind(this)(...args); }
     @formHandler({ preventMultipleCalls: true })
