@@ -805,13 +805,26 @@ export async function mock(data: Form<any | {
     return request.bind(this)('mock', data, options);
 }
 
-export async function getBlob(params: { url: string; }, option?: { service: string; }): Promise<Blob> {
+export async function getBlob(params: { url: string; }, option?: { base64: boolean, service: string; }): Promise<Blob | string> {
 
     let p = validator.Params(params, {
         url: (v: string) => validator.Url(v)
     }, ['url']);
 
-    return await request.bind(this)(p.url, option || null, { method: 'get', auth: p.url.includes('/auth/'), contentType: null, responseType: 'blob' });
+    let blob = await request.bind(this)(p.url, option || null, { method: 'get', auth: p.url.includes('/auth/'), contentType: null, responseType: 'blob' });
+    if (option?.base64) {
+        function blobToBase64(blob): Promise<any> {
+            return new Promise((resolve, _) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        return blobToBase64(blob);
+    }
+
+    return blob;
 }
 
 export async function getFormResponse(): Promise<any> {
