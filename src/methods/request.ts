@@ -123,6 +123,7 @@ export async function request(
                 case 'storage-info':
                 case 'get-signed-url':
                 case 'record-access':
+                case 'private-access-key':
                     return {
                         private: record.record_private,
                         public: record.record_public
