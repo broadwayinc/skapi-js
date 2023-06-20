@@ -13,6 +13,7 @@ export type Database<Tbl, Ref, Idx> = {
     table?: Tbl;
     reference?: Ref;
     index?: Idx;
+    private_access_key?: string;
 };
 
 export type GetRecordQuery = Database<

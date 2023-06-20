@@ -13,8 +13,9 @@ import {
     getIndexes,
     getTags,
     uploadFiles,
-    grantPrivateAccess,
-    removePrivateAccess
+    grantPrivateRecordAccess,
+    removePrivateRecordAccess,
+    listPrivateRecordAccess
 } from '../methods/database';
 import {
     request,
@@ -326,8 +327,9 @@ export default class Skapi {
     getNewsletterSubscription = getNewsletterSubscription.bind(this);
     requestUsernameChange = requestUsernameChange.bind(this);
     uploadFiles = uploadFiles.bind(this);
-    grantPrivateAccess = grantPrivateAccess.bind(this);
-    removePrivateAccess = removePrivateAccess.bind(this);
+    grantPrivateRecordAccess = grantPrivateRecordAccess.bind(this);
+    removePrivateRecordAccess = removePrivateRecordAccess.bind(this);
+    listPrivateRecordAccess = listPrivateRecordAccess.bind(this);
 
     @formHandler()
     mock(...args) { return mock.bind(this)(...args); }
