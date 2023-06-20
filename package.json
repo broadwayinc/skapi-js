@@ -28,10 +28,8 @@
   },
   "keywords": [
     "backend",
-    "serverless",
     "skapi",
     "api",
-    "cloud",
     "jamstack"
   ],
   "dependencies": {
