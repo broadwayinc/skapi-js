@@ -636,7 +636,7 @@ export async function postRecord(
                 }
                 formData.delete(key);
                 for (let dat of values) {
-                    formData.append(key, dat, dat instanceof File ? dat.name : null);
+                    formData.append(key, (dat as Blob), dat instanceof File ? dat.name : null);
                 }
             }
         }
