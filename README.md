@@ -35,4 +35,4 @@ const skapi = new Skapi('your_service_id', 'your_user_id');
 export { skapi };
 ```
 
-For more info, visit our [documentation page](docs.skapi.com)
+For more info, visit our [documentation page](https://docs.skapi.com)
