@@ -31,8 +31,7 @@ Then, import the library into your main JavaScript file:
 import { Skapi } from 'skapi-js';
 const skapi = new Skapi('your_service_id', 'your_user_id');
 
-// Import the exported class from any file you may want to use skapi
-export { skapi };
+export { skapi }; // Import skapi from your project files
 ```
 
 For more info, visit our [documentation page](https://docs.skapi.com)
