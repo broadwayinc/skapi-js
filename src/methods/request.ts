@@ -3,7 +3,8 @@ import {
     FormSubmitCallback,
     FetchOptions,
     DatabaseResponse,
-    Connection
+    Connection,
+    ProgressCallback
 } from '../Types';
 import SkapiError from '../main/error';
 import {
@@ -41,7 +42,7 @@ export async function request(
         auth = false,
         method = 'post',
         meta = null, // content meta
-        bypassAwaitConnection = false
+        bypassAwaitConnection = false,
     } = options;
 
     method = method.toLowerCase();
@@ -155,7 +156,7 @@ export async function request(
     let required = options?.responseType !== 'blob' ? { service, owner } : {};
     // set fetch options
     let fetchOptions = {};
-    let { fetchMore = false } = options?.fetchOptions || {};
+    let { fetchMore = false, progress } = options?.fetchOptions || {};
 
     if (options?.fetchOptions && Object.keys(options.fetchOptions).length) {
         // record fetch options
@@ -311,13 +312,14 @@ export async function request(
                 opt.responseType = options.responseType;
             }
 
+
             // pending call request
             // this prevents recursive calls
             if (method === 'post') {
-                __pendingRequest[requestKey] = _post.bind(this)(endpoint, data, opt);
+                __pendingRequest[requestKey] = _post.bind(this)(endpoint, data, opt, progress);
             }
             else if (method === 'get') {
-                __pendingRequest[requestKey] = _get.bind(this)(endpoint, data, opt);
+                __pendingRequest[requestKey] = _get.bind(this)(endpoint, data, opt, progress);
             }
         }
 
@@ -521,66 +523,127 @@ async function update_startKey_keys(option: Record<string, any>) {
     return Object.assign({ startKeyHistory: this.__startKeyHistory[url][hashedParam] }, fetched);
 };
 
-async function _fetch(url: string, opt: RequestInit, responseType: string) {
-    let response: Record<string, any> = await fetch(url, opt);
+async function _fetch(url: string, opt: any, progress?: ProgressCallback) {
+    let fetchProgress = (
+        url: string,
+        opts: { headers?: Record<string, any>; body: FormData; responseType: string; },
+        progress?: ProgressCallback
+    ) => {
+        return new Promise(
+            (res, rej) => {
+                let xhr = new XMLHttpRequest();
 
-    if (responseType) {
-        if (response.status === 200) {
-            return await response[responseType]();
-        } else {
-            throw response;
-        }
+                // 0: UNSENT - The request is not initialized.
+                // 1: OPENED - The request has been set up.
+                // 2: HEADERS_RECEIVED - The request has sent, and the headers and status are available.
+                // 3: LOADING - The response's body is being received.
+                // 4: DONE - The data transfer has been completed or an error has occurred during the 
+
+                // xhr.onreadystatechange = function () {
+                //     if (xhr.readyState === 4) {   //if complete
+                //         if (xhr.status >= 200 || xhr.status <= 299) {  //check if "OK" (200)
+                //             //success
+                //         } else {
+                //             rej(xhr.status); //otherwise, some other code was returned
+                //         }
+                //     }
+                // };
+
+                xhr.open((opt.method || 'GET').toUpperCase(), url);
+
+                for (var k in opts.headers || {}) {
+                    xhr.setRequestHeader(k, opts.headers[k]);
+                }
+
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        // Status codes in the 2xx range mean success
+                        if (opts.responseType == 'json' || opts.responseType == 'blob') {
+                            res(xhr.response);
+                        }
+                        else {
+                            let result = xhr.responseText;
+                            try {
+                                result = JSON.parse(result);
+                            }
+                            catch (err) { }
+                            res(result);
+                        }
+                    } else {
+                        // Status codes outside the 2xx range indicate errors
+                        let status = xhr.status;
+                        let errCode = [
+                            'INVALID_CORS',
+                            'INVALID_REQUEST',
+                            'SERVICE_DISABLED',
+                            'INVALID_PARAMETER',
+                            'ERROR',
+                            'EXISTS',
+                            'NOT_EXISTS'
+                        ];
+
+                        let result: any = xhr.responseText;
+                        try {
+                            result = JSON.parse(result);
+                        }
+                        catch (err) { }
+
+                        if (typeof result === 'string') {
+                            let errMsg = xhr.response.split(':');
+                            let code = errMsg.splice(0, 1)[0].trim();
+                            rej(new SkapiError(errMsg.join('').trim(), { code: (errCode.includes(code) ? code : 'ERROR') }));
+                        }
+
+                        else if (typeof result === 'object' && result?.message) {
+                            let code = (result?.code || (status ? status.toString() : null) || 'ERROR');
+                            rej(new SkapiError(result?.message, { code: code }));
+                        }
+                    }
+                };
+
+                xhr.onerror = () => rej('Network error');
+                xhr.onabort = () => rej('Aborted');
+                xhr.ontimeout = () => rej('Timeout');
+
+                if (xhr.upload && typeof progress === 'function') {
+                    xhr.upload.onprogress = (p: ProgressEvent) => {
+                        progress({ progress: p.loaded / p.total * 100, loaded: p.loaded, total: p.total });
+                    };
+                }
+
+                xhr.send(opts.body);
+            }
+        );
+    };
+
+    let received: Record<string, any> = await fetchProgress(
+        url,
+        {
+            headers: opt?.headers,
+            body: (opt.body as FormData),
+            responseType: opt?.responseType
+        },
+        progress
+    );
+
+    if (typeof received === 'object' && opt.method === 'GET' && received.hasOwnProperty('body')) {
+        try {
+            received = JSON.parse(received.body);
+        } catch (err) { }
     }
 
-    let received = await response.text();
-    try {
-        received = JSON.parse(received);
-    } catch (err) {
-    }
-
-    if (response.status === 200) {
-        if (typeof received === 'object' && opt.method === 'GET' && received.hasOwnProperty('body')) {
-            try {
-                received = JSON.parse(received.body);
-            } catch (err) { }
-        }
-        return received;
-    }
-
-    else {
-        let status = response?.status;
-        let errCode = [
-            'INVALID_CORS',
-            'INVALID_REQUEST',
-            'SERVICE_DISABLED',
-            'INVALID_PARAMETER',
-            'ERROR',
-            'EXISTS',
-            'NOT_EXISTS'
-        ];
-
-        if (typeof received === 'object' && received?.message) {
-            let code = (received?.code || (status ? status.toString() : null) || 'ERROR');
-            throw new SkapiError(received?.message, { code: code });
-        }
-
-        else if (typeof received === 'string') {
-            let errMsg = received.split(':');
-            let code = errMsg.splice(0, 1)[0].trim();
-            throw new SkapiError(errMsg.join('').trim(), { code: (errCode.includes(code) ? code : 'ERROR') });
-        }
-
-        throw response;
-    }
+    return received;
 };
 
-async function _post(url: string, params: Record<string, any>, option: RequestInit & { responseType?: string | null, headers: Record<string, any>; }) {
-    let responseType = null;
-    if (option.hasOwnProperty('responseType')) {
-        responseType = option.responseType;
-        delete option.responseType;
-    }
-
+async function _post(
+    url: string,
+    params: Record<string, any>,
+    option: RequestInit & {
+        responseType?: string | null;
+        headers: Record<string, any>;
+    },
+    progress?: (ev: ProgressEvent) => void
+) {
     let opt = Object.assign(
         {
             method: 'POST'
@@ -591,10 +654,18 @@ async function _post(url: string, params: Record<string, any>, option: RequestIn
         }
     );
 
-    return _fetch.bind(this)(url, opt, responseType);
-}
+    return _fetch.bind(this)(url, opt, progress);
+};
 
-async function _get(url: string, params: Record<string, any>, option: RequestInit & { responseType?: string | null, headers: Record<string, any>; }) {
+async function _get(
+    url: string,
+    params: Record<string, any>,
+    option: RequestInit & {
+        responseType?: string | null;
+        headers: Record<string, any>;
+    },
+    progress?: (ev: ProgressEvent) => void
+) {
     if (params && typeof params === 'object' && Object.keys(params).length) {
         if (url.substring(url.length - 1) !== '?') {
             url = url + '?';
@@ -613,12 +684,6 @@ async function _get(url: string, params: Record<string, any>, option: RequestIni
         url += query;
     }
 
-    let responseType;
-    if (option.hasOwnProperty('responseType')) {
-        responseType = option.responseType;
-        delete option.responseType;
-    }
-
     let opt = Object.assign(
         {
             method: 'GET'
@@ -626,7 +691,7 @@ async function _get(url: string, params: Record<string, any>, option: RequestIni
         option
     );
 
-    return _fetch(url, opt, responseType);
+    return _fetch.bind(this)(url, opt, progress);
 };
 
 
@@ -781,7 +846,7 @@ export async function secureRequest<RequestParams = {
     }
 
     return await request.bind(this)('post-secure', params, { auth: true });
-}
+};
 
 export async function mock(data: Form<any | {
     raise?: 'ERR_INVALID_REQUEST' | 'ERR_INVALID_PARAMETER' | 'SOMETHING_WENT_WRONG' | 'ERR_EXISTS' | 'ERR_NOT_EXISTS';
@@ -804,16 +869,76 @@ export async function mock(data: Form<any | {
         Object.assign(options, fetchOptions);
     }
     return request.bind(this)('mock', data, options);
-}
+};
 
-export async function getBlob(params: { url: string; }, option?: { base64: boolean, service: string; }): Promise<Blob | string> {
-
+export async function getBlob(
+    params: {
+        service: string;
+        url: string;
+        dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // endpoint returns url that can be shared outside your cors within a minimal time (1 min)
+        expiration?: number;
+    }
+): Promise<Blob | string> {
     let p = validator.Params(params, {
-        url: (v: string) => validator.Url(v)
+        url: (v: string) => validator.Url(v),
+        expiration: ['number', () => 60],
+        dataType: ['base64', 'blob', 'download', 'endpoint']
     }, ['url']);
 
-    let blob = await request.bind(this)(p.url, option || null, { method: 'get', auth: p.url.includes('/auth/'), contentType: null, responseType: 'blob' });
-    if (option?.base64) {
+    let target_key = p.url.split('/').slice(3);
+
+    // [
+    //     'publ',
+    //     'ap22hF79vClHwWCcnbGE',
+    //     'e8df73d9-b159-4adb-b288-0dd009724a7a',
+    //     'ad7e9fb7-b0bb-4134-8921-04932b630885',
+    //     'records',
+    //     'ThF8oMtf4PjxtAgf',
+    //     '00',
+    //     'file',
+    //     'd4bf2df6a8e5984f1a98b903ebd0b19a'
+    // ]
+
+    let getSignedUrl = async () => {
+        let { url } = await request.bind(this)('get-signed-url', {
+            service: params?.service || this.service,
+            request: 'get',
+            record_id: target_key[5],
+            key: target_key.join('/')
+        },
+            { auth: true }
+        );
+        return url;
+    };
+
+    let needAuth = target_key[0] == 'auth';
+    let url = p.url;
+
+    if (needAuth && (params?.dataType === 'download' || params?.dataType === 'endpoint')) {
+        url = await getSignedUrl();
+    }
+
+    if (params?.dataType === 'download') {
+        let a = document.createElement('a');
+        // Set the href attribute to the file URL
+        a.href = url;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+    }
+
+    if (params?.dataType === 'endpoint') {
+        return url;
+    }
+
+    let blob = await request.bind(this)(
+        url,
+        { service: params?.service },
+        { method: 'get', auth: needAuth, contentType: null, responseType: 'blob' }
+    );
+
+    if (params?.dataType === 'base64') {
         function blobToBase64(blob): Promise<any> {
             return new Promise((resolve, _) => {
                 const reader = new FileReader();
@@ -826,7 +951,7 @@ export async function getBlob(params: { url: string; }, option?: { base64: boole
     }
 
     return blob;
-}
+};
 
 export async function getFormResponse(): Promise<any> {
     await this.__connection;
@@ -950,4 +1075,4 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             return executeMethod();
         };
     };
-}
+};

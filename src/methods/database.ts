@@ -6,7 +6,8 @@ import {
     DatabaseResponse,
     GetRecordQuery,
     Condition,
-    PostRecordConfig
+    PostRecordConfig,
+    ProgressCallback
 } from '../Types';
 import SkapiError from '../main/error';
 import { extractFormMeta, generateRandom } from '../utils/utils';
@@ -165,12 +166,9 @@ export async function uploadFiles(
     fileList: FileList,
     params: {
         service?: string;
-        record_id: string;
-        progress: (e: {
-            progress: number,
-            currentFile: File,
-            completed: File[];
-        }) => void;
+        record_id: string; // Record ID of a record to upload files to. Not required if request is 'host'.
+        request?: 'post' | 'host';
+        progress: ProgressCallback;
     }
 ) {
     await this.__connection;
@@ -183,57 +181,61 @@ export async function uploadFiles(
 
     let getSignedParams: Record<string, any> = {
         reserved_key,
-        service: params?.service || this.service
+        service: params?.service || this.service,
+        request: params?.request || 'post'
     };
 
     if (params?.record_id) {
         getSignedParams.record_id = params.record_id;
     }
 
-    function fetchProgress(
+    let fetchProgress = (
         url: string,
-        opts: { headers?: Record<string, any>; body: FormData; },
-        onProgress?: (e: ProgressEvent) => void) {
+        body: FormData,
+        progressCallback
+    ) => {
         return new Promise((res, rej) => {
             let xhr = new XMLHttpRequest();
-            xhr.onreadystatechange = function () {
-                if (xhr.readyState === 4) {   //if complete
-                    if (xhr.status >= 200 || xhr.status <= 299) {  //check if "OK" (200)
-                        //success
-                    } else {
-                        rej(xhr.status); //otherwise, some other code was returned
+            xhr.open('POST', url);
+            xhr.onload = (e: any) => {
+                let result = xhr.responseText;
+                try {
+                    result = JSON.parse(result);
+                }
+                catch (err) { }
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    let result = xhr.responseText;
+                    try {
+                        result = JSON.parse(result);
                     }
+                    catch (err) { }
+                    res(result);
+                } else {
+                    rej(result);
                 }
             };
-
-            xhr.open('POST', url);
-
-            for (var k in opts.headers || {}) {
-                xhr.setRequestHeader(k, opts.headers[k]);
-            }
-
-            xhr.onload = (e: any) => res(e.target.responseText);
-            xhr.onerror = rej;
-            xhr.onabort = () => rej('aborted');
-            xhr.ontimeout = () => rej('timeout');
+            xhr.onerror = () => rej('Network error');
+            xhr.onabort = () => rej('Aborted');
+            xhr.ontimeout = () => rej('Timeout');
 
             // xhr.addEventListener('error', rej);
-            if (xhr.upload && onProgress) {
-                xhr.upload.onprogress = onProgress;
+            if (xhr.upload && typeof params.progress === 'function') {
+                xhr.upload.onprogress = progressCallback;
             }
 
-            xhr.send(opts.body);
+            xhr.send(body);
         });
-    }
+    };
 
     let completed = [];
+    let failed = [];
+
     for (let f of fileList) {
         let signedParams = Object.assign({
             key: f.name
         }, getSignedParams);
 
-        let { fields, url } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
-
+        let { fields = null, url } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
         let form = new FormData();
 
         for (let name in fields) {
@@ -242,23 +244,20 @@ export async function uploadFiles(
 
         form.append('file', f);
 
-        await fetchProgress(
-            url,
-            {
-                body: form
-            },
-            (p: ProgressEvent) => {
-                let cb = params.progress || null;
-                if (typeof cb === 'function') {
-                    cb({ progress: p.loaded / p.total * 100, currentFile: f, completed });
+        try {
+            await fetchProgress(
+                url, form,
+                (p: ProgressEvent) => {
+                    params.progress({ progress: p.loaded / p.total * 100, currentFile: f, completed, loaded: p.loaded, total: p.total });
                 }
-            }
-        ).catch(err => { throw { completed, error: err, failed: f }; });
-
-        completed.push(f);
+            );
+            completed.push(f);
+        } catch (err) {
+            failed.push(f);
+        }
     }
 
-    return { completed };
+    return { completed, failed };
 }
 
 export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
@@ -409,12 +408,12 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
                 // bypass error
             }
 
-            if (query.table?.access_group === 'private') {
-                if (!ref_user) {
-                    // request private access key
-                    query.private_access_key = await requestPrivateRecordAccessKey.bind(this)(query.reference);
-                }
-            }
+            // if (query.table?.access_group === 'private') {
+            //     if (!ref_user) {
+            //         // request private access key
+            //         query.private_access_key = await requestPrivateRecordAccessKey.bind(this)(query.reference);
+            //     }
+            // }
         }
 
         query = validator.Params(query || {}, struct, ref_user ? [] : ['table']);
@@ -468,7 +467,7 @@ export async function postRecord(
             config.table.access_group = 0;
         }
     }
-
+    let progress = config.progress || null;
     config = validator.Params(config || {}, {
         record_id: 'string',
         table: {
@@ -525,7 +524,7 @@ export async function postRecord(
 
             throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
         }
-    }, [], ['response', 'onerror'], null);
+    }, [], ['response', 'onerror', 'progress'], null);
 
     if (!config?.table && !config?.record_id) {
         throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
@@ -646,6 +645,10 @@ export async function postRecord(
 
     else {
         postData = Object.assign({ data: form }, config);
+    }
+
+    if (typeof progress === 'function') {
+        fetchOptions.progress = progress;
     }
 
     if (Object.keys(fetchOptions).length) {

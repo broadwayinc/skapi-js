@@ -120,6 +120,7 @@ export type FormSubmitCallback = {
     response?(response: any): any;
     onerror?(error: Error): any;
     formData?(formData: FormData): Promise<FormData> | FormData;
+    progress: ProgressCallback;
 };
 
 export type Form<T> = HTMLFormElement | FormData | SubmitEvent | T;
@@ -239,6 +240,14 @@ export type QueryParams = {
     range?: string | number | boolean;
 };
 
+export type ProgressCallback = (e: {
+    progress: number;
+    loaded: number;
+    total: number;
+    currentFile?: File, // for file upload
+    completed?: File[]; // for file upload
+}) => void;
+
 export type FetchOptions = {
     /** Maximum number of records to fetch per call */
     limit?: number;
@@ -248,6 +257,8 @@ export type FetchOptions = {
     ascending?: boolean;
     /** Start key to be used to query from the certain batch of fetch. */
     startKey?: string;
+    /** Callback for database request progress. Useful when building progress bar. */
+    progress?: ProgressCallback;
 };
 
 export type DatabaseResponse<T> = {
