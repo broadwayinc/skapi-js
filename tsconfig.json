@@ -10,7 +10,7 @@
       "src/methods/user.ts",
       "src/Types.ts"
     ],
-    "out": "docs",
+    "out": "server/docs",
     "name": "skapi"
   },
   "compilerOptions": {
