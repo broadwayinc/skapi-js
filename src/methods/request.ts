@@ -877,6 +877,9 @@ export async function getBlob(
         url: string;
         dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // endpoint returns url that can be shared outside your cors within a minimal time (1 min)
         expiration?: number;
+    },
+    fetchOptions?: {
+        progress?: ProgressCallback;
     }
 ): Promise<Blob | string> {
     let p = validator.Params(params, {
@@ -935,7 +938,7 @@ export async function getBlob(
     let blob = await request.bind(this)(
         url,
         { service: params?.service },
-        { method: 'get', auth: needAuth, contentType: null, responseType: 'blob' }
+        { method: 'get', auth: needAuth, contentType: null, responseType: 'blob', progress: fetchOptions?.progress }
     );
 
     if (params?.dataType === 'base64') {
