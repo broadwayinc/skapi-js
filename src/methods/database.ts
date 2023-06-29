@@ -13,6 +13,7 @@ import SkapiError from '../main/error';
 import { extractFormMeta, generateRandom } from '../utils/utils';
 import validator from '../utils/validator';
 import { request } from './request';
+import { checkAdmin } from './user';
 
 const __index_number_range = 4503599627370496; // +/-
 
@@ -37,7 +38,8 @@ function normalizeRecord(record: Record<string, any>): RecordData {
             allow_multiple_reference: true,
             referenced_count: 0
         },
-        ip: ''
+        ip: '',
+        bin: []
     };
 
     const keys = {
@@ -109,6 +111,9 @@ function normalizeRecord(record: Record<string, any>): RecordData {
         'rfd': (r: number) => {
             output.reference.referenced_count = r;
         },
+        'bin': (r: string[]) => {
+            output.bin = r;
+        },
         'data': (r: any) => {
             let data = r;
             if (r === '!D%{}') {
@@ -163,7 +168,7 @@ function normalizeTypedString(v: string) {
 }
 
 export async function uploadFiles(
-    fileList: FileList,
+    fileList: Form<FileList | File[]>,
     params: {
         service?: string;
         record_id: string; // Record ID of a record to upload files to. Not required if request is 'host'.
@@ -171,10 +176,33 @@ export async function uploadFiles(
         progress: ProgressCallback;
     }
 ) {
-    await this.__connection;
+    let isAdmin = await checkAdmin.bind(this)();
 
-    if (!(fileList instanceof FileList)) {
-        throw new SkapiError('"fileList" should be a FileList', { code: 'INVALID_PARAMETER' });
+    if (fileList instanceof SubmitEvent) {
+        fileList = (fileList.target as HTMLFormElement);
+    }
+
+    if (fileList instanceof HTMLFormElement) {
+        fileList = new FormData(fileList);
+    }
+
+    if (fileList instanceof FormData) {
+        // extract all fileList
+        let fileEntries = [];
+
+        for (let entry of fileList.entries()) {
+            // let key = entry[0];
+            let value = entry[1];
+            if (value instanceof File) {
+                fileEntries.push(value);
+            }
+        }
+
+        fileList = fileEntries;
+    }
+
+    if (!(fileList[0] instanceof File)) {
+        throw new SkapiError('"fileList" should be a FileList or array of File object.', { code: 'INVALID_PARAMETER' });
     }
 
     let reserved_key = generateRandom();
@@ -185,17 +213,22 @@ export async function uploadFiles(
         request: params?.request || 'post'
     };
 
+    if (getSignedParams.request === 'host' && !isAdmin) {
+        throw new SkapiError('The user has no access.', { code: 'INVALID_REQUEST' });
+    }
+
     if (params?.record_id) {
         getSignedParams.record_id = params.record_id;
     }
 
+    let xhr;
     let fetchProgress = (
         url: string,
         body: FormData,
         progressCallback
     ) => {
         return new Promise((res, rej) => {
-            let xhr = new XMLHttpRequest();
+            xhr = new XMLHttpRequest();
             xhr.open('POST', url);
             xhr.onload = (e: any) => {
                 let result = xhr.responseText;
@@ -230,9 +263,21 @@ export async function uploadFiles(
     let completed = [];
     let failed = [];
 
-    for (let f of fileList) {
+    function toBase62(num: number) {
+        const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        if (num === 0) return base62Chars[0];
+        let result = '';
+        while (num > 0) {
+            result = base62Chars[num % 62] + result;
+            num = Math.floor(num / 62);
+        }
+        return result;
+    }
+
+    for (let f of (fileList as FileList | File[])) {
         let signedParams = Object.assign({
-            key: f.name
+            key: f.name,
+            sizeKey: toBase62(f.size)
         }, getSignedParams);
 
         let { fields = null, url } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
@@ -248,7 +293,17 @@ export async function uploadFiles(
             await fetchProgress(
                 url, form,
                 (p: ProgressEvent) => {
-                    params.progress({ progress: p.loaded / p.total * 100, currentFile: f, completed, loaded: p.loaded, total: p.total });
+                    params.progress(
+                        {
+                            progress: p.loaded / p.total * 100,
+                            currentFile: f,
+                            completed,
+                            failed,
+                            loaded: p.loaded,
+                            total: p.total,
+                            abort: () => xhr.abort()
+                        }
+                    );
                 }
             );
             completed.push(f);

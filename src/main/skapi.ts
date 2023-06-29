@@ -326,11 +326,12 @@ export default class Skapi {
     getNewsletters = getNewsletters.bind(this);
     getNewsletterSubscription = getNewsletterSubscription.bind(this);
     requestUsernameChange = requestUsernameChange.bind(this);
-    uploadFiles = uploadFiles.bind(this);
     grantPrivateRecordAccess = grantPrivateRecordAccess.bind(this);
     removePrivateRecordAccess = removePrivateRecordAccess.bind(this);
     listPrivateRecordAccess = listPrivateRecordAccess.bind(this);
 
+    @formHandler()
+    uploadFiles(...args) { return uploadFiles.bind(this)(...args); }
     @formHandler()
     mock(...args) { return mock.bind(this)(...args); }
     @formHandler({ preventMultipleCalls: true })

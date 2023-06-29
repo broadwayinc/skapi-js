@@ -607,7 +607,14 @@ async function _fetch(url: string, opt: any, progress?: ProgressCallback) {
 
                 if (xhr.upload && typeof progress === 'function') {
                     xhr.upload.onprogress = (p: ProgressEvent) => {
-                        progress({ progress: p.loaded / p.total * 100, loaded: p.loaded, total: p.total });
+                        progress(
+                            {
+                                progress: p.loaded / p.total * 100,
+                                loaded: p.loaded,
+                                total: p.total,
+                                abort: () => xhr.abort()
+                            }
+                        );
                     };
                 }
 
@@ -872,23 +879,22 @@ export async function mock(data: Form<any | {
 };
 
 export async function getBlob(
-    params: {
-        service: string;
-        url: string;
+    url: string,
+    config?: {
         dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // endpoint returns url that can be shared outside your cors within a minimal time (1 min)
         expiration?: number;
-    },
-    fetchOptions?: {
         progress?: ProgressCallback;
     }
 ): Promise<Blob | string> {
-    let p = validator.Params(params, {
-        url: (v: string) => validator.Url(v),
-        expiration: ['number', () => 60],
-        dataType: ['base64', 'blob', 'download', 'endpoint']
-    }, ['url']);
+    validator.Url(url);
 
-    let target_key = p.url.split('/').slice(3);
+    let target_key = url.split('/').slice(3);
+    let service = target_key[1];
+
+    validator.Params(config, {
+        expiration: ['number', () => 60],
+        dataType: ['base64', 'download', 'endpoint', () => 'blob']
+    }, [], ['progress']);
 
     // [
     //     'publ',
@@ -904,7 +910,7 @@ export async function getBlob(
 
     let getSignedUrl = async () => {
         let { url } = await request.bind(this)('get-signed-url', {
-            service: params?.service || this.service,
+            service,
             request: 'get',
             record_id: target_key[5],
             key: target_key.join('/')
@@ -915,33 +921,32 @@ export async function getBlob(
     };
 
     let needAuth = target_key[0] == 'auth';
-    let url = p.url;
 
-    if (needAuth && (params?.dataType === 'download' || params?.dataType === 'endpoint')) {
+    if (needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
         url = await getSignedUrl();
     }
 
-    if (params?.dataType === 'download') {
+    if (config?.dataType === 'download') {
         let a = document.createElement('a');
         // Set the href attribute to the file URL
         a.href = url;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        return;
+        return null;
     }
 
-    if (params?.dataType === 'endpoint') {
+    if (config?.dataType === 'endpoint') {
         return url;
     }
 
     let blob = await request.bind(this)(
         url,
-        { service: params?.service },
-        { method: 'get', auth: needAuth, contentType: null, responseType: 'blob', progress: fetchOptions?.progress }
+        { service },
+        { method: 'get', auth: needAuth, contentType: null, responseType: 'blob', progress: config?.progress }
     );
 
-    if (params?.dataType === 'base64') {
+    if (config?.dataType === 'base64') {
         function blobToBase64(blob): Promise<any> {
             return new Promise((resolve, _) => {
                 const reader = new FileReader();

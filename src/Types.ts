@@ -244,8 +244,10 @@ export type ProgressCallback = (e: {
     progress: number;
     loaded: number;
     total: number;
-    currentFile?: File, // for file upload
-    completed?: File[]; // for file upload
+    currentFile?: File, // Only for uploadFiles()
+    completed?: File[]; // Only for uploadFiles()
+    failed?: File[]; // Only for uploadFiles()
+    abort: () => void; // Aborts current data transfer. When abort is triggered during the FileList is on trasmit, it will continue to next file.
 }) => void;
 
 export type FetchOptions = {
