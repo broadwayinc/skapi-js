@@ -1054,7 +1054,7 @@ export async function listPrivateRecordAccess(params: {
     });
 }
 
-async function requestPrivateRecordAccessKey(record_id: string) {
+export async function requestPrivateRecordAccessKey(record_id: string) {
     await request.bind(this)(
         'request-private-access-key',
         { record_id },
