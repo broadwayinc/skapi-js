@@ -13,6 +13,7 @@ import {
     getIndexes,
     getTags,
     uploadFiles,
+    getFile,
     grantPrivateRecordAccess,
     removePrivateRecordAccess,
     listPrivateRecordAccess,
@@ -22,7 +23,6 @@ import {
     request,
     secureRequest,
     mock,
-    getBlob,
     getFormResponse,
     formHandler,
     getConnection
@@ -306,7 +306,7 @@ export default class Skapi {
     getConnection = getConnection.bind(this);
     getProfile = getProfile.bind(this);
     checkAdmin = checkAdmin.bind(this);
-    getBlob = getBlob.bind(this);
+    getFile = getFile.bind(this);
     request = request.bind(this);
     secureRequest = secureRequest.bind(this);
     getFormResponse = getFormResponse.bind(this);
