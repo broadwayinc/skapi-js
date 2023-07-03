@@ -176,6 +176,16 @@ export async function uploadFiles(
         progress: ProgressCallback;
     }
 ) {
+    // <input type="file" webkitdirectory multiple />
+    // let input = document.querySelector('input[type="file"]');
+    // let data = new FormData();
+
+    // for (let i = 0; i < input.files.length; i++) {
+    //     // You may want to replace '\\' with '/' if you're on Mac or Linux
+    //     let path = input.files[i].webkitRelativePath || input.files[i].name;
+    //     data.append('files', input.files[i], path);
+    // }
+
     let isAdmin = await checkAdmin.bind(this)();
 
     if (fileList instanceof SubmitEvent) {
@@ -219,6 +229,9 @@ export async function uploadFiles(
 
     if (params?.record_id) {
         getSignedParams.record_id = params.record_id;
+    }
+    else if (!isAdmin) {
+        throw new SkapiError('Record ID is required.', { code: 'INVALID_PARAMETER' });
     }
 
     let xhr;
