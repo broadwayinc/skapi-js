@@ -25,7 +25,9 @@ import {
     mock,
     getFormResponse,
     formHandler,
-    getConnection
+    getConnection,
+    listHostDirectory,
+    registerSubdomain
 } from '../methods/request';
 import {
     subscribe,
@@ -65,7 +67,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '0.1.81';
+    version = '0.1.83';
 
     // privates
     private __disabledAccount: string | null = null;
@@ -331,6 +333,8 @@ export default class Skapi {
     removePrivateRecordAccess = removePrivateRecordAccess.bind(this);
     listPrivateRecordAccess = listPrivateRecordAccess.bind(this);
     requestPrivateRecordAccessKey = requestPrivateRecordAccessKey.bind(this);
+    listHostDirectory = listHostDirectory.bind(this);
+    registerSubdomain = registerSubdomain.bind(this);
 
     @formHandler()
     uploadFiles(...args) { return uploadFiles.bind(this)(...args); }
