@@ -1082,7 +1082,7 @@ export async function deleteRecords(params: {
             }
         };
 
-        params.table = validator.Params(params.table || {}, struct, isAdmin ? [] : ['access_group', 'name']);
+        params.table = validator.Params(params.table || {}, struct, isAdmin ? [] : ['name']);
     }
 
     return await request.bind(this)('del-records', params, { auth: true });

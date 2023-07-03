@@ -22,6 +22,62 @@ export function getConnection(): Promise<Connection | null> {
     return this.__connection;
 }
 
+export async function listHostDirectory(
+    params: {
+        dir: string;
+    },
+    fetchOptions: FetchOptions
+) {
+    let is_admin = await this.checkAdmin();
+    if (is_admin) {
+        if (!params?.dir) {
+            params.dir = '/';
+        }
+
+        return request.bind(this)('list-host-directory', params, fetchOptions);
+    }
+
+    return [];
+}
+
+export async function registerSubdomain(
+    params: {
+        subdomain: string;
+        exec: 'register' | 'remove';
+    }
+) {
+    if (params?.subdomain) {
+        throw 'subdomain is required';
+    }
+
+    if (params.exec === 'register') {
+        let invalid = [
+            'www',
+            'doc',
+            'docs',
+            'dia',
+            'baksa',
+            'm',
+            'desktop',
+            'mobile',
+            'skapi',
+            'broadwayinc',
+            'broadway',
+            'documentation'
+        ];
+
+        if (params.subdomain.length < 4) {
+            throw new SkapiError("Subdomain has already been taken.", { code: 'INVALID_REQUEST' });
+        }
+
+        if (invalid.includes(params.subdomain)) {
+            throw new SkapiError("Subdomain has already been taken.", { code: 'INVALID_REQUEST' });
+        }
+    }
+
+    return request.bind(this)('register-subdomain', params);
+}
+
 /** @ignore */
 export async function request(
     url: string,
@@ -108,6 +164,8 @@ export async function request(
                 case 'last-verified-email':
                 case 'get-newsletter-subscription':
                 case 'request-username-change':
+                case 'register-subdomain':
+                case 'list-host-directory':
                     return {
                         public: admin.admin_public,
                         private: admin.admin_private
