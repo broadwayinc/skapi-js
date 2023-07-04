@@ -37,7 +37,11 @@ export async function listHostDirectory(
             params.dir = '/';
         }
 
-        return request.bind(this)('list-host-directory', params, fetchOptions);
+        return request.bind(this)('list-host-directory', params, {
+            fetchOptions,
+            auth: true,
+            method: 'post'
+        });
     }
 
     return [];
@@ -75,7 +79,10 @@ export async function registerSubdomain(
         }
     }
 
-    return request.bind(this)('register-subdomain', params);
+    return request.bind(this)('register-subdomain', params, {
+        auth: true,
+        method: 'post'
+    });
 }
 
 /** @ignore */
