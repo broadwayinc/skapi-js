@@ -23,8 +23,10 @@ export function getConnection(): Promise<Connection | null> {
     return this.__connection;
 }
 
+
 export async function listHostDirectory(
     params: {
+        service: string;
         dir: string;
     },
     fetchOptions: FetchOptions
