@@ -1,3 +1,4 @@
+import { Skapi } from '../Main';
 import {
     RecordData,
     Form,
@@ -175,7 +176,7 @@ export async function uploadFiles(
         request?: 'post' | 'host';
         progress: ProgressCallback;
     }
-) {
+): Promise<{ completed: File[], failed: File[]; }> {
     // <input type="file" webkitdirectory multiple />
     // let input = document.querySelector('input[type="file"]');
     // let data = new FormData();

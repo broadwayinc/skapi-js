@@ -1,3 +1,4 @@
+import { Skapi } from '../Main';
 import {
     Form,
     FormSubmitCallback,
@@ -40,12 +41,13 @@ export async function listHostDirectory(
     return [];
 }
 
+
 export async function registerSubdomain(
     params: {
         subdomain: string;
         exec: 'register' | 'remove';
     }
-) {
+): Promise<"SUCCESS: Subdomain is registered." | "SUCCESS: Subdomain is being removed and is in pending state."> {
     if (params?.subdomain) {
         throw 'subdomain is required';
     }
