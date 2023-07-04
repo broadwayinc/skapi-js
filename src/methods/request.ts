@@ -50,11 +50,7 @@ export async function registerSubdomain(
         exec: 'register' | 'remove';
     }
 ): Promise<"SUCCESS: Subdomain is registered." | "SUCCESS: Subdomain is being removed and is in pending state."> {
-    if (params?.subdomain) {
-        throw 'subdomain is required';
-    }
-
-    if (params.exec === 'register') {
+    if (params?.exec === 'register') {
         let invalid = [
             'www',
             'doc',
