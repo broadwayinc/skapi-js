@@ -17,7 +17,8 @@ import {
     grantPrivateRecordAccess,
     removePrivateRecordAccess,
     listPrivateRecordAccess,
-    requestPrivateRecordAccessKey
+    requestPrivateRecordAccessKey,
+    deleteFiles
 } from '../methods/database';
 import {
     request,
@@ -67,7 +68,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '0.1.90';
+    version = '0.1.91';
 
     // privates
     private __disabledAccount: string | null = null;
@@ -335,6 +336,7 @@ export default class Skapi {
     requestPrivateRecordAccessKey = requestPrivateRecordAccessKey.bind(this);
     listHostDirectory = listHostDirectory.bind(this);
     registerSubdomain = registerSubdomain.bind(this);
+    deleteFiles = deleteFiles.bind(this);
 
     @formHandler()
     uploadFiles(...args) { return uploadFiles.bind(this)(...args); }
