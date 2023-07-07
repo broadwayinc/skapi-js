@@ -168,8 +168,10 @@ function normalizeTypedString(v: string) {
 }
 
 export async function deleteFiles(params: {
+    /** @ignore */
     service?: string;
     keys: string | string[], // file endpoints
+    /** @ignore */
     storage?: 'records' | 'host';
 }) {
     let isAdmin = await checkAdmin.bind(this);
