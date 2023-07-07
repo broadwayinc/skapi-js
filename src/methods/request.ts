@@ -185,6 +185,7 @@ export async function request(
                 case 'get-signed-url':
                 case 'grant-private-access':
                 case 'request-private-access-key':
+                case 'del-files':
                     return {
                         private: record.record_private,
                         public: record.record_public
