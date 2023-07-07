@@ -170,23 +170,23 @@ function normalizeTypedString(v: string) {
 export async function deleteFiles(params: {
     /** @ignore */
     service?: string;
-    keys: string | string[], // file endpoints
+    endpoints: string | string[], // file endpoints
     /** @ignore */
     storage?: 'records' | 'host';
 }) {
     let isAdmin = await checkAdmin.bind(this);
 
-    let { service = this.service, keys, storage = 'records' } = params;
+    let { service = this.service, endpoints, storage = 'records' } = params;
     if (storage === 'host' && !isAdmin) {
         throw new SkapiError("No access", { code: 'INVALID_REQUEST' });
     }
 
-    if (typeof keys === 'string') {
-        keys = [keys];
+    if (typeof endpoints === 'string') {
+        endpoints = [endpoints];
     }
 
-    if (!Array.isArray(keys)) {
-        throw new SkapiError('"keys" should be type: array | string.', { code: 'INVALID_PARAMETER' });
+    if (!Array.isArray(endpoints)) {
+        throw new SkapiError('"endpoints" should be type: array | string.', { code: 'INVALID_PARAMETER' });
     }
 
     if (storage !== 'host' && storage !== 'records') {
@@ -195,7 +195,7 @@ export async function deleteFiles(params: {
 
     return request('del-files', {
         service,
-        keys,
+        endpoints,
         storage
     }, { auth: true, method: 'post' });
 }
