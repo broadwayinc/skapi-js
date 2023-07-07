@@ -174,7 +174,7 @@ export async function deleteFiles(params: {
     /** @ignore */
     storage?: 'records' | 'host';
 }) {
-    let isAdmin = await checkAdmin.bind(this);
+    let isAdmin = await checkAdmin.bind(this)();
 
     let { service = this.service, endpoints, storage = 'records' } = params;
     if (storage === 'host' && !isAdmin) {
@@ -193,7 +193,7 @@ export async function deleteFiles(params: {
         throw new SkapiError('"storage" should be type: "records" | "host".', { code: 'INVALID_PARAMETER' });
     }
 
-    return request('del-files', {
+    return request.bind(this)('del-files', {
         service,
         endpoints,
         storage
