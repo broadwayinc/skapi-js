@@ -167,6 +167,37 @@ function normalizeTypedString(v: string) {
     }
 }
 
+export async function deleteFiles(params: {
+    service?: string;
+    keys: string | string[], // file endpoints
+    storage?: 'records' | 'host';
+}) {
+    let isAdmin = await checkAdmin.bind(this);
+
+    let { service = this.service, keys, storage = 'records' } = params;
+    if (storage === 'host' && !isAdmin) {
+        throw new SkapiError("No access", { code: 'INVALID_REQUEST' });
+    }
+
+    if (typeof keys === 'string') {
+        keys = [keys];
+    }
+
+    if (!Array.isArray(keys)) {
+        throw new SkapiError('"keys" should be type: array | string.', { code: 'INVALID_PARAMETER' });
+    }
+
+    if (storage !== 'host' && storage !== 'records') {
+        throw new SkapiError('"storage" should be type: "records" | "host".', { code: 'INVALID_PARAMETER' });
+    }
+
+    return request('del-files', {
+        service,
+        keys,
+        storage
+    }, { auth: true, method: 'post' });
+}
+
 export async function uploadFiles(
     fileList: Form<FileList | File[]>,
     params: {
