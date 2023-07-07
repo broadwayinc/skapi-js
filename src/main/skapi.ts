@@ -67,7 +67,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '0.1.87';
+    version = '0.1.88';
 
     // privates
     private __disabledAccount: string | null = null;
@@ -162,9 +162,6 @@ export default class Skapi {
     __connection: Promise<Connection | null>;
 
     constructor(service_id: string, owner: string, options?: { autoLogin: boolean; }) {
-
-        console.log(`skapi version: ${this.version}`);
-
         if (typeof service_id !== 'string' || typeof owner !== 'string') {
             throw new SkapiError('"service_id" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
@@ -297,11 +294,14 @@ export default class Skapi {
     }
 
     async updateConnection(): Promise<Connection> {
+        let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`
+
         this.connection = await request.bind(this)('service', {
             service: this.service,
             owner: this.owner
         }, { bypassAwaitConnection: true, method: 'get' });
 
+        console.log(`Built with:\n${skapi}Version: ${this.version}\n\nDocumentation: https://docs.skapi.com`, `font-family: monospace; color:blue;`);
         return this.connection;
     }
 

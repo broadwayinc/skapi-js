@@ -1,4 +1,3 @@
-import { Skapi } from '../Main';
 import {
     Form,
     FormSubmitCallback,
