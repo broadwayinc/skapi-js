@@ -22,6 +22,29 @@ export function getConnection(): Promise<Connection | null> {
     return this.__connection;
 }
 
+export async function refreshCDN(
+    params: {
+        service: string;
+        subdomain: string;
+    }
+): Promise<string> {
+    if (await this.checkAdmin()) {
+        if (!params?.service) {
+            throw new SkapiError('Service ID is required', { code: 'INVALID_PARAMETER' });
+        }
+        if (!params?.subdomain) {
+            throw new SkapiError('Subdomain is required', { code: 'INVALID_PARAMETER' });
+        }
+
+        return request.bind(this)('refresh-cdn', {
+            service: params.service,
+            subdomain: params.subdomain
+        }, {
+            auth: true,
+            method: 'post'
+        });
+    }
+}
 
 export async function listHostDirectory(
     params: {
@@ -168,6 +191,7 @@ export async function request(
                 case 'request-username-change':
                 case 'register-subdomain':
                 case 'list-host-directory':
+                case 'refresh-cdn':
                     return {
                         public: admin.admin_public,
                         private: admin.admin_private
