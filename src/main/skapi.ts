@@ -28,7 +28,8 @@ import {
     formHandler,
     getConnection,
     listHostDirectory,
-    registerSubdomain
+    registerSubdomain,
+    refreshCDN
 } from '../methods/request';
 import {
     subscribe,
@@ -295,7 +296,7 @@ export default class Skapi {
     }
 
     async updateConnection(): Promise<Connection> {
-        let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`
+        let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
 
         this.connection = await request.bind(this)('service', {
             service: this.service,
@@ -337,6 +338,7 @@ export default class Skapi {
     listHostDirectory = listHostDirectory.bind(this);
     registerSubdomain = registerSubdomain.bind(this);
     deleteFiles = deleteFiles.bind(this);
+    refreshCDN = refreshCDN.bind(this);
 
     @formHandler()
     uploadFiles(...args) { return uploadFiles.bind(this)(...args); }
