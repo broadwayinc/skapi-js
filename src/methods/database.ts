@@ -323,7 +323,8 @@ export async function uploadFiles(
     for (let f of (fileList as FileList | File[])) {
         let signedParams = Object.assign({
             key: f.name,
-            sizeKey: toBase62(f.size)
+            sizeKey: toBase62(f.size),
+            contentType: f.type || null
         }, getSignedParams);
 
         let { fields = null, url } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
