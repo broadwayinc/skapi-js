@@ -22,30 +22,6 @@ export function getConnection(): Promise<Connection | null> {
     return this.__connection;
 }
 
-export async function refreshCDN(
-    params: {
-        service: string;
-        subdomain: string;
-    }
-): Promise<string> {
-    if (await this.checkAdmin()) {
-        if (!params?.service) {
-            throw new SkapiError('Service ID is required', { code: 'INVALID_PARAMETER' });
-        }
-        if (!params?.subdomain) {
-            throw new SkapiError('Subdomain is required', { code: 'INVALID_PARAMETER' });
-        }
-
-        return request.bind(this)('refresh-cdn', {
-            service: params.service,
-            subdomain: params.subdomain
-        }, {
-            auth: true,
-            method: 'post'
-        });
-    }
-}
-
 export async function listHostDirectory(
     params: {
         service: string;
@@ -67,40 +43,6 @@ export async function listHostDirectory(
     }
 
     return [];
-}
-
-
-export async function registerSubdomain(
-    params: {
-        subdomain: string;
-        exec: 'register' | 'remove';
-    }
-): Promise<"SUCCESS: Subdomain is registered." | "SUCCESS: Subdomain is being removed and is in pending state."> {
-    if (params?.exec === 'register') {
-        let invalid = [
-            'docs',
-            'baksa',
-            'desktop',
-            'mobile',
-            'skapi',
-            'broadwayinc',
-            'broadway',
-            'documentation'
-        ];
-
-        if (params.subdomain.length < 4) {
-            throw new SkapiError("Subdomain has already been taken.", { code: 'INVALID_REQUEST' });
-        }
-
-        if (invalid.includes(params.subdomain)) {
-            throw new SkapiError("Subdomain has already been taken.", { code: 'INVALID_REQUEST' });
-        }
-    }
-
-    return request.bind(this)('register-subdomain', params, {
-        auth: true,
-        method: 'post'
-    });
 }
 
 /** @ignore */
