@@ -27,9 +27,7 @@ import {
     getFormResponse,
     formHandler,
     getConnection,
-    listHostDirectory,
-    registerSubdomain,
-    refreshCDN
+    listHostDirectory
 } from '../methods/request';
 import {
     subscribe,
@@ -336,9 +334,7 @@ export default class Skapi {
     listPrivateRecordAccess = listPrivateRecordAccess.bind(this);
     requestPrivateRecordAccessKey = requestPrivateRecordAccessKey.bind(this);
     listHostDirectory = listHostDirectory.bind(this);
-    registerSubdomain = registerSubdomain.bind(this);
     deleteFiles = deleteFiles.bind(this);
-    refreshCDN = refreshCDN.bind(this);
 
     @formHandler()
     uploadFiles(...args) { return uploadFiles.bind(this)(...args); }
