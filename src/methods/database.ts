@@ -377,7 +377,7 @@ export async function getFile(
 
     validator.Params(config, {
         expiration: ['number', () => 60],
-        dataType: ['base64', 'download', 'endpoint', () => 'blob']
+        dataType: ['base64', 'blob', 'endpoint', () => 'download']
     }, [], ['progress']);
 
     // [
@@ -849,7 +849,7 @@ export async function getTables(
         table: string;
         /** Condition operator of table name. */
         condition?: Condition;
-    } | null,
+    },
     fetchOptions?: FetchOptions
 ): Promise<DatabaseResponse<{
     number_of_records: number; // Number of records in the table
@@ -895,7 +895,7 @@ export async function getIndexes(
             value?: number | boolean | string;
             condition?: Condition;
         };
-    } | null,
+    },
     fetchOptions?: FetchOptions
 ): Promise<DatabaseResponse<{
     table: string; // Table name

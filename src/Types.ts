@@ -258,7 +258,7 @@ export type FetchOptions = {
     /** Result in ascending order if true, decending when false. */
     ascending?: boolean;
     /** Start key to be used to query from the certain batch of fetch. */
-    startKey?: string;
+    startKey?: { [key: string]: any; };
     /** Callback for database request progress. Useful when building progress bar. */
     progress?: ProgressCallback;
 };
