@@ -377,7 +377,7 @@ export async function getFile(
 
     validator.Params(config, {
         expiration: ['number', () => 60],
-        dataType: ['base64', 'blob', 'endpoint', () => 'download']
+        dataType: ['base64', 'blob', 'endpoint', 'download', () => 'download']
     }, [], ['progress']);
 
     // [
@@ -415,6 +415,7 @@ export async function getFile(
         // Set the href attribute to the file URL
         a.href = url;
         document.body.appendChild(a);
+        a.setAttribute('download', '');
         a.click();
         document.body.removeChild(a);
         return null;
