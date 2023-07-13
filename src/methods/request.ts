@@ -582,6 +582,10 @@ async function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                     xhr.setRequestHeader(k, opts.headers[k]);
                 }
 
+                if (opt.responseType) {
+                    xhr.responseType = opt.responseType;
+                }
+
                 xhr.onload = () => {
                     if (xhr.status >= 200 && xhr.status < 300) {
                         // Status codes in the 2xx range mean success
