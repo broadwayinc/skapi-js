@@ -297,6 +297,15 @@ function extractFormMeta(form: Form<any>) {
                             appendData(meta, i.name, i.value);
                         }
                     }
+                    else if (i.value === '' || i.value === 'on' || i.value === 'true') {
+                        appendData(meta, i.name, false);
+                    }
+                    else if (i.value === 'false') {
+                        appendData(meta, i.name, true);
+                    }
+                    else {
+                        appendData(meta, i.name, undefined);
+                    }
                 }
 
                 else if (i.type === 'file') {
