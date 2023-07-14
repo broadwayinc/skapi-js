@@ -285,7 +285,7 @@ function extractFormMeta(form: Form<any>) {
 
                 else if (i.type === 'checkbox' || i.type === 'radio') {
                     if (i.checked) {
-                        if (i.value === 'on' || i.value === 'true') {
+                        if (i.value === '' || i.value === 'on' || i.value === 'true') {
                             appendData(meta, i.name, true);
                         }
 
@@ -293,7 +293,7 @@ function extractFormMeta(form: Form<any>) {
                             appendData(meta, i.name, false);
                         }
 
-                        else if (i.checked && i.value) {
+                        else if (i.value) {
                             appendData(meta, i.name, i.value);
                         }
                     }
