@@ -73,7 +73,16 @@ Don't forget to replace `service_id` and `owner_id` with the values provided in 
 
 ## Obtaining Connection Information
 
-After initializing the Skapi object, you can retrieve information about the current connection by calling the `getConnection()` method. This method returns a `promise` that resolves with an object containing the following properties:
+After initializing the Skapi object, you can retrieve information about the current connection by calling the `getConnection()` method.
+
+```javascript
+skapi.getConnection().then((c) => {
+    // Connection information
+    console.log(c);
+});
+```
+
+This method returns a `promise` that resolves with an object containing the following properties:
 
 ```typescript
 {
@@ -85,13 +94,4 @@ After initializing the Skapi object, you can retrieve information about the curr
   service: string; // The service ID.
   timestamp: number; // The timestamp of the service creation.
 }
-```
-
-Here's an example of how to use `getConnection()`:
-
-```javascript
-skapi.getConnection().then((c) => {
-    // Connection information
-    console.log(c);
-  });
 ```
