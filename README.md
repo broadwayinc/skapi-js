@@ -1,9 +1,6 @@
 
 # Skapi
 
-#### current version: 0.1.100
-<br>
-
 Welcome to Skapi, the serverless backend API service that simplifies your web development.
 
 This guide will walk you through importing the Skapi library into your project, creating a service, and connecting your application to the Skapi server.
@@ -95,3 +92,7 @@ This method returns a `promise` that resolves with an object containing the foll
   timestamp: number; // The timestamp of the service creation.
 }
 ```
+
+## Documentation
+
+For more information, check out our [Documentation](https://docs.skapi.com)
