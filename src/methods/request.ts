@@ -134,6 +134,7 @@ export async function request(
                 case 'register-subdomain':
                 case 'list-host-directory':
                 case 'refresh-cdn':
+                case 'request-newsletter-sender':
                     return {
                         public: admin.admin_public,
                         private: admin.admin_private
