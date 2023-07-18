@@ -135,6 +135,7 @@ export async function request(
                 case 'list-host-directory':
                 case 'refresh-cdn':
                 case 'request-newsletter-sender':
+                case 'set-404':
                     return {
                         public: admin.admin_public,
                         private: admin.admin_private
