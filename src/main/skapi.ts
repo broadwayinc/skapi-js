@@ -356,7 +356,7 @@ export default class Skapi {
     forgotPassword(...args) { return forgotPassword.bind(this)(...args); }
     @formHandler({ preventMultipleCalls: true })
     changePassword(...args) { return changePassword.bind(this)(...args); }
-    @formHandler()
+    @formHandler({ preventMultipleCalls: true })
     updateProfile(...args) { return updateProfile.bind(this)(...args); }
     @formHandler()
     postRecord(...args) { return postRecord.bind(this)(...args); }
