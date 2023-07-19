@@ -305,9 +305,9 @@ export async function checkAdmin() {
     return false;
 }
 
-export async function logout(): Promise<'SUCCESS: The user has been logged out.'> {
+export async function logout(e: SubmitEvent): Promise<'SUCCESS: The user has been logged out.'> {
     await this.__connection;
-
+    
     if (cognitoUser) {
         cognitoUser.signOut();
     }
