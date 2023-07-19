@@ -67,7 +67,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '0.1.106';
+    version = '0.1.107';
 
     // privates
     private __disabledAccount: string | null = null;
@@ -343,7 +343,7 @@ export default class Skapi {
     @formHandler({ preventMultipleCalls: true })
     login(...args) { return login.bind(this)(...args); }
     @formHandler()
-    logout() { return logout.bind(this)(); }
+    logout(...args) { return logout.bind(this)(...args); }
     @formHandler({ preventMultipleCalls: true })
     signup(...args) { return signup.bind(this)(...args); }
     @formHandler({ preventMultipleCalls: true })
