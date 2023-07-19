@@ -974,7 +974,11 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             };
 
             let response: any;
-            function handleError(err: any) {
+            let handleError = (err: any) => {
+                if (form instanceof SubmitEvent) {
+                    form.preventDefault();
+                }
+
                 let is_err = err instanceof Error ? err : new SkapiError(err);
                 if (option?.onerror) {
                     if (typeof option.onerror === 'function')
@@ -984,7 +988,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                 }
 
                 throw is_err;
-            }
+            };
 
             const executeMethod = () => {
                 try {
