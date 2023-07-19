@@ -67,7 +67,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '0.1.104';
+    version = '0.1.105';
 
     // privates
     private __disabledAccount: string | null = null;

@@ -490,6 +490,10 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
                     return v;
                 }
 
+                if (['$uploaded', '$updated', '$referenced_count', '$user_id'].includes(v)) {
+                    return v;
+                }
+
                 return validator.specialChars(v, 'index.name', true, false);
             },
             value: (v: number | boolean | string) => {
@@ -518,6 +522,10 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
 
                 else {
                     // is string
+                    if (['$uploaded', '$updated', '$referenced_count', '$user_id'].includes(query.index?.name)) {
+                        return v;
+                    }
+
                     return validator.specialChars((v as string), 'index.value', false, true);
                 }
             },
