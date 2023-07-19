@@ -251,8 +251,8 @@ function extractFormMeta(form: Form<any>) {
             }
         }
 
-        if (totalFileSize > 8000000) {
-            throw new SkapiError('Total File size cannot exceed 8MB. Use skapi.uploadFiles() instead.', { code: 'INVALID_REQUEST' });
+        if (totalFileSize > 4400000) {
+            throw new SkapiError('Total File size cannot exceed 4MB. Use skapi.uploadFiles() instead.', { code: 'INVALID_REQUEST' });
         }
 
         return { meta, files };
@@ -328,8 +328,8 @@ function extractFormMeta(form: Form<any>) {
             }
         }
 
-        if (totalFileSize > 8000000) {
-            throw new SkapiError('Total File size cannot exceed 8MB. Use skapi.uploadFiles() instead.', { code: 'INVALID_REQUEST' });
+        if (totalFileSize > 4400000) {
+            throw new SkapiError('Total File size cannot exceed 4MB. Use skapi.uploadFiles() instead.', { code: 'INVALID_REQUEST' });
         }
 
         return { meta, files };
