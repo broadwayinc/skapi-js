@@ -688,7 +688,12 @@ export async function changePassword(params: {
                     if (err?.code === "InvalidParameterException") {
                         rej(new SkapiError('Invalid password parameter.', { code: 'INVALID_PARAMETER' }));
                     }
-                    rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || err?.name }));
+                    else if (err?.code === "NotAuthorizedException") {
+                        rej(new SkapiError('Incorrect password.', { code: 'INVALID_REQUEST' }));
+                    }
+                    else {
+                        rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || err?.name }));
+                    }
                 }
 
                 res('SUCCESS: Password has been changed.');
