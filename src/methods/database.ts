@@ -365,6 +365,7 @@ export async function uploadFiles(
 export async function getFile(
     url: string,
     config?: {
+        noCdn?: boolean;
         dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // endpoint returns url that can be shared outside your cors within a minimal time (1 min)
         expiration?: number;
         progress?: ProgressCallback;
@@ -406,7 +407,7 @@ export async function getFile(
 
     let needAuth = target_key[0] == 'auth';
 
-    if (needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
+    if (config.noCdn || needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
         url = await getSignedUrl();
     }
 
