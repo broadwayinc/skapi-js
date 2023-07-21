@@ -379,6 +379,8 @@ export async function getFile(
 
     validator.Params(config, {
         expiration: ['number', () => 60],
+        noCdn: ['boolean', () => false],
+        isHost: ['boolean', () => false],
         dataType: ['base64', 'blob', 'endpoint', 'download', () => 'download']
     }, [], ['progress']);
 
