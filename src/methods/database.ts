@@ -408,7 +408,7 @@ export async function getFile(
 
     let needAuth = target_key[0] == 'auth';
 
-    if (config.noCdn || config?.isHost || needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
+    if (config?.noCdn || config?.isHost || needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
         url = await getSignedUrl();
     }
 
