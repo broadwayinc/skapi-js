@@ -368,6 +368,7 @@ export async function getFile(
         noCdn?: boolean;
         dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // endpoint returns url that can be shared outside your cors within a minimal time (1 min)
         expiration?: number;
+        isHost?: boolean;
         progress?: ProgressCallback;
     }
 ): Promise<Blob | string> {
@@ -396,7 +397,7 @@ export async function getFile(
     let getSignedUrl = async () => {
         let signed = await request.bind(this)('get-signed-url', {
             service,
-            request: 'get',
+            request: config?.isHost ? 'host' : 'get',
             record_id: target_key[5],
             key: url
         },
@@ -407,7 +408,7 @@ export async function getFile(
 
     let needAuth = target_key[0] == 'auth';
 
-    if (config.noCdn || needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
+    if (config.noCdn || config?.isHost || needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
         url = await getSignedUrl();
     }
 
