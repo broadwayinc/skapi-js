@@ -375,7 +375,7 @@ export async function getFile(
     validator.Url(url);
 
     let target_key = url.split('/').slice(3);
-    let service = target_key[1];
+    let service = config?.isHost ? null : target_key[1];
 
     validator.Params(config, {
         expiration: ['number', () => 60],
