@@ -431,7 +431,7 @@ export async function getFile(
 
     let blob = await request.bind(this)(
         url,
-        { service },
+        { service: service || this.service },
         { method: 'get', auth: needAuth, contentType: null, responseType: 'blob', progress: config?.progress }
     );
 
