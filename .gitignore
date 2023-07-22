@@ -109,9 +109,7 @@ typings/
 /docs
 package-lock.json
 /js
-index.html
-test_route.html
 .DS_Store
 dist/
-deploy.py
 /server
+/tutorial

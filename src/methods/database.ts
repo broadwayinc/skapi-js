@@ -345,6 +345,7 @@ export async function uploadFiles(
                 (p: ProgressEvent) => {
                     params.progress(
                         {
+                            status: 'upload',
                             progress: p.loaded / p.total * 100,
                             currentFile: f,
                             completed,
@@ -394,8 +395,8 @@ export async function getFile(
             throw new SkapiError('Invalid file url.', { code: 'INVALID_PARAMETER' });
         }
         try {
-            validator.UserId(target_key[1]);
             validator.UserId(target_key[2]);
+            validator.UserId(target_key[3]);
         }
         catch {
             throw new SkapiError('Invalid file url.', { code: 'INVALID_PARAMETER' });
@@ -423,7 +424,7 @@ export async function getFile(
     // ]
 
     let needAuth = target_key[0] == 'auth';
-    
+
     if (config?.noCdn || needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
         url = await request.bind(this)('get-signed-url', {
             service,
