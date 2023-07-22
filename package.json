@@ -1,13 +1,13 @@
 {
   "name": "skapi-js",
-  "version": "0.1.114",
+  "version": "0.1.116",
   "description": "Javascript library for Skapi: Complete JAM Stack, front-end driven serverless backend API service.",
   "main": "./dist/skapi.module.js",
   "files": [
     "dist/"
   ],
   "scripts": {
-    "build": "npx tsc ; npx webpack --config webpack.config.js ; npx typedoc ; cp -Rf ./dist ./server/",
+    "build": "npx tsc ; npx webpack --config webpack.config.js ; npx typedoc ; cp -Rf ./dist ./tutorial/",
     "server": "(cd server; node server.js)"
   },
   "repository": {

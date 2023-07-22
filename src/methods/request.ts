@@ -638,10 +638,11 @@ async function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                 xhr.onabort = () => rej('Aborted');
                 xhr.ontimeout = () => rej('Timeout');
 
-                if (xhr.upload && typeof progress === 'function') {
-                    xhr.upload.onprogress = (p: ProgressEvent) => {
+                if (typeof progress === 'function') {
+                    xhr.onprogress = (p: ProgressEvent) => {
                         progress(
                             {
+                                status: 'download',
                                 progress: p.loaded / p.total * 100,
                                 loaded: p.loaded,
                                 total: p.total,
@@ -649,6 +650,19 @@ async function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                             }
                         );
                     };
+                    if (xhr.upload) {
+                        xhr.upload.onprogress = (p: ProgressEvent) => {
+                            progress(
+                                {
+                                    status: 'upload',
+                                    progress: p.loaded / p.total * 100,
+                                    loaded: p.loaded,
+                                    total: p.total,
+                                    abort: () => xhr.abort()
+                                }
+                            );
+                        };
+                    }
                 }
 
                 xhr.send(opts.body);

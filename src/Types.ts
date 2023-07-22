@@ -241,6 +241,7 @@ export type QueryParams = {
 };
 
 export type ProgressCallback = (e: {
+    status: 'upload' | 'download';
     progress: number;
     loaded: number;
     total: number;
