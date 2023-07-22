@@ -256,12 +256,15 @@ export async function uploadFiles(
         request: params?.request || 'post'
     };
 
-    if (getSignedParams.request === 'host' && !isAdmin) {
-        throw new SkapiError('The user has no access.', { code: 'INVALID_REQUEST' });
+    if (getSignedParams.request === 'host') {
+        if (!isAdmin) {
+            throw new SkapiError('The user has no access.', { code: 'INVALID_REQUEST' });
+        }
+        getSignedParams.request === 'post-host'
     }
 
     if (params?.record_id) {
-        getSignedParams.record_id = params.record_id;
+        getSignedParams.id = params.record_id;
     }
     else if (!isAdmin) {
         throw new SkapiError('Record ID is required.', { code: 'INVALID_PARAMETER' });
@@ -368,19 +371,42 @@ export async function getFile(
         noCdn?: boolean;
         dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // endpoint returns url that can be shared outside your cors within a minimal time (1 min)
         expiration?: number;
-        isHost?: boolean;
         progress?: ProgressCallback;
     }
 ): Promise<Blob | string> {
     validator.Url(url);
 
-    let target_key = url.split('/').slice(3);
-    let service = config?.isHost ? null : target_key[1];
+    let isValidEndpoint = false;
+
+    let splitUrl = url.split('/');
+    let host = splitUrl[2];
+    let splitHost = host.split('.');
+    let subdomain = null;
+    if (splitHost.length === 3 && splitHost[1] === 'skapi') {
+        subdomain = splitHost[0];
+        isValidEndpoint = true;
+    }
+
+    let target_key = splitUrl.slice(3);
+
+    if (!isValidEndpoint) {
+        if (target_key[0] !== 'auth' && target_key[0] !== 'publ') {
+            throw new SkapiError('Invalid file url.', { code: 'INVALID_PARAMETER' });
+        }
+        try {
+            validator.UserId(target_key[1]);
+            validator.UserId(target_key[2]);
+        }
+        catch {
+            throw new SkapiError('Invalid file url.', { code: 'INVALID_PARAMETER' });
+        }
+    }
+
+    let service = subdomain ? null : target_key[1];
 
     validator.Params(config, {
         expiration: ['number', () => 60],
         noCdn: ['boolean', () => false],
-        isHost: ['boolean', () => false],
         dataType: ['base64', 'blob', 'endpoint', 'download', () => 'download']
     }, [], ['progress']);
 
@@ -396,22 +422,17 @@ export async function getFile(
     //     'd4bf2df6a8e5984f1a98b903ebd0b19a'
     // ]
 
-    let getSignedUrl = async () => {
-        let signed = await request.bind(this)('get-signed-url', {
+    let needAuth = target_key[0] == 'auth';
+    
+    if (config?.noCdn || needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
+        url = await request.bind(this)('get-signed-url', {
             service,
-            request: config?.isHost ? 'host' : 'get',
-            record_id: target_key[5],
+            request: subdomain ? 'get-host' : 'get',
+            id: subdomain || target_key[5],
             key: url
         },
             { auth: true }
         );
-        return signed.url;
-    };
-
-    let needAuth = target_key[0] == 'auth';
-
-    if (config?.noCdn || config?.isHost || needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
-        url = await getSignedUrl();
     }
 
     if (config?.dataType === 'download') {
@@ -432,7 +453,7 @@ export async function getFile(
     let blob = await request.bind(this)(
         url,
         { service: service || this.service },
-        { method: 'get', auth: needAuth, contentType: null, responseType: 'blob', progress: config?.progress }
+        { method: 'get', auth: needAuth, contentType: null, responseType: 'blob', fetchOptions: { progress: config?.progress } }
     );
 
     if (config?.dataType === 'base64') {
@@ -765,6 +786,7 @@ export async function postRecord(
     // callbacks should be removed after checkparams
     delete config.response;
     delete config.onerror;
+    delete config.progress;
 
     if (config.index) {
         // index name allows periods. white space is invalid.
