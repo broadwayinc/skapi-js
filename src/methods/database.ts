@@ -411,18 +411,6 @@ export async function getFile(
         dataType: ['base64', 'blob', 'endpoint', 'download', () => 'download']
     }, [], ['progress']);
 
-    // [
-    //     'publ',
-    //     'ap22hF79vClHwWCcnbGE',
-    //     'e8df73d9-b159-4adb-b288-0dd009724a7a',
-    //     'ad7e9fb7-b0bb-4134-8921-04932b630885',
-    //     'records',
-    //     'ThF8oMtf4PjxtAgf',
-    //     '00',
-    //     'file',
-    //     'd4bf2df6a8e5984f1a98b903ebd0b19a'
-    // ]
-
     let needAuth = target_key[0] == 'auth';
 
     if (config?.noCdn || needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
