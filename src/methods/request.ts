@@ -158,10 +158,13 @@ export async function request(
                         private: record.record_private,
                         public: record.record_public
                     };
+
+                default:
+                    return null
             }
         };
 
-        return get_ep()[auth ? 'private' : 'public'] + dest;
+        return (get_ep()?.[auth ? 'private' : 'public'] || '') + dest;
     };
 
     let endpoint = isExternalUrl || (await getEndpoint(url, !!auth));
