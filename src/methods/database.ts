@@ -412,6 +412,7 @@ export async function getFile(
     }, [], ['progress']);
 
     let needAuth = target_key[0] == 'auth';
+    let filename = url.split('/').slice(-1)[0];
 
     if (config?.noCdn || needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
         let params: Record<string, any> = {
@@ -434,7 +435,8 @@ export async function getFile(
         // Set the href attribute to the file URL
         a.href = url;
         document.body.appendChild(a);
-        a.setAttribute('download', '');
+        a.setAttribute('download', filename);
+        a.target = '_blank';
         a.click();
         document.body.removeChild(a);
         return null;
