@@ -414,12 +414,17 @@ export async function getFile(
     let needAuth = target_key[0] == 'auth';
 
     if (config?.noCdn || needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
-        url = await request.bind(this)('get-signed-url', {
-            service,
+        let params: Record<string, any> = {
             request: subdomain ? 'get-host' : 'get',
             id: subdomain || target_key[5],
             key: url
-        },
+        }
+
+        if (service) {
+            params.service = service
+        }
+        
+        url = await request.bind(this)('get-signed-url', params,
             { auth: true }
         );
     }
