@@ -403,7 +403,7 @@ export async function getNewsletters(
     }, ['searchFor', 'value', 'group']);
 
     let mails = await request.bind(this)(
-        params.group === 0 ? 'get-newsletters' : 'get-serviceletters',
+        params.group === 0 ? 'get-public-newsletters' : 'get-newsletters',
         params,
         Object.assign({ method: 'get', auth: params.group !== 0 }, { fetchOptions })
     );
