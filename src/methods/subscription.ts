@@ -279,7 +279,7 @@ export async function subscribeNewsletter(
         group: number | 'public' | 'authorized';
         redirect?: string;
     }>,
-    fetchOptions: FormSubmitCallback
+    callbacks: FormSubmitCallback
 ): Promise<string> {
     await this.__connection;
 
@@ -293,7 +293,7 @@ export async function subscribeNewsletter(
         this.__user ? ['group'] : ['email', 'group']
     );
 
-    return request.bind(this)('subscribe-newsletter', params, { fetchOptions, auth: !!this.__user });
+    return request.bind(this)('subscribe-newsletter', params, { fetchOptions: callbacks, auth: !!this.__user });
 }
 
 /**
@@ -397,7 +397,7 @@ export async function getNewsletters(
                     throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
                 }
             }
-            
+
             return x;
         }
     }, ['searchFor', 'value', 'group']);
