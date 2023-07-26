@@ -334,11 +334,7 @@ export async function getNewsletters(
          * Defaults to '='
          */
         condition?: '>' | '>=' | '=' | '<' | '<=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte';
-        /**
-         * 'newsletter' for newsletters.<br>
-         * Numbers for service letter sent to corresponding access groups.
-         */
-        group: 'newsletter' | number;
+        group: 'public' | 'authorized' | number;
     },
     fetchOptions?: FetchOptions
 ): Promise<Newsletters> {
@@ -384,15 +380,24 @@ export async function getNewsletters(
             return v;
         },
         condition: ['>', '>=', '=', '<', '<=', 'gt', 'gte', 'eq', 'lt', 'lte', () => '='],
-        group: (x: number) => {
+        group: (x: number | string) => {
             if (!this.session) {
                 throw new SkapiError('User should be logged in.', { code: 'INVALID_REQUEST' });
             }
 
-            if (!isAdmin && x > parseInt(this.session.idToken.payload.access_group)) {
-                throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
+            if (x === 'public') {
+                return 0;
+            }
+            else if (x === 'authorized') {
+                return 1;
             }
 
+            else if (typeof x === 'number') {
+                if (!isAdmin && x > parseInt(this.session.idToken.payload.access_group)) {
+                    throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
+                }
+            }
+            
             return x;
         }
     }, ['searchFor', 'value', 'group']);
