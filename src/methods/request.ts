@@ -111,7 +111,8 @@ export async function request(
         const record = endpoints[1];
         const get_ep = () => {
             switch (dest) {
-                case 'get-serviceletters':
+                case 'get-newsletters':
+                case 'get-public-newsletters':
                 case 'delete-newsletter':
                 case 'block-account':
                 case 'register-service':
@@ -119,8 +120,8 @@ export async function request(
                 case 'post-userdata':
                 case 'remove-account':
                 case 'post-secure':
-                case 'get-newsletters':
                 case 'subscribe-newsletter':
+                case 'subscribe-public-newsletter':
                 case 'signup':
                 case 'confirm-signup':
                 case 'recover-account':
