@@ -293,7 +293,7 @@ export async function subscribeNewsletter(
         this.__user ? ['group'] : ['email', 'group']
     );
 
-    return request.bind(this)('subscribe-newsletter', params, { fetchOptions: callbacks, auth: !!this.__user });
+    return request.bind(this)(`subscribe-${this.__user ? '' : 'public-'}newsletter`, params, { fetchOptions: callbacks, auth: !!this.__user });
 }
 
 /**
