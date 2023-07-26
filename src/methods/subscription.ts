@@ -276,7 +276,7 @@ export async function getNewsletterSubscription(params: {
 export async function subscribeNewsletter(
     form: Form<{
         email?: string;
-        group?: number;
+        group: number | 'public' | 'authorized';
         redirect?: string;
     }>,
     fetchOptions: FormSubmitCallback
@@ -287,10 +287,10 @@ export async function subscribeNewsletter(
         form || {},
         {
             email: (v: string) => validator.Email(v),
-            group: ['number', () => 0],
+            group: ['number', 'public', 'authorized'],
             redirect: (v: string) => validator.Url(v)
         },
-        this.__user ? [] : ['email']
+        this.__user ? ['group'] : ['email', 'group']
     );
 
     return request.bind(this)('subscribe-newsletter', params, { fetchOptions, auth: !!this.__user });
@@ -301,14 +301,14 @@ export async function subscribeNewsletter(
  * if form.group is null, unsubscribes from all groups.
  */
 export async function unsubscribeNewsletter(
-    params: { group: number | null; }
+    params: { group: number | 'public' | 'authorized' | null; }
 ): Promise<string> {
     await this.__connection;
 
     params = validator.Params(
         params,
         {
-            group: ['number']
+            group: ['number', 'public', 'authorized']
         },
         ['group']
     );
