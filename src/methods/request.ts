@@ -73,7 +73,7 @@ export async function request(
     let __connection = bypassAwaitConnection ? null : (await this.__connection);
 
     if (!__connection && !bypassAwaitConnection) {
-        throw new SkapiError('Invalid connection.', { code: 'INVALID_REQUEST' });
+        throw new SkapiError('Invalid connection. The service could have been disabled, or has a restricted CORS.', { code: 'INVALID_REQUEST' });
     }
 
     let token = auth ? this.session?.idToken?.jwtToken : null; // idToken
