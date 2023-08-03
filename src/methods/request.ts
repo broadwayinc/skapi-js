@@ -71,6 +71,11 @@ export async function request(
     method = method.toLowerCase();
 
     let __connection = bypassAwaitConnection ? null : (await this.__connection);
+
+    if (!__connection && !bypassAwaitConnection) {
+        throw new SkapiError('Invalid connection.', { code: 'INVALID_REQUEST' });
+    }
+
     let token = auth ? this.session?.idToken?.jwtToken : null; // idToken
 
     if (auth) {

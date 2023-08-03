@@ -289,8 +289,7 @@ export default class Skapi {
             window.addEventListener("visibilitychange", storeClassProperties);
 
             return this.connection;
-
-        })().catch(err => { throw err; });
+        })();
     }
 
     async updateConnection(): Promise<Connection> {
