@@ -465,7 +465,7 @@ export async function getFile(
     }
 
     return blob;
-};
+}
 
 export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
     await this.__connection;
