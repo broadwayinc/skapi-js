@@ -11,18 +11,18 @@ module.exports = [
         },
         devtool: 'source-map'
     },
-    {
-        // webpack
-        mode: 'production',
-        target: 'web',
-        entry: './js/Main.js',
-        output: {
-            filename: 'skapi.module.js',
-            libraryTarget: 'module'
-        },
-        experiments: {
-            outputModule: true
-        },
-        devtool: 'source-map'
-    }
+    // {
+    //     // webpack
+    //     mode: 'production',
+    //     target: 'web',
+    //     entry: './js/Main.js',
+    //     output: {
+    //         filename: 'skapi.module.js',
+    //         libraryTarget: 'module'
+    //     },
+    //     experiments: {
+    //         outputModule: true
+    //     },
+    //     devtool: 'source-map'
+    // }
 ];
