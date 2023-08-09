@@ -375,7 +375,13 @@ export async function getFile(
         progress?: ProgressCallback;
     }
 ): Promise<Blob | string> {
-    validator.Url(url);
+    if (typeof url !== 'string') {
+        throw new SkapiError('"url" should be type: string.', { code: 'INVALID_PARAMETER' });
+    }
+
+    if (!config?.noCdn) {
+        validator.Url(url);
+    }
 
     let isValidEndpoint = false;
 
@@ -424,10 +430,10 @@ export async function getFile(
         if (service) {
             params.service = service
         }
-        
-        url = encodeURIComponent((await request.bind(this)('get-signed-url', params,
+
+        url = (await request.bind(this)('get-signed-url', params,
             { auth: true }
-        )).url);
+        )).url;
     }
 
     if (config?.dataType === 'download') {
