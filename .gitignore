@@ -106,11 +106,8 @@ typings/
 # Editor directories and files
 .idea
 .vscode
-/docs
-package-lock.json
-/js
 .DS_Store
+/js
 dist/
-/server
-/tutorial
+esm/
 deploy.py
