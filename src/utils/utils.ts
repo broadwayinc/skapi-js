@@ -269,13 +269,15 @@ function extractFormMeta(form: Form<any>) {
         let inputs = form.querySelectorAll('input');
         let textarea = form.querySelectorAll('textarea');
 
-        for (let i of textarea) {
+        for (let idx = 0; idx < textarea.length; idx++) {
+            let i = textarea[idx];
             if (i.name) {
                 appendData(meta, i.name, i.value);
             }
         }
 
-        for (let i of inputs) {
+        for (let idx=0; idx < inputs.length; idx++) {
+            let i = inputs[idx];
             if (i.name) {
                 if (i.type === 'number') {
                     if (i.value) {
