@@ -1,17 +1,15 @@
 {
   "name": "skapi-js",
-  "version": "0.2.0-alpha.0",
+  "version": "0.2.1",
   "description": "Javascript library for Skapi: Complete JAM Stack, front-end driven serverless backend API service.",
-  "main": "./esm/main/skapi.js",
-  "module": "./esm/main/skapi.js",
-  "types": "./esm/main/skapi.d.ts",
-  "browser": "./dist/skapi.js",
+  "main": "./dist/skapi.module.js",
+  "types": "./js/Main.d.ts",
   "files": [
-    "esm/",
+    "js/",
     "dist/"
   ],
   "scripts": {
-    "build": "npx tsc --project tsconfig.esm.json; npx tsc --project tsconfig.json; npx webpack --config webpack.config.js",
+    "build": "npx tsc --project tsconfig.json; npx webpack --config webpack.config.js",
     "server": "(cd server; node server.js)"
   },
   "repository": {
@@ -37,6 +35,6 @@
     "jamstack"
   ],
   "dependencies": {
-    "amazon-cognito-identity-js": "^6.3.1"
+    "amazon-cognito-identity-js": "^5.2.14"
   }
 }
