@@ -425,9 +425,9 @@ export async function getFile(
             params.service = service
         }
         
-        url = (await request.bind(this)('get-signed-url', params,
+        url = encodeURIComponent((await request.bind(this)('get-signed-url', params,
             { auth: true }
-        )).url;
+        )).url);
     }
 
     if (config?.dataType === 'download') {
