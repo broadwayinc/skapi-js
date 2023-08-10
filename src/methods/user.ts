@@ -876,7 +876,7 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
                 return 'by_admin:approved';
             }
             else {
-                return 'by_admin:approved';
+                return 'by_admin:suspended';
             }
         }
     };
