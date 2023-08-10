@@ -307,7 +307,7 @@ export async function checkAdmin() {
 
 export async function logout(e: SubmitEvent): Promise<'SUCCESS: The user has been logged out.'> {
     await this.__connection;
-    
+
     if (cognitoUser) {
         cognitoUser.signOut();
     }
@@ -378,24 +378,8 @@ export async function login(
         /** Password for signin. Should be at least 6 characters. */
         password: string;
     }>,
-    option?: FormSubmitCallback & { logout: boolean; }): Promise<User> {
-    await this.__connection;
-
-    if (option?.logout === false) {
-        let to_be_erased = {
-            '__startKeyHistory': {},
-            '__cached_requests': {}
-        };
-
-        for (let k in to_be_erased) {
-            this[k] = to_be_erased[k];
-        }
-    }
-
-    else {
-        await logout.bind(this)();
-    }
-
+    option?: FormSubmitCallback): Promise<User> {
+    await logout.bind(this)();
     let params = validator.Params(form, {
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v)
