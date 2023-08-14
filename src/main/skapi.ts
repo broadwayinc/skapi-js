@@ -67,7 +67,10 @@ import {
 
 export default class Skapi {
     // current version
-    version = '0.2.2';
+    version = '1.0.0-alpha.1';
+    host = 'skapi';
+    hostDomain = 'skapi.app';
+    target_cdn = 'd1wrj5ymxrt2ir';
 
     // privates
     private __disabledAccount: string | null = null;
@@ -111,8 +114,6 @@ export default class Skapi {
     }
 
     connection: Connection | null = null;
-    host = 'skapi';
-    hostDomain = 'skapi.com';
     admin_endpoint: Promise<Record<string, any>>;
     record_endpoint: Promise<Record<string, any>>;
 
@@ -181,8 +182,7 @@ export default class Skapi {
 
         // get endpoints
 
-        const target_cdn = 'd1h765tqb4s5ov';
-        const cdn_domain = `https://${target_cdn}.cloudfront.net`; // don't change this
+        const cdn_domain = `https://${this.target_cdn}.cloudfront.net`; // don't change this
         let sreg = service_id.substring(0, 4);
 
         this.admin_endpoint = fetch(`${cdn_domain}/${sreg}/admin.json`)
