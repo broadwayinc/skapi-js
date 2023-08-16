@@ -227,7 +227,7 @@ export function authentication() {
         };
     };
 
-    const signup = async (attributes): Promise<User> => {
+    const signup = async (attributes): Promise<true> => {
         let conn = await this.__connection;
 
         let service = attributes['service'] || this.service;
@@ -305,12 +305,12 @@ export function authentication() {
                 err,
                 result
             ) {
+                console.log({ result });
                 if (err) {
                     rej(err.message || JSON.stringify(err));
                     return;
                 }
-                normalizeUserAttributes(result.user);
-                res(this.user);
+                res(true);
             });
         });
     }
