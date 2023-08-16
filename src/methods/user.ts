@@ -227,6 +227,90 @@ export function authentication() {
         };
     };
 
+    const signup = async (attributes): Promise<User> => {
+        await this.__connection;
+
+        let service = attributes['service'] || this.service;
+
+        let attributeList = [
+            {
+                'Name': 'name',
+                'Value': attributes['name']
+            },
+            {
+                'Name': 'custom:service',
+                'Value': service
+            },
+            {
+                'Name': 'custom:owner',
+                'Value': attributes['owner'] || this.owner
+            },
+            {
+                'Name': 'email',
+                'Value': attributes['email']
+            },
+            {
+                'Name': 'address',
+                'Value': attributes['address']
+            },
+            {
+                'Name': 'birthdate',
+                'Value': attributes['birthdate']
+            },
+            {
+                'Name': 'gender',
+                'Value': attributes['gender']
+            },
+            {
+                'Name': 'phone_number',
+                'Value': attributes['phone_number']
+            },
+            {
+                'Name': 'custom:address_public',
+                'Value': attributes['address_public'] ? '1' : '0'
+            },
+            {
+                'Name': 'custom:gender_public',
+                'Value': attributes['gender_public'] ? '1' : '0'
+            },
+            {
+                'Name': 'custom:birthdate_public',
+                'Value': attributes['birthdate_public'] ? '1' : '0'
+            },
+            {
+                'Name': 'custom:misc',
+                'Value': typeof attributes['misc'] === 'string' ? attributes['misc'] : JSON.stringify(attributes['misc'])
+            }
+        ].map(att => {
+            return new CognitoUserAttribute(att);
+        });
+
+        let username = MD5.hash(attributes.username || attributes.email);
+        username = service + '-' + username;
+
+        if (attributes.password.length < 6) {
+            throw new SkapiError('Password should be at least 6 characters.', { code: 'INVALID_PARAMETER' });
+        }
+
+        if (attributes.password.length > 60) {
+            throw new SkapiError('Password should be 60 characters max.', { code: 'INVALID_PARAMETER' });
+        }
+
+        return new Promise((res, rej) => {
+            userPool.signUp(username, attributes.password, attributeList, null, function (
+                err,
+                result
+            ) {
+                if (err) {
+                    rej(err.message || JSON.stringify(err));
+                    return;
+                }
+                normalizeUserAttributes(result.user);
+                res(this.user);
+            });
+        });
+    }
+
     const authenticateUser = (email: string, password: string): Promise<User> => {
         return new Promise((res, rej) => {
             this.__request_signup_confirmation = null;
@@ -476,7 +560,12 @@ export async function signup(
     params.signup_confirmation = signup_confirmation;
     params.email_subscription = option?.email_subscription || false;
 
-    await request.bind(this)("signup", params);
+    if (signup_confirmation) {
+        await request.bind(this)("signup", params);
+    }
+    else {
+        await authentication.bind(this)().signup(params);
+    }
 
     if (signup_confirmation) {
         let u = await authentication.bind(this)().createCognitoUser(params.email);
