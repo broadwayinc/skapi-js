@@ -305,10 +305,8 @@ export function authentication() {
                 err,
                 result
             ) {
-                console.log({ result });
                 if (err) {
-                    rej(err.message || JSON.stringify(err));
-                    return;
+                    rej(new SkapiError(err.message, { code: 'INVALID_REQUEST' }));
                 }
                 res(true);
             });
