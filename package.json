@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "npx tsc --project tsconfig.json; npx webpack --config webpack.config.js",
-    "server": "(cd server; node server.js)"
+    "server": "(cp -r dist playground;cd server; node server.js)"
   },
   "repository": {
     "type": "git",
