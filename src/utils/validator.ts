@@ -74,7 +74,7 @@ function Email(email: string, paramName: string = 'email') {
         throw new SkapiError(`"${paramName}" should be at least 5 characters.`, { code: 'INVALID_PARAMETER' });
     }
 
-    else if (/^[a-zA-Z0-9.!#$%&'+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z]+[a-zA-Z0-9-]+)$/.test(email)) {
+    else if (/^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/.test(email)) {
         email = email.trim();
         let splitAt = email.split('@');
         let tld = splitAt[1].split('.');
