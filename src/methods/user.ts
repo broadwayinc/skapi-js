@@ -228,7 +228,7 @@ export function authentication() {
     };
 
     const signup = async (attributes): Promise<User> => {
-        await this.__connection;
+        let conn = await this.__connection;
 
         let service = attributes['service'] || this.service;
 
@@ -240,6 +240,10 @@ export function authentication() {
             {
                 'Name': 'custom:service',
                 'Value': service
+            },
+            {
+                'Name': 'locale',
+                'Value': conn.locale || 'N/A'
             },
             {
                 'Name': 'custom:owner',
@@ -362,7 +366,7 @@ export function authentication() {
         });
     };
 
-    return { getSession, authenticateUser, createCognitoUser, getUser };
+    return { getSession, authenticateUser, createCognitoUser, getUser, signup };
 }
 
 export async function getProfile(options?: { refreshToken: boolean; }): Promise<User | null> {
@@ -457,6 +461,7 @@ export async function recoverAccount(
 
 export async function login(
     form: Form<{
+        username: string;
         /** E-Mail for signin. 64 character max. */
         email: string;
         /** Password for signin. Should be at least 6 characters. */
@@ -465,11 +470,12 @@ export async function login(
     option?: FormSubmitCallback): Promise<User> {
     await logout.bind(this)();
     let params = validator.Params(form, {
+        username: 'string',
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v)
     }, ['email', 'password']);
 
-    return authentication.bind(this)().authenticateUser(params.email, params.password);
+    return authentication.bind(this)().authenticateUser(params.username || params.email, params.password);
 
     // INVALID_REQUEST: the account has been blacklisted.
     // NOT_EXISTS: the account does not exist.
@@ -500,6 +506,7 @@ export async function signup(
     await this.logout();
 
     let params = validator.Params(form || {}, {
+        username: 'string',
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v),
         name: 'string',
@@ -568,7 +575,7 @@ export async function signup(
     }
 
     if (signup_confirmation) {
-        let u = await authentication.bind(this)().createCognitoUser(params.email);
+        let u = await authentication.bind(this)().createCognitoUser(params.username || params.email);
         cognitoUser = u.cognitoUser;
         this.__request_signup_confirmation = u.cognitoUsername;
         return "SUCCESS: The account has been created. User's signup confirmation is required.";
@@ -576,7 +583,7 @@ export async function signup(
 
     if (logUser) {
         // log user in
-        return login.bind(this)({ email: params.email, password: params.password });
+        return login.bind(this)({ email: params.username || params.email, password: params.password });
     }
 
     return 'SUCCESS: The account has been created.';
