@@ -1,5 +1,6 @@
 const http = require('http');
 const fs = require('fs');
+const path = require('path');
 
 const get = (request, response) => {
     if (request.method === 'GET') {
@@ -8,6 +9,19 @@ const get = (request, response) => {
         if (filePath === './') {
             filePath = './index.html';
         }
+        
+        // Get file extension
+        const extname = String(path.extname(filePath)).toLowerCase();
+
+        // Define MIME types for a few common file extensions
+        const mimeTypes = {
+            '.html': 'text/html',
+            '.js': 'application/javascript',
+            // Add other MIME types as needed
+        };
+
+        // Set a default MIME type (optional)
+        const contentType = mimeTypes[extname] || 'application/octet-stream';
 
         fs.readFile(filePath, function (error, content) {
             if (error) {
@@ -21,7 +35,7 @@ const get = (request, response) => {
                 }
             }
             else {
-                response.writeHead(200);
+                response.writeHead(200, { 'Content-Type': contentType });
                 response.end(content, 'utf-8');
             }
         });
