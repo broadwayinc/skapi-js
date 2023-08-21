@@ -515,6 +515,7 @@ export async function signup(
         gender_public: ['boolean', () => false],
         birthdate_public: ['boolean', () => false],
         phone_number_public: ['boolean', () => false],
+        access_group: 'number',
         misc: 'string'
     }, ['email', 'password']);
 
@@ -526,6 +527,9 @@ export async function signup(
         params.owner = this.__user.user_id;
     }
     else {
+        if(params.access_group) {
+            throw new SkapiError('Only admins can set "access_group" parameter.', { code: 'INVALID_PARAMETER' });
+        }
         await this.logout();
     }
 
@@ -567,7 +571,7 @@ export async function signup(
     let logUser = option?.login || false;
     let signup_confirmation = option?.signup_confirmation || false;
 
-    if (admin_creating_account && signup_confirmation) {
+    if (admin_creating_account && !signup_confirmation) {
         throw new SkapiError('Admins cannot create an account with "option.signup_confirmation" option.', { code: 'INVALID_PARAMETER' });
     }
 
