@@ -227,91 +227,91 @@ export function authentication() {
         };
     };
 
-    const signup = async (attributes): Promise<true> => {
-        let conn = await this.__connection;
+    // const signup = async (attributes): Promise<true> => {
+    //     let conn = await this.__connection;
 
-        let service = attributes['service'] || this.service;
+    //     let service = attributes['service'] || this.service;
 
-        let attributeList = [
-            {
-                'Name': 'name',
-                'Value': attributes['name']
-            },
-            {
-                'Name': 'custom:service',
-                'Value': service
-            },
-            {
-                'Name': 'locale',
-                'Value': conn.locale || 'N/A'
-            },
-            {
-                'Name': 'custom:owner',
-                'Value': attributes['owner'] || this.owner
-            },
-            {
-                'Name': 'email',
-                'Value': attributes['email']
-            },
-            {
-                'Name': 'address',
-                'Value': attributes['address']
-            },
-            {
-                'Name': 'birthdate',
-                'Value': attributes['birthdate']
-            },
-            {
-                'Name': 'gender',
-                'Value': attributes['gender']
-            },
-            {
-                'Name': 'phone_number',
-                'Value': attributes['phone_number']
-            },
-            {
-                'Name': 'custom:address_public',
-                'Value': attributes['address_public'] ? '1' : '0'
-            },
-            {
-                'Name': 'custom:gender_public',
-                'Value': attributes['gender_public'] ? '1' : '0'
-            },
-            {
-                'Name': 'custom:birthdate_public',
-                'Value': attributes['birthdate_public'] ? '1' : '0'
-            },
-            {
-                'Name': 'custom:misc',
-                'Value': typeof attributes['misc'] === 'string' ? attributes['misc'] : JSON.stringify(attributes['misc'])
-            }
-        ].map(att => {
-            return new CognitoUserAttribute(att);
-        });
+    //     let attributeList = [
+    //         {
+    //             'Name': 'name',
+    //             'Value': attributes['name']
+    //         },
+    //         {
+    //             'Name': 'custom:service',
+    //             'Value': service
+    //         },
+    //         {
+    //             'Name': 'locale',
+    //             'Value': conn.locale || 'N/A'
+    //         },
+    //         {
+    //             'Name': 'custom:owner',
+    //             'Value': attributes['owner'] || this.owner
+    //         },
+    //         {
+    //             'Name': 'email',
+    //             'Value': attributes['email']
+    //         },
+    //         {
+    //             'Name': 'address',
+    //             'Value': attributes['address']
+    //         },
+    //         {
+    //             'Name': 'birthdate',
+    //             'Value': attributes['birthdate']
+    //         },
+    //         {
+    //             'Name': 'gender',
+    //             'Value': attributes['gender']
+    //         },
+    //         {
+    //             'Name': 'phone_number',
+    //             'Value': attributes['phone_number']
+    //         },
+    //         {
+    //             'Name': 'custom:address_public',
+    //             'Value': attributes['address_public'] ? '1' : '0'
+    //         },
+    //         {
+    //             'Name': 'custom:gender_public',
+    //             'Value': attributes['gender_public'] ? '1' : '0'
+    //         },
+    //         {
+    //             'Name': 'custom:birthdate_public',
+    //             'Value': attributes['birthdate_public'] ? '1' : '0'
+    //         },
+    //         {
+    //             'Name': 'custom:misc',
+    //             'Value': typeof attributes['misc'] === 'string' ? attributes['misc'] : JSON.stringify(attributes['misc'])
+    //         }
+    //     ].map(att => {
+    //         return new CognitoUserAttribute(att);
+    //     });
 
-        let username = MD5.hash(attributes.username || attributes.email);
-        username = service + '-' + username;
+    //     let username = MD5.hash(attributes.username || attributes.email);
+    //     username = service + '-' + username;
 
-        if (attributes.password.length < 6) {
-            throw new SkapiError('Password should be at least 6 characters.', { code: 'INVALID_PARAMETER' });
-        }
+    //     if (attributes.password.length < 6) {
+    //         throw new SkapiError('Password should be at least 6 characters.', { code: 'INVALID_PARAMETER' });
+    //     }
 
-        if (attributes.password.length > 60) {
-            throw new SkapiError('Password should be 60 characters max.', { code: 'INVALID_PARAMETER' });
-        }
+    //     if (attributes.password.length > 60) {
+    //         throw new SkapiError('Password should be 60 characters max.', { code: 'INVALID_PARAMETER' });
+    //     }
 
-        return new Promise((res, rej) => {
-            userPool.signUp(username, attributes.password, attributeList, null, function (
-                err,
-                result
-            ) {
-                if (err) {
-                    rej(new SkapiError(err.message, { code: 'INVALID_REQUEST' }));
-                }
-                res(true);
-            });
-        });
-    }
+    //     return new Promise((res, rej) => {
+    //         userPool.signUp(username, attributes.password, attributeList, null, function (
+    //             err,
+    //             result
+    //         ) {
+    //             if (err) {
+    //                 rej(new SkapiError(err.message, { code: 'INVALID_REQUEST' }));
+    //             }
+    //             res(true);
+    //         });
+    //     });
+    // }
 
     const authenticateUser = (email: string, password: string): Promise<User> => {
         return new Promise((res, rej) => {
@@ -378,7 +378,13 @@ export function authentication() {
         });
     };
 
-    return { getSession, authenticateUser, createCognitoUser, getUser, signup };
+    return {
+        getSession,
+        authenticateUser,
+        createCognitoUser,
+        getUser,
+        // signup
+    };
 }
 
 export async function getProfile(options?: { refreshToken: boolean; }): Promise<User | null> {
