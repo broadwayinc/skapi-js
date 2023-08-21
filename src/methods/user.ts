@@ -329,8 +329,22 @@ export function authentication() {
 
                 cognitoUser.authenticateUser(authenticationDetails, {
                     newPasswordRequired: (userAttributes, requiredAttributes) => {
+                        console.log({ userAttributes });
                         this.__request_signup_confirmation = username;
-                        rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
+                        if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER') {
+                            // auto confirm
+                            cognitoUser.completeNewPasswordChallenge(password, {}, {
+                                onSuccess: (result) => {
+                                    getSession().then(session => res(this.user));
+                                },
+                                onFailure: (err: any) => {
+                                    rej(new SkapiError(err.message || 'Failed to authenticate user.', { code: err.code }));
+                                }
+                            });
+                        }
+                        else {
+                            rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
+                        }
                     },
                     onSuccess: (logged) => getSession().then(session => res(this.user)),
                     onFailure: (err: any) => {
