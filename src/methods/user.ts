@@ -582,14 +582,9 @@ export async function signup(
     params.signup_confirmation = signup_confirmation;
     params.email_subscription = option?.email_subscription || false;
 
-    if (signup_confirmation || admin_creating_account) {
-        delete params.service;
-        delete params.owner;
-        await request.bind(this)("signup", params);
-    }
-    else {
-        await authentication.bind(this)().signup(params);
-    }
+    delete params.service;
+    delete params.owner;
+    await request.bind(this)("signup", params);
 
     if (signup_confirmation) {
         let u = await authentication.bind(this)().createCognitoUser(params.username || params.email);

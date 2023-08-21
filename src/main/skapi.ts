@@ -67,7 +67,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.0-alpha.1';
+    version = '1.0.0-alpha.2';
     host = 'skapi';
     hostDomain = 'skapi.app';
     target_cdn = 'd1wrj5ymxrt2ir';
