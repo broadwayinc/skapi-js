@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Javascript library for Skapi: Complete JAM Stack, front-end driven serverless backend API service.",
   "main": "./dist/skapi.module.js",
   "types": "./js/Main.d.ts",
