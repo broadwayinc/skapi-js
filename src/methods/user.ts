@@ -329,7 +329,6 @@ export function authentication() {
 
                 cognitoUser.authenticateUser(authenticationDetails, {
                     newPasswordRequired: (userAttributes, requiredAttributes) => {
-                        console.log({ userAttributes });
                         this.__request_signup_confirmation = username;
                         if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER') {
                             // auto confirm
