@@ -68,9 +68,14 @@ import {
 export default class Skapi {
     // current version
     version = '1.0.0-alpha.4';
-    host = 'skapi';
-    hostDomain = 'skapi.app';
-    target_cdn = 'd1wrj5ymxrt2ir';
+    service: string;
+    owner: string;
+    session: Record<string, any> | null = null;
+    connection: Connection | null = null;
+
+    private host = 'skapi';
+    private hostDomain = 'skapi.app';
+    private target_cdn = 'd1wrj5ymxrt2ir';
 
     // privates
     private __disabledAccount: string | null = null;
@@ -89,16 +94,13 @@ export default class Skapi {
         };
     } = {};
     private __request_signup_confirmation: string | null = null;
-    service: string;
-    owner: string;
 
     // true when session is stored successfully to session storage
     // this property prevents duplicate stores when window closes on some device
     private __class_properties_has_been_cached = false;
-    session: Record<string, any> | null = null;
 
     /** Current logged in user object. null if not logged. */
-    __user: User | null = null;
+    private __user: User | null = null;
 
     get user(): User | null {
         if (this.__user && Object.keys(this.__user).length) {
@@ -113,9 +115,8 @@ export default class Skapi {
         // setting user is bypassed
     }
 
-    connection: Connection | null = null;
-    admin_endpoint: Promise<Record<string, any>>;
-    record_endpoint: Promise<Record<string, any>>;
+    private admin_endpoint: Promise<Record<string, any>>;
+    private record_endpoint: Promise<Record<string, any>>;
 
     validate = {
         userId(val: string) {
@@ -160,22 +161,22 @@ export default class Skapi {
         }
     };
 
-    __connection: Promise<Connection | null>;
+    private __connection: Promise<Connection | null>;
 
-    constructor(service_id: string, owner: string, options?: { autoLogin: boolean; }) {
-        if (typeof service_id !== 'string' || typeof owner !== 'string') {
-            throw new SkapiError('"service_id" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
+    constructor(service: string, owner: string, options?: { autoLogin: boolean; }) {
+        if (typeof service !== 'string' || typeof owner !== 'string') {
+            throw new SkapiError('"service" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
 
-        if (!service_id || !owner) {
-            throw new SkapiError('"service_id" and "owner" is required', { code: 'INVALID_PARAMETER' });
+        if (!service || !owner) {
+            throw new SkapiError('"service" and "owner" is required', { code: 'INVALID_PARAMETER' });
         }
 
         if (owner !== this.host) {
             validator.UserId(owner, '"owner"');
         }
 
-        this.service = service_id;
+        this.service = service;
         this.owner = owner;
 
         let autoLogin = typeof options?.autoLogin === 'boolean' ? options.autoLogin : true;
@@ -183,7 +184,7 @@ export default class Skapi {
         // get endpoints
 
         const cdn_domain = `https://${this.target_cdn}.cloudfront.net`; // don't change this
-        let sreg = service_id.substring(0, 4);
+        let sreg = service.substring(0, 4);
 
         this.admin_endpoint = fetch(`${cdn_domain}/${sreg}/admin.json`)
             .then(response => response.blob())
@@ -211,7 +212,7 @@ export default class Skapi {
                 throw new Error(`This browser does not support skapi.`);
             }
 
-            const restore = JSON.parse(window.sessionStorage.getItem(`${service_id}#${owner}`) || 'null');
+            const restore = JSON.parse(window.sessionStorage.getItem(`${service}#${owner}`) || 'null');
 
             if (restore?.connection) {
                 // apply all data to class properties
@@ -276,7 +277,7 @@ export default class Skapi {
                             data[k] = this[k];
                         }
 
-                        window.sessionStorage.setItem(`${service_id}#${owner}`, JSON.stringify(data));
+                        window.sessionStorage.setItem(`${service}#${owner}`, JSON.stringify(data));
                         this.__class_properties_has_been_cached = true;
                     }
                 };
@@ -304,11 +305,14 @@ export default class Skapi {
         return this.connection;
     }
 
+    private checkAdmin = checkAdmin.bind(this);
+    private request = request.bind(this);
+    private getSubscribedTo = getSubscribedTo.bind(this);
+    private getSubscribers = getSubscribers.bind(this);
+
     getConnection = getConnection.bind(this);
     getProfile = getProfile.bind(this);
-    checkAdmin = checkAdmin.bind(this);
     getFile = getFile.bind(this);
-    request = request.bind(this);
     secureRequest = secureRequest.bind(this);
     getFormResponse = getFormResponse.bind(this);
     getRecords = getRecords.bind(this);
@@ -321,8 +325,6 @@ export default class Skapi {
     getUsers = getUsers.bind(this);
     disableAccount = disableAccount.bind(this);
     lastVerifiedEmail = lastVerifiedEmail.bind(this);
-    getSubscribedTo = getSubscribedTo.bind(this);
-    getSubscribers = getSubscribers.bind(this);
     getSubscriptions = getSubscriptions.bind(this);
     unsubscribeNewsletter = unsubscribeNewsletter.bind(this);
     getNewsletters = getNewsletters.bind(this);
