@@ -150,7 +150,15 @@ function normalizeTypedString(v: string) {
             return value;
         case "!N%":
             // !N%0
-            return Number(value) - 4503599627370496;
+            let splitDec = value.split('.');
+            let calcNumb = Number(splitDec[0]) - 4503599627370496;
+            
+            if (splitDec.length === 1) {
+                return calcNumb;
+            }
+
+            return parseFloat(calcNumb.toString() + '.' + splitDec[1]);
+            
         case "!B%":
             // !B%1
             return value === '1';
