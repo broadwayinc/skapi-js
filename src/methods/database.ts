@@ -1172,7 +1172,7 @@ export async function deleteRecords(params: {
     return await request.bind(this)('del-records', params, { auth: true });
 }
 
-export async function grantPrivateRecordAccess(params: {
+export function grantPrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
@@ -1191,7 +1191,7 @@ export async function grantPrivateRecordAccess(params: {
     });
 }
 
-export async function removePrivateRecordAccess(params: {
+export function removePrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
@@ -1210,7 +1210,7 @@ export async function removePrivateRecordAccess(params: {
     });
 }
 
-export async function listPrivateRecordAccess(params: {
+export function listPrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
@@ -1221,15 +1221,15 @@ export async function listPrivateRecordAccess(params: {
     });
 }
 
-export async function requestPrivateRecordAccessKey(record_id: string) {
-    await request.bind(this)(
+export function requestPrivateRecordAccessKey(record_id: string) {
+    return request.bind(this)(
         'request-private-access-key',
         { record_id },
         { auth: true }
     );
 }
 
-async function recordAccess(params: {
+function recordAccess(params: {
     record_id: string;
     user_id: string | string[];
     execute: 'add' | 'remove' | 'list';
@@ -1272,7 +1272,7 @@ async function recordAccess(params: {
         req.user_id = null;
     }
 
-    await request.bind(this)(
+    return request.bind(this)(
         'grant-private-access',
         req,
         { auth: true }
