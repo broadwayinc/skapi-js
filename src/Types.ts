@@ -98,7 +98,6 @@ export type RecordData = {
     ip: string;
 };
 
-
 export type Connection = {
     /** User's locale */
     locale: string;
