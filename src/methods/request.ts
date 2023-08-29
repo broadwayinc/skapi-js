@@ -22,29 +22,6 @@ export function getConnection(): Promise<Connection | null> {
     return this.__connection;
 }
 
-export async function listHostDirectory(
-    params: {
-        service: string;
-        dir: string;
-    },
-    fetchOptions: FetchOptions
-) {
-    let is_admin = await this.checkAdmin();
-    if (is_admin) {
-        if (!params?.dir) {
-            params.dir = '/';
-        }
-
-        return request.bind(this)('list-host-directory', params, {
-            fetchOptions,
-            auth: true,
-            method: 'post'
-        });
-    }
-
-    return [];
-}
-
 export async function request(
     url: string,
     data: Form<any> | null = null,

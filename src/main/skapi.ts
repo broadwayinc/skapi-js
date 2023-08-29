@@ -26,8 +26,7 @@ import {
     mock,
     getFormResponse,
     formHandler,
-    getConnection,
-    listHostDirectory
+    getConnection
 } from '../methods/request';
 import {
     subscribe,
@@ -249,7 +248,7 @@ export default class Skapi {
                 }));
 
                 // updates connection passively
-                this.updateConnection();
+                // this.updateConnection();
             }
 
             let awaitProcess;
@@ -334,7 +333,6 @@ export default class Skapi {
     removePrivateRecordAccess = removePrivateRecordAccess.bind(this);
     listPrivateRecordAccess = listPrivateRecordAccess.bind(this);
     requestPrivateRecordAccessKey = requestPrivateRecordAccessKey.bind(this);
-    listHostDirectory = listHostDirectory.bind(this);
     deleteFiles = deleteFiles.bind(this);
 
     @formHandler()
