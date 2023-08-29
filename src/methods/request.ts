@@ -45,7 +45,6 @@ export async function listHostDirectory(
     return [];
 }
 
-/** @ignore */
 export async function request(
     url: string,
     data: Form<any> | null = null,
@@ -319,46 +318,47 @@ export async function request(
         return requestKey;
     }
 
-    if (typeof requestKey === 'string') {
-        if (!(__pendingRequest[requestKey] instanceof Promise)) {
-            // new request
+    if (!requestKey || typeof requestKey !== 'string') {
+        return null;
+    }
 
-            let headers: Record<string, any> = {
-                'Accept': '*/*'
-            };
+    if (!(__pendingRequest[requestKey] instanceof Promise)) {
+        // new request
 
-            if (token) {
-                headers.Authorization = token;
+        let headers: Record<string, any> = {
+            'Accept': '*/*'
+        };
+
+        if (token) {
+            headers.Authorization = token;
+        }
+
+        if (meta) {
+            headers["Content-Meta"] = window.btoa(encodeURIComponent(typeof meta === 'string' ? meta : JSON.stringify(meta)));
+        }
+
+        if (options.hasOwnProperty('contentType')) {
+            if (options?.contentType) {
+                headers["Content-Type"] = options.contentType;
             }
+        }
 
-            if (meta) {
-                headers["Content-Meta"] = window.btoa(encodeURIComponent(typeof meta === 'string' ? meta : JSON.stringify(meta)));
-            }
+        else if (!(data instanceof FormData)) {
+            headers["Content-Type"] = 'application/json';
+        }
 
-            if (options.hasOwnProperty('contentType')) {
-                if (options?.contentType) {
-                    headers["Content-Type"] = options.contentType;
-                }
-            }
+        let opt: RequestInit & { responseType?: string | null, headers: Record<string, any>; } = { headers };
+        if (options?.responseType) {
+            opt.responseType = options.responseType;
+        }
 
-            else if (!(data instanceof FormData)) {
-                headers["Content-Type"] = 'application/json';
-            }
-
-            let opt: RequestInit & { responseType?: string | null, headers: Record<string, any>; } = { headers };
-            if (options?.responseType) {
-                opt.responseType = options.responseType;
-            }
-
-
-            // pending call request
-            // this prevents recursive calls
-            if (method === 'post') {
-                __pendingRequest[requestKey] = _post.bind(this)(endpoint, data, opt, progress);
-            }
-            else if (method === 'get') {
-                __pendingRequest[requestKey] = _get.bind(this)(endpoint, data, opt, progress);
-            }
+        // pending call request
+        // this prevents recursive calls
+        if (method === 'post') {
+            __pendingRequest[requestKey] = _post.bind(this)(endpoint, data, opt, progress);
+        }
+        else if (method === 'get') {
+            __pendingRequest[requestKey] = _get.bind(this)(endpoint, data, opt, progress);
         }
 
         try {
@@ -370,7 +370,7 @@ export async function request(
             }
 
             else {
-                return await update_startKey_keys.bind(this)({
+                return update_startKey_keys.bind(this)({
                     hashedParam: requestKey,
                     url,
                     response
