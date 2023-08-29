@@ -372,7 +372,7 @@ export async function uploadFiles(
 }
 
 export async function getFile(
-    url: string,
+    url: string, // file url ex) subdomain.skapi.com/folder/file_name.txt | cdn endpoint url
     config?: {
         noCdn?: boolean;
         dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // endpoint returns url that can be shared outside your cors within a minimal time (1 min)
