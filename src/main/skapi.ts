@@ -460,6 +460,7 @@ export default class Skapi {
             blocked?: boolean;
         },
         fetchOptions?: FetchOptions,
+        _mapper?: (data: Record<string, any>) => any
     ): Promise<DatabaseResponse<{
         subscriber: string; // Subscriber ID
         subscription: string; // Subscription ID
@@ -467,7 +468,7 @@ export default class Skapi {
         timestamp: number; // Subscribed UNIX timestamp
         blocked: boolean; // True when subscriber is blocked by subscription
     }>> {
-        return getSubscriptions.bind(this)(params, fetchOptions);
+        return getSubscriptions.bind(this)(params, fetchOptions, _mapper);
     }
     unsubscribeNewsletter(
         params: { group: number | 'public' | 'authorized' | null; }
