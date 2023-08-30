@@ -211,8 +211,7 @@ export async function uploadFiles(
         service?: string;
         record_id: string; // Record ID of a record to upload files to. Not required if request is 'host'.
         request?: 'post' | 'host';
-        progress: ProgressCallback;
-    }
+    } & FormSubmitCallback
 ): Promise<{ completed: File[], failed: File[]; }> {
     // <input type="file" webkitdirectory multiple />
     // let input = document.querySelector('input[type="file"]');
@@ -943,13 +942,13 @@ export async function getIndexes(
     table: string; // Table name
     index: string; // Index name
     number_of_records: number; // Number of records in the index
-    string_count: number; // Number of string type value
-    number_count: number; // Number of number type value
-    boolean_count: number; // Number of boolean type value
-    total_number: number; // Sum of all numbers
-    total_bool: number; // Number of true(boolean) values
-    average_number: number; // Average of all numbers
-    average_bool: number; // Percentage of true(boolean) values
+    string_count?: number; // Number of string type value
+    number_count?: number; // Number of number type value
+    boolean_count?: number; // Number of boolean type value
+    total_number?: number; // Sum of all numbers
+    total_bool?: number; // Number of true(boolean) values
+    average_number?: number; // Average of all numbers
+    average_bool?: number; // Percentage of true(boolean) values
 }>> {
     let p = validator.Params(
         query || {},

@@ -221,11 +221,71 @@ export type UserProfile = {
     signup_ticket?: string;
 } & UserAttributes;
 
+export type PublicUser = {
+    /** User's name */
+    name?: string;
+    /**
+     * User's E-Mail for signin.<br>
+     * 64 character max.<br>
+     * When E-Mail is changed, E-Mail verified state will be changed to false.<br>
+     * E-Mail is only visible to others when set to public.<br>
+     * E-Mail should be verified to set to public.
+     * */
+    email?: string;
+    /**
+     * User's phone number. Format: "+0012341234"<br>
+     * When phone number is changed, phone number verified state will be changed to false.<br>
+     * Phone number is only visible to others when set to public.<br>
+     * Phone number should be verified to set to public.
+     */
+    phone_number?: string;
+    /** User's address */
+    address?: string | {
+        // Full mailing address, formatted for display or use on a mailing label. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+        // street_address
+        // Full street address component, which MAY include house number, street name, Post Office Box, and multi-line extended street address information. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+        formatted: string;
+        // City or locality component.
+        locality: string;
+        // State, province, prefecture, or region component.
+        region: string;
+        // Zip code or postal code component.
+        postal_code: string;
+        // Country name component.
+        country: string;
+    };
+    /**
+     * User's gender. Can be "female" and "male".<br>
+     * Other values may be used when neither of the defined values are applicable.
+     */
+    gender?: string;
+    /** User's birthdate. String format: "1969-07-16" */
+    birthdate?: string;
+    /** Additional string value that can be used freely. */
+    misc?: string;
+    /** Number of the user's subscribers. */
+    subscribers: number;
+    /** Timestamp of user signup time. */
+    timestamp: number;
+    /** Service id of the user account. */
+    service: string;
+    /** User ID of the service owner. */
+    owner: string;
+    /** Access level of the user's account. */
+    access_group?: number;
+    /** User's ID. */
+    user_id: string;
+    /** Country code of where user first signed up from. */
+    locale: string;
+}
+
+
 export interface User extends UserProfile {
     /** Number of the user's subscribers. */
     subscribers: number;
     /** Timestamp of user signup time. */
     timestamp: number;
+    /** Service id of the user account. */
 }
 
 export type QueryParams = {
