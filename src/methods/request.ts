@@ -18,7 +18,7 @@ const __pendingRequest: Record<string, Promise<any>> = {};
  * When skapi instance is created via new Skapi(...) skapi immediately connects the browser to the server.
  * You can use getConnection() when you need to await for connection to be established.
  */
-export function getConnection(): Promise<Connection | null> {
+export function getConnection(): Promise<Connection> {
     return this.__connection;
 }
 
@@ -891,7 +891,6 @@ export async function secureRequest<RequestParams = {
 export async function mock(data: Form<any | {
     raise?: 'ERR_INVALID_REQUEST' | 'ERR_INVALID_PARAMETER' | 'SOMETHING_WENT_WRONG' | 'ERR_EXISTS' | 'ERR_NOT_EXISTS';
 }>,
-    formCallback?: FormSubmitCallback,
     options?: {
         auth?: boolean;
         method?: string;
@@ -899,14 +898,17 @@ export async function mock(data: Form<any | {
         bypassAwaitConnection?: boolean;
         responseType?: string;
         contentType?: string;
-    }): Promise<{ mockResponse: Record<string, any>; }> {
-    options = options || {};
-    if (formCallback && formCallback?.formData && typeof formCallback.formData === 'function') {
-        let fetchOptions = {
-            formData: formCallback.formData
-        };
+    } & FormSubmitCallback): Promise<{ mockResponse: Record<string, any>; }> {
+    let { auth = true, method = 'POST', meta, bypassAwaitConnection = false, responseType, contentType } = options || {};
+    let { response, onerror, formData, progress } = options || {};
 
-        Object.assign(options, fetchOptions);
+    if (options) {
+        Object.assign(
+            { auth, method, meta, bypassAwaitConnection, responseType, contentType },
+            {
+                fetchOptions:
+                    { response, onerror, formData, progress }
+            });
     }
     return request.bind(this)('mock', data, options);
 };
