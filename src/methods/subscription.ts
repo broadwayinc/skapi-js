@@ -10,7 +10,6 @@ import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { request } from './request';
 
-/** @ignore */
 function subscriptionGroupCheck(option: SubscriptionGroup<number | '*'>) {
     option = validator.Params(option, {
         user_id: (v: string) => validator.UserId(v, '"user_id"'),
@@ -50,7 +49,6 @@ export async function getSubscriptions(
         blocked?: boolean;
     },
     fetchOptions?: FetchOptions,
-    /** @ignore */
     _mapper?: Function
 ): Promise<DatabaseResponse<{
     subscriber: string; // Subscriber ID
@@ -278,8 +276,7 @@ export async function subscribeNewsletter(
         email?: string;
         group: number | 'public' | 'authorized';
         redirect?: string;
-    }>,
-    callbacks: FormSubmitCallback
+    }>
 ): Promise<string> {
     await this.__connection;
 
@@ -293,7 +290,7 @@ export async function subscribeNewsletter(
         this.__user ? ['group'] : ['email', 'group']
     );
 
-    return request.bind(this)(`subscribe-${this.__user ? '' : 'public-'}newsletter`, params, { fetchOptions: callbacks, auth: !!this.__user });
+    return request.bind(this)(`subscribe-${this.__user ? '' : 'public-'}newsletter`, params, { auth: !!this.__user });
 }
 
 /**

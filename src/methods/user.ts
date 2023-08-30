@@ -14,11 +14,12 @@ import {
     FetchOptions,
     DatabaseResponse,
     QueryParams,
-    UserAttributes
+    UserAttributes,
+PublicUser
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from './request';
-import { MD5 } from '../utils/utils';
+import { MD5, extractFormMeta } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
 
@@ -406,7 +407,7 @@ export async function checkAdmin() {
     return false;
 }
 
-export async function logout(e: SubmitEvent): Promise<'SUCCESS: The user has been logged out.'> {
+export async function logout(): Promise<'SUCCESS: The user has been logged out.'> {
     await this.__connection;
 
     if (cognitoUser) {
@@ -479,8 +480,7 @@ export async function login(
         email: string;
         /** Password for signin. Should be at least 6 characters. */
         password: string;
-    }>,
-    option?: FormSubmitCallback): Promise<User> {
+    }>): Promise<User> {
     await logout.bind(this)();
     let params = validator.Params(form, {
         username: 'string',
@@ -630,7 +630,7 @@ export async function resetPassword(form: Form<{
     code: string | number;
     /** New password to set. Verification code is required. */
     new_password: string;
-}>, option?: FormSubmitCallback): Promise<"SUCCESS: New password has been set."> {
+}>): Promise<"SUCCESS: New password has been set."> {
 
     await this.__connection;
 
@@ -727,11 +727,11 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>)
     });
 }
 
-export function verifyPhoneNumber(form: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'> {
+export function verifyPhoneNumber(form?: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'> {
     return verifyAttribute.bind(this)('phone_number', form);
 }
 
-export function verifyEmail(form: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'> {
+export function verifyEmail(form?: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'> {
     return verifyAttribute.bind(this)('email', form);
 }
 
@@ -739,8 +739,7 @@ export async function forgotPassword(
     form: Form<{
         /** Signin E-Mail. */
         email: string;
-    }>,
-    option?: FormSubmitCallback): Promise<"SUCCESS: Verification code has been sent."> {
+    }>): Promise<"SUCCESS: Verification code has been sent."> {
 
     await this.__connection;
 
@@ -764,7 +763,7 @@ export async function forgotPassword(
 export async function changePassword(params: {
     new_password: string;
     current_password: string;
-}) {
+}): Promise<'SUCCESS: Password has been changed.'> {
     await this.__connection;
     if (!this.session) {
         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
@@ -808,7 +807,7 @@ export async function changePassword(params: {
     });
 }
 
-export async function updateProfile(form: Form<UserAttributes>, option?: FormSubmitCallback) {
+export async function updateProfile(form: Form<UserAttributes>): Promise<User> {
     await this.__connection;
     if (!this.session) {
         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
@@ -933,7 +932,7 @@ export async function updateProfile(form: Form<UserAttributes>, option?: FormSub
     return this.user;
 }
 
-export async function getUsers(params?: QueryParams | null, fetchOptions?: FetchOptions): Promise<DatabaseResponse<UserAttributes>> {
+export async function getUsers(params?: QueryParams | null, fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
     if (!params) {
         // set default value
         params = {
@@ -1086,7 +1085,7 @@ export async function requestUsernameChange(params: {
     redirect?: string;
     /** username(e-mail) user wish to change to. */
     username: string;
-}): Promise<'SUCCESS: ...'> {
+}): Promise<'SUCCESS: confirmation e-mail has been sent.'> {
     await this.__connection;
 
     params = validator.Params(params, {
