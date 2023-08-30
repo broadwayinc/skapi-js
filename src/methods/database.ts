@@ -173,18 +173,9 @@ function normalizeTypedString(v: string) {
 }
 
 export async function deleteFiles(params: {
-    /** @ignore */
-    service?: string;
     endpoints: string | string[], // file endpoints
-    /** @ignore */
-    storage?: 'records' | 'host';
-}) {
-    let isAdmin = await checkAdmin.bind(this)();
-
-    let { service = this.service, endpoints, storage = 'records' } = params;
-    if (storage === 'host' && !isAdmin) {
-        throw new SkapiError("No access", { code: 'INVALID_REQUEST' });
-    }
+}): Promise<RecordData[]> {
+    let { endpoints } = params;
 
     if (typeof endpoints === 'string') {
         endpoints = [endpoints];
@@ -194,23 +185,16 @@ export async function deleteFiles(params: {
         throw new SkapiError('"endpoints" should be type: array | string.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (storage !== 'host' && storage !== 'records') {
-        throw new SkapiError('"storage" should be type: "records" | "host".', { code: 'INVALID_PARAMETER' });
-    }
-
     return request.bind(this)('del-files', {
-        service,
         endpoints,
-        storage
+        storage: 'records'
     }, { auth: true, method: 'post' });
 }
 
 export async function uploadFiles(
     fileList: Form<FileList | File[]>,
     params: {
-        service?: string;
-        record_id: string; // Record ID of a record to upload files to. Not required if request is 'host'.
-        request?: 'post' | 'host';
+        record_id: string; // Record ID of a record to upload files to.
     } & FormSubmitCallback
 ): Promise<{ completed: File[], failed: File[]; }> {
     // <input type="file" webkitdirectory multiple />
@@ -223,7 +207,23 @@ export async function uploadFiles(
     //     data.append('files', input.files[i], path);
     // }
 
-    let isAdmin = await checkAdmin.bind(this)();
+    await this.__connection;
+
+    let { service = this.service, request = 'post' } = (params as any) || {};
+
+    if (request === 'post') {
+        if (!params?.record_id) {
+            throw new SkapiError('"record_id" is required.', { code: 'INVALID_PARAMETER' });
+        }
+    }
+    else {
+        if (service === this.service) {
+            throw new SkapiError('invalid service.', { code: 'INVALID_PARAMETER' });
+        }
+        if (request !== 'host') {
+            throw new SkapiError('invalid request.', { code: 'INVALID_PARAMETER' });
+        }
+    }
 
     if (fileList instanceof SubmitEvent) {
         fileList = (fileList.target as HTMLFormElement);
@@ -256,22 +256,12 @@ export async function uploadFiles(
 
     let getSignedParams: Record<string, any> = {
         reserved_key,
-        service: params?.service || this.service,
-        request: params?.request || 'post'
+        service,
+        request
     };
-
-    if (getSignedParams.request === 'host') {
-        if (!isAdmin) {
-            throw new SkapiError('The user has no access.', { code: 'INVALID_REQUEST' });
-        }
-        getSignedParams.request === 'post-host'
-    }
 
     if (params?.record_id) {
         getSignedParams.id = params.record_id;
-    }
-    else if (!isAdmin) {
-        throw new SkapiError('Record ID is required.', { code: 'INVALID_PARAMETER' });
     }
 
     let xhr;
