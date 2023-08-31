@@ -324,7 +324,7 @@ export async function uploadFiles(
             contentType: f.type || null
         }, getSignedParams);
 
-        let { fields = null, url } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
+        let { fields = null, url } = await this.request('get-signed-url', signedParams, { auth: true });
         let form = new FormData();
 
         for (let name in fields) {
