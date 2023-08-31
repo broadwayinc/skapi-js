@@ -474,7 +474,7 @@ export async function recoverAccount(
 
 export async function login(
     form: Form<{
-        username: string;
+        username?: string;
         /** E-Mail for signin. 64 character max. */
         email: string;
         /** Password for signin. Should be at least 6 characters. */
