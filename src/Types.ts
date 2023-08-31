@@ -208,7 +208,7 @@ export type UserProfile = {
     /** User ID of the service owner. */
     owner: string;
     /** Access level of the user's account. */
-    access_group?: number;
+    access_group: number;
     /** User's ID. */
     user_id: string;
     /** Country code of where user first signed up from. */
@@ -272,7 +272,7 @@ export type PublicUser = {
     /** User ID of the service owner. */
     owner: string;
     /** Access level of the user's account. */
-    access_group?: number;
+    access_group: number;
     /** User's ID. */
     user_id: string;
     /** Country code of where user first signed up from. */
