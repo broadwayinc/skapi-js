@@ -1,5 +1,4 @@
 import {
-    User,
     DatabaseResponse,
     Connection,
     ProgressCallback,
@@ -113,9 +112,9 @@ export default class Skapi {
     private __class_properties_has_been_cached = false;
 
     /** Current logged in user object. null if not logged. */
-    private __user: User | null = null;
+    private __user: UserProfile | null = null;
 
-    get user(): User | null {
+    get user(): UserProfile | null {
         if (this.__user && Object.keys(this.__user).length) {
             return JSON.parse(JSON.stringify(this.__user));
         }
@@ -326,7 +325,7 @@ export default class Skapi {
     getConnection(): Promise<Connection> {
         return getConnection.bind(this)();
     }
-    getProfile(options?: { refreshToken: boolean; }): Promise<User | null> {
+    getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
         return getProfile.bind(this)(options);
     }
     getFile(
@@ -560,7 +559,7 @@ export default class Skapi {
             email: string;
             /** Password for signin. Should be at least 6 characters. */
             password: string;
-        }>): Promise<User> { return login.bind(this)(form); }
+        }>): Promise<UserProfile> { return login.bind(this)(form); }
     @formHandler()
     logout(): Promise<'SUCCESS: The user has been logged out.'> { return logout.bind(this)(); }
     @formHandler({ preventMultipleCalls: true })
@@ -584,7 +583,7 @@ export default class Skapi {
              * Automatically login to account after signup. Will not work if signup confirmation is required.
              */
             login?: boolean;
-        } & FormSubmitCallback): Promise<User | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
+        } & FormSubmitCallback): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
         return signup.bind(this)(form, option);
     }
     @formHandler({ preventMultipleCalls: true })
@@ -618,7 +617,7 @@ export default class Skapi {
         current_password: string;
     }): Promise<'SUCCESS: Password has been changed.'> { return changePassword.bind(this)(params); }
     @formHandler({ preventMultipleCalls: true })
-    updateProfile(form: Form<UserAttributes>): Promise<User> { return updateProfile.bind(this)(form); }
+    updateProfile(form: Form<UserAttributes>): Promise<UserProfile> { return updateProfile.bind(this)(form); }
     @formHandler()
     postRecord(
         form: Form<Record<string, any>> | null | undefined,

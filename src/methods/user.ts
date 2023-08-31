@@ -7,7 +7,6 @@ import {
     CognitoUserPool
 } from 'amazon-cognito-identity-js';
 import {
-    User,
     Form,
     FormSubmitCallback,
     UserProfile,
@@ -311,7 +310,7 @@ export function authentication() {
     //     });
     // }
 
-    const authenticateUser = (email: string, password: string): Promise<User> => {
+    const authenticateUser = (email: string, password: string): Promise<UserProfile> => {
         return new Promise((res, rej) => {
             this.__request_signup_confirmation = null;
             this.__disabledAccount = null;
@@ -384,7 +383,7 @@ export function authentication() {
     };
 }
 
-export async function getProfile(options?: { refreshToken: boolean; }): Promise<User | null> {
+export async function getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
     await this.__connection;
     try {
         await authentication.bind(this)().getSession(options);
@@ -480,7 +479,7 @@ export async function login(
         email: string;
         /** Password for signin. Should be at least 6 characters. */
         password: string;
-    }>): Promise<User> {
+    }>): Promise<UserProfile> {
     await logout.bind(this)();
     let params = validator.Params(form, {
         username: 'string',
@@ -514,7 +513,7 @@ export async function signup(
          * Automatically login to account after signup. Will not work if signup confirmation is required.
          */
         login?: boolean;
-    } & FormSubmitCallback): Promise<User | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
+    } & FormSubmitCallback): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
 
     let params = validator.Params(form || {}, {
         username: 'string',
@@ -807,7 +806,7 @@ export async function changePassword(params: {
     });
 }
 
-export async function updateProfile(form: Form<UserAttributes>): Promise<User> {
+export async function updateProfile(form: Form<UserAttributes>): Promise<UserProfile> {
     await this.__connection;
     if (!this.session) {
         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
