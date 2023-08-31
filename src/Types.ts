@@ -279,15 +279,6 @@ export type PublicUser = {
     locale: string;
 }
 
-
-export interface User extends UserProfile {
-    /** Number of the user's subscribers. */
-    subscribers: number;
-    /** Timestamp of user signup time. */
-    timestamp: number;
-    /** Service id of the user account. */
-}
-
 export type QueryParams = {
     /** Index name to search. */
     searchFor: string;
