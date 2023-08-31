@@ -554,7 +554,8 @@ export default class Skapi {
     @formHandler({ preventMultipleCalls: true })
     login(
         form: Form<{
-            username: string;
+            /** if given, username will be used instead of email. */
+            username?: string;
             /** E-Mail for signin. 64 character max. */
             email: string;
             /** Password for signin. Should be at least 6 characters. */

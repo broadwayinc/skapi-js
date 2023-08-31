@@ -474,6 +474,7 @@ export async function recoverAccount(
 
 export async function login(
     form: Form<{
+        /** if given, username will be used instead of email. */
         username?: string;
         /** E-Mail for signin. 64 character max. */
         email: string;
