@@ -18,7 +18,7 @@ PublicUser
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from './request';
-import { MD5, extractFormMeta } from '../utils/utils';
+import { MD5 } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
 
@@ -384,7 +384,7 @@ export function authentication() {
 }
 
 export async function getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
-    await this.__connection;
+    await this.__authConnection;
     try {
         await authentication.bind(this)().getSession(options);
         return this.user;
