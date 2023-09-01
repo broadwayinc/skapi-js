@@ -79,7 +79,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.0-alpha.13';
+    version = '1.0.0-alpha.14';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -174,6 +174,7 @@ export default class Skapi {
     };
 
     private __connection: Promise<Connection>;
+    private __authConnection: Promise<void>;
 
     constructor(service: string, owner: string, options?: { autoLogin: boolean; }) {
         if (typeof service !== 'string' || typeof owner !== 'string') {
@@ -222,30 +223,22 @@ export default class Skapi {
             throw new Error(`This browser does not support skapi.`);
         }
 
-        // connects to server
-        this.__connection = (async (): Promise<Connection> => {
-            const restore = JSON.parse(window.sessionStorage.getItem(`${service}#${owner}`) || 'null');
+        const restore = JSON.parse(window.sessionStorage.getItem(`${service}#${owner}`) || 'null');
 
-            if (restore?.connection) {
-                // apply all data to class properties
-                for (let k in restore) {
-                    this[k] = restore[k];
-                }
+        if (restore?.connection) {
+            // apply all data to class properties
+            for (let k in restore) {
+                this[k] = restore[k];
             }
+        }
 
+        this.__authConnection = (async () => {
             const admin_endpoint = await this.admin_endpoint;
 
             setUserPool({
                 UserPoolId: admin_endpoint.userpool_id,
                 ClientId: admin_endpoint.userpool_client
             });
-
-            const process: any[] = [];
-
-            if (!restore?.connection) {
-                // await for first connection
-                process.push(this.updateConnection());
-            }
 
             if (!restore?.connection && !autoLogin) {
                 let currentUser = userPool.getCurrentUser();
@@ -254,19 +247,24 @@ export default class Skapi {
                 }
             }
 
-            if (restore?.connection || autoLogin) {
+            if (autoLogin) {
                 // session reload or autoLogin
-                process.push(authentication.bind(this)().getSession({ refreshToken: !restore?.connection }).catch(err => {
+                try {
+                    await authentication.bind(this)().getSession({ refreshToken: !restore?.connection })
+                }
+                catch (err) {
                     this.__user = null;
-                }));
-
-                // updates connection passively
-                // this.updateConnection();
+                }
             }
+        })()
 
-            let awaitProcess;
-            if (process.length) {
-                awaitProcess = await Promise.all(process);
+        // connects to server
+        this.__connection = (async (): Promise<Connection> => {
+            let process: Promise<Connection> = null;
+
+            if (!restore?.connection) {
+                // await for first connection
+                process = this.updateConnection();
             }
 
             const storeClassProperties = () => {
@@ -294,13 +292,15 @@ export default class Skapi {
                     }
                 };
 
-                return (awaitProcess instanceof Promise) ? awaitProcess.then(() => exec()) : exec();
+                return (process instanceof Promise) ? process.then(() => exec()) : exec();
             };
 
             // attach event to save session on close
             window.addEventListener('beforeunload', storeClassProperties);
             window.addEventListener("visibilitychange", storeClassProperties);
 
+            await process;
+            await this.__authConnection;
             return this.connection;
         })();
     }
