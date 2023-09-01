@@ -79,7 +79,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.0-alpha.12';
+    version = '1.0.0-alpha.13';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -218,12 +218,12 @@ export default class Skapi {
             }))
             .then(data => typeof data === 'string' ? JSON.parse(window.atob(data.split(',')[1])) : null);
 
+        if (!window.sessionStorage) {
+            throw new Error(`This browser does not support skapi.`);
+        }
+
         // connects to server
         this.__connection = (async (): Promise<Connection> => {
-            if (!window.sessionStorage) {
-                throw new Error(`This browser does not support skapi.`);
-            }
-
             const restore = JSON.parse(window.sessionStorage.getItem(`${service}#${owner}`) || 'null');
 
             if (restore?.connection) {
