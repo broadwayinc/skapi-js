@@ -1,7 +1,6 @@
 import {
     DatabaseResponse,
     FetchOptions,
-    FormSubmitCallback,
     Form,
     Newsletters,
     SubscriptionGroup
