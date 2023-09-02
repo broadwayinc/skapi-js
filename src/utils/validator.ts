@@ -103,35 +103,33 @@ function Url(url: string | string[]) {
             }
             else {
                 let cu = c.trim();
-                if (!cu.includes(' ') && !cu.includes(',')) {
-                    if (cu.slice[0] === '/' && baseUrl) {
-                        cu = baseUrl + cu;
-                    }
-                    else if (cu.slice[0] === '.' && baseUrl) {
-                        let curr_loc = window.location.href.split('?')[0];
-                        if (curr_loc.slice(-1) !== '/') {
-                            curr_loc += '/';
-                        }
-
-                        cu = curr_loc + cu.slice(1);
+                if (cu[0] === '/' && baseUrl) {
+                    cu = baseUrl + cu;
+                }
+                else if (cu[0] === '.' && baseUrl) {
+                    let curr_loc = window.location.href.split('?')[0];
+                    if (curr_loc.slice(-1) !== '/') {
+                        curr_loc += '/';
                     }
 
-                    let _url;
+                    cu = curr_loc + cu.slice(1);
+                }
 
-                    try {
-                        _url = new URL(cu);
-                    }
-                    catch (err) {
-                        throw new SkapiError(`"${c}" is an invalid url.`, { code: 'INVALID_PARAMETER' });
-                    }
+                let _url;
 
-                    if (_url.protocol) {
-                        let url = _url.href;
-                        if (url.charAt(url.length - 1) === '/')
-                            url = url.substring(0, url.length - 1);
+                try {
+                    _url = new URL(cu);
+                }
+                catch (err) {
+                    throw new SkapiError(`"${c}" is an invalid url.`, { code: 'INVALID_PARAMETER' });
+                }
 
-                        return url;
-                    }
+                if (_url.protocol) {
+                    let url = _url.href;
+                    if (url.charAt(url.length - 1) === '/')
+                        url = url.substring(0, url.length - 1);
+
+                    return url;
                 }
             }
         }
