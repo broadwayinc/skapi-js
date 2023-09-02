@@ -104,11 +104,16 @@ function Url(url: string | string[]) {
             else {
                 let cu = c.trim();
                 if (!cu.includes(' ') && !cu.includes(',')) {
-                    if (cu.slice(0, 1) === '/' && baseUrl) {
+                    if (cu.slice[0] === '/' && baseUrl) {
                         cu = baseUrl + cu;
                     }
-                    else if (cu.slice(0, 1) === '.' && baseUrl) {
-                        cu = window.location.href.split('/').slice(0, -1).join('/') + cu;
+                    else if (cu.slice[0] === '.' && baseUrl) {
+                        let curr_loc = window.location.href;
+                        if (curr_loc.slice(-1) !== '/') {
+                            curr_loc += '/';
+                        }
+
+                        cu = curr_loc + cu.slice(1);
                     }
 
                     let _url;
