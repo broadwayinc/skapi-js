@@ -12,8 +12,6 @@ import {
 import SkapiError from '../main/error';
 import { extractFormMeta, generateRandom } from '../utils/utils';
 import validator from '../utils/validator';
-import { request } from './request';
-import { checkAdmin } from './user';
 
 const __index_number_range = 4503599627370496; // +/-
 
@@ -185,7 +183,7 @@ export async function deleteFiles(params: {
         throw new SkapiError('"endpoints" should be type: array | string.', { code: 'INVALID_PARAMETER' });
     }
 
-    return request.bind(this)('del-files', {
+    return this.request('del-files', {
         endpoints,
         storage: 'records'
     }, { auth: true, method: 'post' });
@@ -425,7 +423,7 @@ export async function getFile(
             params.service = service
         }
 
-        url = (await request.bind(this)('get-signed-url', params,
+        url = (await this.request('get-signed-url', params,
             { auth: true }
         )).url;
     }
@@ -446,7 +444,7 @@ export async function getFile(
         return url;
     }
 
-    let blob = await request.bind(this)(
+    let blob = await this.request(
         url,
         { service: service || this.service },
         { method: 'get', auth: needAuth, contentType: null, responseType: 'blob', fetchOptions: { progress: config?.progress } }
@@ -638,7 +636,7 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
     }
 
     let auth = query.hasOwnProperty('access_group') && query.table.access_group ? true : !!this.__user;
-    let result = await request.bind(this)(
+    let result = await this.request(
         'get-records',
         query,
         {
@@ -871,7 +869,7 @@ export async function postRecord(
         Object.assign(options, { fetchOptions });
     }
 
-    return normalizeRecord(await request.bind(this)('post-record', postData, options));
+    return normalizeRecord(await this.request('post-record', postData, options));
 }
 
 export async function getTables(
@@ -887,7 +885,7 @@ export async function getTables(
     table: string; // Table name
     size: number; // Table size
 }>> {
-    let res = await request.bind(this)('get-table', validator.Params(query || {}, {
+    let res = await this.request('get-table', validator.Params(query || {}, {
         table: 'string',
         condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
     }), Object.assign({ auth: true }, { fetchOptions }));
@@ -980,7 +978,7 @@ export async function getIndexes(
         }
     }
 
-    let res = await request.bind(this)(
+    let res = await this.request(
         'get-index',
         p,
         Object.assign(
@@ -1037,7 +1035,7 @@ export async function getTags(
     number_of_records: string; // Number records tagged
 }>> {
 
-    let res = await request.bind(this)(
+    let res = await this.request(
         'get-tag',
         validator.Params(query || {},
             {
@@ -1085,7 +1083,7 @@ export async function deleteRecords(params: {
     }
 
     if (params?.record_id) {
-        return await request.bind(this)('del-records', {
+        return await this.request('del-records', {
             service: params.service || this.service,
             record_id: (v => {
                 let id = validator.specialChars(v, 'record_id', false, false);
@@ -1163,7 +1161,7 @@ export async function deleteRecords(params: {
         params.table = validator.Params(params.table || {}, struct, isAdmin ? [] : ['name']);
     }
 
-    return await request.bind(this)('del-records', params, { auth: true });
+    return await this.request('del-records', params, { auth: true });
 }
 
 export function grantPrivateRecordAccess(params: {
@@ -1178,7 +1176,7 @@ export function grantPrivateRecordAccess(params: {
         throw new SkapiError(`User ID is required.`, { code: 'INVALID_PARAMETER' });
     }
 
-    return recordAccess({
+    return recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'add'
@@ -1197,7 +1195,7 @@ export function removePrivateRecordAccess(params: {
         throw new SkapiError(`User ID is required.`, { code: 'INVALID_PARAMETER' });
     }
 
-    return recordAccess({
+    return recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'remove'
@@ -1208,7 +1206,7 @@ export function listPrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
-    return recordAccess({
+    return recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'list'
@@ -1216,7 +1214,7 @@ export function listPrivateRecordAccess(params: {
 }
 
 export function requestPrivateRecordAccessKey(record_id: string) {
-    return request.bind(this)(
+    return this.request(
         'request-private-access-key',
         { record_id },
         { auth: true }
@@ -1266,7 +1264,7 @@ function recordAccess(params: {
         req.user_id = null;
     }
 
-    return request.bind(this)(
+    return this.request(
         'grant-private-access',
         req,
         { auth: true }
