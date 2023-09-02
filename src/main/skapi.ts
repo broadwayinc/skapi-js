@@ -301,19 +301,18 @@ export default class Skapi {
 
             await process;
             await this.__authConnection;
+            let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
+            console.log(`Built with:\n${skapi}Version: ${this.version}\n\nDocumentation: https://docs.skapi.com`, `font-family: monospace; color:blue;`);
             return this.connection;
         })();
     }
 
     async updateConnection(): Promise<Connection> {
-        let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
-
         this.connection = await request.bind(this)('service', {
             service: this.service,
             owner: this.owner
         }, { bypassAwaitConnection: true, method: 'get' });
 
-        console.log(`Built with:\n${skapi}Version: ${this.version}\n\nDocumentation: https://docs.skapi.com`, `font-family: monospace; color:blue;`);
         return this.connection;
     }
 
