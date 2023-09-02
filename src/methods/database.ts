@@ -12,6 +12,7 @@ import {
 import SkapiError from '../main/error';
 import { extractFormMeta, generateRandom } from '../utils/utils';
 import validator from '../utils/validator';
+import { request } from './request';
 
 const __index_number_range = 4503599627370496; // +/-
 
@@ -183,7 +184,7 @@ export async function deleteFiles(params: {
         throw new SkapiError('"endpoints" should be type: array | string.', { code: 'INVALID_PARAMETER' });
     }
 
-    return this.request('del-files', {
+    return request.bind(this)('del-files', {
         endpoints,
         storage: 'records'
     }, { auth: true, method: 'post' });
@@ -206,10 +207,10 @@ export async function uploadFiles(
     // }
 
     await this.__connection;
+    let params_request = (params as any)?.request || 'post';
+    let service = (params as any)?.service || this.service;
 
-    let { service = this.service, request = 'post' } = (params as any) || {};
-
-    if (request === 'post') {
+    if (params_request === 'post') {
         if (!params?.record_id) {
             throw new SkapiError('"record_id" is required.', { code: 'INVALID_PARAMETER' });
         }
@@ -218,7 +219,7 @@ export async function uploadFiles(
         if (service === this.service) {
             throw new SkapiError('invalid service.', { code: 'INVALID_PARAMETER' });
         }
-        if (request !== 'host') {
+        if (params_request !== 'host') {
             throw new SkapiError('invalid request.', { code: 'INVALID_PARAMETER' });
         }
     }
@@ -255,7 +256,7 @@ export async function uploadFiles(
     let getSignedParams: Record<string, any> = {
         reserved_key,
         service,
-        request
+        request: params_request
     };
 
     if (params?.record_id) {
@@ -322,7 +323,7 @@ export async function uploadFiles(
             contentType: f.type || null
         }, getSignedParams);
 
-        let { fields = null, url } = await this.request('get-signed-url', signedParams, { auth: true });
+        let { fields = null, url } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
         let form = new FormData();
 
         for (let name in fields) {
@@ -423,7 +424,7 @@ export async function getFile(
             params.service = service
         }
 
-        url = (await this.request('get-signed-url', params,
+        url = (await request.bind(this)('get-signed-url', params,
             { auth: true }
         )).url;
     }
@@ -444,7 +445,7 @@ export async function getFile(
         return url;
     }
 
-    let blob = await this.request(
+    let blob = await request.bind(this)(
         url,
         { service: service || this.service },
         { method: 'get', auth: needAuth, contentType: null, responseType: 'blob', fetchOptions: { progress: config?.progress } }
@@ -636,7 +637,7 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
     }
 
     let auth = query.hasOwnProperty('access_group') && query.table.access_group ? true : !!this.__user;
-    let result = await this.request(
+    let result = await request.bind(this)(
         'get-records',
         query,
         {
@@ -869,7 +870,7 @@ export async function postRecord(
         Object.assign(options, { fetchOptions });
     }
 
-    return normalizeRecord(await this.request('post-record', postData, options));
+    return normalizeRecord(await request.bind(this)('post-record', postData, options));
 }
 
 export async function getTables(
@@ -885,7 +886,7 @@ export async function getTables(
     table: string; // Table name
     size: number; // Table size
 }>> {
-    let res = await this.request('get-table', validator.Params(query || {}, {
+    let res = await request.bind(this)('get-table', validator.Params(query || {}, {
         table: 'string',
         condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
     }), Object.assign({ auth: true }, { fetchOptions }));
@@ -978,7 +979,7 @@ export async function getIndexes(
         }
     }
 
-    let res = await this.request(
+    let res = await request.bind(this)(
         'get-index',
         p,
         Object.assign(
@@ -1035,7 +1036,7 @@ export async function getTags(
     number_of_records: string; // Number records tagged
 }>> {
 
-    let res = await this.request(
+    let res = await request.bind(this)(
         'get-tag',
         validator.Params(query || {},
             {
@@ -1083,7 +1084,7 @@ export async function deleteRecords(params: {
     }
 
     if (params?.record_id) {
-        return await this.request('del-records', {
+        return await request.bind(this)('del-records', {
             service: params.service || this.service,
             record_id: (v => {
                 let id = validator.specialChars(v, 'record_id', false, false);
@@ -1161,7 +1162,7 @@ export async function deleteRecords(params: {
         params.table = validator.Params(params.table || {}, struct, isAdmin ? [] : ['name']);
     }
 
-    return await this.request('del-records', params, { auth: true });
+    return await request.bind(this)('del-records', params, { auth: true });
 }
 
 export function grantPrivateRecordAccess(params: {
@@ -1176,7 +1177,7 @@ export function grantPrivateRecordAccess(params: {
         throw new SkapiError(`User ID is required.`, { code: 'INVALID_PARAMETER' });
     }
 
-    return recordAccess.bind(this)({
+    return recordAccess({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'add'
@@ -1195,7 +1196,7 @@ export function removePrivateRecordAccess(params: {
         throw new SkapiError(`User ID is required.`, { code: 'INVALID_PARAMETER' });
     }
 
-    return recordAccess.bind(this)({
+    return recordAccess({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'remove'
@@ -1206,7 +1207,7 @@ export function listPrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
-    return recordAccess.bind(this)({
+    return recordAccess({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'list'
@@ -1214,7 +1215,7 @@ export function listPrivateRecordAccess(params: {
 }
 
 export function requestPrivateRecordAccessKey(record_id: string) {
-    return this.request(
+    return request.bind(this)(
         'request-private-access-key',
         { record_id },
         { auth: true }
@@ -1264,7 +1265,7 @@ function recordAccess(params: {
         req.user_id = null;
     }
 
-    return this.request(
+    return request.bind(this)(
         'grant-private-access',
         req,
         { auth: true }
