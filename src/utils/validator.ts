@@ -108,7 +108,7 @@ function Url(url: string | string[]) {
                         cu = baseUrl + cu;
                     }
                     else if (cu.slice[0] === '.' && baseUrl) {
-                        let curr_loc = window.location.href;
+                        let curr_loc = window.location.href.split('?')[0];
                         if (curr_loc.slice(-1) !== '/') {
                             curr_loc += '/';
                         }
