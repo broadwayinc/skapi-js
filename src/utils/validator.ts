@@ -126,9 +126,6 @@ function Url(url: string | string[]) {
 
                 if (_url.protocol) {
                     let url = _url.href;
-                    if (url.charAt(url.length - 1) === '/')
-                        url = url.substring(0, url.length - 1);
-
                     return url;
                 }
             }
