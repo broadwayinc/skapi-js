@@ -456,7 +456,7 @@ export async function recoverAccount(
 ): Promise<"SUCCESS: Recovery e-mail has been sent."> {
 
     if (typeof redirect === 'string') {
-        validator.Url(redirect);
+        redirect = validator.Url(redirect);
     }
 
     else if (typeof redirect !== 'boolean') {
