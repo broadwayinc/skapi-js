@@ -79,7 +79,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.0-alpha.15';
+    version = '1.0.0-alpha.16';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -106,6 +106,7 @@ export default class Skapi {
         };
     } = {};
     private __request_signup_confirmation: string | null = null;
+    private __sessionPending = null;
 
     // true when session is stored successfully to session storage
     // this property prevents duplicate stores when window closes on some device
@@ -328,14 +329,13 @@ export default class Skapi {
         return getProfile.bind(this)(options);
     }
     getFile(
-        url: string, // file url ex) subdomain.skapi.com/folder/file_name.txt | cdn endpoint url
+        url: string, // cdn endpoint url https://xxxx.cloudfront.net/path/file
         config?: {
-            noCdn?: boolean;
-            dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // endpoint returns url that can be shared outside your cors within a minimal time (1 min)
-            expiration?: number; // default: 60
+            dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // default 'download'
+            expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
             progress?: ProgressCallback;
         }
-    ): Promise<Blob | string> {
+    ): Promise<Blob | string | void> {
         return getFile.bind(this)(url, config);
     }
     secureRequest<Params = {

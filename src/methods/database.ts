@@ -360,28 +360,24 @@ export async function uploadFiles(
 }
 
 export async function getFile(
-    url: string, // file url ex) subdomain.skapi.com/folder/file_name.txt | cdn endpoint url
+    url: string, // cdn endpoint url https://xxxx.cloudfront.net/path/file
     config?: {
-        noCdn?: boolean;
-        dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // endpoint returns url that can be shared outside your cors within a minimal time (1 min)
-        expiration?: number;
+        dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // default 'download'
+        expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
         progress?: ProgressCallback;
     }
-): Promise<Blob | string> {
+): Promise<Blob | string | void> {
     if (typeof url !== 'string') {
         throw new SkapiError('"url" should be type: string.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (!config?.noCdn) {
-        validator.Url(url);
-    }
-
+    validator.Url(url);
     let isValidEndpoint = false;
-
     let splitUrl = url.split('/');
     let host = splitUrl[2];
     let splitHost = host.split('.');
     let subdomain = null;
+
     if (splitHost.length === 3 && splitHost[1] === 'skapi') {
         subdomain = splitHost[0];
         isValidEndpoint = true;
@@ -405,19 +401,24 @@ export async function getFile(
     let service = subdomain ? null : target_key[1];
 
     validator.Params(config, {
-        expiration: ['number', () => 60],
-        noCdn: ['boolean', () => false],
+        expires: 'number',
         dataType: ['base64', 'blob', 'endpoint', 'download', () => 'download']
     }, [], ['progress']);
 
     let needAuth = target_key[0] == 'auth';
     let filename = url.split('/').slice(-1)[0];
+    let expires = config?.expires || 0;
 
-    if (config?.noCdn || needAuth && (config?.dataType === 'download' || config?.dataType === 'endpoint')) {
+    if (expires) {
+        if (expires < 0) {
+            throw new SkapiError('"config.expires" should be > 0. (seconds)', { code: 'INVALID_PARAMETER' });
+        }
+
         let params: Record<string, any> = {
             request: subdomain ? 'get-host' : 'get',
             id: subdomain || target_key[5],
-            key: url
+            key: url,
+            expires
         }
 
         if (service) {
@@ -427,6 +428,45 @@ export async function getFile(
         url = (await request.bind(this)('get-signed-url', params,
             { auth: true }
         )).url;
+    }
+
+    else if (needAuth) {
+        // "auth/ap21oijFZdpDm1nxxckv/4d4a36a5-b318-4093-92ae-7cf11feae989/4d4a36a5-b318-4093-92ae-7cf11feae989/records/Tp8mGdutyTuyxckv/01/file/98/03e4bed487738547e062dde90c78d194"
+        let token = this.session?.idToken?.jwtToken; // idToken
+
+        let access_group = target_key[6] === '**' ? '**' : parseInt(target_key[6]);
+
+        if (!token) {
+            throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+        }
+        else {
+            let currTime = Date.now() / 1000;
+            if (this.session.idToken.payload.exp < currTime) {
+                try {
+                    await this.authentication().getSession({ refreshToken: true });
+                    token = this.session?.idToken?.jwtToken;
+                }
+                catch (err) {
+                    this.logout();
+                    throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+                }
+            }
+        }
+
+        if (access_group === '**') {
+            if (this.__user.user_id !== target_key[3]) {
+                throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
+            }
+        }
+        else if (this.__user.access_group < access_group) {
+            throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
+        }
+
+        url += `?t=${token}`;
+    }
+
+    if (config?.dataType === 'endpoint') {
+        return url;
     }
 
     if (config?.dataType === 'download') {
@@ -441,26 +481,18 @@ export async function getFile(
         return null;
     }
 
-    if (config?.dataType === 'endpoint') {
-        return url;
-    }
-
     let blob = await request.bind(this)(
         url,
         { service: service || this.service },
-        { method: 'get', auth: needAuth, contentType: null, responseType: 'blob', fetchOptions: { progress: config?.progress } }
+        { method: 'get', noParams: true, contentType: null, responseType: 'blob', fetchOptions: { progress: config?.progress } }
     );
 
     if (config?.dataType === 'base64') {
-        function blobToBase64(blob): Promise<any> {
-            return new Promise((resolve, _) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.readAsDataURL(blob);
-            });
-        }
-
-        return blobToBase64(blob);
+        return new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve((reader.result as string));
+            reader.readAsDataURL(blob);
+        });
     }
 
     return blob;
@@ -816,15 +848,18 @@ export async function postRecord(
         let toConvert = (form instanceof SubmitEvent) ? form.target : form;
         let formData = !(form instanceof FormData) ? new FormData(toConvert as HTMLFormElement) : form;
         let formMeta = extractFormMeta(form);
+
+        if(formMeta.meta.hasOwnProperty('__meta__')) {
+            throw new SkapiError('Key name "__meta__" is reserved key name.', { code: 'INVALID_REQUEST' });
+        }
+
         options.meta = config;
 
         if (Object.keys(formMeta.meta).length) {
             options.meta.data = formMeta.meta;
         }
 
-        let formToRemove = {
-
-        };
+        let formToRemove = {};
 
         for (let [key, value] of formData.entries()) {
             if (formMeta.meta.hasOwnProperty(key) && !(value instanceof Blob)) {
@@ -1086,17 +1121,21 @@ export async function deleteRecords(params: {
     if (params?.record_id) {
         return await request.bind(this)('del-records', {
             service: params.service || this.service,
-            record_id: (v => {
-                let id = validator.specialChars(v, 'record_id', false, false);
+            record_id: (id => {
                 if (typeof id === 'string') {
                     return [id];
+                }
+
+                if(!Array.isArray(id)) {
+                    throw new SkapiError('"record_id" should be type: <string | string[]>', { code: 'INVALID_PARAMETER' });
                 }
 
                 if (id.length > 100) {
                     throw new SkapiError('"record_id" should not exceed 100 items.', { code: 'INVALID_PARAMETER' });
                 }
 
-                return id;
+                return validator.specialChars(id, 'record_id', false, false);
+                
             })(params.record_id)
         }, { auth: true });
     }

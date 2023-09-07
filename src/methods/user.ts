@@ -150,13 +150,20 @@ export function authentication() {
         });
     };
 
-    const getSession = (option?: {
+    const getSession = async (option?: {
         refreshToken?: boolean;
     }): Promise<CognitoUserSession> => {
         // fetch session, updates user attributes
         let { refreshToken = false } = option || {};
 
-        return new Promise((res, rej) => {
+        if(this.__sessionPending instanceof Promise) {
+            return this.__sessionPending.then(session => {
+                this.__sessionPending = null;
+                return session
+            });
+        }
+
+        this.__sessionPending = new Promise((res, rej) => {
             cognitoUser = userPool?.getCurrentUser() || null;
             if (cognitoUser === null) { rej(null); return; }
 
@@ -208,6 +215,8 @@ export function authentication() {
                 }
             });
         });
+
+        return this.__sessionPending;
     };
 
     const createCognitoUser = async (email: string) => {
@@ -360,6 +369,9 @@ export function authentication() {
                         let errCode = error[1];
                         let errMsg = error[0];
                         let customErr = error[0].split('#');
+
+                        // "#INVALID_REQUEST: the account has been blacklisted."
+                        // "#NOT_EXISTS: the account does not exist."
 
                         if (customErr.length > 1) {
                             customErr = customErr[customErr.length - 1].split(':');
