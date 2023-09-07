@@ -8,7 +8,7 @@ import {
 } from '../Types';
 import SkapiError from '../main/error';
 import {
-    MD5
+    MD5, generateRandom
 } from '../utils/utils';
 import validator from '../utils/validator';
 
@@ -26,6 +26,7 @@ export async function request(
     url: string,
     data: Form<any> | null = null,
     options?: {
+        noParams?: boolean; // when true params will not be added to get request
         fetchOptions?: FetchOptions & FormSubmitCallback;
         auth?: boolean;
         method?: string;
@@ -174,16 +175,20 @@ export async function request(
 
     if (options?.fetchOptions && Object.keys(options.fetchOptions).length) {
         // record fetch options
-        let fetOpt = validator.Params(
+        let fetOpt: any = {};
+
+        for (let k of ['limit', 'startKey', 'ascending']) {
+            if (options.fetchOptions.hasOwnProperty(k)) {
+                fetOpt[k] = options.fetchOptions[k];
+            }
+        }
+
+        fetOpt = validator.Params(
+            fetOpt,
             {
-                limit: options.fetchOptions?.limit || 50,
-                startKey: options.fetchOptions?.startKey || null,
-                ascending: typeof options.fetchOptions?.ascending === 'boolean' ? options.fetchOptions.ascending : true
-            },
-            {
-                limit: ['number', () => 50],
+                limit: 'number',
                 startKey: null,
-                ascending: ['boolean', () => true]
+                ascending: 'boolean'
             }
         );
 
@@ -231,7 +236,7 @@ export async function request(
         }
         else if (isForm) {
             for (let k in required) {
-                // add required to from
+                // add required to form
                 if (required[k] !== undefined) {
                     data.set(k, new Blob([JSON.stringify(required[k])], {
                         type: 'application/json'
@@ -311,7 +316,20 @@ export async function request(
         }
 
         if (meta) {
-            headers["Content-Meta"] = window.btoa(encodeURIComponent(typeof meta === 'string' ? meta : JSON.stringify(meta)));
+            let meta_key = '__meta__' + generateRandom(16);
+            if (data instanceof FormData) {
+                headers["Content-Meta"] = window.btoa(encodeURIComponent(JSON.stringify({
+                    meta_key: meta_key,
+                    merge: 'data' // merge data(not meta) to data key
+                })));
+
+                data.set(meta_key, new Blob([JSON.stringify(meta)], {
+                    type: 'application/json'
+                }));
+            }
+            // else {
+            //     headers["Content-Meta"] = window.btoa(encodeURIComponent(typeof meta === 'string' ? meta : JSON.stringify(meta)));
+            // }
         }
 
         if (options.hasOwnProperty('contentType')) {
@@ -335,7 +353,7 @@ export async function request(
             __pendingRequest[requestKey] = _post.bind(this)(endpoint, data, opt, progress);
         }
         else if (method === 'get') {
-            __pendingRequest[requestKey] = _get.bind(this)(endpoint, data, opt, progress);
+            __pendingRequest[requestKey] = _get.bind(this)(endpoint, data, opt, progress, options?.noParams);
         }
 
         try {
@@ -704,9 +722,10 @@ async function _get(
         responseType?: string | null;
         headers: Record<string, any>;
     },
-    progress?: (ev: ProgressEvent) => void
+    progress?: (ev: ProgressEvent) => void,
+    noParams?: boolean
 ) {
-    if (params && typeof params === 'object' && Object.keys(params).length) {
+    if (params && typeof params === 'object' && !noParams && Object.keys(params).length) {
         if (url.substring(url.length - 1) !== '?') {
             url = url + '?';
         }
