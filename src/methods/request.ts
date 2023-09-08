@@ -949,7 +949,6 @@ export async function getFormResponse(): Promise<any> {
 
 const pendPromise: Record<string, Promise<any> | null> = {};
 
-/** @ignore */
 export function formHandler(options?: { preventMultipleCalls: boolean; }) {
     let { preventMultipleCalls = false } = options || {};
 
@@ -977,10 +976,12 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
 
             const handleResponse = (response: any) => {
                 if (option?.response) {
-                    if (typeof option.response === 'function')
+                    if (typeof option.response === 'function') {
                         return option.response(response);
-                    else
+                    }
+                    else {
                         throw new SkapiError('Callback "response" should be type: function.', { code: 'INVALID_PARAMETER' });
+                    }
                 }
 
                 if (formEl) {
@@ -1000,15 +1001,23 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                     form.preventDefault();
                 }
 
-                let is_err = err instanceof Error ? err : new SkapiError(err);
-                if (option?.onerror) {
-                    if (typeof option.onerror === 'function')
-                        return option.onerror(is_err);
-                    else
-                        throw new SkapiError('Callback "onerror" should be type: function.', { code: 'INVALID_PARAMETER' });
+                if (err instanceof SkapiError) {
+                    err.name = propertyKey + '()';
+                }
+                else {
+                    err = err instanceof Error ? err : new SkapiError(err, { name: propertyKey + '()' });
                 }
 
-                throw is_err;
+                if (option?.onerror) {
+                    if (typeof option.onerror === 'function') {
+                        return option.onerror(err);
+                    }
+                    else {
+                        throw new SkapiError('Callback "onerror" should be type: function.', { code: 'INVALID_PARAMETER', name: propertyKey + '()' });
+                    }
+                }
+
+                throw err;
             };
 
             const executeMethod = () => {
@@ -1042,9 +1051,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             if (preventMultipleCalls) {
                 return (async () => {
                     if (pendPromise?.[propertyKey] instanceof Promise) {
-                        let res = await pendPromise[propertyKey];
-                        pendPromise[propertyKey] = null;
-                        return res;
+                        return pendPromise[propertyKey];
                     }
                     else {
                         pendPromise[propertyKey] = executeMethod().finally(() => {

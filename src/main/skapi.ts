@@ -6,7 +6,6 @@ import {
     FetchOptions,
     RecordData,
     Condition,
-    QueryParams,
     UserAttributes,
     UserProfile,
     Newsletters,
@@ -107,6 +106,9 @@ export default class Skapi {
     } = {};
     private __request_signup_confirmation: string | null = null;
     private __sessionPending = null;
+    private __private_access_key: {
+        [record_id: string]: string
+    } = {}
 
     // true when session is stored successfully to session storage
     // this property prevents duplicate stores when window closes on some device
@@ -322,12 +324,15 @@ export default class Skapi {
     private getSubscribedTo = getSubscribedTo.bind(this);
     private getSubscribers = getSubscribers.bind(this);
 
+    @formHandler()
     getConnection(): Promise<Connection> {
         return getConnection.bind(this)();
     }
+    @formHandler()
     getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
         return getProfile.bind(this)(options);
     }
+    @formHandler()
     getFile(
         url: string, // cdn endpoint url https://xxxx.cloudfront.net/path/file
         config?: {
@@ -338,6 +343,7 @@ export default class Skapi {
     ): Promise<Blob | string | void> {
         return getFile.bind(this)(url, config);
     }
+    @formHandler()
     secureRequest<Params = {
         /** Request url */
         url: string;
@@ -348,12 +354,15 @@ export default class Skapi {
     }>(params: Params | Params[]): Promise<any> {
         return secureRequest.bind(this)(params);
     }
+    @formHandler()
     getFormResponse(): Promise<any> {
         return getFormResponse.bind(this)();
     }
+    @formHandler()
     getRecords(query: GetRecordQuery, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
         return getRecords.bind(this)(query, fetchOptions);
     }
+    @formHandler()
     getTables(
         /** If null fetch all list of tables. */
         query: {
@@ -369,6 +378,7 @@ export default class Skapi {
     }>> {
         return getTables.bind(this)(query, fetchOptions);
     }
+    @formHandler()
     getIndexes(
         query: {
             /** Table name */
@@ -397,6 +407,7 @@ export default class Skapi {
         average_number?: number; // Average of all numbers
         average_bool?: number; // Percentage of true(boolean) values
     }>> { return getIndexes.bind(this)(query, fetchOptions); }
+    @formHandler()
     getTags(
         query: {
             /** Table name */
@@ -412,6 +423,7 @@ export default class Skapi {
         tag: string; // Tag
         number_of_records: string; // Number records tagged
     }>> { return getTags.bind(this)(query, fetchOptions); }
+    @formHandler()
     deleteRecords(params: {
         /** Record ID(s) to delete. Table parameter is not needed when record_id is given. */
         record_id?: string | string[];
@@ -423,29 +435,46 @@ export default class Skapi {
             subscription_group?: number;
         };
     }): Promise<string> { return deleteRecords.bind(this)(params); }
+    @formHandler()
     resendSignupConfirmation(
         /** Redirect url on confirmation success. */
         redirect: string
     ): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
         return resendSignupConfirmation.bind(this)(redirect);
     }
+    @formHandler()
     recoverAccount(
         /** Redirect url on confirmation success. */
         redirect: boolean | string = false
     ): Promise<"SUCCESS: Recovery e-mail has been sent."> {
         return recoverAccount.bind(this)(redirect);
     }
-    getUsers(params?: QueryParams | null, fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
+    @formHandler()
+    getUsers(
+        params?: {
+            /** Index name to search. */
+            searchFor: 'user_id' | 'email' | 'phone_number' | 'locale' | 'name' | 'address' | 'gender' | 'birthdate';
+            /** Index value to search. */
+            value: string | number | boolean;
+            /** Search condition. */
+            condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
+            /** Range of search. */
+            range?: string | number | boolean;
+        },
+        fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
         return getUsers.bind(this)(params, fetchOptions);
     }
+    @formHandler()
     disableAccount(): Promise<'SUCCESS: account has been disabled.'> {
         return disableAccount.bind(this)();
     }
+    @formHandler()
     lastVerifiedEmail(params?: {
         revert: boolean; // Reverts to last verified e-mail when true.
     }): Promise<string | UserProfile> {
         return lastVerifiedEmail.bind(this)(params);
     }
+    @formHandler()
     getSubscriptions(
         params: {
             /** Subscribers user id. */
@@ -457,8 +486,7 @@ export default class Skapi {
             /** Fetch blocked subscription when True */
             blocked?: boolean;
         },
-        fetchOptions?: FetchOptions,
-        _mapper?: (data: Record<string, any>) => any
+        fetchOptions?: FetchOptions
     ): Promise<DatabaseResponse<{
         subscriber: string; // Subscriber ID
         subscription: string; // Subscription ID
@@ -466,13 +494,15 @@ export default class Skapi {
         timestamp: number; // Subscribed UNIX timestamp
         blocked: boolean; // True when subscriber is blocked by subscription
     }>> {
-        return getSubscriptions.bind(this)(params, fetchOptions, _mapper);
+        return getSubscriptions.bind(this)(params, fetchOptions);
     }
+    @formHandler()
     unsubscribeNewsletter(
         params: { group: number | 'public' | 'authorized' | null; }
     ): Promise<string> {
         return unsubscribeNewsletter.bind(this)(params);
     }
+    @formHandler()
     getNewsletters(
         params?: {
             /**
@@ -494,6 +524,7 @@ export default class Skapi {
     ): Promise<Newsletters> {
         return getNewsletters.bind(this)(params, fetchOptions);
     }
+    @formHandler()
     getNewsletterSubscription(params: {
         group?: number;
     }): Promise<{
@@ -504,29 +535,35 @@ export default class Skapi {
     }[]> {
         return getNewsletterSubscription.bind(this)(params);
     }
+    @formHandler()
     requestUsernameChange(params: {
         /** Redirect URL when user clicks on the link. */
         redirect?: string;
         /** username(e-mail) user wish to change to. */
         username: string;
     }): Promise<'SUCCESS: confirmation e-mail has been sent.'> { return requestUsernameChange.bind(this)(params); }
+    @formHandler()
     grantPrivateRecordAccess(params: {
         record_id: string;
         user_id: string | string[];
     }): Promise<string> { return grantPrivateRecordAccess.bind(this)(params); }
+    @formHandler()
     removePrivateRecordAccess(params: {
         record_id: string;
         user_id: string | string[];
     }): Promise<string> {
         return removePrivateRecordAccess.bind(this)(params);
     }
+    @formHandler()
     listPrivateRecordAccess(params: {
         record_id: string;
         user_id: string | string[];
     }): Promise<string> { return listPrivateRecordAccess.bind(this)(params); }
+    @formHandler()
     requestPrivateRecordAccessKey(record_id: string): Promise<string> {
         return requestPrivateRecordAccessKey.bind(this)(record_id);
     }
+    @formHandler()
     deleteFiles(params: {
         endpoints: string | string[], // bin file endpoints
     }): Promise<RecordData[]> {
