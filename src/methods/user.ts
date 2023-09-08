@@ -12,9 +12,8 @@ import {
     UserProfile,
     FetchOptions,
     DatabaseResponse,
-    QueryParams,
     UserAttributes,
-PublicUser
+    PublicUser
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from './request';
@@ -156,7 +155,7 @@ export function authentication() {
         // fetch session, updates user attributes
         let { refreshToken = false } = option || {};
 
-        if(this.__sessionPending instanceof Promise) {
+        if (this.__sessionPending instanceof Promise) {
             return this.__sessionPending.then(session => {
                 this.__sessionPending = null;
                 return session
@@ -944,7 +943,18 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
     return this.user;
 }
 
-export async function getUsers(params?: QueryParams | null, fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
+export async function getUsers(
+    params?: {
+        /** Index name to search. */
+        searchFor: string;
+        /** Index value to search. */
+        value: string | number | boolean;
+        /** Search condition. */
+        condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
+        /** Range of search. */
+        range?: string | number | boolean;
+    },
+    fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
     if (!params) {
         // set default value
         params = {
@@ -968,18 +978,18 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
 
     const searchForTypes = {
         'user_id': (v: string) => validator.UserId(v),
-        'name': 'string',
         'email': (v: string) => validator.Email(v),
         'phone_number': (v: string) => validator.PhoneNumber(v),
-        'address': 'string',
-        'gender': 'string',
-        'birthdate': (v: string) => validator.Birthdate(v),
         'locale': (v: string) => {
             if (typeof v !== 'string' || typeof v === 'string' && v.length > 5) {
                 throw new SkapiError('Value of "locale" should be a country code.', { code: 'INVALID_PARAMETER' });
             }
             return v;
         },
+        'name': 'string',
+        'address': 'string',
+        'gender': 'string',
+        'birthdate': (v: string) => validator.Birthdate(v),
         // 'subscribers': 'number',
         'timestamp': 'number',
         'access_group': 'number',
@@ -1021,7 +1031,9 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
         value: (v: any) => {
             let checker = searchForTypes[params.searchFor];
             if (typeof checker === 'function') {
-                return checker(v);
+                if (!params?.condition || params?.condition === '=' || params?.range) {
+                    return checker(v);
+                }
             }
 
             else if (typeof v !== checker) {
