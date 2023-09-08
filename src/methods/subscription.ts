@@ -173,7 +173,6 @@ export async function unblockSubscriber(option: SubscriptionGroup<number | '*'>)
     return await request.bind(this)('subscription', { unblock: user_id, group }, { auth: true });
 }
 
-/** @ignore */
 export async function getSubscribedTo(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any>> {
     await this.__connection;
     option = validator.Params(option, {
@@ -189,7 +188,6 @@ export async function getSubscribedTo(option: SubscriptionGroup<number | undefin
     }, fetchOptions);
 };
 
-/** @ignore */
 export async function getSubscribers(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any>> {
     await this.__connection;
     option = validator.Params(option, {

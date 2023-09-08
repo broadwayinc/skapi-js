@@ -1,16 +1,18 @@
 export default class SkapiError extends Error {
     code: string | number;
     cause: Error;
+
     constructor(
         error: any,
         options?: {
+            name?: string;
             code?: string;
             cause?: Error;
         }) {
 
         if (Array.isArray(error) && error.length <= 2) {
             super(error[1] || 'Something went wrong.');
-            this.name = "SKAPI";
+            this.name = options && options.name || "SKAPI";
             this.code = error[0] || "ERROR";
 
             if (options) {

@@ -6,65 +6,67 @@ export type SubscriptionGroup<T> = {
     group?: T;
 };
 
-export type Database<Tbl, Ref, Idx> = {
-    /** @ignore */
-    service?: string; // Only for admins.
+export type GetRecordQuery = {
     record_id?: string;
-    table?: Tbl;
-    reference?: Ref;
-    index?: Idx;
-    private_access_key?: string;
-};
 
-export type GetRecordQuery = Database<
-    {
+    /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
+    table?: {
         /** Not allowed: Special characters. Allowed: White space. periods.*/
         name: string;
-        /** Number range: 0 ~ 99 */
+        /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized';
         subscription?: {
             user_id: string;
             /** Number range: 0 ~ 99 */
             group: number;
         };
-    },
-    /** Referenced record ID | user ID. */
-    string,
+    } | string;
+
+    reference?: string; // Referenced record ID. If user ID is given, it will fetch records that are uploaded by the user.
+
     /** Index condition and range cannot be used simultaneously.*/
-    {
+    index?: {
         /** Not allowed: White space, special characters. Allowed: Periods. */
         name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
         /** Not allowed: Periods, special characters. Allowed: White space. */
         value: string | number | boolean;
-        condition?: Condition;
+        condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
         range?: string | number | boolean;
-    }
-> & { tag?: string; };
+    };
+    tag?: string;
+}
 
-export type PostRecordConfig = Database<
-    {
+export type PostRecordConfig = {
+    record_id?: string; // when record_id is given, it will update the record with the given record_id. If record_id is not given, it will create a new record.
+
+    readonly?: boolean; // When true, record cannot be updated or deleted.
+
+    /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
+    table?: {
         /** Not allowed: Special characters. Allowed: White space. periods.*/
         name?: string;
-        /** Number range: 0 ~ 99 */
+        /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized';
         subscription_group?: number;
-    },
-    /** Referenced record ID | user ID. */
-    {
-        record_id: string;
-        /** Default: null (Infinite) */
-        reference_limit: number | null;
-        /** Default: true */
-        allow_multiple_reference: boolean;
-    },
+    } | string;
+
+    /** If record ID string is given, "reference.record_id" will be set with default parameters. */
+    reference?: {
+        record_id?: string; // null removes reference
+        reference_limit?: number | null; // Default: null (Infinite)
+        allow_multiple_reference?: boolean; // Default: true
+    } | string;
+
     /** null removes index */
-    {
+    index?: {
         /** Not allowed: White space, special characters. Allowed: Periods. */
         name: string;
         /** Not allowed: Periods, special characters. Allowed: White space. */
         value: string | number | boolean;
-    } | null
-> & { tags?: string[]; };
+    } | null;
+
+    tags?: string[];
+}
 
 export type RecordData = {
     service: string;
@@ -96,6 +98,7 @@ export type RecordData = {
     data?: Record<string, any>;
     tags?: string[];
     ip: string;
+    readonly: boolean;
 };
 
 export type Connection = {
@@ -277,17 +280,6 @@ export type PublicUser = {
     user_id: string;
     /** Country code of where user first signed up from. */
     locale: string;
-}
-
-export type QueryParams = {
-    /** Index name to search. */
-    searchFor: string;
-    /** Index value to search. */
-    value: string | number | boolean;
-    /** Search condition. */
-    condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
-    /** Range of search. */
-    range?: string | number | boolean;
 };
 
 export type ProgressCallback = (e: {
@@ -344,18 +336,18 @@ export type Service = {
     service: string;
     /** E-Mail template for signup confirmation. This can be changed by trigger E-Mail. */
     template_activation: {
-        html: string;
+        url: string;
         subject: string;
     };
     /** E-Mail template for verification code E-Mail. This can be changed by trigger E-Mail. */
     template_verification: {
-        html: string;
+        url: string;
         sms: string;
         subject: string;
     };
     /** E-Mail template for welcome E-Mail that user receives after signup process. This can be changed by trigger E-Mail. */
     template_welcome: {
-        html: string;
+        url: string;
         subject: string;
     };
     /** 13 digit timestamp  */

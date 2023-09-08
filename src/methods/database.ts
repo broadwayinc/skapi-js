@@ -43,6 +43,13 @@ function normalizeRecord(record: Record<string, any>): RecordData {
 
     const keys = {
         'ip': (r: string) => {
+            if (r.slice(-1) === 'R') {
+                output.readonly = true;
+                r = r.slice(0, -1);
+            }
+            else {
+                output.readonly = false;
+            }
             output.ip = r;
         },
         'rec': (r: string) => {
@@ -134,6 +141,10 @@ function normalizeRecord(record: Record<string, any>): RecordData {
         if (record.hasOwnProperty(k)) {
             keys[k](record[k]);
         }
+    }
+
+    if (record.private_key) {
+        this.__private_access_key[output.record_id] = record.private_key;
     }
 
     return output as RecordData;
@@ -498,7 +509,7 @@ export async function getFile(
     return blob;
 }
 
-export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
+export async function getRecords(query: GetRecordQuery & { private_key?: string; }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
     await this.__connection;
 
     const indexTypes = {
@@ -602,8 +613,7 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
                 return v;
             }
         },
-        tag: 'string',
-        private_access_key: 'string'
+        tag: 'string'
     };
 
     if (query?.table) {
@@ -632,13 +642,17 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
         throw new SkapiError('"index.name" is required when using "index" parameter.', { code: 'INVALID_REQUEST' });
     }
 
+    let is_reference_fetch = '';
     if (query?.record_id) {
         validator.specialChars(query.record_id, 'record_id', false, false);
         let outputObj: Record<string, string> = { record_id: query.record_id };
-        if (query?.service) {
-            outputObj.service = query.service;
+        if ((query as any)?.service) {
+            outputObj.service = (query as any).service;
         }
         query = outputObj;
+        if (this.__private_access_key[query.record_id]) {
+            query.private_key = this.__private_access_key[query.record_id];
+        }
     }
 
     else {
@@ -649,9 +663,14 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
 
         if (query.reference) {
             try {
-                ref_user = validator.UserId(query?.reference);
+                ref_user = validator.UserId(query.reference);
             } catch (err) {
-                // bypass error
+                // reference is record id
+                validator.specialChars(query.reference, 'reference', false, false);
+                is_reference_fetch = query.reference;
+                if (this.__private_access_key[is_reference_fetch]) {
+                    query.private_key = this.__private_access_key[is_reference_fetch];
+                }
             }
 
             // if (query.table?.access_group === 'private') {
@@ -663,12 +682,12 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
         }
 
         query = validator.Params(query || {}, struct, ref_user ? [] : ['table']);
-        if (query.table?.subscription && !this.session) {
+        if (typeof query.table !== 'string' && query.table?.subscription && !this.session) {
             throw new SkapiError('Unsigned users have no access to subscription records.', { code: 'INVALID_REQUEST' });
         }
     }
 
-    let auth = query.hasOwnProperty('access_group') && query.table.access_group ? true : !!this.__user;
+    let auth = query.hasOwnProperty('access_group') && typeof query.table !== 'string' && query.table.access_group ? true : !!this.__user;
     let result = await request.bind(this)(
         'get-records',
         query,
@@ -679,14 +698,17 @@ export async function getRecords(query: GetRecordQuery, fetchOptions?: FetchOpti
         }
     );
 
-    for (let i in result.list) { result.list[i] = normalizeRecord(result.list[i]); };
+    for (let i in result.list) { result.list[i] = normalizeRecord.bind(this)(result.list[i]); };
 
+    if (is_reference_fetch && result?.reference_private_key) {
+        this.__private_access_key[is_reference_fetch] = result.reference_private_key;
+    }
     return result;
 }
 
 export async function postRecord(
     form: Form<Record<string, any>> | null | undefined,
-    config: PostRecordConfig & FormSubmitCallback
+    config: PostRecordConfig & FormSubmitCallback & { reference_private_key?: string; }
 ): Promise<RecordData> {
     let isAdmin = await this.checkAdmin();
     if (!config) {
@@ -713,16 +735,31 @@ export async function postRecord(
             config.table.access_group = 0;
         }
     }
+
+    if (typeof config.reference === 'string') {
+        config.reference = {
+            record_id: config.reference
+        }
+    }
+
     let progress = config.progress || null;
+    let reference_private_key = null;
     config = validator.Params(config || {}, {
         record_id: 'string',
+        readonly: 'boolean',
         table: {
             name: 'string',
             subscription_group: ['number', null],
             access_group: ['number', 'private', 'public', 'authorized']
         },
         reference: {
-            record_id: ['string', null],
+            record_id: (v: string) => {
+                validator.specialChars(v, '"reference.record_id"', false, false);
+                if (this.__private_access_key[v]) {
+                    reference_private_key = this.__private_access_key[v];
+                }
+                return v;
+            },
             reference_limit: (v: number) => {
                 if (v === null) {
                     return null;
@@ -776,7 +813,7 @@ export async function postRecord(
         throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (config.table) {
+    if (typeof config.table !== 'string' && config.table) {
         if (config.table.access_group === 'public') {
             config.table.access_group = 0;
         }
@@ -815,6 +852,10 @@ export async function postRecord(
     delete config.onerror;
     delete config.progress;
 
+    if (reference_private_key) {
+        config.reference_private_key = reference_private_key;
+    }
+
     if (config.index) {
         // index name allows periods. white space is invalid.
         if (!config.index.name || typeof config.index.name !== 'string') {
@@ -848,11 +889,6 @@ export async function postRecord(
         let toConvert = (form instanceof SubmitEvent) ? form.target : form;
         let formData = !(form instanceof FormData) ? new FormData(toConvert as HTMLFormElement) : form;
         let formMeta = extractFormMeta(form);
-
-        if(formMeta.meta.hasOwnProperty('__meta__')) {
-            throw new SkapiError('Key name "__meta__" is reserved key name.', { code: 'INVALID_REQUEST' });
-        }
-
         options.meta = config;
 
         if (Object.keys(formMeta.meta).length) {
@@ -905,7 +941,7 @@ export async function postRecord(
         Object.assign(options, { fetchOptions });
     }
 
-    return normalizeRecord(await request.bind(this)('post-record', postData, options));
+    return normalizeRecord.bind(this)(await request.bind(this)('post-record', postData, options));
 }
 
 export async function getTables(
@@ -974,6 +1010,10 @@ export async function getIndexes(
     average_number?: number; // Average of all numbers
     average_bool?: number; // Percentage of true(boolean) values
 }>> {
+    if (!query?.table) {
+        throw new SkapiError('"table" is required.', { code: 'INVALID_PARAMETER' });
+    }
+
     let p = validator.Params(
         query || {},
         {
@@ -1056,7 +1096,7 @@ export async function getIndexes(
 }
 
 export async function getTags(
-    query: {
+    query?: {
         /** Table name */
         table: string;
         /** Tag name */
@@ -1126,7 +1166,7 @@ export async function deleteRecords(params: {
                     return [id];
                 }
 
-                if(!Array.isArray(id)) {
+                if (!Array.isArray(id)) {
                     throw new SkapiError('"record_id" should be type: <string | string[]>', { code: 'INVALID_PARAMETER' });
                 }
 
@@ -1135,7 +1175,7 @@ export async function deleteRecords(params: {
                 }
 
                 return validator.specialChars(id, 'record_id', false, false);
-                
+
             })(params.record_id)
         }, { auth: true });
     }
@@ -1216,7 +1256,7 @@ export function grantPrivateRecordAccess(params: {
         throw new SkapiError(`User ID is required.`, { code: 'INVALID_PARAMETER' });
     }
 
-    return recordAccess({
+    return recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'add'
@@ -1235,7 +1275,7 @@ export function removePrivateRecordAccess(params: {
         throw new SkapiError(`User ID is required.`, { code: 'INVALID_PARAMETER' });
     }
 
-    return recordAccess({
+    return recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'remove'
@@ -1246,7 +1286,7 @@ export function listPrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
-    return recordAccess({
+    return recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'list'
@@ -1270,7 +1310,7 @@ function recordAccess(params: {
     let req = validator.Params(params,
         {
             record_id: 'string',
-            user_id: (v: string) => {
+            user_id: (v: string | string[]) => {
                 if (!v) {
                     if (execute == 'list') {
                         return null;
@@ -1279,14 +1319,17 @@ function recordAccess(params: {
                     throw new SkapiError(`User ID is required.`, { code: 'INVALID_PARAMETER' });
                 }
 
-                let id = validator.specialChars(v, 'user id', false, false);
-
+                let id = v;
                 if (typeof id === 'string') {
-                    return [id];
+                    id = [id];
                 }
 
                 if (id.length > 100) {
                     throw new SkapiError(`Cannot process more than 100 users at once.`, { code: 'INVALID_REQUEST' });
+                }
+
+                for (let i of id) {
+                    validator.UserId(i, 'User ID in "user_id"');
                 }
 
                 return id;
