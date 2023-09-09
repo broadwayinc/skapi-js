@@ -155,14 +155,7 @@ export function authentication() {
         // fetch session, updates user attributes
         let { refreshToken = false } = option || {};
 
-        if (this.__sessionPending instanceof Promise) {
-            return this.__sessionPending.then(session => {
-                this.__sessionPending = null;
-                return session
-            });
-        }
-
-        this.__sessionPending = new Promise((res, rej) => {
+        return new Promise((res, rej) => {
             cognitoUser = userPool?.getCurrentUser() || null;
             if (cognitoUser === null) { rej(null); return; }
 
@@ -214,8 +207,6 @@ export function authentication() {
                 }
             });
         });
-
-        return this.__sessionPending;
     };
 
     const createCognitoUser = async (email: string) => {
@@ -492,7 +483,7 @@ export async function login(
         /** Password for signin. Should be at least 6 characters. */
         password: string;
     }>): Promise<UserProfile> {
-    await logout.bind(this)();
+    await this.logout();
     let params = validator.Params(form, {
         username: 'string',
         email: (v: string) => validator.Email(v),

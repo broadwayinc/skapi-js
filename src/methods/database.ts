@@ -613,7 +613,8 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                 return v;
             }
         },
-        tag: 'string'
+        tag: 'string',
+        private_key: 'string'
     };
 
     if (query?.table) {
@@ -1286,10 +1287,16 @@ export function listPrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
-    return recordAccess.bind(this)({
+    let list = recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'list'
+    });
+
+    list.list = list.list.map((i: Record<string, any>) => {
+        i.record_id = i.rec_usr.split('/')[0];
+        i.user_id = i.rec_usr.split('/')[1];
+        return i;
     });
 }
 
