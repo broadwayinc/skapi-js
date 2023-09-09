@@ -105,7 +105,6 @@ export default class Skapi {
         };
     } = {};
     private __request_signup_confirmation: string | null = null;
-    private __sessionPending = null;
     private __private_access_key: {
         [record_id: string]: string
     } = {}
