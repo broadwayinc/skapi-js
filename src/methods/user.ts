@@ -315,21 +315,20 @@ export function authentication() {
             this.__disabledAccount = null;
 
             createCognitoUser(email).then(initUser => {
-                cognitoUser = initUser.cognitoUser;
                 let username = initUser.cognitoUsername;
-
                 let authenticationDetails = new AuthenticationDetails({
                     Username: username,
                     Password: password
                 });
 
-                cognitoUser.authenticateUser(authenticationDetails, {
+                initUser.cognitoUser.authenticateUser(authenticationDetails, {
                     newPasswordRequired: (userAttributes, requiredAttributes) => {
                         this.__request_signup_confirmation = username;
                         if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER') {
                             // auto confirm
-                            cognitoUser.completeNewPasswordChallenge(password, {}, {
-                                onSuccess: (result) => {
+                            initUser.cognitoUser.completeNewPasswordChallenge(password, {}, {
+                                onSuccess: _ => {
+                                    cognitoUser = initUser.cognitoUser;
                                     getSession().then(session => res(this.user));
                                 },
                                 onFailure: (err: any) => {
@@ -341,7 +340,10 @@ export function authentication() {
                             rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
                         }
                     },
-                    onSuccess: (logged) => getSession().then(session => res(this.user)),
+                    onSuccess: _ => getSession().then(_ => {
+                        cognitoUser = initUser.cognitoUser;
+                        res(this.user);
+                    }),
                     onFailure: (err: any) => {
                         let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
 
