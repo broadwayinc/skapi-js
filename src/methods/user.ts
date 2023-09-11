@@ -801,6 +801,9 @@ export async function changePassword(params: {
                     else if (err?.code === "NotAuthorizedException") {
                         rej(new SkapiError('Incorrect password.', { code: 'INVALID_REQUEST' }));
                     }
+                    else if (err?.code === "TooManyRequestsException") {
+                        rej(new SkapiError('Too many attempts. Please try again later.', { code: 'REQUEST_EXCEED' }));
+                    }
                     else {
                         rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || err?.name }));
                     }
