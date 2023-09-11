@@ -1004,6 +1004,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                 if (err instanceof SkapiError) {
                     err.name = propertyKey + '()';
                 }
+                
                 else {
                     err = err instanceof Error ? err : new SkapiError(err, { name: propertyKey + '()' });
                 }
