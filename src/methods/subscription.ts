@@ -206,7 +206,7 @@ export async function getSubscribers(option: SubscriptionGroup<number | undefine
 };
 
 export async function getNewsletterSubscription(params: {
-    group?: number;
+    group?: number | 'public' | 'authorized';
 }): Promise<{
     active: boolean;
     timestamp: number;
@@ -226,7 +226,18 @@ export async function getNewsletterSubscription(params: {
 
                 return v;
             },
-            group: 'number'
+            group: v => {
+                if (v === 'public') {
+                    v = 0
+                }
+                if (v === 'authorized') {
+                    v = 1;
+                }
+                if (typeof v !== 'number') {
+                    throw new SkapiError('"group" should be type number | "public" | "authorized".', { code: 'INVALID_PARAMETER' })
+                }
+                return v;
+            }
         }
     );
 
