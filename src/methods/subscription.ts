@@ -205,6 +205,7 @@ export async function getSubscribers(option: SubscriptionGroup<number | undefine
     return getSubscriptions.bind(this)(subParams, fetchOptions);
 };
 
+// requires auth
 export async function getNewsletterSubscription(params: {
     group?: number | 'public' | 'authorized';
 }): Promise<{
