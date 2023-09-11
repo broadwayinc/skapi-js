@@ -357,6 +357,16 @@ export function authentication() {
                                 error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
                             }
                         }
+                        else if (err.code === "UserNotFoundException") {
+                            error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
+                        }
+                        // else if (err.code === "UserNotConfirmedException") {
+                        //     this.__request_signup_confirmation = username;
+                        //     error = ["User's signup confirmation is required.", 'SIGNUP_CONFIRMATION_NEEDED'];
+                        // }
+                        else if (err.code === "TooManyRequestsException" || err.code === "LimitExceededException") {
+                            error = ['Too many attempts. Please try again later.', 'REQUEST_EXCEED'];
+                        }
 
                         let errCode = error[1];
                         let errMsg = error[0];
@@ -801,7 +811,7 @@ export async function changePassword(params: {
                     else if (err?.code === "NotAuthorizedException") {
                         rej(new SkapiError('Incorrect password.', { code: 'INVALID_REQUEST' }));
                     }
-                    else if (err?.code === "TooManyRequestsException") {
+                    else if (err?.code === "TooManyRequestsException" || err?.code === "LimitExceededException") {
                         rej(new SkapiError('Too many attempts. Please try again later.', { code: 'REQUEST_EXCEED' }));
                     }
                     else {
