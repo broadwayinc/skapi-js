@@ -1013,11 +1013,11 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                         return option.onerror(err);
                     }
                     else {
-                        throw new SkapiError('Callback "onerror" should be type: function.', { code: 'INVALID_PARAMETER', name: propertyKey + '()' });
+                        return new SkapiError('Callback "onerror" should be type: function.', { code: 'INVALID_PARAMETER', name: propertyKey + '()' });
                     }
                 }
 
-                throw err;
+                return err;
             };
 
             const executeMethod = () => {
@@ -1042,7 +1042,12 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                             return handleResponse(resolved);
                         }
                         catch (err) {
-                            return handleError(err);
+                            let is_err = handleError(err);
+                            if (is_err instanceof Error) {
+                                throw is_err;
+                            }
+
+                            return is_err;
                         }
                     })();
                 }
