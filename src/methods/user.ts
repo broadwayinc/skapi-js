@@ -223,6 +223,84 @@ export function authentication() {
         };
     };
 
+    const authenticateUser = (email: string, password: string): Promise<UserProfile> => {
+        return new Promise((res, rej) => {
+            this.__request_signup_confirmation = null;
+            this.__disabledAccount = null;
+
+            createCognitoUser(email).then(initUser => {
+                let username = initUser.cognitoUsername;
+                let authenticationDetails = new AuthenticationDetails({
+                    Username: username,
+                    Password: password
+                });
+
+                initUser.cognitoUser.authenticateUser(authenticationDetails, {
+                    newPasswordRequired: (userAttributes, requiredAttributes) => {
+                        this.__request_signup_confirmation = username;
+                        if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER') {
+                            // auto confirm
+                            initUser.cognitoUser.completeNewPasswordChallenge(password, {}, {
+                                onSuccess: _ => {
+                                    // cognitoUser = initUser.cognitoUser;
+                                    getSession().then(session => res(this.user));
+                                },
+                                onFailure: (err: any) => {
+                                    rej(new SkapiError(err.message || 'Failed to authenticate user.', { code: err.code }));
+                                }
+                            });
+                        }
+                        else {
+                            rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
+                        }
+                    },
+                    onSuccess: _ => getSession().then(_ => {
+                        res(this.user);
+                    }),
+                    onFailure: (err: any) => {
+                        let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
+
+                        if (err.code === "NotAuthorizedException") {
+                            if (err.message === "User is disabled.") {
+                                this.__disabledAccount = username;
+                                error = ['This account is disabled.', 'USER_IS_DISABLED'];
+                            }
+
+                            else {
+                                error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
+                            }
+                        }
+                        else if (err.code === "UserNotFoundException") {
+                            error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
+                        }
+                        // else if (err.code === "UserNotConfirmedException") {
+                        //     this.__request_signup_confirmation = username;
+                        //     error = ["User's signup confirmation is required.", 'SIGNUP_CONFIRMATION_NEEDED'];
+                        // }
+                        else if (err.code === "TooManyRequestsException" || err.code === "LimitExceededException") {
+                            error = ['Too many attempts. Please try again later.', 'REQUEST_EXCEED'];
+                        }
+
+                        let errCode = error[1];
+                        let errMsg = error[0];
+                        let customErr = error[0].split('#');
+
+                        // "#INVALID_REQUEST: the account has been blacklisted."
+                        // "#NOT_EXISTS: the account does not exist."
+
+                        if (customErr.length > 1) {
+                            customErr = customErr[customErr.length - 1].split(':');
+                            errCode = customErr[0];
+                            errMsg = customErr[1];
+                        }
+
+                        rej(new SkapiError(errMsg, { code: errCode, cause: err }));
+                    }
+                });
+            });
+        });
+    };
+
     // const signup = async (attributes): Promise<true> => {
     //     let conn = await this.__connection;
 
@@ -308,86 +386,7 @@ export function authentication() {
     //         });
     //     });
     // }
-
-    const authenticateUser = (email: string, password: string): Promise<UserProfile> => {
-        return new Promise((res, rej) => {
-            this.__request_signup_confirmation = null;
-            this.__disabledAccount = null;
-
-            createCognitoUser(email).then(initUser => {
-                let username = initUser.cognitoUsername;
-                let authenticationDetails = new AuthenticationDetails({
-                    Username: username,
-                    Password: password
-                });
-
-                initUser.cognitoUser.authenticateUser(authenticationDetails, {
-                    newPasswordRequired: (userAttributes, requiredAttributes) => {
-                        this.__request_signup_confirmation = username;
-                        if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER') {
-                            // auto confirm
-                            initUser.cognitoUser.completeNewPasswordChallenge(password, {}, {
-                                onSuccess: _ => {
-                                    cognitoUser = initUser.cognitoUser;
-                                    getSession().then(session => res(this.user));
-                                },
-                                onFailure: (err: any) => {
-                                    rej(new SkapiError(err.message || 'Failed to authenticate user.', { code: err.code }));
-                                }
-                            });
-                        }
-                        else {
-                            rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
-                        }
-                    },
-                    onSuccess: _ => getSession().then(_ => {
-                        cognitoUser = initUser.cognitoUser;
-                        res(this.user);
-                    }),
-                    onFailure: (err: any) => {
-                        let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
-
-                        if (err.code === "NotAuthorizedException") {
-                            if (err.message === "User is disabled.") {
-                                this.__disabledAccount = username;
-                                error = ['This account is disabled.', 'USER_IS_DISABLED'];
-                            }
-
-                            else {
-                                error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
-                            }
-                        }
-                        else if (err.code === "UserNotFoundException") {
-                            error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
-                        }
-                        // else if (err.code === "UserNotConfirmedException") {
-                        //     this.__request_signup_confirmation = username;
-                        //     error = ["User's signup confirmation is required.", 'SIGNUP_CONFIRMATION_NEEDED'];
-                        // }
-                        else if (err.code === "TooManyRequestsException" || err.code === "LimitExceededException") {
-                            error = ['Too many attempts. Please try again later.', 'REQUEST_EXCEED'];
-                        }
-
-                        let errCode = error[1];
-                        let errMsg = error[0];
-                        let customErr = error[0].split('#');
-
-                        // "#INVALID_REQUEST: the account has been blacklisted."
-                        // "#NOT_EXISTS: the account does not exist."
-
-                        if (customErr.length > 1) {
-                            customErr = customErr[customErr.length - 1].split(':');
-                            errCode = customErr[0];
-                            errMsg = customErr[1];
-                        }
-
-                        rej(new SkapiError(errMsg, { code: errCode, cause: err }));
-                    }
-                });
-            });
-        });
-    };
-
+    
     return {
         getSession,
         authenticateUser,
