@@ -609,9 +609,12 @@ export async function signup(
 
     params.signup_confirmation = signup_confirmation;
     params.email_subscription = option?.email_subscription || false;
-
-    delete params.service;
-    delete params.owner;
+    
+    if(!admin_creating_account) {
+        delete params.service;
+        delete params.owner;
+    }
+    
     await request.bind(this)("signup", params);
 
     if (signup_confirmation) {
