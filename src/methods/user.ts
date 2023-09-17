@@ -615,7 +615,7 @@ export async function signup(
         delete params.owner;
     }
 
-    await request.bind(this)("signup", params);
+    await request.bind(this)("signup", params, { auth: admin_creating_account });
 
     if (signup_confirmation) {
         let u = await authentication.bind(this)().createCognitoUser(params.username || params.email);
@@ -626,7 +626,7 @@ export async function signup(
 
     if (logUser) {
         // log user in
-        return login.bind(this)({ email: params.username || params.email, password: params.password }, { auth: admin_creating_account });
+        return login.bind(this)({ email: params.username || params.email, password: params.password });
     }
 
     return 'SUCCESS: The account has been created.';
