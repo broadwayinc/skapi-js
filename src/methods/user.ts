@@ -386,7 +386,7 @@ export function authentication() {
     //         });
     //     });
     // }
-    
+
     return {
         getSession,
         authenticateUser,
@@ -546,7 +546,7 @@ export async function signup(
         access_group: 'number',
         misc: 'string'
     }, ['email', 'password']);
-    
+
     let is_admin = await checkAdmin.bind(this)();
 
     let admin_creating_account = is_admin && params.service && this.service !== params.service;
@@ -609,12 +609,12 @@ export async function signup(
 
     params.signup_confirmation = signup_confirmation;
     params.email_subscription = option?.email_subscription || false;
-    
-    if(!admin_creating_account) {
+
+    if (!admin_creating_account) {
         delete params.service;
         delete params.owner;
     }
-    
+
     await request.bind(this)("signup", params);
 
     if (signup_confirmation) {
@@ -626,7 +626,7 @@ export async function signup(
 
     if (logUser) {
         // log user in
-        return login.bind(this)({ email: params.username || params.email, password: params.password });
+        return login.bind(this)({ email: params.username || params.email, password: params.password }, { auth: admin_creating_account });
     }
 
     return 'SUCCESS: The account has been created.';
