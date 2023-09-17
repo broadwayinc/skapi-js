@@ -546,7 +546,7 @@ export async function signup(
         access_group: 'number',
         misc: 'string'
     }, ['email', 'password']);
-    console.log({params});
+    
     let is_admin = await checkAdmin.bind(this)();
 
     let admin_creating_account = is_admin && params.service && this.service !== params.service;
@@ -609,7 +609,7 @@ export async function signup(
 
     params.signup_confirmation = signup_confirmation;
     params.email_subscription = option?.email_subscription || false;
-    console.log({admin_creating_account});
+    
     if(!admin_creating_account) {
         delete params.service;
         delete params.owner;
