@@ -681,9 +681,9 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
             //     }
             // }
         }
-        
+
         let isAdmin = await this.checkAdmin();
-        query = validator.Params(query || {}, struct, ref_user && isAdmin ? [] : ['table']);
+        query = validator.Params(query || {}, struct, ref_user || isAdmin ? [] : ['table']);
         if (typeof query.table !== 'string' && query.table?.subscription && !this.session) {
             throw new SkapiError('Unsigned users have no access to subscription records.', { code: 'INVALID_REQUEST' });
         }
