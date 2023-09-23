@@ -68,11 +68,14 @@ function normalizeRecord(record: Record<string, any>): RecordData {
             // table/service/group(** | group)/[subscription(user id)/group(00 - 99)]/[tag]
             output.table.name = rSplit[0];
             output.table.access_group = rSplit[2] == '**' ? 'private' : parseInt(rSplit[2]);
+            // if (rSplit?.[3]) {
+            //     output.table.subscription = {
+            //         user_id: rSplit[3],
+            //         group: parseInt(rSplit[4])
+            //     };
+            // }
             if (rSplit?.[3]) {
-                output.table.subscription = {
-                    user_id: rSplit[3],
-                    group: parseInt(rSplit[4])
-                };
+                output.table.subscription_group = parseInt(rSplit[4]);
             }
         },
         'usr_tbl': (r: string) => {

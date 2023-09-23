@@ -79,11 +79,7 @@ export type RecordData = {
         name: string;
         /** Number range: 0 ~ 99 */
         access_group?: number | 'private' | 'public' | 'authorized';
-        subscription?: {
-            user_id: string;
-            /** Number range: 0 ~ 99 */
-            group: number;
-        };
+        subscription_group?: number;
     },
     reference: {
         record_id?: string;
@@ -97,6 +93,7 @@ export type RecordData = {
     },
     data?: Record<string, any>;
     tags?: string[];
+    bin?: string[];
     ip: string;
     readonly: boolean;
 };
