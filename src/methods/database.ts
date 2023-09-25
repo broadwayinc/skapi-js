@@ -842,7 +842,7 @@ export async function postRecord(
                 throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
             }
 
-            if (config.record_id && config.table.hasOwnProperty('subscription_group')) {
+            if (!config.record_id && config.table.hasOwnProperty('subscription_group')) {
                 throw new SkapiError('Service owner cannot write to subscription table.', { code: 'INVALID_REQUEST' });
             }
         }
