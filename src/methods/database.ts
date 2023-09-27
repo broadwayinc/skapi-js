@@ -610,7 +610,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                 }
 
                 if (typeof v === 'string') {
-                    return validator.specialChars(v, 'index.value');
+                    return validator.specialChars(v, 'index.range', false, true);
                 }
 
                 return v;
@@ -620,6 +620,10 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
         private_key: 'string'
     };
 
+    if(query?.tag) {
+        validator.specialChars(query.tag, 'tag', false, true);
+    }
+
     if (query?.table) {
         if (query.table.access_group === 'public') {
             query.table.access_group = 0;
@@ -627,6 +631,10 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
 
         else if (query.table.access_group === 'authorized') {
             query.table.access_group = 1;
+        }
+
+        if (query.table?.name) {
+            validator.specialChars(query.table.name, 'table name', true, true);
         }
 
         if (typeof query.table.access_group === 'number') {
@@ -836,6 +844,8 @@ export async function postRecord(
         if (!config.table.name) {
             throw new SkapiError('"table.name" cannot be empty string.', { code: 'INVALID_PARAMETER' });
         }
+
+        validator.specialChars(config.table.name, 'table name', true, true);
 
         if (isAdmin) {
             if (config.table.access_group === 'private') {
