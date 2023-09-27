@@ -153,17 +153,17 @@ function specialChars(
             throw new SkapiError(`${p} should be type: <string | string[]>.`, { code: 'INVALID_PARAMETER' });
         }
 
-        if (!allowWhiteSpace && string.includes(' ')) {
+        if (!allowWhiteSpace && s.includes(' ')) {
             throw new SkapiError(`${p} should not have whitespace.`, { code: 'INVALID_PARAMETER' });
         }
 
-        if (!allowPeriods && string.includes('.')) {
+        if (!allowPeriods && s.includes('.')) {
             throw new SkapiError(`${p} should not have periods.`, { code: 'INVALID_PARAMETER' });
         }
 
         // allowed special characters: [\]^_`
         if (/[\[\]\\^_`]/.test(s)) {
-            return string;
+            return s;
         }
 
         if (/[`!@#$%^&*()_+\-=\[\]{};':"\\|,<>\/?~]/.test(s)) {
