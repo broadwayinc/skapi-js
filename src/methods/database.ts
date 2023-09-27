@@ -84,11 +84,14 @@ function normalizeRecord(record: Record<string, any>): RecordData {
             output.user_id = rSplit[0];
             output.table.name = rSplit[1];
             output.table.access_group = rSplit[3] == '**' ? 'private' : parseInt(rSplit[3]);
+            // if (rSplit?.[4]) {
+            //     output.table.subscription = {
+            //         user_id: rSplit[4],
+            //         group: parseInt(rSplit[5])
+            //     };
+            // }
             if (rSplit?.[4]) {
-                output.table.subscription = {
-                    user_id: rSplit[4],
-                    group: parseInt(rSplit[5])
-                };
+                output.table.subscription_group = parseInt(rSplit[4]);
             }
         },
         'idx': (r: string) => {
