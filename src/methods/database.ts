@@ -212,7 +212,7 @@ export async function uploadFiles(
     params: {
         record_id: string; // Record ID of a record to upload files to.
     } & FormSubmitCallback
-): Promise<{ completed: File[], failed: File[]; }> {
+): Promise<{ completed: File[]; failed: File[]; bin_endpoints: {[record_id:string]: string[]} }> {
     // <input type="file" webkitdirectory multiple />
     // let input = document.querySelector('input[type="file"]');
     // let data = new FormData();
@@ -333,6 +333,8 @@ export async function uploadFiles(
         return result;
     }
 
+    let bin_endpoints = {};
+
     for (let f of (fileList as FileList | File[])) {
         let signedParams = Object.assign({
             key: f.name,
@@ -340,7 +342,14 @@ export async function uploadFiles(
             contentType: f.type || null
         }, getSignedParams);
 
-        let { fields = null, url } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
+        let { fields = null, url, cdn } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
+        
+        if(!bin_endpoints[getSignedParams.id]) {
+            bin_endpoints[getSignedParams.id] = [];
+        }
+
+        bin_endpoints[getSignedParams.id].push(cdn);
+
         let form = new FormData();
 
         for (let name in fields) {
@@ -353,6 +362,8 @@ export async function uploadFiles(
             await fetchProgress(
                 url, form,
                 (p: ProgressEvent) => {
+                    if (typeof params.progress !== 'function') return;
+
                     params.progress(
                         {
                             status: 'upload',
@@ -373,7 +384,7 @@ export async function uploadFiles(
         }
     }
 
-    return { completed, failed };
+    return { completed, failed, bin_endpoints };
 }
 
 export async function getFile(
