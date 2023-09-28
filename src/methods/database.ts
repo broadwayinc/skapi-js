@@ -201,10 +201,12 @@ export async function deleteFiles(params: {
         throw new SkapiError('"endpoints" should be type: array | string.', { code: 'INVALID_PARAMETER' });
     }
 
-    return request.bind(this)('del-files', {
+    let updatedRec = request.bind(this)('del-files', {
         endpoints,
         storage: 'records'
     }, { auth: true, method: 'post' });
+
+    return updatedRec.map(r => normalizeRecord.bind(this)(r));
 }
 
 export async function uploadFiles(
