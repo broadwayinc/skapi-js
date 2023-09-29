@@ -999,7 +999,7 @@ export async function getTables(
         'srvc': 'service'
     };
 
-    if (Array.isArray(res.list)) {
+    if (Array.isArray(res?.list)) {
         for (let t of res.list) {
             for (let k in convert) {
                 if (t.hasOwnProperty(k)) {
@@ -1104,7 +1104,7 @@ export async function getIndexes(
         'cnt_str': 'string_count'
     };
 
-    if (Array.isArray(res.list)) {
+    if (Array.isArray(res?.list)) {
         res.list = res.list.map((i: Record<string, any>) => {
             let iSplit = i.idx.split('/');
             let resolved: Record<string, any> = {
@@ -1154,7 +1154,7 @@ export async function getTags(
         Object.assign({ auth: true }, { fetchOptions })
     );
 
-    if (Array.isArray(res.list)) {
+    if (Array.isArray(res?.list)) {
         for (let i in res.list) {
             let item = res.list[i];
             let tSplit = item.tag.split('/');
