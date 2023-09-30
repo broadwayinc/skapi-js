@@ -48,7 +48,7 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
             referenced_count: 0
         },
         ip: '',
-        bin: []
+        bin: {}
     };
 
     const keys = {
