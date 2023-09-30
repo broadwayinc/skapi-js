@@ -75,7 +75,11 @@ function normalizeRecord(record: Record<string, any>): RecordData {
             //     };
             // }
             if (rSplit?.[3]) {
-                output.table.subscription_group = parseInt(rSplit[4]);
+                // output.table.subscription_group = parseInt(rSplit[4]);
+                output.table.subscription = true;
+            }
+            else {
+                output.table.subscription = false;
             }
         },
         'usr_tbl': (r: string) => {
@@ -91,7 +95,11 @@ function normalizeRecord(record: Record<string, any>): RecordData {
             //     };
             // }
             if (rSplit?.[4]) {
-                output.table.subscription_group = parseInt(rSplit[4]);
+                // output.table.subscription_group = parseInt(rSplit[4]);
+                output.table.subscription = true;
+            }
+            else {
+                output.table.subscription = false;
             }
         },
         'idx': (r: string) => {
@@ -214,7 +222,7 @@ export async function uploadFiles(
     params: {
         record_id: string; // Record ID of a record to upload files to.
     } & FormSubmitCallback
-): Promise<{ completed: File[]; failed: File[]; bin_endpoints: {[record_id:string]: string[]} }> {
+): Promise<{ completed: File[]; failed: File[]; bin_endpoints: { [record_id: string]: string[] } }> {
     // <input type="file" webkitdirectory multiple />
     // let input = document.querySelector('input[type="file"]');
     // let data = new FormData();
@@ -345,8 +353,8 @@ export async function uploadFiles(
         }, getSignedParams);
 
         let { fields = null, url, cdn } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
-        
-        if(!bin_endpoints[getSignedParams.id]) {
+
+        if (!bin_endpoints[getSignedParams.id]) {
             bin_endpoints[getSignedParams.id] = [];
         }
 
@@ -548,18 +556,19 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
         table: {
             name: 'string',
             access_group: ['number', 'private', 'public', 'authorized'],
-            subscription: {
-                user_id: (v: string) => validator.UserId(v, 'User ID in "subscription.user_id"'),
-                group: (v: number) => {
-                    if (typeof v !== 'number') {
-                        throw new SkapiError('"subscription.group" should be type: number.', { code: 'INVALID_PARAMETER' });
-                    }
-                    if (v > 99 || v < 0) {
-                        throw new SkapiError('"subscription.group" should be within range: 0 ~ 99.', { code: 'INVALID_PARAMETER' });
-                    }
-                    return v;
-                }
-            }
+            // subscription: {
+            //     user_id: (v: string) => validator.UserId(v, 'User ID in "subscription.user_id"'),
+            //     group: (v: number) => {
+            //         if (typeof v !== 'number') {
+            //             throw new SkapiError('"subscription.group" should be type: number.', { code: 'INVALID_PARAMETER' });
+            //         }
+            //         if (v > 99 || v < 0) {
+            //             throw new SkapiError('"subscription.group" should be within range: 0 ~ 99.', { code: 'INVALID_PARAMETER' });
+            //         }
+            //         return v;
+            //     }
+            // }
+            subscription: (v: string) => validator.UserId(v, 'User ID in "subscription"')
         },
         reference: 'string',
         index: {
@@ -636,7 +645,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
         private_key: 'string'
     };
 
-    if(query?.tag) {
+    if (query?.tag) {
         validator.specialChars(query.tag, 'tag', false, true);
     }
 
@@ -710,10 +719,20 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
         }
 
         let isAdmin = await this.checkAdmin();
-        query = validator.Params(query || {}, struct, ref_user || isAdmin ? [] : ['table']);
-        if (typeof query.table !== 'string' && query.table?.subscription && !this.session) {
-            throw new SkapiError('Unsigned users have no access to subscription records.', { code: 'INVALID_REQUEST' });
+
+        let q: any = validator.Params(query || {}, struct, ref_user || isAdmin ? [] : ['table']);
+        if (typeof q.table !== 'string') {
+            if (q.table?.subscription) {
+                if (!this.session) {
+                    throw new SkapiError('Unsigned users have no access to subscription records.', { code: 'INVALID_REQUEST' });
+                }
+                q.table.subscription = {
+                    user_id: q.table.subscription,
+                    group: 1
+                }
+            }
         }
+        query = q;
     }
 
     let auth = query.hasOwnProperty('access_group') && typeof query.table !== 'string' && query.table.access_group ? true : !!this.__user;
@@ -773,12 +792,13 @@ export async function postRecord(
 
     let progress = config.progress || null;
     let reference_private_key = null;
-    config = validator.Params(config || {}, {
+    let config_chkd = validator.Params(config || {}, {
         record_id: 'string',
         readonly: 'boolean',
         table: {
             name: 'string',
-            subscription_group: ['number', null],
+            // subscription_group: ['number', null],
+            subscription: 'boolean',
             access_group: ['number', 'private', 'public', 'authorized']
         },
         reference: {
@@ -838,45 +858,51 @@ export async function postRecord(
         }
     }, [], ['response', 'onerror', 'progress'], null);
 
-    if (!config?.table && !config?.record_id) {
+    if (!config_chkd?.table && !config_chkd?.record_id) {
         throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (typeof config.table !== 'string' && config.table) {
-        if (config.table.access_group === 'public') {
-            config.table.access_group = 0;
+    if (typeof config_chkd.table !== 'string' && config_chkd.table) {
+        if (config_chkd.table.access_group === 'public') {
+            config_chkd.table.access_group = 0;
         }
 
-        else if (config.table.access_group === 'authorized') {
-            config.table.access_group = 1;
+        else if (config_chkd.table.access_group === 'authorized') {
+            config_chkd.table.access_group = 1;
         }
 
-        if (typeof config.table.access_group === 'number') {
-            if (!isAdmin && this.user.access_group < config.table.access_group) {
+        if (typeof config_chkd.table.access_group === 'number') {
+            if (!isAdmin && this.user.access_group < config_chkd.table.access_group) {
                 throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
             }
         }
 
-        if (!config.table.name) {
+        if (!config_chkd.table.name) {
             throw new SkapiError('"table.name" cannot be empty string.', { code: 'INVALID_PARAMETER' });
         }
 
-        validator.specialChars(config.table.name, 'table name', true, true);
+        validator.specialChars(config_chkd.table.name, 'table name', true, true);
 
         if (isAdmin) {
-            if (config.table.access_group === 'private') {
+            if (config_chkd.table.access_group === 'private') {
                 throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
             }
 
-            if (!config.record_id && config.table.hasOwnProperty('subscription_group')) {
+            if (!config_chkd.record_id && config_chkd.table.hasOwnProperty('subscription')) {
                 throw new SkapiError('Service owner cannot write to subscription table.', { code: 'INVALID_REQUEST' });
             }
         }
 
-        if (typeof config.table?.subscription_group === 'number' && config.table.subscription_group < 0 || config.table.subscription_group > 99) {
-            throw new SkapiError("Subscription group should be within range: 0 ~ 99", { code: 'INVALID_PARAMETER' });
+        // if (typeof config.table?.subscription_group === 'number' && config.table.subscription_group < 0 || config.table.subscription_group > 99) {
+        //     throw new SkapiError("Subscription group should be within range: 0 ~ 99", { code: 'INVALID_PARAMETER' });
+        // }
+        if (config_chkd.table?.subscription) {
+            config_chkd.table.subscription_group = 1;
+            delete config_chkd.table.subscription;
         }
     }
+
+    config = config_chkd;
 
     // callbacks should be removed after checkparams
     delete config.response;
@@ -1179,9 +1205,10 @@ export async function deleteRecords(params: {
         name: string;
         /** Access group number. */
         access_group?: number | 'private' | 'public' | 'authorized';
-        /** @ignore */
-        subscription?: string;
-        subscription_group?: number;
+        subscription?: boolean;
+        // /** @ignore */
+        // subscription?: string;
+        // subscription_group?: number;
     };
 }): Promise<string> {
     let isAdmin = await this.checkAdmin();
@@ -1246,30 +1273,48 @@ export async function deleteRecords(params: {
                 throw new SkapiError('Invalid "table.access_group". Access group should be type <number (0~99) | "private" | "public" | "authorized">.', { code: 'INVALID_PARAMETER' });
             },
             name: 'string',
-            subscription: (v: string) => {
-                if (isAdmin) {
+            subscription: (v: string | boolean) => {
+                if (isAdmin && typeof params?.table?.subscription === 'string') {
                     // admin targets user id
                     return validator.UserId((v as string), 'User ID in "table.subscription"');
                 }
 
-                throw new SkapiError('"table.subscription" is an invalid parameter key.', { code: 'INVALID_PARAMETER' });
-            },
-            subscription_group: (v: number) => {
-                if (isAdmin && typeof params?.table?.subscription !== 'string') {
-                    throw new SkapiError('"table.subscription" is required.', { code: 'INVALID_PARAMETER' });
-                }
-
-                if (typeof v === 'number') {
-                    if (v >= 0 && v < 99) {
-                        return v;
+                if (typeof v === 'boolean') {
+                    if (v) {
+                        return this.__user.user_id;
+                    }
+                    else {
+                        return null;
                     }
                 }
 
-                throw new SkapiError('Subscription group should be between 0 ~ 99.', { code: 'INVALID_PARAMETER' });
-            }
+                throw new SkapiError('"table.subscription" is an invalid parameter key.', { code: 'INVALID_PARAMETER' });
+            },
+            // subscription_group: (v: number) => {
+            //     if (isAdmin && typeof params?.table?.subscription !== 'string') {
+            //         throw new SkapiError('"table.subscription" is required.', { code: 'INVALID_PARAMETER' });
+            //     }
+
+            //     if (typeof v === 'number') {
+            //         if (v >= 0 && v < 99) {
+            //             return v;
+            //         }
+            //     }
+
+            //     throw new SkapiError('Subscription group should be between 0 ~ 99.', { code: 'INVALID_PARAMETER' });
+            // }
         };
 
-        params.table = validator.Params(params.table || {}, struct, isAdmin ? [] : ['name']);
+        let table_p = validator.Params(params.table || {}, struct, isAdmin ? [] : ['name']);
+        
+        if (table_p.subscription === null) {
+            delete table_p.subscription;
+        }
+        else {
+            table_p.subscription_group = 1;
+        }
+
+        params.table = table_p;
     }
 
     return await request.bind(this)('del-records', params, { auth: true });

@@ -13,7 +13,7 @@ import {
     Form,
     PostRecordConfig,
     PublicUser,
-    SubscriptionGroup
+    // SubscriptionGroup
 } from '../Types';
 import SkapiError from './error';
 import validator from '../utils/validator';
@@ -431,7 +431,8 @@ export default class Skapi {
             name: string;
             /** Access group number. */
             access_group?: number | 'private' | 'public' | 'authorized';
-            subscription_group?: number;
+            // subscription_group?: number;
+            subscription: boolean;
         };
     }): Promise<string> { return deleteRecords.bind(this)(params); }
     @formHandler()
@@ -472,28 +473,6 @@ export default class Skapi {
         revert: boolean; // Reverts to last verified e-mail when true.
     }): Promise<string | UserProfile> {
         return lastVerifiedEmail.bind(this)(params);
-    }
-    @formHandler()
-    getSubscriptions(
-        params: {
-            /** Subscribers user id. */
-            subscriber?: string;
-            /** User ID of the subscription. User id that subscriber has subscribed to. */
-            subscription?: string;
-            /** subscription group. if omitted, will fetch all groups. */
-            group?: number;
-            /** Fetch blocked subscription when True */
-            blocked?: boolean;
-        },
-        fetchOptions?: FetchOptions
-    ): Promise<DatabaseResponse<{
-        subscriber: string; // Subscriber ID
-        subscription: string; // Subscription ID
-        group: number; // Subscription group number
-        timestamp: number; // Subscribed UNIX timestamp
-        blocked: boolean; // True when subscriber is blocked by subscription
-    }>> {
-        return getSubscriptions.bind(this)(params, fetchOptions);
     }
     @formHandler()
     unsubscribeNewsletter(
@@ -660,20 +639,50 @@ export default class Skapi {
         config: PostRecordConfig & FormSubmitCallback
     ): Promise<RecordData> { return postRecord.bind(this)(form, config); }
     @formHandler()
-    subscribe(option: SubscriptionGroup<number>): Promise<'SUCCESS: the user has subscribed.'> {
-        return subscribe.bind(this)(option);
+    getSubscriptions(
+        params: {
+            /** Subscribers user id. */
+            subscriber?: string;
+            /** User ID of the subscription. User id that subscriber has subscribed to. */
+            subscription?: string;
+            // /** subscription group. if omitted, will fetch all groups. */
+            // group?: number;
+            /** Fetch blocked subscription when True */
+            blocked?: boolean;
+        },
+        fetchOptions?: FetchOptions
+    ): Promise<DatabaseResponse<{
+        subscriber: string; // Subscriber ID
+        subscription: string; // Subscription ID
+        group: number; // Subscription group number
+        timestamp: number; // Subscribed UNIX timestamp
+        blocked: boolean; // True when subscriber is blocked by subscription
+    }>> {
+        return getSubscriptions.bind(this)(params, fetchOptions);
     }
     @formHandler()
-    unsubscribe(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: the user has unsubscribed.'> {
-        return unsubscribe.bind(this)(option);
+    // subscribe(option: SubscriptionGroup<number>): Promise<'SUCCESS: the user has subscribed.'> {
+    subscribe(params: { user_id: string }): Promise<'SUCCESS: the user has subscribed.'> {
+        // return subscribe.bind(this)(option);
+        return subscribe.bind(this)(params);
     }
     @formHandler()
-    blockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: blocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
-        return blockSubscriber.bind(this)(option);
+    // unsubscribe(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: the user has unsubscribed.'> {
+    unsubscribe(params: { user_id: string }): Promise<'SUCCESS: the user has unsubscribed.'> {
+        // return unsubscribe.bind(this)(option);
+        return unsubscribe.bind(this)(params);
     }
     @formHandler()
-    unblockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: unblocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
-        return unblockSubscriber.bind(this)(option);
+    // blockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: blocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
+    blockSubscriber(params: { user_id: string }): Promise<'SUCCESS: blocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
+        // return blockSubscriber.bind(this)(option);
+        return blockSubscriber.bind(this)(params);
+    }
+    @formHandler()
+    // unblockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: unblocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
+    unblockSubscriber(params: { user_id: string }): Promise<'SUCCESS: unblocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
+        // return unblockSubscriber.bind(this)(option);
+        return unblockSubscriber.bind(this)(params);
     }
     @formHandler()
     subscribeNewsletter(
