@@ -161,12 +161,7 @@ function specialChars(
             throw new SkapiError(`${p} should not have periods.`, { code: 'INVALID_PARAMETER' });
         }
 
-        // allowed special characters: [\]^_`
-        if (/[\[\]\\^_`]/.test(s)) {
-            return s;
-        }
-
-        if (/[`!@#$%^&*()_+\-=\[\]{};':"\\|,<>\/?~]/.test(s)) {
+        if (/[!@#$%&*()+\-={};':"\|,<>\/?~]/.test(s)) {
             throw new SkapiError(`${p} should not have special characters.`, { code: 'INVALID_PARAMETER' });
         }
     };
