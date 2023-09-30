@@ -15,11 +15,13 @@ export type GetRecordQuery = {
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized';
-        subscription?: {
-            user_id: string;
-            /** Number range: 0 ~ 99 */
-            group: number;
-        };
+        // subscription?: {
+        //     user_id: string;
+        //     /** Number range: 0 ~ 99 */
+        //     group: number;
+        // };
+        /** User ID of subscription */
+        subscription?: string;
     } | string;
 
     reference?: string; // Referenced record ID. If user ID is given, it will fetch records that are uploaded by the user.
@@ -47,7 +49,8 @@ export type PostRecordConfig = {
         name?: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized';
-        subscription_group?: number;
+        // subscription_group?: number;
+        subscription?: boolean;
     } | string;
 
     /** If record ID string is given, "reference.record_id" will be set with default parameters. */
@@ -78,8 +81,9 @@ export type RecordData = {
     table: {
         name: string;
         /** Number range: 0 ~ 99 */
-        access_group?: number | 'private' | 'public' | 'authorized';
-        subscription_group?: number;
+        access_group: 'private' | 'public' | 'authorized' | number;
+        // subscription_group?: number;
+        subscription: boolean;
     },
     reference: {
         record_id?: string;
@@ -264,7 +268,7 @@ export type PublicUser = {
     /** Additional string value that can be used freely. */
     misc?: string;
     /** Number of the user's subscribers. */
-    subscribers: number;
+    subscribers?: number;
     /** Timestamp of user signup time. */
     timestamp: number;
     /** Service id of the user account. */
@@ -345,7 +349,7 @@ export type Service = {
     /** E-Mail template for welcome E-Mail that user receives after signup process. This can be changed by trigger E-Mail. */
     template_welcome: {
         url: string;
-        subject: string;
+        subject: string;subscri
     };
     /** 13 digit timestamp  */
     timestamp: number;
