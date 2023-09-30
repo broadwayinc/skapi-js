@@ -888,9 +888,9 @@ export async function postRecord(
                 throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
             }
 
-            if (!config_chkd.record_id && config_chkd.table.hasOwnProperty('subscription')) {
-                throw new SkapiError('Service owner cannot write to subscription table.', { code: 'INVALID_REQUEST' });
-            }
+            // if (!config_chkd.record_id && config_chkd.table.hasOwnProperty('subscription')) {
+            //     throw new SkapiError('Service owner cannot write to subscription table.', { code: 'INVALID_REQUEST' });
+            // }
         }
 
         // if (typeof config.table?.subscription_group === 'number' && config.table.subscription_group < 0 || config.table.subscription_group > 99) {
