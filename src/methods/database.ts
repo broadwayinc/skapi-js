@@ -259,14 +259,16 @@ export async function uploadFiles(
         fileList = new FormData(fileList);
     }
 
+    let formDataKeys = [];
     if (fileList instanceof FormData) {
         // extract all fileList
         let fileEntries = [];
 
         for (let entry of fileList.entries()) {
-            // let key = entry[0];
             let value = entry[1];
             if (value instanceof File) {
+                let key = entry[0];
+                formDataKeys.push(key);
                 fileEntries.push(value);
             }
         }
@@ -345,9 +347,12 @@ export async function uploadFiles(
 
     let bin_endpoints = {};
 
-    for (let f of (fileList as FileList | File[])) {
+    for (let i = 0; i < fileList.length; i++) {
+        let f = fileList[i];
+        let key = formDataKeys?.[i] || '';
+        
         let signedParams = Object.assign({
-            key: f.name,
+            key: key ? key + '/' + f.name : f.name,
             sizeKey: toBase62(f.size),
             contentType: f.type || null
         }, getSignedParams);
@@ -1306,7 +1311,7 @@ export async function deleteRecords(params: {
         };
 
         let table_p = validator.Params(params.table || {}, struct, isAdmin ? [] : ['name']);
-        
+
         if (table_p.subscription === null) {
             delete table_p.subscription;
         }
