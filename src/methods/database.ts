@@ -148,8 +148,8 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
                 let path = url.split('/').slice(3).join('/');
                 // publ/ap21piquKpzLtjAJxckv/4d4a36a5-b318-4093-92ae-7cf11feae989/4d4a36a5-b318-4093-92ae-7cf11feae989/records/TrNFqeRsKGXyxckv/00/bin/TrNFron/IuqU/gogo/Skapi_IR deck_Final_KOR.pptx
                 let splitPath = path.split('/');
-                let filename = splitPath.slice(-1)[0];
-                let pathKey = splitPath[10];
+                let filename = decodeURIComponent(splitPath.slice(-1)[0]);
+                let pathKey = decodeURIComponent(splitPath[10]);
                 let size = splitPath[9];
                 let uploaded = splitPath[8];
                 let access_group = splitPath[6] == '**' ? 'private' : parseInt(splitPath[6]);
