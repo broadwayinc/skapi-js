@@ -16,7 +16,17 @@ import { request } from './request';
 
 const __index_number_range = 4503599627370496; // +/-
 
-function normalizeRecord(record: Record<string, any>): RecordData {
+// function to decode base62 string
+function fromBase62(str: string) {
+    const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    let result = 0;
+    for (let i = 0; i < str.length; i++) {
+        result = result * 62 + base62Chars.indexOf(str[i]);
+    }
+    return result;
+}
+
+export function normalizeRecord(record: Record<string, any>): RecordData {
     function base_decode(chars) {
         let charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
         return chars.split('').reverse().reduce((prev, curr, i) =>
@@ -132,7 +142,38 @@ function normalizeRecord(record: Record<string, any>): RecordData {
             output.reference.referenced_count = r;
         },
         'bin': (r: string[]) => {
-            output.bin = r;
+            let binObj = {};
+
+            for(let url of r) {
+                let path = url.split('/').slice(3).join('/');
+                // publ/ap21piquKpzLtjAJxckv/4d4a36a5-b318-4093-92ae-7cf11feae989/4d4a36a5-b318-4093-92ae-7cf11feae989/records/TrNFqeRsKGXyxckv/00/bin/TrNFron/IuqU/gogo/Skapi_IR deck_Final_KOR.pptx
+                let splitPath = path.split('/');
+                let filename = splitPath.slice(-1)[0];
+                let pathKey = splitPath[10];
+                let size = splitPath[9];
+                let uploaded = splitPath[8];
+                let access_group = splitPath[6] == '**' ? 'private' : parseInt(splitPath[6]);
+                access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group;
+                let obj = {
+                    access_group,
+                    filename,
+                    url,
+                    path,
+                    size: fromBase62(size),
+                    uploaded: fromBase62(uploaded)
+                };
+                if(binObj[pathKey]) {
+                    if(!Array.isArray(binObj[pathKey])) {
+                        binObj[pathKey] = [binObj[pathKey]];
+                    }
+                    binObj[pathKey].push(obj);
+                    continue;
+                }
+
+                binObj[pathKey] = obj; 
+            }
+            
+            output.bin = binObj;
         },
         'data': (r: any) => {
             let data = r;
