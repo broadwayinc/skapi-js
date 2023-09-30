@@ -50,6 +50,7 @@ export type PostRecordConfig = {
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized';
         // subscription_group?: number;
+        /** When true, Record will be only accessible for subscribed users. */
         subscription?: boolean;
     } | string;
 
