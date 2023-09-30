@@ -30,7 +30,8 @@ import {
     removePrivateRecordAccess,
     listPrivateRecordAccess,
     requestPrivateRecordAccessKey,
-    deleteFiles
+    deleteFiles,
+    normalizeRecord
 } from '../methods/database';
 import {
     request,
@@ -78,7 +79,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.0-alpha.44';
+    version = '1.0.0-alpha.45';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -322,6 +323,8 @@ export default class Skapi {
     private request = request.bind(this);
     private getSubscribedTo = getSubscribedTo.bind(this);
     private getSubscribers = getSubscribers.bind(this);
+
+    normalizeRecord = normalizeRecord.bind(this);
 
     @formHandler()
     getConnection(): Promise<Connection> {
