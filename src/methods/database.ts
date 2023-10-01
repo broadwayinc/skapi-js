@@ -7,7 +7,8 @@ import {
     GetRecordQuery,
     Condition,
     PostRecordConfig,
-    ProgressCallback
+    ProgressCallback,
+    Binary
 } from '../Types';
 import SkapiError from '../main/error';
 import { extractFormMeta, generateRandom } from '../utils/utils';
@@ -144,7 +145,7 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
         'bin': (r: string[]) => {
             let binObj = {};
 
-            for(let url of r) {
+            for (let url of r) {
                 let path = url.split('/').slice(3).join('/');
                 // publ/ap21piquKpzLtjAJxckv/4d4a36a5-b318-4093-92ae-7cf11feae989/4d4a36a5-b318-4093-92ae-7cf11feae989/records/TrNFqeRsKGXyxckv/00/bin/TrNFron/IuqU/gogo/Skapi_IR deck_Final_KOR.pptx
                 let splitPath = path.split('/');
@@ -160,19 +161,26 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
                     url,
                     path,
                     size: fromBase62(size),
-                    uploaded: fromBase62(uploaded)
+                    uploaded: fromBase62(uploaded),
+                    getFile: (dataType?: 'base64' | 'endpoint' | 'blob', progress?: ProgressCallback) => {
+                        let config = {
+                            dataType: dataType || 'download',
+                            progress
+                        };
+                        return getFile.bind(this)(url, config);
+                    }
                 };
-                if(binObj[pathKey]) {
-                    if(!Array.isArray(binObj[pathKey])) {
+                if (binObj[pathKey]) {
+                    if (!Array.isArray(binObj[pathKey])) {
                         binObj[pathKey] = [binObj[pathKey]];
                     }
                     binObj[pathKey].push(obj);
                     continue;
                 }
 
-                binObj[pathKey] = obj; 
+                binObj[pathKey] = obj;
             }
-            
+
             output.bin = binObj;
         },
         'data': (r: any) => {
@@ -263,7 +271,7 @@ export async function uploadFiles(
     params: {
         record_id: string; // Record ID of a record to upload files to.
     } & FormSubmitCallback
-): Promise<{ completed: File[]; failed: File[]; bin_endpoints: { [record_id: string]: string[] } }> {
+): Promise<{ completed: File[]; failed: File[]; bin_endpoints: string[] }> {
     // <input type="file" webkitdirectory multiple />
     // let input = document.querySelector('input[type="file"]');
     // let data = new FormData();
@@ -386,12 +394,12 @@ export async function uploadFiles(
         return result;
     }
 
-    let bin_endpoints = {};
+    let bin_endpoints = [];
 
     for (let i = 0; i < fileList.length; i++) {
         let f = fileList[i];
         let key = formDataKeys?.[i] || '';
-        
+
         let signedParams = Object.assign({
             key: key ? key + '/' + f.name : f.name,
             sizeKey: toBase62(f.size),
@@ -400,11 +408,7 @@ export async function uploadFiles(
 
         let { fields = null, url, cdn } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
 
-        if (!bin_endpoints[getSignedParams.id]) {
-            bin_endpoints[getSignedParams.id] = [];
-        }
-
-        bin_endpoints[getSignedParams.id].push(cdn);
+        bin_endpoints.push(cdn);
 
         let form = new FormData();
 
@@ -565,19 +569,23 @@ export async function getFile(
         return null;
     }
 
-    let blob = await request.bind(this)(
-        url,
-        { service: service || this.service },
-        { method: 'get', noParams: true, contentType: null, responseType: 'blob', fetchOptions: { progress: config?.progress } }
-    );
+    let blob: Promise<string> = new Promise(async (res, rej) => {
+        try {
+            let b = await request.bind(this)(
+                url,
+                { service: service || this.service },
+                { method: 'get', noParams: true, contentType: null, responseType: 'blob', fetchOptions: { progress: config?.progress } }
+            );
 
-    if (config?.dataType === 'base64') {
-        return new Promise(resolve => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve((reader.result as string));
-            reader.readAsDataURL(blob);
-        });
-    }
+            if (config?.dataType === 'base64') {
+                const reader = new FileReader();
+                reader.onloadend = () => res((reader.result as string));
+                reader.readAsDataURL(b);
+            }
+        } catch (err) {
+            rej(err);
+        }
+    });
 
     return blob;
 }
@@ -901,6 +909,28 @@ export async function postRecord(
             }
 
             throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
+        },
+        remove_bin: (v: string[] | Binary[]) => {
+            if (!v) {
+                return null;
+            }
+
+            let arr = []
+            if (Array.isArray(v)) {
+                for (let i of v) {
+                    if (typeof i === 'string') {
+                        arr.push(i);
+                    }
+                    else if (i.url && i.size && i.filename && typeof i.getFile === 'function') {
+                        arr.push(i.url);
+                    }
+                    else {
+                        throw new SkapiError(`"remove_bin" should be type: <string | Binary[]>`, { code: 'INVALID_PARAMETER' });
+                    }
+                }
+            }
+
+            return arr;
         }
     }, [], ['response', 'onerror', 'progress'], null);
 
@@ -987,49 +1017,67 @@ export async function postRecord(
 
     let options: Record<string, any> = { auth: true };
     let postData = null;
-
+    let to_bin = null;
     if ((form instanceof HTMLFormElement) || (form instanceof FormData) || (form instanceof SubmitEvent)) {
-        let toConvert = (form instanceof SubmitEvent) ? form.target : form;
-        let formData = !(form instanceof FormData) ? new FormData(toConvert as HTMLFormElement) : form;
+        // let toConvert = (form instanceof SubmitEvent) ? form.target : form;
+        // let formData = !(form instanceof FormData) ? new FormData(toConvert as HTMLFormElement) : form;
         let formMeta = extractFormMeta(form);
-        options.meta = config;
 
-        if (Object.keys(formMeta.meta).length) {
-            options.meta.data = formMeta.meta;
-        }
-
-        let formToRemove = {};
-
-        for (let [key, value] of formData.entries()) {
-            if (formMeta.meta.hasOwnProperty(key) && !(value instanceof Blob)) {
-                let f = formData.getAll(key);
-                let f_idx = f.indexOf(value);
-                if (formToRemove.hasOwnProperty(key)) {
-                    formToRemove[key].push(f_idx);
-                }
-                else {
-                    formToRemove[key] = [f_idx];
-                }
+        let formData = null;
+        if (formMeta.files.length) {
+            formData = new FormData();
+            for (let f of formMeta.files) {
+                formData.append(f.name, f);
             }
         }
 
-        if (Object.keys(formToRemove).length) {
-            for (let key in formToRemove) {
-                let values = formData.getAll(key);
-                let val_len = values.length;
-                while (val_len--) {
-                    if (formToRemove[key].includes(val_len)) {
-                        values.splice(val_len, 1);
-                    }
-                }
-                formData.delete(key);
-                for (let dat of values) {
-                    formData.append(key, (dat as Blob), dat instanceof File ? dat.name : null);
-                }
-            }
+        if (formMeta.to_bin.length) {
+            to_bin = formMeta.to_bin;
         }
 
-        postData = formData;
+        // let formToRemove = {};
+
+        // // remove all form data that is not in the formMeta
+        // for (let [key, value] of formData.entries()) {
+        //     if (formMeta.meta.hasOwnProperty(key) && !(value instanceof Blob)) {
+        //         let f = formData.getAll(key);
+        //         let f_idx = f.indexOf(value);
+        //         if (formToRemove.hasOwnProperty(key)) {
+        //             formToRemove[key].push(f_idx);
+        //         }
+        //         else {
+        //             formToRemove[key] = [f_idx];
+        //         }
+        //     }
+        // }
+
+        // if (Object.keys(formToRemove).length) {
+        //     for (let key in formToRemove) {
+        //         let values = formData.getAll(key);
+        //         let val_len = values.length;
+        //         while (val_len--) {
+        //             if (formToRemove[key].includes(val_len)) {
+        //                 values.splice(val_len, 1);
+        //             }
+        //         }
+        //         formData.delete(key);
+        //         for (let dat of values) {
+        //             formData.append(key, (dat as Blob), dat instanceof File ? dat.name : null);
+        //         }
+        //     }
+        // }
+
+        if (formData) {
+            options.meta = config;
+
+            if (Object.keys(formMeta.meta).length) {
+                options.meta.data = formMeta.meta;
+            }
+            postData = formData;
+        }
+        else {
+            postData = Object.assign({ data: form }, config);
+        }
     }
 
     else {
@@ -1044,7 +1092,25 @@ export async function postRecord(
         Object.assign(options, { fetchOptions });
     }
 
-    return normalizeRecord.bind(this)(await request.bind(this)('post-record', postData, options));
+    let rec = await request.bind(this)('post-record', postData, options);
+    if (to_bin) {
+        let uploadFileParams = {
+            record_id: rec.record_id,
+            progress
+        }
+        if (config.hasOwnProperty('service')) {
+            uploadFileParams['service'] = (config as any).service;
+        }
+        let { bin_endpoints } = await uploadFiles(to_bin, uploadFileParams);
+        if (!rec.bin) {
+            rec.bin = bin_endpoints;
+        }
+        else {
+            rec.bin.push(...bin_endpoints);
+        }
+    }
+
+    return normalizeRecord.bind(this)(rec);
 }
 
 export async function getTables(
