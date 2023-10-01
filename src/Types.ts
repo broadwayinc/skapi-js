@@ -70,6 +70,18 @@ export type PostRecordConfig = {
     } | null;
 
     tags?: string[];
+
+    remove_bin?: Binary[] | string[]; // Removes bin data from the record.
+}
+
+export type Binary = {
+    access_group: number | 'private' | 'public' | 'authorized';
+    filename: string;
+    url: string;
+    path: string;
+    size: number;
+    uploaded: number;
+    getFile: (dataType?: 'base64' | 'endpoint' | 'blob', progress?: ProgressCallback) => Promise<Blob | string | void>;
 }
 
 export type RecordData = {
@@ -98,7 +110,7 @@ export type RecordData = {
     },
     data?: Record<string, any>;
     tags?: string[];
-    bin?: string[];
+    bin?: { [key: string]: Binary | Binary[] };
     ip: string;
     readonly: boolean;
 };
@@ -350,7 +362,7 @@ export type Service = {
     /** E-Mail template for welcome E-Mail that user receives after signup process. This can be changed by trigger E-Mail. */
     template_welcome: {
         url: string;
-        subject: string;subscri
+        subject: string; subscri
     };
     /** 13 digit timestamp  */
     timestamp: number;

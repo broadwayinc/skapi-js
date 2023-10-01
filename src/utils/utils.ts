@@ -217,6 +217,8 @@ function extractFormMeta(form: Form<any>) {
         }
     }
 
+    let to_bin = [];
+
     if (form instanceof FormData) {
         let meta = {};
         let totalFileSize = 0;
@@ -227,21 +229,33 @@ function extractFormMeta(form: Form<any>) {
             let v: any = pair[1];
 
             if (v instanceof File) {
-                if (!files.includes(name)) {
-                    files.push(name);
+                // if (!files.includes(name)) {
+                //     files.push(name);
+                // }
+
+                if ((totalFileSize + v.size) > 4000000) {
+                    to_bin.push({ name, file: v });
+                    continue;
                 }
 
                 totalFileSize += v.size;
+                files.push({ name, file: v });
             }
 
             else if (v instanceof FileList) {
-                if (!files.includes(name)) {
-                    files.push(name);
-                }
+                // if (!files.includes(name)) {
+                //     files.push(name);
+                // }
 
                 if (v && v.length > 0) {
                     for (let idx = 0; idx <= v.length - 1; idx++) {
+                        if ((totalFileSize + v.item(idx).size) > 4000000) {
+                            to_bin.push({ name, file: v.item(idx) });
+                            continue;
+                        }
+
                         totalFileSize += v.item(idx).size;
+                        files.push({ name, file: v.item(idx) });
                     }
                 }
             }
@@ -251,11 +265,11 @@ function extractFormMeta(form: Form<any>) {
             }
         }
 
-        if (totalFileSize > 4500000) {
-            throw new SkapiError('Total File size cannot exceed 4MB. Use skapi.uploadFiles() instead.', { code: 'INVALID_REQUEST' });
-        }
+        // if (totalFileSize > 4000000) {
+        //     throw new SkapiError('Total File size cannot exceed 4MB. Use skapi.uploadFiles() instead.', { code: 'INVALID_REQUEST' });
+        // }
 
-        return { meta, files };
+        return { meta, files, to_bin };
     }
 
     if (form instanceof SubmitEvent) {
@@ -276,7 +290,7 @@ function extractFormMeta(form: Form<any>) {
             }
         }
 
-        for (let idx=0; idx < inputs.length; idx++) {
+        for (let idx = 0; idx < inputs.length; idx++) {
             let i = inputs[idx];
             if (i.name) {
                 if (i.type === 'number') {
@@ -313,13 +327,19 @@ function extractFormMeta(form: Form<any>) {
                 }
 
                 else if (i.type === 'file') {
-                    if (!files.includes(i.name)) {
-                        files.push(i.name);
-                    }
+                    // if (!files.includes(i.name)) {
+                    //     files.push(i.name);
+                    // }
 
                     if (i.files && i.files.length > 0) {
                         for (let idx = 0; idx <= i.files.length - 1; idx++) {
+                            if ((totalFileSize + i.files.item(idx).size) > 4000000) {
+                                to_bin.push({ name: i.name, file: i.files.item(idx) });
+                                continue;
+                            }
+
                             totalFileSize += i.files.item(idx).size;
+                            files.push({ name: i.name, file: i.files.item(idx) });
                         }
                     }
                 }
@@ -330,11 +350,11 @@ function extractFormMeta(form: Form<any>) {
             }
         }
 
-        if (totalFileSize > 4500000) {
-            throw new SkapiError('Total File size cannot exceed 4MB. Use skapi.uploadFiles() instead.', { code: 'INVALID_REQUEST' });
-        }
+        // if (totalFileSize > 4000000) {
+        //     throw new SkapiError('Total File size cannot exceed 4MB. Use skapi.uploadFiles() instead.', { code: 'INVALID_REQUEST' });
+        // }
 
-        return { meta, files };
+        return { meta, files, to_bin };
     }
 
     return null;
