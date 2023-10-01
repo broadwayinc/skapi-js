@@ -1024,7 +1024,7 @@ export async function postRecord(
         if (formMeta.files.length) {
             formData = new FormData();
             for (let f of formMeta.files) {
-                formData.append(f.name, f);
+                formData.append(f.name, f.file);
             }
         }
 
@@ -1091,6 +1091,10 @@ export async function postRecord(
 
     let rec = await request.bind(this)('post-record', postData, options);
     if (to_bin) {
+        let bin_formData = new FormData();
+        for (let f of to_bin) {
+            bin_formData.append(f.name, f.file);
+        }
         let uploadFileParams = {
             record_id: rec.record_id,
             progress
@@ -1098,7 +1102,7 @@ export async function postRecord(
         if (config.hasOwnProperty('service')) {
             uploadFileParams['service'] = (config as any).service;
         }
-        let { bin_endpoints } = await uploadFiles.bind(this)(to_bin, uploadFileParams);
+        let { bin_endpoints } = await uploadFiles.bind(this)(bin_formData, uploadFileParams);
         if (!rec.bin) {
             rec.bin = bin_endpoints;
         }
