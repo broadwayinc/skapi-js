@@ -1098,7 +1098,7 @@ export async function postRecord(
         if (config.hasOwnProperty('service')) {
             uploadFileParams['service'] = (config as any).service;
         }
-        let { bin_endpoints } = await uploadFiles(to_bin, uploadFileParams);
+        let { bin_endpoints } = await uploadFiles.bind(this)(to_bin, uploadFileParams);
         if (!rec.bin) {
             rec.bin = bin_endpoints;
         }
