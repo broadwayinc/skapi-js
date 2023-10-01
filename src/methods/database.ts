@@ -1096,7 +1096,7 @@ export async function postRecord(
             bin_formData.append(f.name, f.file);
         }
         let uploadFileParams = {
-            record_id: rec.record_id,
+            record_id: rec.rec,
             progress
         }
         if (config.hasOwnProperty('service')) {
