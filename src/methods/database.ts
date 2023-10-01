@@ -1027,7 +1027,7 @@ export async function postRecord(
         if (formMeta.files.length) {
             formData = new FormData();
             for (let f of formMeta.files) {
-                formData.append(f.name, f.file);
+                formData.append(f.name, f.file, f.file.name);
             }
         }
 
@@ -1096,7 +1096,7 @@ export async function postRecord(
     if (to_bin) {
         let bin_formData = new FormData();
         for (let f of to_bin) {
-            bin_formData.append(f.name, f.file);
+            bin_formData.append(f.name, f.file, f.file.name);
         }
         let uploadFileParams = {
             record_id: rec.rec,
