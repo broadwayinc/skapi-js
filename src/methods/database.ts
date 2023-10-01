@@ -145,39 +145,40 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
         'bin': (r: string[]) => {
             let binObj = {};
 
-            for (let url of r) {
-                let path = url.split('/').slice(3).join('/');
-                // publ/ap21piquKpzLtjAJxckv/4d4a36a5-b318-4093-92ae-7cf11feae989/4d4a36a5-b318-4093-92ae-7cf11feae989/records/TrNFqeRsKGXyxckv/00/bin/TrNFron/IuqU/gogo/Skapi_IR deck_Final_KOR.pptx
-                let splitPath = path.split('/');
-                let filename = decodeURIComponent(splitPath.slice(-1)[0]);
-                let pathKey = decodeURIComponent(splitPath[10]);
-                let size = splitPath[9];
-                let uploaded = splitPath[8];
-                let access_group = splitPath[6] == '**' ? 'private' : parseInt(splitPath[6]);
-                access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group;
-                let obj = {
-                    access_group,
-                    filename,
-                    url,
-                    path,
-                    size: fromBase62(size),
-                    uploaded: fromBase62(uploaded),
-                    getFile: (dataType?: 'base64' | 'endpoint' | 'blob', progress?: ProgressCallback) => {
-                        let config = {
-                            dataType: dataType || 'download',
-                            progress
-                        };
-                        return getFile.bind(this)(url, config);
+            if (Array.isArray(r)) {
+                for (let url of r) {
+                    let path = url.split('/').slice(3).join('/');
+                    // publ/ap21piquKpzLtjAJxckv/4d4a36a5-b318-4093-92ae-7cf11feae989/4d4a36a5-b318-4093-92ae-7cf11feae989/records/TrNFqeRsKGXyxckv/00/bin/TrNFron/IuqU/gogo/Skapi_IR deck_Final_KOR.pptx
+                    let splitPath = path.split('/');
+                    let filename = decodeURIComponent(splitPath.slice(-1)[0]);
+                    let pathKey = decodeURIComponent(splitPath[10]);
+                    let size = splitPath[9];
+                    let uploaded = splitPath[8];
+                    let access_group = splitPath[6] == '**' ? 'private' : parseInt(splitPath[6]);
+                    access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group;
+                    let obj = {
+                        access_group,
+                        filename,
+                        url,
+                        path,
+                        size: fromBase62(size),
+                        uploaded: fromBase62(uploaded),
+                        getFile: (dataType?: 'base64' | 'endpoint' | 'blob', progress?: ProgressCallback) => {
+                            let config = {
+                                dataType: dataType || 'download',
+                                progress
+                            };
+                            return getFile.bind(this)(url, config);
+                        }
+                    };
+                    if (binObj[pathKey]) {
+                        binObj[pathKey].push(obj);
+                        continue;
                     }
-                };
-                if (binObj[pathKey]) {
-                    binObj[pathKey].push(obj);
-                    continue;
+
+                    binObj[pathKey] = [obj];
                 }
-
-                binObj[pathKey] = [obj];
             }
-
             output.bin = binObj;
         },
         'data': (r: any) => {
@@ -797,7 +798,9 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
         }
     );
 
-    for (let i in result.list) { result.list[i] = normalizeRecord.bind(this)(result.list[i]); };
+    for (let i in result.list) {
+        result.list[i] = normalizeRecord.bind(this)(result.list[i]);
+    };
 
     if (is_reference_fetch && result?.reference_private_key) {
         this.__private_access_key[is_reference_fetch] = result.reference_private_key;
