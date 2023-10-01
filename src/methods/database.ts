@@ -178,7 +178,7 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
                     continue;
                 }
 
-                binObj[pathKey] = obj;
+                binObj[pathKey] = [obj];
             }
 
             output.bin = binObj;
