@@ -171,9 +171,6 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
                     }
                 };
                 if (binObj[pathKey]) {
-                    if (!Array.isArray(binObj[pathKey])) {
-                        binObj[pathKey] = [binObj[pathKey]];
-                    }
                     binObj[pathKey].push(obj);
                     continue;
                 }
