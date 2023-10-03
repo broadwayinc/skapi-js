@@ -399,7 +399,7 @@ export async function uploadFiles(
         let key = formDataKeys?.[i] || '';
 
         let signedParams = Object.assign({
-            key: key ? key + '/' + f.name : f.name,
+            key: params_request === 'host' ? f.name : key ? key + '/' + f.name : f.name,
             sizeKey: toBase62(f.size),
             contentType: f.type || null
         }, getSignedParams);
