@@ -1019,55 +1019,18 @@ export async function postRecord(
     let postData = null;
     let to_bin = null;
     if ((form instanceof HTMLFormElement) || (form instanceof FormData) || (form instanceof SubmitEvent)) {
-        // let toConvert = (form instanceof SubmitEvent) ? form.target : form;
-        // let formData = !(form instanceof FormData) ? new FormData(toConvert as HTMLFormElement) : form;
+        form = (form instanceof SubmitEvent) ? form.target : form;
         let formMeta = extractFormMeta(form);
-
-        let formData = null;
-        if (formMeta.files.length) {
-            formData = new FormData();
-            for (let f of formMeta.files) {
-                formData.append(f.name, f.file, f.file.name);
-            }
-        }
-
         if (formMeta.to_bin.length) {
             to_bin = formMeta.to_bin;
         }
 
-        // let formToRemove = {};
+        if (formMeta.files.length) {
+            let formData = new FormData();
+            for (let f of formMeta.files) {
+                formData.append(f.name, f.file, f.file.name);
+            }
 
-        // // remove all form data that is not in the formMeta
-        // for (let [key, value] of formData.entries()) {
-        //     if (formMeta.meta.hasOwnProperty(key) && !(value instanceof Blob)) {
-        //         let f = formData.getAll(key);
-        //         let f_idx = f.indexOf(value);
-        //         if (formToRemove.hasOwnProperty(key)) {
-        //             formToRemove[key].push(f_idx);
-        //         }
-        //         else {
-        //             formToRemove[key] = [f_idx];
-        //         }
-        //     }
-        // }
-
-        // if (Object.keys(formToRemove).length) {
-        //     for (let key in formToRemove) {
-        //         let values = formData.getAll(key);
-        //         let val_len = values.length;
-        //         while (val_len--) {
-        //             if (formToRemove[key].includes(val_len)) {
-        //                 values.splice(val_len, 1);
-        //             }
-        //         }
-        //         formData.delete(key);
-        //         for (let dat of values) {
-        //             formData.append(key, (dat as Blob), dat instanceof File ? dat.name : null);
-        //         }
-        //     }
-        // }
-
-        if (formData) {
             options.meta = config;
 
             if (Object.keys(formMeta.meta).length) {
@@ -1076,7 +1039,7 @@ export async function postRecord(
             postData = formData;
         }
         else {
-            postData = Object.assign({ data: form }, config);
+            postData = Object.assign({ data: formMeta.meta }, config);
         }
     }
 
