@@ -486,10 +486,11 @@ export async function getFile(
 
     let service = subdomain ? null : target_key[1];
 
-    validator.Params(config, {
+    config = validator.Params(config, {
         expires: 'number',
-        dataType: ['base64', 'blob', 'endpoint', 'download', () => 'download']
-    }, [], ['progress']);
+        dataType: ['base64', 'blob', 'endpoint', 'download', () => 'download'],
+        progress: p => p
+    });
 
     let needAuth = target_key[0] == 'auth';
     let filename = url.split('/').slice(-1)[0];
