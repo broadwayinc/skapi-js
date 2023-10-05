@@ -119,6 +119,7 @@ export async function request(
                 case 'refresh-cdn':
                 case 'request-newsletter-sender':
                 case 'set-404':
+                case 'subdomain-info':
                     return {
                         public: admin.admin_public,
                         private: admin.admin_private
