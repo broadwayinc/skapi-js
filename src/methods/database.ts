@@ -282,6 +282,7 @@ export async function uploadFiles(
 
     await this.__connection;
     let params_request = (params as any)?.request || 'post';
+    let nestKey = (params as any)?.nestKey || '';
     let service = (params as any)?.service || this.service;
 
     if (params_request === 'post') {
@@ -399,7 +400,7 @@ export async function uploadFiles(
         let key = formDataKeys?.[i] || '';
 
         let signedParams = Object.assign({
-            key: params_request === 'host' ? f.name : key ? key + '/' + f.name : f.name,
+            key: params_request === 'host' ? (nestKey ? nestKey + '/' : '') + f.name : key ? key + '/' + f.name : f.name,
             sizeKey: toBase62(f.size),
             contentType: f.type || null
         }, getSignedParams);
