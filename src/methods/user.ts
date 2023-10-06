@@ -242,7 +242,7 @@ export function authentication() {
                             // auto confirm
                             initUser.cognitoUser.completeNewPasswordChallenge(password, {}, {
                                 onSuccess: _ => {
-                                    // cognitoUser = initUser.cognitoUser;
+                                    cognitoUser = initUser.cognitoUser;
                                     getSession().then(session => res(this.user));
                                 },
                                 onFailure: (err: any) => {
