@@ -8,7 +8,7 @@ import {
     Condition,
     PostRecordConfig,
     ProgressCallback,
-    Binary
+    BinaryFile
 } from '../Types';
 import SkapiError from '../main/error';
 import { extractFormMeta, generateRandom } from '../utils/utils';
@@ -912,7 +912,7 @@ export async function postRecord(
 
             throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
         },
-        remove_bin: (v: string[] | Binary[]) => {
+        remove_bin: (v: string[] | BinaryFile[]) => {
             if (!v) {
                 return null;
             }
@@ -927,7 +927,7 @@ export async function postRecord(
                         arr.push(i.url);
                     }
                     else {
-                        throw new SkapiError(`"remove_bin" should be type: <string | Binary[]>`, { code: 'INVALID_PARAMETER' });
+                        throw new SkapiError(`"remove_bin" should be type: <string | BinaryFile[]>`, { code: 'INVALID_PARAMETER' });
                     }
                 }
             }
