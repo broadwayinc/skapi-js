@@ -71,10 +71,10 @@ export type PostRecordConfig = {
 
     tags?: string[];
 
-    remove_bin?: Binary[] | string[]; // Removes bin data from the record.
+    remove_bin?: BinaryFile[] | string[]; // Removes bin data from the record.
 }
 
-export type Binary = {
+export type BinaryFile = {
     access_group: number | 'private' | 'public' | 'authorized';
     filename: string;
     url: string;
@@ -110,7 +110,7 @@ export type RecordData = {
     },
     data?: Record<string, any>;
     tags?: string[];
-    bin?: { [key: string]: Binary | Binary[] };
+    bin?: { [key: string]: BinaryFile | BinaryFile[] };
     ip: string;
     readonly: boolean;
 };
