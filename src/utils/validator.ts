@@ -104,9 +104,15 @@ function Url(url: string | string[]) {
             else {
                 let cu = c.trim();
                 if (cu[0] === '/' && baseUrl) {
+                    if (baseUrl.slice(0, 5) === 'file:') {
+                        throw new SkapiError(`"${c}" is an invalid url. Relative URL does not work on local file system. Use full URL string.`, { code: 'INVALID_PARAMETER' });
+                    }
                     cu = baseUrl + cu;
                 }
                 else if (cu[0] === '.' && baseUrl) {
+                    if (baseUrl.slice(0, 5) === 'file:') {
+                        throw new SkapiError(`"${c}" is an invalid url. Relative URL does not work on local file system. Use full URL string.`, { code: 'INVALID_PARAMETER' });
+                    }
                     let curr_loc = window.location.href.split('?')[0];
                     if (curr_loc.slice(-1) !== '/') {
                         curr_loc += '/';
