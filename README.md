@@ -1,98 +1,95 @@
-
 # Skapi
 
-Welcome to Skapi, the serverless backend API service that simplifies your web development.
+Skapi is a backend API service that is specially designed for frontend web developers:
 
-This guide will walk you through importing the Skapi library into your project, creating a service, and connecting your application to the Skapi server.
+### Compatible with both vanilla HTML and SPA projects.
+
+No fancy framework or complex deployment required. Just focused on the basics, Skapi is a single JavaScript library fully compatible with vanilla HTML, as well as any frontend frameworks.
+
+### All-in-One Package
+
+Skapi provides all the backend features you need for your web application out of the box, without the need to set up or maintain multiple services.
+
+### Simple, Yet Flexible Database
+
+Skapi's unique database design combines the best of SQL and noSQL worlds, providing both scalability and flexibility without the need for manual schema design.
+
+## Getting Started
+
+### 1. Create a service
+
+1. Signup for an account at [skapi.com](https://www.skapi.com/signup).
+2. Log in and create a new service from your [dashboard page](https://www.skapi.com/admin).
 
 
-## Creating a service
-
-1. Register for an account at [skapi.com](https://www.skapi.com/signup).
-2. Log in and create a new service from your [admin page](https://www.skapi.com/admin).
-
-## Initializing the Skapi library
+### 2. Initialize the Skapi library
 
 Skapi is compatible with both vanilla HTML and webpack-based projects (ex. Vue, React, Angular... etc).
 You need to import the library using the `<script>` tag or install via npm.
 
-### For HTML projects
+#### For HTML projects:
 
-For vanilla HTML projects, you can import Skapi using the script tag.
-
-Add the following script to the head tag of your HTML file:
+For vanilla HTML projects, import Skapi in the script tag, and initialize the library.
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
-```
-
-This is what your starter code should look like:
-```html
+<!-- index.html -->
 <!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
-<body>
-  <!-- Your content goes here -->
-</body>
+
+<!-- Your content goes here -->
+
 <script>
-    // Initialize Skapi
-    // Replace 'service_id' and 'owner_id' with the values from your Skapi dashboard.
     const skapi = new Skapi('service_id', 'owner_id');
-    ...
 </script>
 ```
 
+**Be sure to replace `'service_id'` and `'owner_id'` with the actual values of your service.**
 
-### For webpack projects
+#### For SPA projects:
 
-To use Skapi in a webpack-based project (such as Vue, React, or Angular), install skapi-js using npm:
+To use Skapi in a SPA projects (such as Vue, React, or Angular), you can install skapi-js via npm.
 
 ```sh
-$ npm install skapi-js
+$ npm i skapi-js
 ```
 
-Then, import the library into your main JavaScript file:
+Then, import the library into your main JavaScript file.
 
 ```javascript
 // main.js
-import { Skapi } from 'skapi-js'; // imports the library
-
-// Initialize Skapi
-// Replace 'service_id' and 'owner_id' with the values from your Skapi dashboard.
+import { Skapi } from 'skapi-js';
 const skapi = new Skapi('service_id', 'owner_id');
 
-// export the initialized Skapi instance.
 export { skapi }
 
-// Now you can import Skapi from anywhere in your project.
+// Now you can import skapi from anywhere in your project.
 ```
 
-Don't forget to replace `service_id` and `owner_id` with the values provided in your Skapi dashboard.
+### 3. Test your connection
 
-## Obtaining Connection Information
+After you initialized the Skapi library, you can test your connection by pinging your request with the `mock()` method.
 
-After initializing the Skapi object, you can retrieve information about the current connection by calling the `getConnection()` method.
+Below is an example of how you can use the `mock()` method in both HTML forms and JavaScript code.
 
-```javascript
-skapi.getConnection().then((c) => {
-    // Connection information
-    console.log(c);
-});
+```html
+<!-- index.html -->
+<!DOCTYPE html>
+<script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
+
+<form onsubmit='skapi.mock(event).then(ping=>alert(ping.msg))'>
+    <input name='msg' placeholder='Test message'>
+    <input type='submit' value='Test Connection'>
+</form>
+
+<script>
+    const skapi = new Skapi('service_id', 'owner_id');
+</script>
 ```
 
-This method returns a `promise` that resolves with an object containing the following properties:
+This will send a request to your Skapi service and ping back the response.
+When the request is resolved, the `mock()` method will return the response data as a `Promise` object.
+The response data will be displayed in an alert box.
 
-```typescript
-{
-  email: string; // The email address of the service owner.
-  ip: string; // The IP address of the current connection.
-  locale: string; // The current locale of the connection.
-  owner: string; // The user ID of the service owner.
-  region: string; // The region where the service resource is located.
-  service: string; // The service ID.
-  timestamp: number; // The timestamp of the service creation.
-}
-```
+Skapi is capable of handling HTML `onsubmit` event directly.
 
-## Documentation
-
-For more information, check out our [Documentation](https://docs.skapi.com)
+#### For more information, check out our [documentaion](https://docs.skapi.com).
