@@ -103,30 +103,36 @@ function Url(url: string | string[]) {
             }
             else {
                 let cu = c.trim();
-                if (!cu.includes(' ') && !cu.includes(',')) {
-                    if (cu.slice(0, 1) === '/' && baseUrl) {
-                        cu = baseUrl + cu;
+                if (cu[0] === '/' && baseUrl) {
+                    if (baseUrl.slice(0, 5) === 'file:') {
+                        throw new SkapiError(`"${c}" is an invalid url. Relative URL does not work on local file system. Use full URL string.`, { code: 'INVALID_PARAMETER' });
                     }
-                    else if (cu.slice(0, 1) === '.' && baseUrl) {
-                        cu = window.location.href.split('/').slice(0, -1).join('/') + cu;
+                    cu = baseUrl + cu;
+                }
+                else if (cu[0] === '.' && baseUrl) {
+                    if (baseUrl.slice(0, 5) === 'file:') {
+                        throw new SkapiError(`"${c}" is an invalid url. Relative URL does not work on local file system. Use full URL string.`, { code: 'INVALID_PARAMETER' });
                     }
-
-                    let _url;
-
-                    try {
-                        _url = new URL(cu);
-                    }
-                    catch (err) {
-                        throw new SkapiError(`"${c}" is an invalid url.`, { code: 'INVALID_PARAMETER' });
+                    let curr_loc = window.location.href.split('?')[0];
+                    if (curr_loc.slice(-1) !== '/') {
+                        curr_loc += '/';
                     }
 
-                    if (_url.protocol) {
-                        let url = _url.href;
-                        if (url.charAt(url.length - 1) === '/')
-                            url = url.substring(0, url.length - 1);
+                    cu = curr_loc + cu.slice(1);
+                }
 
-                        return url;
-                    }
+                let _url;
+
+                try {
+                    _url = new URL(cu);
+                }
+                catch (err) {
+                    throw new SkapiError(`"${c}" is an invalid url.`, { code: 'INVALID_PARAMETER' });
+                }
+
+                if (_url.protocol) {
+                    let url = _url.href;
+                    return url;
                 }
             }
         }
@@ -153,15 +159,15 @@ function specialChars(
             throw new SkapiError(`${p} should be type: <string | string[]>.`, { code: 'INVALID_PARAMETER' });
         }
 
-        if (!allowWhiteSpace && string.includes(' ')) {
+        if (!allowWhiteSpace && s.includes(' ')) {
             throw new SkapiError(`${p} should not have whitespace.`, { code: 'INVALID_PARAMETER' });
         }
 
-        if (!allowPeriods && string.includes('.')) {
+        if (!allowPeriods && s.includes('.')) {
             throw new SkapiError(`${p} should not have periods.`, { code: 'INVALID_PARAMETER' });
         }
 
-        if (/[`!@#$%^&*()_+\-=\[\]{};':"\\|,<>\/?~]/.test(s)) {
+        if (/[!@#$%&*()+\-={};':"\|,<>\/?~]/.test(s)) {
             throw new SkapiError(`${p} should not have special characters.`, { code: 'INVALID_PARAMETER' });
         }
     };

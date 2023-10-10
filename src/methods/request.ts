@@ -8,7 +8,7 @@ import {
 } from '../Types';
 import SkapiError from '../main/error';
 import {
-    MD5
+    MD5, generateRandom
 } from '../utils/utils';
 import validator from '../utils/validator';
 
@@ -18,38 +18,15 @@ const __pendingRequest: Record<string, Promise<any>> = {};
  * When skapi instance is created via new Skapi(...) skapi immediately connects the browser to the server.
  * You can use getConnection() when you need to await for connection to be established.
  */
-export function getConnection(): Promise<Connection | null> {
+export function getConnection(): Promise<Connection> {
     return this.__connection;
 }
 
-export async function listHostDirectory(
-    params: {
-        service: string;
-        dir: string;
-    },
-    fetchOptions: FetchOptions
-) {
-    let is_admin = await this.checkAdmin();
-    if (is_admin) {
-        if (!params?.dir) {
-            params.dir = '/';
-        }
-
-        return request.bind(this)('list-host-directory', params, {
-            fetchOptions,
-            auth: true,
-            method: 'post'
-        });
-    }
-
-    return [];
-}
-
-/** @ignore */
 export async function request(
     url: string,
     data: Form<any> | null = null,
     options?: {
+        noParams?: boolean; // when true params will not be added to get request
         fetchOptions?: FetchOptions & FormSubmitCallback;
         auth?: boolean;
         method?: string;
@@ -142,6 +119,7 @@ export async function request(
                 case 'refresh-cdn':
                 case 'request-newsletter-sender':
                 case 'set-404':
+                case 'subdomain-info':
                     return {
                         public: admin.admin_public,
                         private: admin.admin_private
@@ -198,16 +176,20 @@ export async function request(
 
     if (options?.fetchOptions && Object.keys(options.fetchOptions).length) {
         // record fetch options
-        let fetOpt = validator.Params(
+        let fetOpt: any = {};
+
+        for (let k of ['limit', 'startKey', 'ascending']) {
+            if (options.fetchOptions.hasOwnProperty(k)) {
+                fetOpt[k] = options.fetchOptions[k];
+            }
+        }
+
+        fetOpt = validator.Params(
+            fetOpt,
             {
-                limit: options.fetchOptions?.limit || 50,
-                startKey: options.fetchOptions?.startKey || null,
-                ascending: typeof options.fetchOptions?.ascending === 'boolean' ? options.fetchOptions.ascending : true
-            },
-            {
-                limit: ['number', () => 50],
+                limit: 'number',
                 startKey: null,
-                ascending: ['boolean', () => true]
+                ascending: 'boolean'
             }
         );
 
@@ -255,7 +237,7 @@ export async function request(
         }
         else if (isForm) {
             for (let k in required) {
-                // add required to from
+                // add required to form
                 if (required[k] !== undefined) {
                     data.set(k, new Blob([JSON.stringify(required[k])], {
                         type: 'application/json'
@@ -319,46 +301,60 @@ export async function request(
         return requestKey;
     }
 
-    if (typeof requestKey === 'string') {
-        if (!(__pendingRequest[requestKey] instanceof Promise)) {
-            // new request
+    if (!requestKey || typeof requestKey !== 'string') {
+        return null;
+    }
 
-            let headers: Record<string, any> = {
-                'Accept': '*/*'
-            };
+    if (!(__pendingRequest[requestKey] instanceof Promise)) {
+        // new request
 
-            if (token) {
-                headers.Authorization = token;
+        let headers: Record<string, any> = {
+            'Accept': '*/*'
+        };
+
+        if (token) {
+            headers.Authorization = token;
+        }
+
+        if (meta) {
+            let meta_key = '__meta__' + generateRandom(16);
+            if (data instanceof FormData) {
+                headers["Content-Meta"] = window.btoa(encodeURIComponent(JSON.stringify({
+                    meta_key: meta_key,
+                    merge: 'data' // merge data(not meta) to data key
+                })));
+
+                data.set(meta_key, new Blob([JSON.stringify(meta)], {
+                    type: 'application/json'
+                }));
             }
+            // else {
+            //     headers["Content-Meta"] = window.btoa(encodeURIComponent(typeof meta === 'string' ? meta : JSON.stringify(meta)));
+            // }
+        }
 
-            if (meta) {
-                headers["Content-Meta"] = window.btoa(encodeURIComponent(typeof meta === 'string' ? meta : JSON.stringify(meta)));
+        if (options.hasOwnProperty('contentType')) {
+            if (options?.contentType) {
+                headers["Content-Type"] = options.contentType;
             }
+        }
 
-            if (options.hasOwnProperty('contentType')) {
-                if (options?.contentType) {
-                    headers["Content-Type"] = options.contentType;
-                }
-            }
+        else if (!(data instanceof FormData)) {
+            headers["Content-Type"] = 'application/json';
+        }
 
-            else if (!(data instanceof FormData)) {
-                headers["Content-Type"] = 'application/json';
-            }
+        let opt: RequestInit & { responseType?: string | null, headers: Record<string, any>; } = { headers };
+        if (options?.responseType) {
+            opt.responseType = options.responseType;
+        }
 
-            let opt: RequestInit & { responseType?: string | null, headers: Record<string, any>; } = { headers };
-            if (options?.responseType) {
-                opt.responseType = options.responseType;
-            }
-
-
-            // pending call request
-            // this prevents recursive calls
-            if (method === 'post') {
-                __pendingRequest[requestKey] = _post.bind(this)(endpoint, data, opt, progress);
-            }
-            else if (method === 'get') {
-                __pendingRequest[requestKey] = _get.bind(this)(endpoint, data, opt, progress);
-            }
+        // pending call request
+        // this prevents recursive calls
+        if (method === 'post') {
+            __pendingRequest[requestKey] = _post.bind(this)(endpoint, data, opt, progress);
+        }
+        else if (method === 'get') {
+            __pendingRequest[requestKey] = _get.bind(this)(endpoint, data, opt, progress, options?.noParams);
         }
 
         try {
@@ -370,7 +366,7 @@ export async function request(
             }
 
             else {
-                return await update_startKey_keys.bind(this)({
+                return update_startKey_keys.bind(this)({
                     hashedParam: requestKey,
                     url,
                     response
@@ -727,9 +723,10 @@ async function _get(
         responseType?: string | null;
         headers: Record<string, any>;
     },
-    progress?: (ev: ProgressEvent) => void
+    progress?: (ev: ProgressEvent) => void,
+    noParams?: boolean
 ) {
-    if (params && typeof params === 'object' && Object.keys(params).length) {
+    if (params && typeof params === 'object' && !noParams && Object.keys(params).length) {
         if (url.substring(url.length - 1) !== '?') {
             url = url + '?';
         }
@@ -914,7 +911,6 @@ export async function secureRequest<RequestParams = {
 export async function mock(data: Form<any | {
     raise?: 'ERR_INVALID_REQUEST' | 'ERR_INVALID_PARAMETER' | 'SOMETHING_WENT_WRONG' | 'ERR_EXISTS' | 'ERR_NOT_EXISTS';
 }>,
-    formCallback?: FormSubmitCallback,
     options?: {
         auth?: boolean;
         method?: string;
@@ -922,14 +918,17 @@ export async function mock(data: Form<any | {
         bypassAwaitConnection?: boolean;
         responseType?: string;
         contentType?: string;
-    }): Promise<{ mockResponse: Record<string, any>; }> {
-    options = options || {};
-    if (formCallback && formCallback?.formData && typeof formCallback.formData === 'function') {
-        let fetchOptions = {
-            formData: formCallback.formData
-        };
+    } & FormSubmitCallback): Promise<{ mockResponse: Record<string, any>; }> {
+    let { auth = true, method = 'POST', meta, bypassAwaitConnection = false, responseType, contentType } = options || {};
+    let { response, onerror, formData, progress } = options || {};
 
-        Object.assign(options, fetchOptions);
+    if (options) {
+        Object.assign(
+            { auth, method, meta, bypassAwaitConnection, responseType, contentType },
+            {
+                fetchOptions:
+                    { response, onerror, formData, progress }
+            });
     }
     return request.bind(this)('mock', data, options);
 };
@@ -951,7 +950,6 @@ export async function getFormResponse(): Promise<any> {
 
 const pendPromise: Record<string, Promise<any> | null> = {};
 
-/** @ignore */
 export function formHandler(options?: { preventMultipleCalls: boolean; }) {
     let { preventMultipleCalls = false } = options || {};
 
@@ -979,10 +977,12 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
 
             const handleResponse = (response: any) => {
                 if (option?.response) {
-                    if (typeof option.response === 'function')
+                    if (typeof option.response === 'function') {
                         return option.response(response);
-                    else
+                    }
+                    else {
                         throw new SkapiError('Callback "response" should be type: function.', { code: 'INVALID_PARAMETER' });
+                    }
                 }
 
                 if (formEl) {
@@ -1002,15 +1002,24 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                     form.preventDefault();
                 }
 
-                let is_err = err instanceof Error ? err : new SkapiError(err);
-                if (option?.onerror) {
-                    if (typeof option.onerror === 'function')
-                        return option.onerror(is_err);
-                    else
-                        throw new SkapiError('Callback "onerror" should be type: function.', { code: 'INVALID_PARAMETER' });
+                if (err instanceof SkapiError) {
+                    err.name = propertyKey + '()';
+                }
+                
+                else {
+                    err = err instanceof Error ? err : new SkapiError(err, { name: propertyKey + '()' });
                 }
 
-                throw is_err;
+                if (option?.onerror) {
+                    if (typeof option.onerror === 'function') {
+                        return option.onerror(err);
+                    }
+                    else {
+                        return new SkapiError('Callback "onerror" should be type: function.', { code: 'INVALID_PARAMETER', name: propertyKey + '()' });
+                    }
+                }
+
+                return err;
             };
 
             const executeMethod = () => {
@@ -1035,7 +1044,12 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                             return handleResponse(resolved);
                         }
                         catch (err) {
-                            return handleError(err);
+                            let is_err = handleError(err);
+                            if (is_err instanceof Error) {
+                                throw is_err;
+                            }
+
+                            return is_err;
                         }
                     })();
                 }
@@ -1044,9 +1058,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             if (preventMultipleCalls) {
                 return (async () => {
                     if (pendPromise?.[propertyKey] instanceof Promise) {
-                        let res = await pendPromise[propertyKey];
-                        pendPromise[propertyKey] = null;
-                        return res;
+                        return pendPromise[propertyKey];
                     }
                     else {
                         pendPromise[propertyKey] = executeMethod().finally(() => {
