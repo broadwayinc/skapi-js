@@ -86,8 +86,10 @@ export default class Skapi {
     connection: Connection | null = null;
 
     private host = 'skapi';
-    private hostDomain = 'skapi.app';
-    private target_cdn = 'd1wrj5ymxrt2ir';
+    // private hostDomain = 'skapi.app';
+    private hostDomain = 'skapi.com';
+    // private target_cdn = 'd1wrj5ymxrt2ir';
+    private target_cdn = 'd1h765tqb4s5ov';
 
     // privates
     private __disabledAccount: string | null = null;
