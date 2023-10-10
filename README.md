@@ -92,4 +92,4 @@ The response data will be displayed in an alert box.
 
 Skapi is capable of handling HTML `onsubmit` event directly.
 
-#### For more information, check out our [documentaion](https://docs.skapi.com).
+#### For more information, check out our [documentation](https://docs.skapi.com).
