@@ -7,14 +7,13 @@ import {
     CognitoUserPool
 } from 'amazon-cognito-identity-js';
 import {
-    User,
     Form,
     FormSubmitCallback,
     UserProfile,
     FetchOptions,
     DatabaseResponse,
-    QueryParams,
-    UserAttributes
+    UserAttributes,
+    PublicUser
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from './request';
@@ -22,15 +21,12 @@ import { MD5 } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
 
-/** @ignore */
 export let userPool: CognitoUserPool | null = null;
 
-/** @ignore */
 export function setUserPool(params: { UserPoolId: string; ClientId: string; }) {
     userPool = new CognitoUserPool(params);
 }
 
-/** @ignore */
 export function authentication() {
     if (!userPool) throw new SkapiError('User pool is missing', { code: 'INVALID_REQUEST' });
 
@@ -153,7 +149,7 @@ export function authentication() {
         });
     };
 
-    const getSession = (option?: {
+    const getSession = async (option?: {
         refreshToken?: boolean;
     }): Promise<CognitoUserSession> => {
         // fetch session, updates user attributes
@@ -227,26 +223,40 @@ export function authentication() {
         };
     };
 
-    const authenticateUser = (email: string, password: string): Promise<User> => {
+    const authenticateUser = (email: string, password: string): Promise<UserProfile> => {
         return new Promise((res, rej) => {
             this.__request_signup_confirmation = null;
             this.__disabledAccount = null;
 
             createCognitoUser(email).then(initUser => {
-                cognitoUser = initUser.cognitoUser;
                 let username = initUser.cognitoUsername;
-
                 let authenticationDetails = new AuthenticationDetails({
                     Username: username,
                     Password: password
                 });
 
-                cognitoUser.authenticateUser(authenticationDetails, {
+                initUser.cognitoUser.authenticateUser(authenticationDetails, {
                     newPasswordRequired: (userAttributes, requiredAttributes) => {
                         this.__request_signup_confirmation = username;
-                        rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
+                        if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER') {
+                            // auto confirm
+                            initUser.cognitoUser.completeNewPasswordChallenge(password, {}, {
+                                onSuccess: _ => {
+                                    cognitoUser = initUser.cognitoUser;
+                                    getSession().then(session => res(this.user));
+                                },
+                                onFailure: (err: any) => {
+                                    rej(new SkapiError(err.message || 'Failed to authenticate user.', { code: err.code }));
+                                }
+                            });
+                        }
+                        else {
+                            rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
+                        }
                     },
-                    onSuccess: (logged) => getSession().then(session => res(this.user)),
+                    onSuccess: _ => getSession().then(_ => {
+                        res(this.user);
+                    }),
                     onFailure: (err: any) => {
                         let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
 
@@ -260,10 +270,23 @@ export function authentication() {
                                 error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
                             }
                         }
+                        else if (err.code === "UserNotFoundException") {
+                            error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
+                        }
+                        // else if (err.code === "UserNotConfirmedException") {
+                        //     this.__request_signup_confirmation = username;
+                        //     error = ["User's signup confirmation is required.", 'SIGNUP_CONFIRMATION_NEEDED'];
+                        // }
+                        else if (err.code === "TooManyRequestsException" || err.code === "LimitExceededException") {
+                            error = ['Too many attempts. Please try again later.', 'REQUEST_EXCEED'];
+                        }
 
                         let errCode = error[1];
                         let errMsg = error[0];
                         let customErr = error[0].split('#');
+
+                        // "#INVALID_REQUEST: the account has been blacklisted."
+                        // "#NOT_EXISTS: the account does not exist."
 
                         if (customErr.length > 1) {
                             customErr = customErr[customErr.length - 1].split(':');
@@ -278,11 +301,103 @@ export function authentication() {
         });
     };
 
-    return { getSession, authenticateUser, createCognitoUser, getUser };
+    // const signup = async (attributes): Promise<true> => {
+    //     let conn = await this.__connection;
+
+    //     let service = attributes['service'] || this.service;
+
+    //     let attributeList = [
+    //         {
+    //             'Name': 'name',
+    //             'Value': attributes['name']
+    //         },
+    //         {
+    //             'Name': 'custom:service',
+    //             'Value': service
+    //         },
+    //         {
+    //             'Name': 'locale',
+    //             'Value': conn.locale || 'N/A'
+    //         },
+    //         {
+    //             'Name': 'custom:owner',
+    //             'Value': attributes['owner'] || this.owner
+    //         },
+    //         {
+    //             'Name': 'email',
+    //             'Value': attributes['email']
+    //         },
+    //         {
+    //             'Name': 'address',
+    //             'Value': attributes['address']
+    //         },
+    //         {
+    //             'Name': 'birthdate',
+    //             'Value': attributes['birthdate']
+    //         },
+    //         {
+    //             'Name': 'gender',
+    //             'Value': attributes['gender']
+    //         },
+    //         {
+    //             'Name': 'phone_number',
+    //             'Value': attributes['phone_number']
+    //         },
+    //         {
+    //             'Name': 'custom:address_public',
+    //             'Value': attributes['address_public'] ? '1' : '0'
+    //         },
+    //         {
+    //             'Name': 'custom:gender_public',
+    //             'Value': attributes['gender_public'] ? '1' : '0'
+    //         },
+    //         {
+    //             'Name': 'custom:birthdate_public',
+    //             'Value': attributes['birthdate_public'] ? '1' : '0'
+    //         },
+    //         {
+    //             'Name': 'custom:misc',
+    //             'Value': typeof attributes['misc'] === 'string' ? attributes['misc'] : JSON.stringify(attributes['misc'])
+    //         }
+    //     ].map(att => {
+    //         return new CognitoUserAttribute(att);
+    //     });
+
+    //     let username = MD5.hash(attributes.username || attributes.email);
+    //     username = service + '-' + username;
+
+    //     if (attributes.password.length < 6) {
+    //         throw new SkapiError('Password should be at least 6 characters.', { code: 'INVALID_PARAMETER' });
+    //     }
+
+    //     if (attributes.password.length > 60) {
+    //         throw new SkapiError('Password should be 60 characters max.', { code: 'INVALID_PARAMETER' });
+    //     }
+
+    //     return new Promise((res, rej) => {
+    //         userPool.signUp(username, attributes.password, attributeList, null, function (
+    //             err,
+    //             result
+    //         ) {
+    //             if (err) {
+    //                 rej(new SkapiError(err.message, { code: 'INVALID_REQUEST' }));
+    //             }
+    //             res(true);
+    //         });
+    //     });
+    // }
+
+    return {
+        getSession,
+        authenticateUser,
+        createCognitoUser,
+        getUser,
+        // signup
+    };
 }
 
-export async function getProfile(options?: { refreshToken: boolean; }): Promise<User | null> {
-    await this.__connection;
+export async function getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
+    await this.__authConnection;
     try {
         await authentication.bind(this)().getSession(options);
         return this.user;
@@ -291,7 +406,6 @@ export async function getProfile(options?: { refreshToken: boolean; }): Promise<
     }
 }
 
-/** @ignore */
 export async function checkAdmin() {
     await this.__connection;
     if (this.__user?.service === this.service) {
@@ -305,7 +419,7 @@ export async function checkAdmin() {
     return false;
 }
 
-export async function logout(e: SubmitEvent): Promise<'SUCCESS: The user has been logged out.'> {
+export async function logout(): Promise<'SUCCESS: The user has been logged out.'> {
     await this.__connection;
 
     if (cognitoUser) {
@@ -355,7 +469,7 @@ export async function recoverAccount(
 ): Promise<"SUCCESS: Recovery e-mail has been sent."> {
 
     if (typeof redirect === 'string') {
-        validator.Url(redirect);
+        redirect = validator.Url(redirect);
     }
 
     else if (typeof redirect !== 'boolean') {
@@ -373,19 +487,21 @@ export async function recoverAccount(
 
 export async function login(
     form: Form<{
+        /** if given, username will be used instead of email. */
+        username?: string;
         /** E-Mail for signin. 64 character max. */
         email: string;
         /** Password for signin. Should be at least 6 characters. */
         password: string;
-    }>,
-    option?: FormSubmitCallback): Promise<User> {
-    await logout.bind(this)();
+    }>): Promise<UserProfile> {
+    await this.logout();
     let params = validator.Params(form, {
+        username: 'string',
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v)
     }, ['email', 'password']);
 
-    return authentication.bind(this)().authenticateUser(params.email, params.password);
+    return authentication.bind(this)().authenticateUser(params.username || params.email, params.password);
 
     // INVALID_REQUEST: the account has been blacklisted.
     // NOT_EXISTS: the account does not exist.
@@ -411,11 +527,10 @@ export async function signup(
          * Automatically login to account after signup. Will not work if signup confirmation is required.
          */
         login?: boolean;
-    } & FormSubmitCallback): Promise<User | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
-
-    await this.logout();
+    } & FormSubmitCallback): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
 
     let params = validator.Params(form || {}, {
+        username: 'string',
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v),
         name: 'string',
@@ -428,8 +543,23 @@ export async function signup(
         gender_public: ['boolean', () => false],
         birthdate_public: ['boolean', () => false],
         phone_number_public: ['boolean', () => false],
+        access_group: 'number',
         misc: 'string'
     }, ['email', 'password']);
+
+    let is_admin = await checkAdmin.bind(this)();
+
+    let admin_creating_account = is_admin && params.service && this.service !== params.service;
+    if (admin_creating_account) {
+        // admin creating account
+        params.owner = this.__user.user_id;
+    }
+    else {
+        if (params.access_group) {
+            throw new SkapiError('Only admins can set "access_group" parameter.', { code: 'INVALID_PARAMETER' });
+        }
+        await this.logout();
+    }
 
     option = validator.Params(option || {}, {
         email_subscription: (v: boolean) => {
@@ -469,6 +599,10 @@ export async function signup(
     let logUser = option?.login || false;
     let signup_confirmation = option?.signup_confirmation || false;
 
+    if (admin_creating_account && signup_confirmation) {
+        throw new SkapiError('Admins cannot create an account with "option.signup_confirmation" option.', { code: 'INVALID_PARAMETER' });
+    }
+
     if (params.email_public && !signup_confirmation) {
         throw new SkapiError('"option.signup_confirmation" should be true if "email_public" is set to true.', { code: 'INVALID_PARAMETER' });
     }
@@ -476,18 +610,27 @@ export async function signup(
     params.signup_confirmation = signup_confirmation;
     params.email_subscription = option?.email_subscription || false;
 
-    await request.bind(this)("signup", params);
+    if (!admin_creating_account) {
+        delete params.service;
+        delete params.owner;
+    }
+
+    let resp = await request.bind(this)("signup", params, { auth: admin_creating_account });
 
     if (signup_confirmation) {
-        let u = await authentication.bind(this)().createCognitoUser(params.email);
+        let u = await authentication.bind(this)().createCognitoUser(params.username || params.email);
         cognitoUser = u.cognitoUser;
         this.__request_signup_confirmation = u.cognitoUsername;
         return "SUCCESS: The account has been created. User's signup confirmation is required.";
     }
 
-    if (logUser) {
+    if (logUser && !admin_creating_account) {
         // log user in
-        return login.bind(this)({ email: params.email, password: params.password });
+        return login.bind(this)({ email: params.username || params.email, password: params.password });
+    }
+
+    if (admin_creating_account) {
+        return resp;
     }
 
     return 'SUCCESS: The account has been created.';
@@ -507,7 +650,7 @@ export async function resetPassword(form: Form<{
     code: string | number;
     /** New password to set. Verification code is required. */
     new_password: string;
-}>, option?: FormSubmitCallback): Promise<"SUCCESS: New password has been set."> {
+}>): Promise<"SUCCESS: New password has been set."> {
 
     await this.__connection;
 
@@ -604,11 +747,11 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>)
     });
 }
 
-export function verifyPhoneNumber(form: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'> {
+export function verifyPhoneNumber(form?: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'> {
     return verifyAttribute.bind(this)('phone_number', form);
 }
 
-export function verifyEmail(form: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'> {
+export function verifyEmail(form?: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'> {
     return verifyAttribute.bind(this)('email', form);
 }
 
@@ -616,8 +759,7 @@ export async function forgotPassword(
     form: Form<{
         /** Signin E-Mail. */
         email: string;
-    }>,
-    option?: FormSubmitCallback): Promise<"SUCCESS: Verification code has been sent."> {
+    }>): Promise<"SUCCESS: Verification code has been sent."> {
 
     await this.__connection;
 
@@ -641,7 +783,7 @@ export async function forgotPassword(
 export async function changePassword(params: {
     new_password: string;
     current_password: string;
-}) {
+}): Promise<'SUCCESS: Password has been changed.'> {
     await this.__connection;
     if (!this.session) {
         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
@@ -675,6 +817,9 @@ export async function changePassword(params: {
                     else if (err?.code === "NotAuthorizedException") {
                         rej(new SkapiError('Incorrect password.', { code: 'INVALID_REQUEST' }));
                     }
+                    else if (err?.code === "TooManyRequestsException" || err?.code === "LimitExceededException") {
+                        rej(new SkapiError('Too many attempts. Please try again later.', { code: 'REQUEST_EXCEED' }));
+                    }
                     else {
                         rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || err?.name }));
                     }
@@ -685,7 +830,7 @@ export async function changePassword(params: {
     });
 }
 
-export async function updateProfile(form: Form<UserAttributes>, option?: FormSubmitCallback) {
+export async function updateProfile(form: Form<UserAttributes>): Promise<UserProfile> {
     await this.__connection;
     if (!this.session) {
         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
@@ -810,7 +955,18 @@ export async function updateProfile(form: Form<UserAttributes>, option?: FormSub
     return this.user;
 }
 
-export async function getUsers(params?: QueryParams | null, fetchOptions?: FetchOptions): Promise<DatabaseResponse<UserAttributes>> {
+export async function getUsers(
+    params?: {
+        /** Index name to search. */
+        searchFor: string;
+        /** Index value to search. */
+        value: string | number | boolean;
+        /** Search condition. */
+        condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
+        /** Range of search. */
+        range?: string | number | boolean;
+    },
+    fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
     if (!params) {
         // set default value
         params = {
@@ -834,18 +990,18 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
 
     const searchForTypes = {
         'user_id': (v: string) => validator.UserId(v),
-        'name': 'string',
         'email': (v: string) => validator.Email(v),
         'phone_number': (v: string) => validator.PhoneNumber(v),
-        'address': 'string',
-        'gender': 'string',
-        'birthdate': (v: string) => validator.Birthdate(v),
         'locale': (v: string) => {
             if (typeof v !== 'string' || typeof v === 'string' && v.length > 5) {
                 throw new SkapiError('Value of "locale" should be a country code.', { code: 'INVALID_PARAMETER' });
             }
             return v;
         },
+        'name': 'string',
+        'address': 'string',
+        'gender': 'string',
+        'birthdate': (v: string) => validator.Birthdate(v),
         // 'subscribers': 'number',
         'timestamp': 'number',
         'access_group': 'number',
@@ -887,7 +1043,9 @@ export async function getUsers(params?: QueryParams | null, fetchOptions?: Fetch
         value: (v: any) => {
             let checker = searchForTypes[params.searchFor];
             if (typeof checker === 'function') {
-                return checker(v);
+                if (!params?.condition || params?.condition === '=' || params?.range) {
+                    return checker(v);
+                }
             }
 
             else if (typeof v !== checker) {
@@ -963,7 +1121,7 @@ export async function requestUsernameChange(params: {
     redirect?: string;
     /** username(e-mail) user wish to change to. */
     username: string;
-}): Promise<'SUCCESS: ...'> {
+}): Promise<'SUCCESS: confirmation e-mail has been sent.'> {
     await this.__connection;
 
     params = validator.Params(params, {

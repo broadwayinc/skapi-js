@@ -112,4 +112,4 @@ dist/
 esm/
 deploy.py
 package-lock.json
-playground
+playground/index.html
