@@ -6,65 +6,83 @@ export type SubscriptionGroup<T> = {
     group?: T;
 };
 
-export type Database<Tbl, Ref, Idx> = {
-    /** @ignore */
-    service?: string; // Only for admins.
+export type GetRecordQuery = {
     record_id?: string;
-    table?: Tbl;
-    reference?: Ref;
-    index?: Idx;
-    private_access_key?: string;
-};
 
-export type GetRecordQuery = Database<
-    {
+    /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
+    table?: {
         /** Not allowed: Special characters. Allowed: White space. periods.*/
         name: string;
-        /** Number range: 0 ~ 99 */
+        /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized';
-        subscription?: {
-            user_id: string;
-            /** Number range: 0 ~ 99 */
-            group: number;
-        };
-    },
-    /** Referenced record ID | user ID. */
-    string,
+        // subscription?: {
+        //     user_id: string;
+        //     /** Number range: 0 ~ 99 */
+        //     group: number;
+        // };
+        /** User ID of subscription */
+        subscription?: string;
+    } | string;
+
+    reference?: string; // Referenced record ID. If user ID is given, it will fetch records that are uploaded by the user.
+
     /** Index condition and range cannot be used simultaneously.*/
-    {
+    index?: {
         /** Not allowed: White space, special characters. Allowed: Periods. */
         name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
         /** Not allowed: Periods, special characters. Allowed: White space. */
         value: string | number | boolean;
-        condition?: Condition;
+        condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
         range?: string | number | boolean;
-    }
-> & { tag?: string; };
+    };
+    tag?: string;
+}
 
-export type PostRecordConfig = Database<
-    {
+export type PostRecordConfig = {
+    record_id?: string; // when record_id is given, it will update the record with the given record_id. If record_id is not given, it will create a new record.
+
+    readonly?: boolean; // When true, record cannot be updated or deleted.
+
+    /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
+    table?: {
         /** Not allowed: Special characters. Allowed: White space. periods.*/
         name?: string;
-        /** Number range: 0 ~ 99 */
+        /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized';
-        subscription_group?: number;
-    },
-    /** Referenced record ID | user ID. */
-    {
-        record_id: string;
-        /** Default: null (Infinite) */
-        reference_limit: number | null;
-        /** Default: true */
-        allow_multiple_reference: boolean;
-    },
+        // subscription_group?: number;
+        /** When true, Record will be only accessible for subscribed users. */
+        subscription?: boolean;
+    } | string;
+
+    /** If record ID string is given, "reference.record_id" will be set with default parameters. */
+    reference?: {
+        record_id?: string; // null removes reference
+        reference_limit?: number | null; // Default: null (Infinite)
+        allow_multiple_reference?: boolean; // Default: true
+    } | string;
+
     /** null removes index */
-    {
+    index?: {
         /** Not allowed: White space, special characters. Allowed: Periods. */
         name: string;
         /** Not allowed: Periods, special characters. Allowed: White space. */
         value: string | number | boolean;
-    } | null
-> & { tags?: string[]; };
+    } | null;
+
+    tags?: string[];
+
+    remove_bin?: BinaryFile[] | string[]; // Removes bin data from the record.
+}
+
+export type BinaryFile = {
+    access_group: number | 'private' | 'public' | 'authorized';
+    filename: string;
+    url: string;
+    path: string;
+    size: number;
+    uploaded: number;
+    getFile: (dataType?: 'base64' | 'endpoint' | 'blob', progress?: ProgressCallback) => Promise<Blob | string | void>;
+}
 
 export type RecordData = {
     service: string;
@@ -76,12 +94,9 @@ export type RecordData = {
     table: {
         name: string;
         /** Number range: 0 ~ 99 */
-        access_group?: number | 'private' | 'public' | 'authorized';
-        subscription?: {
-            user_id: string;
-            /** Number range: 0 ~ 99 */
-            group: number;
-        };
+        access_group: 'private' | 'public' | 'authorized' | number;
+        // subscription_group?: number;
+        subscription: boolean;
     },
     reference: {
         record_id?: string;
@@ -95,9 +110,10 @@ export type RecordData = {
     },
     data?: Record<string, any>;
     tags?: string[];
+    bin?: { [key: string]: BinaryFile | BinaryFile[] };
     ip: string;
+    readonly: boolean;
 };
-
 
 export type Connection = {
     /** User's locale */
@@ -207,9 +223,9 @@ export type UserProfile = {
     /** Service id of the user account. */
     service: string;
     /** User ID of the service owner. */
-    owner?: string;
+    owner: string;
     /** Access level of the user's account. */
-    access_group?: number;
+    access_group: number;
     /** User's ID. */
     user_id: string;
     /** Country code of where user first signed up from. */
@@ -222,22 +238,62 @@ export type UserProfile = {
     signup_ticket?: string;
 } & UserAttributes;
 
-export interface User extends UserProfile {
+export type PublicUser = {
+    /** User's name */
+    name?: string;
+    /**
+     * User's E-Mail for signin.<br>
+     * 64 character max.<br>
+     * When E-Mail is changed, E-Mail verified state will be changed to false.<br>
+     * E-Mail is only visible to others when set to public.<br>
+     * E-Mail should be verified to set to public.
+     * */
+    email?: string;
+    /**
+     * User's phone number. Format: "+0012341234"<br>
+     * When phone number is changed, phone number verified state will be changed to false.<br>
+     * Phone number is only visible to others when set to public.<br>
+     * Phone number should be verified to set to public.
+     */
+    phone_number?: string;
+    /** User's address */
+    address?: string | {
+        // Full mailing address, formatted for display or use on a mailing label. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+        // street_address
+        // Full street address component, which MAY include house number, street name, Post Office Box, and multi-line extended street address information. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+        formatted: string;
+        // City or locality component.
+        locality: string;
+        // State, province, prefecture, or region component.
+        region: string;
+        // Zip code or postal code component.
+        postal_code: string;
+        // Country name component.
+        country: string;
+    };
+    /**
+     * User's gender. Can be "female" and "male".<br>
+     * Other values may be used when neither of the defined values are applicable.
+     */
+    gender?: string;
+    /** User's birthdate. String format: "1969-07-16" */
+    birthdate?: string;
+    /** Additional string value that can be used freely. */
+    misc?: string;
     /** Number of the user's subscribers. */
-    subscribers: number;
+    subscribers?: number;
     /** Timestamp of user signup time. */
     timestamp: number;
-}
-
-export type QueryParams = {
-    /** Index name to search. */
-    searchFor: string;
-    /** Index value to search. */
-    value: string | number | boolean;
-    /** Search condition. */
-    condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
-    /** Range of search. */
-    range?: string | number | boolean;
+    /** Service id of the user account. */
+    service: string;
+    /** User ID of the service owner. */
+    owner: string;
+    /** Access level of the user's account. */
+    access_group: number;
+    /** User's ID. */
+    user_id: string;
+    /** Country code of where user first signed up from. */
+    locale: string;
 };
 
 export type ProgressCallback = (e: {
@@ -294,19 +350,19 @@ export type Service = {
     service: string;
     /** E-Mail template for signup confirmation. This can be changed by trigger E-Mail. */
     template_activation: {
-        html: string;
+        url: string;
         subject: string;
     };
     /** E-Mail template for verification code E-Mail. This can be changed by trigger E-Mail. */
     template_verification: {
-        html: string;
+        url: string;
         sms: string;
         subject: string;
     };
     /** E-Mail template for welcome E-Mail that user receives after signup process. This can be changed by trigger E-Mail. */
     template_welcome: {
-        html: string;
-        subject: string;
+        url: string;
+        subject: string; subscri
     };
     /** 13 digit timestamp  */
     timestamp: number;
