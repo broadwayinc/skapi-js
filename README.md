@@ -1,16 +1,16 @@
 # Skapi
 
-Skapi is a backend API service that is specially designed for frontend web developers:
+Skapi is a backend API service that is specially designed for frontend web developers.
 
-### Compatible with both vanilla HTML and SPA projects.
+#### Compatible with both vanilla HTML and SPA projects.
 
 No fancy framework or complex deployment required. Just focused on the basics, Skapi is a single JavaScript library fully compatible with vanilla HTML, as well as any frontend frameworks.
 
-### All-in-One Package
+#### All-in-One Package
 
 Skapi provides all the backend features you need for your web application out of the box, without the need to set up or maintain multiple services.
 
-### Simple, Yet Flexible Database
+#### Simple, Yet Flexible Database
 
 Skapi's unique database design combines the best of SQL and noSQL worlds, providing both scalability and flexibility without the need for manual schema design.
 
