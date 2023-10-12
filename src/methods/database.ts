@@ -916,14 +916,14 @@ export async function postRecord(
             if (!v) {
                 return null;
             }
-
+            
             let arr = []
             if (Array.isArray(v)) {
                 for (let i of v) {
                     if (typeof i === 'string') {
                         arr.push(i);
                     }
-                    else if (i.url && i.size && i.filename && typeof i.getFile === 'function') {
+                    else if (i.url && i.size && i.filename) {
                         arr.push(i.url);
                     }
                     else {
