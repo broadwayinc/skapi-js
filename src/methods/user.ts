@@ -528,6 +528,7 @@ export async function signup(
          */
         login?: boolean;
     } & FormSubmitCallback): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
+    let is_admin = await checkAdmin.bind(this)();
 
     let params = validator.Params(form || {}, {
         username: 'string',
@@ -545,9 +546,7 @@ export async function signup(
         phone_number_public: ['boolean', () => false],
         access_group: 'number',
         misc: 'string'
-    }, ['email', 'password']);
-
-    let is_admin = await checkAdmin.bind(this)();
+    }, is_admin ? ['email'] : ['email', 'password']);
 
     let admin_creating_account = is_admin && params.service && this.service !== params.service;
     if (admin_creating_account) {
