@@ -1399,19 +1399,21 @@ export async function deleteRecords(params: {
 
         let table_p = validator.Params(params.table || {}, struct, isAdmin ? [] : ['name']);
 
-        if (table_p.subscription === null) {
-            delete table_p.subscription;
-        }
-        else {
-            if (!table_p.hasOwnProperty('access_group')) {
-                throw new SkapiError('"table.access_group" is required for subscription records.', { code: 'INVALID_PARAMETER' });
+        if (table_p.hasOwnProperty('subscription')) {
+            if (table_p.subscription === null) {
+                delete table_p.subscription;
             }
-            else if (table_p.access_group === 0) {
-                throw new SkapiError('Public tables does not hold subscription records.', { code: 'INVALID_REQUEST' });
+            else {
+                if (!table_p.hasOwnProperty('access_group')) {
+                    throw new SkapiError('"table.access_group" is required for subscription records.', { code: 'INVALID_PARAMETER' });
+                }
+                else if (table_p.access_group === 0) {
+                    throw new SkapiError('Public tables does not hold subscription records.', { code: 'INVALID_REQUEST' });
+                }
+                table_p.subscription_group = 1;
             }
-            table_p.subscription_group = 1;
         }
-
+        
         params.table = table_p;
     }
 
