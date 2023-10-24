@@ -529,7 +529,7 @@ export async function signup(
         login?: boolean;
     } & FormSubmitCallback): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
     let is_admin = await checkAdmin.bind(this)();
-    
+
     let params = validator.Params(form || {}, {
         username: 'string',
         email: (v: string) => validator.Email(v),
@@ -559,18 +559,6 @@ export async function signup(
         }
         await this.logout();
     }
-
-    // let admin_creating_account = is_admin && params.service && this.service !== params.service;
-    // if (admin_creating_account) {
-    //     // admin creating account
-    //     params.owner = this.__user.user_id;
-    // }
-    // else {
-    //     if (params.access_group) {
-    //         throw new SkapiError('Only admins can set "access_group" parameter.', { code: 'INVALID_PARAMETER' });
-    //     }
-    //     await this.logout();
-    // }
 
     option = validator.Params(option || {}, {
         email_subscription: (v: boolean) => {
@@ -610,9 +598,9 @@ export async function signup(
     let logUser = option?.login || false;
     let signup_confirmation = option?.signup_confirmation || false;
 
-    // if (admin_creating_account && signup_confirmation) {
-    //     throw new SkapiError('Admins cannot create an account with "option.signup_confirmation" option.', { code: 'INVALID_PARAMETER' });
-    // }
+    if (admin_creating_account && signup_confirmation && params?.password) {
+        throw new SkapiError('Admins cannot create an account with "option.signup_confirmation" option.', { code: 'INVALID_PARAMETER' });
+    }
 
     if (params.email_public && !signup_confirmation) {
         throw new SkapiError('"option.signup_confirmation" should be true if "email_public" is set to true.', { code: 'INVALID_PARAMETER' });
