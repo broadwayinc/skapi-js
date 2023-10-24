@@ -560,6 +560,18 @@ export async function signup(
         await this.logout();
     }
 
+    // let admin_creating_account = is_admin && params.service && this.service !== params.service;
+    // if (admin_creating_account) {
+    //     // admin creating account
+    //     params.owner = this.__user.user_id;
+    // }
+    // else {
+    //     if (params.access_group) {
+    //         throw new SkapiError('Only admins can set "access_group" parameter.', { code: 'INVALID_PARAMETER' });
+    //     }
+    //     await this.logout();
+    // }
+
     option = validator.Params(option || {}, {
         email_subscription: (v: boolean) => {
             if (typeof v !== 'boolean') {
