@@ -553,10 +553,11 @@ export async function signup(
         // admin creating account
         params.owner = this.__user.user_id;
     }
-    else {
-        if (!is_admin && params.access_group) {
+    else if (!is_admin) {
+        if (params.access_group) {
             throw new SkapiError('Only admins can set "access_group" parameter.', { code: 'INVALID_PARAMETER' });
         }
+
         await this.logout();
     }
 
