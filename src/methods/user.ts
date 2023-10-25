@@ -553,10 +553,11 @@ export async function signup(
         // admin creating account
         params.owner = this.__user.user_id;
     }
-    else {
+    else if (!is_admin) {
         if (params.access_group) {
             throw new SkapiError('Only admins can set "access_group" parameter.', { code: 'INVALID_PARAMETER' });
         }
+
         await this.logout();
     }
 
@@ -614,25 +615,25 @@ export async function signup(
         delete params.owner;
     }
 
-    let resp = await request.bind(this)("signup", params, { auth: admin_creating_account });
+    let resp = await request.bind(this)("signup", params, { auth: is_admin });
 
-    if (signup_confirmation) {
-        let u = await authentication.bind(this)().createCognitoUser(params.username || params.email);
-        cognitoUser = u.cognitoUser;
-        this.__request_signup_confirmation = u.cognitoUsername;
-        return "SUCCESS: The account has been created. User's signup confirmation is required.";
+    if (!is_admin) {
+        if (signup_confirmation) {
+            let u = await authentication.bind(this)().createCognitoUser(params.username || params.email);
+            cognitoUser = u.cognitoUser;
+            this.__request_signup_confirmation = u.cognitoUsername;
+            return "SUCCESS: The account has been created. User's signup confirmation is required.";
+        }
+
+        if (logUser) {
+            // log user in
+            return login.bind(this)({ email: params.username || params.email, password: params.password });
+        }
+
+        return 'SUCCESS: The account has been created.';
     }
 
-    if (logUser && !admin_creating_account) {
-        // log user in
-        return login.bind(this)({ email: params.username || params.email, password: params.password });
-    }
-
-    if (admin_creating_account) {
-        return resp;
-    }
-
-    return 'SUCCESS: The account has been created.';
+    return resp;
 }
 
 export async function disableAccount(): Promise<'SUCCESS: account has been disabled.'> {
