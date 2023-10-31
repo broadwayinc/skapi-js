@@ -201,6 +201,7 @@ export function authentication() {
                     return;
                 }
 
+                this.session = session;
                 normalizeUserAttributes(idToken);
                 res(session);
             });
