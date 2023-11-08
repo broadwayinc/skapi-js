@@ -727,6 +727,11 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                 throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
             }
         }
+
+        if (!query.table.hasOwnProperty('access_group')) {
+            // access_group defaults to 1 if subscription value is present, else 0
+            query.table.access_group = query.table?.subscription ? 1 : 0;
+        }
     }
 
     if (query?.index && !query.index?.name) {
@@ -940,7 +945,7 @@ export async function postRecord(
         throw new SkapiError('Either "record_id" or "table" should have a value.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (typeof config_chkd.table !== 'string' && config_chkd.table) {
+    if (config_chkd.table) {
         if (config_chkd.table.access_group === 'public') {
             config_chkd.table.access_group = 0;
         }
@@ -968,9 +973,9 @@ export async function postRecord(
         }
 
         if (config_chkd.table?.subscription) {
-            if (!config_chkd?.record_id && !config_chkd.table?.access_group) {
-                // access group is null, or public when creating new record
-                throw new SkapiError('Public records cannot require subscription.', { code: 'INVALID_REQUEST' });
+            if (!config_chkd?.record_id && !config_chkd.table.hasOwnProperty('access_group')) {
+                // when subscription value is present access_group is set to 1 by default
+                config_chkd.table.access_group = 1;
             }
 
             if (config_chkd.table.access_group === 0) {
@@ -1405,7 +1410,7 @@ export async function deleteRecords(params: {
                 table_p.subscription_group = 1;
             }
         }
-        
+
         params.table = table_p;
     }
 
