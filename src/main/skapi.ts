@@ -38,7 +38,8 @@ import {
     joinRealtime,
     postRealtime,
     closeRealtime,
-    getRealtimeUsers
+    getRealtimeUsers,
+    getRealtimeGroups
 } from '../methods/realtime';
 import {
     request,
@@ -352,6 +353,23 @@ export default class Skapi {
     @formHandler()
     getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<string[]>> {
         return getRealtimeUsers.bind(this)(params, fetchOptions);
+    }
+
+    @formHandler()
+    getRealtimeGroups(
+        params?: {
+            /** Index name to search. */
+            searchFor: 'group' | 'number_of_users';
+            /** Index value to search. */
+            value: string | number;
+            /** Search condition. */
+            condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
+            /** Range of search. */
+            range?: string | number;
+        } | null,
+        fetchOptions?: FetchOptions
+    ): Promise<DatabaseResponse<{ group: string; number_of_users: number; }>> {
+        return getRealtimeGroups.bind(this)(params, fetchOptions);
     }
 
     @formHandler()
