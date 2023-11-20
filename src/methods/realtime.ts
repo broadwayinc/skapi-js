@@ -203,7 +203,7 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
         throw new SkapiError(`"group" is required.`, { code: 'INVALID_PARAMETER' });
     }
 
-    let res = request.bind(this)(
+    let res = await request.bind(this)(
         'get-ws-group',
         params,
         {
@@ -214,7 +214,7 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
     )
 
     for (let i = 0; i < res.list.length; i++) {
-        res[i] = res[i].uid.split('#')[1];
+        res.list[i] = res.list[i].uid.split('#')[1];
     }
 
     return res;
