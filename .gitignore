@@ -113,4 +113,5 @@ esm/
 deploy.py
 package-lock.json
 playground/index.html
+playground/playground.html
 playground/mock.html

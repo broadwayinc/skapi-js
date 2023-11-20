@@ -34,6 +34,13 @@ import {
     normalizeRecord
 } from '../methods/database';
 import {
+    connectRealtime,
+    joinRealtime,
+    postRealtime,
+    closeRealtime,
+    getRealtimeUsers
+} from '../methods/realtime';
+import {
     request,
     secureRequest,
     mock,
@@ -46,8 +53,8 @@ import {
     unsubscribe,
     blockSubscriber,
     unblockSubscriber,
-    getSubscribers,
-    getSubscribedTo,
+    // getSubscribers,
+    // getSubscribedTo,
     getSubscriptions,
     subscribeNewsletter,
     getNewsletters,
@@ -79,7 +86,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.17-alpha';
+    version = '1.0.18-alpha';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -180,6 +187,8 @@ export default class Skapi {
 
     private __connection: Promise<Connection>;
     private __authConnection: Promise<void>;
+    private __socket: WebSocket;
+    private __socket_group: string;
 
     constructor(service: string, owner: string, options?: { autoLogin: boolean; }) {
         if (typeof service !== 'string' || typeof owner !== 'string') {
@@ -323,15 +332,42 @@ export default class Skapi {
 
     private checkAdmin = checkAdmin.bind(this);
     private request = request.bind(this);
-    private getSubscribedTo = getSubscribedTo.bind(this);
-    private getSubscribers = getSubscribers.bind(this);
+    // private getSubscribedTo = getSubscribedTo.bind(this);
+    // private getSubscribers = getSubscribers.bind(this);
 
     normalizeRecord = normalizeRecord.bind(this);
+
+    connectRealtime(cb: (rt: {
+        status: 'message' | 'error' | 'success' | 'close' | 'notice',
+        message: any
+    }) => Promise<void>) {
+        return connectRealtime.bind(this)(cb);
+    }
+
+    closeRealtime(): Promise<void> {
+        return closeRealtime.bind(this)();
+    }
+
+    @formHandler()
+    getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<string[]>> {
+        return getRealtimeUsers.bind(this)(params, fetchOptions);
+    }
+
+    @formHandler()
+    postRealtime(message: any, recipient: string): Promise<{ status: 'success', message: 'Message sent.' } | { status: 'error', message: 'Realtime connection is not open.' }> {
+        return postRealtime.bind(this)(message, recipient);
+    }
+
+    @formHandler()
+    joinRealtime(params: { group: string | null }): Promise<{ status: 'success', message: string }> {
+        return joinRealtime.bind(this)(params);
+    }
 
     @formHandler()
     getConnection(): Promise<Connection> {
         return getConnection.bind(this)();
     }
+
     @formHandler()
     getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
         return getProfile.bind(this)(options);
