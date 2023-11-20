@@ -23,6 +23,7 @@ async function prepareWebsocket() {
 type RealtimeCallback = (rt: {
     status: 'message' | 'error' | 'success' | 'close' | 'notice';
     message: any;
+    sender?: string; // user_id of the sender
 }) => void;
 
 let reconnectAttempts = 0;
@@ -67,12 +68,17 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 
                 socket.onmessage = event => {
                     let data = JSON.parse(decodeURI(event.data));
+                    let ret = { status: 'notice', message: data['#notice'] };
+
+                    if (data?.['#user_id']) {
+                        ret.sender = data['#user_id'].split('#')[1];
+                    }
+
                     if (data?.['#notice']) {
-                        cb({ status: 'notice', message: data['#notice'] });
+                        Object.assign(ret, { status: 'notice', message: data['#notice'] });
                     }
-                    else {
-                        cb({ status: 'message', message: data });
-                    }
+
+                    cb(ret);
                 };
 
                 socket.onclose = event => {
@@ -109,7 +115,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
     return this.__socket;
 }
 
-export async function postRealtime(message: any, recipient: string): Promise<{ status: 'success', message: 'Message sent.' } | { status: 'error', message: 'Realtime connection is not open.' }> {
+export async function postRealtime(message: any, recipient: string): Promise<{ status: 'success', message: 'Message sent.' }> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
 
     if (!socket) {
@@ -151,7 +157,7 @@ export async function postRealtime(message: any, recipient: string): Promise<{ s
         return { status: 'success', message: 'Message sent.' };
     }
 
-    return { status: 'error', message: 'Realtime connection is not open.' };
+    throw new SkapiError('Realtime connection is not open. Try reconnecting with connectRealtime().', { code: 'INVALID_REQUEST' });
 }
 
 export async function joinRealtime(params: { group?: string | null }): Promise<{ status: 'success', message: string }> {
@@ -215,6 +221,80 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
     for (let i = 0; i < res.list.length; i++) {
         res.list[i] = res.list[i].uid.split('#')[1];
     }
+
+    return res;
+}
+
+export async function getRealtimeGroups(
+    params?: {
+        /** Index name to search. */
+        searchFor: 'group' | 'number_of_users';
+        /** Index value to search. */
+        value: string | number;
+        /** Search condition. */
+        condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
+        /** Range of search. */
+        range?: string | number;
+    } | null,
+    fetchOptions?: FetchOptions
+): Promise<DatabaseResponse<string[]>> {
+    await this.__connection;
+
+    if (!params) {
+        params = { searchFor: 'group' };
+    }
+
+    params = validator.Params(
+        params,
+        {
+            searchFor: ['group', 'number_of_users', () => 'group'],
+            value: ['string', 'number', () => {
+                if (params?.searchFor && params?.searchFor === 'number_of_users') {
+                    return 0;
+                }
+
+                return ' ';
+            }],
+            condition: ['>', '>=', '=', '<', '<=', '!=', 'gt', 'gte', 'eq', 'lt', 'lte', 'ne', () => {
+                if (params?.searchFor === 'number_of_users') {
+                    return '>';
+                }
+                return '>=';
+            }],
+            range: ['string', 'number']
+        }
+    );
+
+    if (params.range && params.condition) {
+        delete params.condition;
+    }
+
+    if (params.searchFor === 'number_of_users' && typeof params.value !== 'number') {
+        throw new SkapiError(`"value" must be a number.`, { code: 'INVALID_PARAMETER' });
+    }
+    if (params.searchFor === 'group' && typeof params.value !== 'string') {
+        throw new SkapiError(`"value" must be a string.`, { code: 'INVALID_PARAMETER' });
+    }
+    if (params.hasOwnProperty('range') && typeof params.range !== typeof params.value) {
+        throw new SkapiError(`"range" must be a ${typeof params.value}.`, { code: 'INVALID_PARAMETER' });
+    }
+
+    let res = await request.bind(this)(
+        'get-ws-group',
+        params,
+        {
+            fetchOptions,
+            auth: true,
+            method: 'post'
+        }
+    )
+
+    res.list = res.list.map((v: any) => {
+        return {
+            group: v.rid.split('#')[1],
+            number_of_users: v.cid
+        }
+    });
 
     return res;
 }
