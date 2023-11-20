@@ -38,7 +38,8 @@ import {
     joinRealtime,
     postRealtime,
     closeRealtime,
-    getRealtimeUsers
+    getRealtimeUsers,
+    getRealtimeGroups
 } from '../methods/realtime';
 import {
     request,
@@ -93,10 +94,10 @@ export default class Skapi {
     connection: Connection | null = null;
 
     private host = 'skapi';
-    // private hostDomain = 'skapi.app';
-    private hostDomain = 'skapi.com';
-    // private target_cdn = 'd1wrj5ymxrt2ir';
-    private target_cdn = 'd3e9syvbtso631';
+    private hostDomain = 'skapi.app';
+    // private hostDomain = 'skapi.com';
+    private target_cdn = 'd1wrj5ymxrt2ir';
+    // private target_cdn = 'd3e9syvbtso631';
 
     // privates
     private __disabledAccount: string | null = null;
@@ -338,9 +339,10 @@ export default class Skapi {
     normalizeRecord = normalizeRecord.bind(this);
 
     connectRealtime(cb: (rt: {
-        status: 'message' | 'error' | 'success' | 'close' | 'notice',
-        message: any
-    }) => Promise<void>) {
+        status: 'message' | 'error' | 'success' | 'close' | 'notice';
+        message: any;
+        sender?: string; // user_id of the sender
+    }) => Promise<WebSocket>) {
         return connectRealtime.bind(this)(cb);
     }
 
@@ -354,7 +356,24 @@ export default class Skapi {
     }
 
     @formHandler()
-    postRealtime(message: any, recipient: string): Promise<{ status: 'success', message: 'Message sent.' } | { status: 'error', message: 'Realtime connection is not open.' }> {
+    getRealtimeGroups(
+        params?: {
+            /** Index name to search. */
+            searchFor: 'group' | 'number_of_users';
+            /** Index value to search. */
+            value: string | number;
+            /** Search condition. */
+            condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
+            /** Range of search. */
+            range?: string | number;
+        } | null,
+        fetchOptions?: FetchOptions
+    ): Promise<DatabaseResponse<{ group: string; number_of_users: number; }>> {
+        return getRealtimeGroups.bind(this)(params, fetchOptions);
+    }
+
+    @formHandler()
+    postRealtime(message: any, recipient: string): Promise<{ status: 'success', message: 'Message sent.' }> {
         return postRealtime.bind(this)(message, recipient);
     }
 
