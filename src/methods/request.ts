@@ -137,6 +137,7 @@ export async function request(
                 case 'get-signed-url':
                 case 'grant-private-access':
                 case 'request-private-access-key':
+                case 'get-ws-group':
                 case 'del-files':
                     return {
                         private: record.record_private,
@@ -754,131 +755,6 @@ async function _get(
     return _fetch.bind(this)(url, opt, progress);
 };
 
-
-/**
- * Sends post request to your custom server using Skapi's secure API layer.</br>
- * You must set your secret API key from the Skapi's admin page.</br>
- * On your server side, you must verify your secret API key.<br>
- * Skapi API layer can process your requests both synchronously and asynchronously.<br>
- * You can request multiple process using arrays.<br>
- * Skapi will process your requests in order.</br>
- * The sync process will be chained in order during process.<br>
- * Refer: <a href='www.google.com'>Setting secret api key</a>
- *
- * <h6>Example</h6>
- * 
- * ```
- * let call = await skapi.secureRequest(
- *     url: 'http://my.website.com/myapi',
- *     data: {
- *         some_data: 'Hello'
- *     }
- * )
- * 
- * console.log(call)
- * // {
- * //     response: <any>
- * //     statusCode: <number>
- * //     url: 'http://my.website.com/myapi'
- * // }
- * ```
- *
- * 
- * <h6>Nodejs Example</h6>
- * 
- * ```
- * const http = require('http');
- * http.createServer(function (request, response) {
- * if (request.url === '/myapi') {
- *     if (request.method === 'POST') {
- *         let body = '';
- * 
- *         request.on('data', function (data) {
- *             body += data;
- *         });
- * 
- *         request.on('end', function () {
- *             body = JSON.parse(body);
- *             console.log(body);
- *             // {
- *             //     user: {
- *             //         user_id: '',
- *             //         address: '',
- *             //         phone_number: '',
- *             //         email: '',
- *             //         name: '',
- *             //         locale: '',
- *             //         request_locale: ''
- *             //     },
- *             //     data: {
- *             //         some_data: 'Hello',
- *             //     },
- *             //     api_key: 'your api secret key'
- *             // }
- * 
- *             if (body.api_key && body.api_key === 'your api secret key') {
- *                 response.writeHead(200, {'Content-Type': 'text/html'});
- *                 // do something
- *                 response.end('success');
- *             } else {
- *                 response.writeHead(401, {'Content-Type': 'text/html'});
- *                 response.end("api key mismatch");
- *             }
- *         });
- *     }
- * }
- * }).listen(3000);
- * ```
- *
- * 
- * <h6>Python Example</h6>
- * 
- * ```
- * from http.server import BaseHTTPRequestHandler, HTTPServer
- * import json
- * 
- * class MyServer(BaseHTTPRequestHandler):
- * def do_request(self):
- *     if self.path == '/myapi':
- *         content_length = int(self.headers['Content-Length'])
- *         body = json.loads(self.rfile.read(content_length).decode('utf-8'))
- *         print(body)
- *         # {
- *         #     'user': {
- *         #         'user_id': '',
- *         #         'address': '',
- *         #         'phone_number': '',
- *         #         'email': '',
- *         #         'name': '',
- *         #         'locale': '',
- *         #         'request_locale': ''
- *         #     },
- *         #     'data': {
- *         #         'some_data': 'Hello',
- *         #     },
- *         #     'api_key': 'your api secret key'
- *         # }
- * 
- *         if 'api_key' in body and body['api_key'] == 'your api secret key':
- *             self.send_response(200)
- *             self.send_header("Content-type", "text/html")
- *             self.end_headers()
- *             self.wfile.write(b'\n success')
- *         else:
- *             self.send_response(401)
- *             self.send_header("Content-type", "text/html")
- *             self.end_headers()
- *             self.wfile.write(b'api key mismatch')
- * 
- * 
- * myServer = HTTPServer(("", 3000), MyServer)
- * 
- * try:
- *      myServer.serve_forever()
- * except KeyboardInterrupt:
- *      myServer.server_close()
- * ```
- */
 export async function secureRequest<RequestParams = {
     /** Request url */
     url: string;
