@@ -20,9 +20,9 @@ async function prepareWebsocket() {
     );
 }
 
-type RealTimeCallback = (rt: {
+type RealtimeCallback = (rt: {
     status: 'message' | 'error' | 'success' | 'close' | 'notice';
-    message: string | { [key: string]: any };
+    message: any;
 }) => void;
 
 let reconnectAttempts = 0;
@@ -40,7 +40,7 @@ export async function closeRealtime(): Promise<void> {
     return null;
 }
 
-export function connectRealtime(cb: RealTimeCallback, delay = 0): Promise<void> {
+export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSocket> {
     if (typeof cb !== 'function') {
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
     }
@@ -107,7 +107,6 @@ export function connectRealtime(cb: RealTimeCallback, delay = 0): Promise<void> 
     }
 
     return this.__socket;
-
 }
 
 export async function postRealtime(message: any, recipient: string): Promise<{ status: 'success', message: 'Message sent.' } | { status: 'error', message: 'Realtime connection is not open.' }> {
