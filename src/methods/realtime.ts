@@ -68,10 +68,10 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 
                 socket.onmessage = event => {
                     let data = JSON.parse(decodeURI(event.data));
-                    let ret = { status: 'notice', message: data['#notice'] };
+                    let ret: any = { status: 'message', message: data?.['#message'] || null };
 
                     if (data?.['#user_id']) {
-                        ret.sender = data['#user_id'].split('#')[1];
+                        ret.sender = data['#user_id'];
                     }
 
                     if (data?.['#notice']) {
@@ -230,14 +230,14 @@ export async function getRealtimeGroups(
         /** Index name to search. */
         searchFor: 'group' | 'number_of_users';
         /** Index value to search. */
-        value: string | number;
+        value?: string | number;
         /** Search condition. */
         condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
         /** Range of search. */
         range?: string | number;
     } | null,
     fetchOptions?: FetchOptions
-): Promise<DatabaseResponse<string[]>> {
+): Promise<DatabaseResponse<{ group: string; number_of_users: number; }>> {
     await this.__connection;
 
     if (!params) {
@@ -255,15 +255,19 @@ export async function getRealtimeGroups(
 
                 return ' ';
             }],
-            condition: ['>', '>=', '=', '<', '<=', '!=', 'gt', 'gte', 'eq', 'lt', 'lte', 'ne', () => {
-                if (params?.searchFor === 'number_of_users') {
-                    return '>';
-                }
-                return '>=';
-            }],
+            condition: ['>', '>=', '=', '<', '<=', '!=', 'gt', 'gte', 'eq', 'lt', 'lte', 'ne'],
             range: ['string', 'number']
         }
     );
+
+    if (!params.condition) {
+        if (params.value === ' ' || !params.value) {
+            params.condition = '>';
+        }
+        else {
+            params.condition = '=';
+        }
+    }
 
     if (params.range && params.condition) {
         delete params.condition;
@@ -292,7 +296,7 @@ export async function getRealtimeGroups(
     res.list = res.list.map((v: any) => {
         return {
             group: v.rid.split('#')[1],
-            number_of_users: v.cid
+            number_of_users: v.cnt
         }
     });
 
