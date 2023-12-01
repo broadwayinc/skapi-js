@@ -87,17 +87,17 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.21@alpha';
+    version = '1.0.21';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
     connection: Connection | null = null;
 
     private host = 'skapi';
-    private hostDomain = 'skapi.app';
-    // private hostDomain = 'skapi.com';
-    private target_cdn = 'd1wrj5ymxrt2ir'; // app
-    // private target_cdn = 'd3e9syvbtso631'; // production
+    // private hostDomain = 'skapi.app';
+    private hostDomain = 'skapi.com';
+    // private target_cdn = 'd1wrj5ymxrt2ir'; // app
+    private target_cdn = 'd3e9syvbtso631'; // production
 
     // privates
     private __disabledAccount: string | null = null;
