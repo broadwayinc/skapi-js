@@ -95,9 +95,6 @@ export async function request(
             switch (dest) {
                 case 'get-newsletters':
                 case 'get-public-newsletters':
-                case 'delete-newsletter':
-                case 'block-account':
-                case 'register-service':
                 case 'get-users':
                 case 'post-userdata':
                 case 'remove-account':
@@ -108,18 +105,11 @@ export async function request(
                 case 'confirm-signup':
                 case 'recover-account':
                 case 'mock':
-                case 'get-services':
                 case 'service':
                 case 'grant-access':
                 case 'last-verified-email':
                 case 'get-newsletter-subscription':
                 case 'request-username-change':
-                case 'register-subdomain':
-                case 'list-host-directory':
-                case 'refresh-cdn':
-                case 'request-newsletter-sender':
-                case 'set-404':
-                case 'subdomain-info':
                     return {
                         public: admin.admin_public,
                         private: admin.admin_private
@@ -133,7 +123,6 @@ export async function request(
                 case 'get-table':
                 case 'get-tag':
                 case 'get-index':
-                case 'storage-info':
                 case 'get-signed-url':
                 case 'grant-private-access':
                 case 'request-private-access-key':
