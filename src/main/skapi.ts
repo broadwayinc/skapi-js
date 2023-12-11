@@ -87,17 +87,16 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.21';
+    version = '1.0.22';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
     connection: Connection | null = null;
 
     private host = 'skapi';
-    // private hostDomain = 'skapi.app';
+    
     private hostDomain = 'skapi.com';
-    // private target_cdn = 'd1wrj5ymxrt2ir'; // app
-    private target_cdn = 'd3e9syvbtso631'; // production
+    private target_cdn = 'd3e9syvbtso631';
 
     // privates
     private __disabledAccount: string | null = null;
@@ -191,7 +190,7 @@ export default class Skapi {
     private __socket: WebSocket;
     private __socket_group: string;
 
-    constructor(service: string, owner: string, options?: { autoLogin: boolean; }) {
+    constructor(service: string, owner: string, options?: { autoLogin: boolean; }, __etc?: any) {
         if (typeof service !== 'string' || typeof owner !== 'string') {
             throw new SkapiError('"service" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
@@ -210,6 +209,9 @@ export default class Skapi {
         let autoLogin = typeof options?.autoLogin === 'boolean' ? options.autoLogin : true;
 
         // get endpoints
+
+        this.target_cdn = __etc?.target_cdn || this.target_cdn;
+        this.hostDomain = __etc?.hostDomain || this.hostDomain;
 
         const cdn_domain = `https://${this.target_cdn}.cloudfront.net`; // don't change this
         let sreg = service.substring(0, 4);
