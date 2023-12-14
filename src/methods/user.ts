@@ -27,6 +27,33 @@ export function setUserPool(params: { UserPoolId: string; ClientId: string; }) {
     userPool = new CognitoUserPool(params);
 }
 
+export function consumeTicket(params: {
+    ticket_id: string;
+}): Promise<string> {
+    if (!params.ticket_id) {
+        throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
+    }
+    return request.bind(this)('ticket', { ticket_id: params, exec: 'consume' }, { auth: true });
+}
+
+export function releaseTicket(params: {
+    ticket_id: string;
+}): Promise<string> {
+    if (!params.ticket_id) {
+        throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
+    }
+    return request.bind(this)('ticket', { ticket_id: params, exec: 'release' }, { auth: true });
+}
+
+export function getTicketKey(params: {
+    ticket_id: string;
+}): Promise<string> {
+    if (!params.ticket_id) {
+        throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
+    }
+    return request.bind(this)('ticket', { ticket_id: params, exec: 'request' }, { auth: true });
+}
+
 export function authentication() {
     if (!userPool) throw new SkapiError('User pool is missing', { code: 'INVALID_REQUEST' });
 
