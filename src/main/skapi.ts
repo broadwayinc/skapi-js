@@ -351,15 +351,21 @@ export default class Skapi {
         return connectRealtime.bind(this)(cb);
     }
 
+    @formHandler()
     consumeTicket(params: { ticket_id: string; }): Promise<string> {
         return consumeTicket.bind(this)(params);
     }
+
+    @formHandler()
     releaseTicket(params: { ticket_id: string; }): Promise<string> {
         return releaseTicket.bind(this)(params);
     }
+
+    @formHandler()
     getTicketKey(params: { ticket_id: string; }): Promise<string> {
         return getTicketKey.bind(this)(params);
     }
+
     closeRealtime(): Promise<void> {
         return closeRealtime.bind(this)();
     }
