@@ -108,6 +108,7 @@ export async function request(
                 case 'service':
                 case 'grant-access':
                 case 'last-verified-email':
+                case 'ticket':
                 case 'get-newsletter-subscription':
                 case 'request-username-change':
                     return {

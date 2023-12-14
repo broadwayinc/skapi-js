@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "Skapi: Serverless Backend API.",
   "main": "./dist/skapi.module.js",
   "types": "./js/Main.d.ts",
