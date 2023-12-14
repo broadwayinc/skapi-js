@@ -82,19 +82,22 @@ import {
     setUserPool,
     userPool,
     lastVerifiedEmail,
-    requestUsernameChange
+    requestUsernameChange,
+    consumeTicket,
+    releaseTicket,
+    getTicketKey
 } from '../methods/user';
 
 export default class Skapi {
     // current version
-    version = '1.0.22';
+    version = '1.0.23';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
     connection: Connection | null = null;
 
     private host = 'skapi';
-    
+
     private hostDomain = 'skapi.com';
     private target_cdn = 'd3e9syvbtso631';
 
@@ -348,6 +351,15 @@ export default class Skapi {
         return connectRealtime.bind(this)(cb);
     }
 
+    consumeTicket(params: { ticket_id: string; }): Promise<string> {
+        return consumeTicket.bind(this)(params);
+    }
+    releaseTicket(params: { ticket_id: string; }): Promise<string> {
+        return releaseTicket.bind(this)(params);
+    }
+    getTicketKey(params: { ticket_id: string; }): Promise<string> {
+        return getTicketKey.bind(this)(params);
+    }
     closeRealtime(): Promise<void> {
         return closeRealtime.bind(this)();
     }
