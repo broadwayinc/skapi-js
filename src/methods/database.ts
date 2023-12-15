@@ -1036,21 +1036,28 @@ export async function postRecord(
         }
 
         if (formMeta.files.length) {
-            let formData = new FormData();
+            // small files
+
+            // let formData = new FormData();
+            
+            if(!to_bin) {
+                to_bin = [];
+            }
+
             for (let f of formMeta.files) {
-                formData.append(f.name, f.file, f.file.name);
+                to_bin.push(f);
             }
 
-            options.meta = config;
+            // options.meta = config;
 
-            if (Object.keys(formMeta.meta).length) {
-                options.meta.data = formMeta.meta;
-            }
-            postData = formData;
+            // if (Object.keys(formMeta.meta).length) {
+            //     options.meta.data = formMeta.meta;
+            // }
+            // postData = formData;
         }
-        else {
-            postData = Object.assign({ data: formMeta.meta }, config);
-        }
+        // else {
+        postData = Object.assign({ data: formMeta.meta }, config);
+        // }
     }
 
     else {
