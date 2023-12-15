@@ -33,7 +33,7 @@ export function consumeTicket(params: {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
-    return request.bind(this)('ticket', { ticket_id: params, exec: 'consume' }, { auth: true });
+    return request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'consume' }, { auth: true });
 }
 
 export function releaseTicket(params: {
@@ -42,7 +42,7 @@ export function releaseTicket(params: {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
-    return request.bind(this)('ticket', { ticket_id: params, exec: 'release' }, { auth: true });
+    return request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'release' }, { auth: true });
 }
 
 export function getTicketKey(params: {
@@ -51,7 +51,7 @@ export function getTicketKey(params: {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
-    return request.bind(this)('ticket', { ticket_id: params, exec: 'request' }, { auth: true });
+    return request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'request' }, { auth: true });
 }
 
 export function authentication() {
@@ -201,6 +201,20 @@ export function authentication() {
                     return;
                 }
 
+                let respond = (session) => {
+                    let idToken = session.getIdToken().payload;
+
+                    if (idToken['custom:service'] !== this.service) {
+                        cognitoUser.signOut();
+                        this.session = null;
+                        rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
+                        return;
+                    }
+    
+                    this.session = session;
+                    normalizeUserAttributes(idToken);
+                    res(session);
+                }
                 // try refresh when invalid token
                 if (refreshToken || !session.isValid()) {
                     cognitoUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
@@ -208,8 +222,9 @@ export function authentication() {
                             rej(refreshErr);
                         }
                         else {
-                            if (!refreshedSession.isValid()) {
-                                session = refreshedSession;
+                            if (refreshedSession.isValid()) {
+                                return respond(refreshedSession);
+                                // session = refreshedSession;
                             }
                             else {
                                 rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
@@ -218,19 +233,9 @@ export function authentication() {
                         }
                     });
                 }
-
-                let idToken = session.getIdToken().payload;
-
-                if (idToken['custom:service'] !== this.service) {
-                    cognitoUser.signOut();
-                    this.session = null;
-                    rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
-                    return;
+                else {
+                    return respond(session);
                 }
-
-                this.session = session;
-                normalizeUserAttributes(idToken);
-                res(session);
             });
         });
     };
