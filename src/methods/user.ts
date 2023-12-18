@@ -332,92 +332,6 @@ export function authentication() {
         });
     };
 
-    // const signup = async (attributes): Promise<true> => {
-    //     let conn = await this.__connection;
-
-    //     let service = attributes['service'] || this.service;
-
-    //     let attributeList = [
-    //         {
-    //             'Name': 'name',
-    //             'Value': attributes['name']
-    //         },
-    //         {
-    //             'Name': 'custom:service',
-    //             'Value': service
-    //         },
-    //         {
-    //             'Name': 'locale',
-    //             'Value': conn.locale || 'N/A'
-    //         },
-    //         {
-    //             'Name': 'custom:owner',
-    //             'Value': attributes['owner'] || this.owner
-    //         },
-    //         {
-    //             'Name': 'email',
-    //             'Value': attributes['email']
-    //         },
-    //         {
-    //             'Name': 'address',
-    //             'Value': attributes['address']
-    //         },
-    //         {
-    //             'Name': 'birthdate',
-    //             'Value': attributes['birthdate']
-    //         },
-    //         {
-    //             'Name': 'gender',
-    //             'Value': attributes['gender']
-    //         },
-    //         {
-    //             'Name': 'phone_number',
-    //             'Value': attributes['phone_number']
-    //         },
-    //         {
-    //             'Name': 'custom:address_public',
-    //             'Value': attributes['address_public'] ? '1' : '0'
-    //         },
-    //         {
-    //             'Name': 'custom:gender_public',
-    //             'Value': attributes['gender_public'] ? '1' : '0'
-    //         },
-    //         {
-    //             'Name': 'custom:birthdate_public',
-    //             'Value': attributes['birthdate_public'] ? '1' : '0'
-    //         },
-    //         {
-    //             'Name': 'custom:misc',
-    //             'Value': typeof attributes['misc'] === 'string' ? attributes['misc'] : JSON.stringify(attributes['misc'])
-    //         }
-    //     ].map(att => {
-    //         return new CognitoUserAttribute(att);
-    //     });
-
-    //     let username = MD5.hash(attributes.username || attributes.email);
-    //     username = service + '-' + username;
-
-    //     if (attributes.password.length < 6) {
-    //         throw new SkapiError('Password should be at least 6 characters.', { code: 'INVALID_PARAMETER' });
-    //     }
-
-    //     if (attributes.password.length > 60) {
-    //         throw new SkapiError('Password should be 60 characters max.', { code: 'INVALID_PARAMETER' });
-    //     }
-
-    //     return new Promise((res, rej) => {
-    //         userPool.signUp(username, attributes.password, attributeList, null, function (
-    //             err,
-    //             result
-    //         ) {
-    //             if (err) {
-    //                 rej(new SkapiError(err.message, { code: 'INVALID_REQUEST' }));
-    //             }
-    //             res(true);
-    //         });
-    //     });
-    // }
-
     return {
         getSession,
         authenticateUser,
@@ -541,22 +455,8 @@ export async function login(
 export async function signup(
     form: Form<UserAttributes & { email: String, password: String; }>,
     option?: {
-        /**
-         * When true, the service will send out confirmation E-Mail.
-         * User will not be able to signin to their account unless they have confirm their email.
-         * Parameter also accepts URL string for user to be taken to when clicked on confirmation link.
-         * Default is false.
-         */
         signup_confirmation?: boolean | string;
-        /**
-         * When true, user will be subscribed to the service newsletter (group 1) once they are signed up.
-         * User's signup confirmation is required for this parameter.
-         * Default is false.
-         */
         email_subscription?: boolean;
-        /**
-         * Automatically login to account after signup. Will not work if signup confirmation is required.
-         */
         login?: boolean;
     } & FormSubmitCallback): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
     let is_admin = await checkAdmin.bind(this)();
@@ -675,11 +575,8 @@ export async function disableAccount(): Promise<'SUCCESS: account has been disab
 }
 
 export async function resetPassword(form: Form<{
-    /** Signin E-Mail */
     email: string;
-    /** The verification code user has received. */
     code: string | number;
-    /** New password to set. Verification code is required. */
     new_password: string;
 }>): Promise<"SUCCESS: New password has been set."> {
 
@@ -891,7 +788,6 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
         address_public: 'boolean',
         gender_public: 'boolean',
         birthdate_public: 'boolean',
-        // email_subscription: 'boolean',
         misc: 'string'
     });
 
@@ -901,12 +797,10 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
 
     // set alternative signin email
     if (params.email) {
-        // params['preferred_username'] = (await this.updateConnection({ request_hash: params.email })).hash;
         params['preferred_username'] = this.service + '-' + MD5.hash(params.email);
     }
 
     let collision = [
-        // ['email_subscription', 'email_verified', "User's E-Mail should be verified to set"],
         ['email_public', 'email_verified', "User's E-Mail should be verified to set"],
         ['phone_number_public', 'phone_number_verified', "User's phone number should be verified to set"]
     ];
@@ -933,7 +827,6 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
             'address_public',
             'gender_public',
             'birthdate_public',
-            // 'email_subscription',
             'misc'
         ];
 
@@ -988,13 +881,9 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
 
 export async function getUsers(
     params?: {
-        /** Index name to search. */
         searchFor: string;
-        /** Index value to search. */
         value: string | number | boolean;
-        /** Search condition. */
         condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
-        /** Range of search. */
         range?: string | number | boolean;
     },
     fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
@@ -1033,15 +922,9 @@ export async function getUsers(
         'address': 'string',
         'gender': 'string',
         'birthdate': (v: string) => validator.Birthdate(v),
-        // 'subscribers': 'number',
+        'subscribers': 'number',
         'timestamp': 'number',
         'access_group': 'number',
-        // 'email_subscription': (v: number) => {
-        //     if (!isAdmin) {
-        //         throw new SkapiError('Only admin is allowed to search "email_subscription".', { code: 'INVALID_REQUEST' });
-        //     }
-        //     return v;
-        // },
         'approved': (v: boolean) => {
             if (v) {
                 return 'by_admin:approved';
@@ -1067,7 +950,6 @@ export async function getUsers(
             'subscribers',
             'timestamp',
             'access_group',
-            // 'email_subscription',
             'approved'
         ],
         condition: ['>', '>=', '=', '<', '<=', 'gt', 'gte', 'eq', 'lt', 'lte', () => '='],
@@ -1107,9 +989,9 @@ export async function getUsers(
         throw new SkapiError(`Conditions are not allowed on "user_id"`, { code: 'INVALID_PARAMETER' });
     }
 
-    if (params.searchFor === 'access_group') {
-        params.searchFor = 'group';
-    }
+    // if (params.searchFor === 'access_group') {
+    //     params.searchFor = 'group';
+    // }
 
     if (typeof params?.value === 'string' && !params?.value) {
         throw new SkapiError('Value should not be an empty string.', { code: 'INVALID_PARAMETER' });
