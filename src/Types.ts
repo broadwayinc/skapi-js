@@ -130,6 +130,8 @@ export type Connection = {
     timestamp: number;
     /** Connected user's IP address */
     ip: string;
+    /** Service level */
+    group: number;
 };
 
 export type FormSubmitCallback = {
