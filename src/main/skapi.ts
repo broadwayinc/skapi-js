@@ -103,7 +103,6 @@ export default class Skapi {
 
     // privates
     private __disabledAccount: string | null = null;
-    // private __serviceHash: Record<string, string> = {};
     private __cached_requests: {
         /** Cached url requests */
         [url: string]: {
@@ -741,27 +740,19 @@ export default class Skapi {
         return getSubscriptions.bind(this)(params, fetchOptions);
     }
     @formHandler()
-    // subscribe(option: SubscriptionGroup<number>): Promise<'SUCCESS: the user has subscribed.'> {
     subscribe(params: { user_id: string }): Promise<'SUCCESS: the user has subscribed.'> {
-        // return subscribe.bind(this)(option);
         return subscribe.bind(this)(params);
     }
     @formHandler()
-    // unsubscribe(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: the user has unsubscribed.'> {
     unsubscribe(params: { user_id: string }): Promise<'SUCCESS: the user has unsubscribed.'> {
-        // return unsubscribe.bind(this)(option);
         return unsubscribe.bind(this)(params);
     }
     @formHandler()
-    // blockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: blocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
     blockSubscriber(params: { user_id: string }): Promise<'SUCCESS: blocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
-        // return blockSubscriber.bind(this)(option);
         return blockSubscriber.bind(this)(params);
     }
     @formHandler()
-    // unblockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: unblocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
     unblockSubscriber(params: { user_id: string }): Promise<'SUCCESS: unblocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
-        // return unblockSubscriber.bind(this)(option);
         return unblockSubscriber.bind(this)(params);
     }
     @formHandler()
