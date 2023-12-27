@@ -334,6 +334,17 @@ function extractFormMeta(form: Form<any>) {
             }
         }
 
+        // check if meta does not exceed 2mb
+        function sizeof(object: any) {
+            return new Blob([JSON.stringify(object)]).size;
+        }
+
+
+        // check if meta does not exceed 2mb
+        if (sizeof(meta) > 2 * 1024 * 1024) { // 2MB
+            throw new SkapiError('JSON Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
+        }
+
         return { meta, files, to_bin };
     }
 

@@ -82,26 +82,27 @@ import {
     setUserPool,
     userPool,
     lastVerifiedEmail,
-    requestUsernameChange
+    requestUsernameChange,
+    consumeTicket,
+    releaseTicket,
+    getTicketKey
 } from '../methods/user';
 
 export default class Skapi {
     // current version
-    version = '1.0.21@alpha';
+    version = '1.0.27';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
     connection: Connection | null = null;
 
     private host = 'skapi';
-    private hostDomain = 'skapi.app';
-    // private hostDomain = 'skapi.com';
-    private target_cdn = 'd1wrj5ymxrt2ir'; // app
-    // private target_cdn = 'd3e9syvbtso631'; // production
+
+    private hostDomain = 'skapi.com';
+    private target_cdn = 'd3e9syvbtso631';
 
     // privates
     private __disabledAccount: string | null = null;
-    // private __serviceHash: Record<string, string> = {};
     private __cached_requests: {
         /** Cached url requests */
         [url: string]: {
@@ -191,7 +192,7 @@ export default class Skapi {
     private __socket: WebSocket;
     private __socket_group: string;
 
-    constructor(service: string, owner: string, options?: { autoLogin: boolean; }) {
+    constructor(service: string, owner: string, options?: { autoLogin: boolean; }, __etc?: any) {
         if (typeof service !== 'string' || typeof owner !== 'string') {
             throw new SkapiError('"service" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
@@ -210,6 +211,9 @@ export default class Skapi {
         let autoLogin = typeof options?.autoLogin === 'boolean' ? options.autoLogin : true;
 
         // get endpoints
+
+        this.target_cdn = __etc?.target_cdn || this.target_cdn;
+        this.hostDomain = __etc?.hostDomain || this.hostDomain;
 
         const cdn_domain = `https://${this.target_cdn}.cloudfront.net`; // don't change this
         let sreg = service.substring(0, 4);
@@ -344,6 +348,21 @@ export default class Skapi {
         sender?: string; // user_id of the sender
     }) => Promise<WebSocket>) {
         return connectRealtime.bind(this)(cb);
+    }
+
+    @formHandler()
+    consumeTicket(params: { ticket_id: string; }): Promise<string> {
+        return consumeTicket.bind(this)(params);
+    }
+
+    @formHandler()
+    releaseTicket(params: { ticket_id: string; }): Promise<string> {
+        return releaseTicket.bind(this)(params);
+    }
+
+    @formHandler()
+    getTicketKey(params: { ticket_id: string; }): Promise<string> {
+        return getTicketKey.bind(this)(params);
     }
 
     closeRealtime(): Promise<void> {
@@ -721,27 +740,19 @@ export default class Skapi {
         return getSubscriptions.bind(this)(params, fetchOptions);
     }
     @formHandler()
-    // subscribe(option: SubscriptionGroup<number>): Promise<'SUCCESS: the user has subscribed.'> {
     subscribe(params: { user_id: string }): Promise<'SUCCESS: the user has subscribed.'> {
-        // return subscribe.bind(this)(option);
         return subscribe.bind(this)(params);
     }
     @formHandler()
-    // unsubscribe(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: the user has unsubscribed.'> {
     unsubscribe(params: { user_id: string }): Promise<'SUCCESS: the user has unsubscribed.'> {
-        // return unsubscribe.bind(this)(option);
         return unsubscribe.bind(this)(params);
     }
     @formHandler()
-    // blockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: blocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
     blockSubscriber(params: { user_id: string }): Promise<'SUCCESS: blocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
-        // return blockSubscriber.bind(this)(option);
         return blockSubscriber.bind(this)(params);
     }
     @formHandler()
-    // unblockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: unblocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
     unblockSubscriber(params: { user_id: string }): Promise<'SUCCESS: unblocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
-        // return unblockSubscriber.bind(this)(option);
         return unblockSubscriber.bind(this)(params);
     }
     @formHandler()

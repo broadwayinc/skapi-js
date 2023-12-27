@@ -1,7 +1,7 @@
 {
   "name": "skapi-js",
-  "version": "1.0.21",
-  "description": "Javascript library for Skapi: Complete JAM Stack, front-end driven serverless backend API service.",
+  "version": "1.0.27",
+  "description": "Skapi: JS Backend API with no deployment required.",
   "main": "./dist/skapi.module.js",
   "types": "./js/Main.d.ts",
   "files": [
@@ -33,6 +33,6 @@
     "backend",
     "skapi",
     "api",
-    "jamstack"
+    "serverless"
   ]
 }
