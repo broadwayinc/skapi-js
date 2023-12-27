@@ -282,6 +282,8 @@ export type PublicUser = {
     misc?: string;
     /** Number of the user's subscribers. */
     subscribers?: number;
+    /** Number of the records the user have created. */
+    records?: number;
     /** Timestamp of user signup time. */
     timestamp: number;
     /** Service id of the user account. */
