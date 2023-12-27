@@ -47,12 +47,12 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
     }
 
     if (reconnectAttempts || !(this.__socket instanceof Promise)) {
-        this.__socket = new Promise(resolve => {
+        this.__socket = new Promise(async resolve => {
             setTimeout(async () => {
                 await this.__connection;
 
                 let user = await this.getProfile();
-                if(!user) {
+                if (!user) {
                     throw new SkapiError(`No access.`, { code: 'INVALID_REQUEST' });
                 }
 
