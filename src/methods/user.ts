@@ -430,6 +430,14 @@ export async function recoverAccount(
     return 'SUCCESS: Recovery e-mail has been sent.';
 }
 
+export function jwtLogin(params: {
+    jwt: string;
+    key_url: string;
+    client_id: string;
+}) {
+    return request.bind(this)("jwt-login", params);
+}
+
 export async function login(
     form: Form<{
         /** if given, username will be used instead of email. */
