@@ -35,6 +35,7 @@ const get = (request, response) => {
                 }
             }
             else {
+                // response.setHeader('Referrer-Policy', 'no-referrer-when-downgrade');
                 response.writeHead(200, { 'Content-Type': contentType });
                 response.end(content, 'utf-8');
             }
