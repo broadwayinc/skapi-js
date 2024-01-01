@@ -440,17 +440,7 @@ export async function jwtLogin(params: {
         return login.bind(this)({ email: params.client_id, password: hashedPassword });
     } catch (err) {
         if (err.code === 'INCORRECT_USERNAME_OR_PASSWORD') {
-            function parseJwt(token) {
-                var base64Url = token.split('.')[1];
-                var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
-                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-                }).join(''));
-
-                return JSON.parse(jsonPayload);
-            }
-            let jwt = parseJwt(params.jwt);
-            throw new SkapiError('User already have an account with the username "' + jwt.sub + '".', { code: 'INVALID_REQUEST' });
+            throw new SkapiError('User has migrated the account. Login with the service username and password.', { code: 'INVALID_REQUEST' });
         }
     }
 }
