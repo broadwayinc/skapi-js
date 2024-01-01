@@ -85,12 +85,13 @@ import {
     requestUsernameChange,
     consumeTicket,
     releaseTicket,
-    getTicketKey
+    getTicketKey,
+    jwtLogin
 } from '../methods/user';
 
 export default class Skapi {
     // current version
-    version = '1.0.29';
+    version = '1.0.30';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -352,6 +353,14 @@ export default class Skapi {
         sender?: string; // user_id of the sender
     }) => Promise<WebSocket>) {
         return connectRealtime.bind(this)(cb);
+    }
+
+    jwtLogin(params: {
+        jwt: string;
+        key_url: string;
+        client_id: string;
+    }): Promise<string> {
+        return jwtLogin.bind(this)(params);
     }
 
     @formHandler()
