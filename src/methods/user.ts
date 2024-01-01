@@ -458,7 +458,7 @@ export async function login(
     let params = validator.Params(form, {
         username: 'string',
         email: 'string',
-        password: (v: string) => validator.Password(v)
+        password: 'string'
     }, ['password']);
 
     if (params.email) {
