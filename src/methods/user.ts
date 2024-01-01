@@ -438,7 +438,7 @@ export async function jwtLogin(params: {
     let { hashedPassword, username } = await request.bind(this)("jwt-login", params);
     try {
         return login.bind(this)({ username: username, password: hashedPassword });
-    } catch (err) {
+    } catch (err: SkapiError | any) {
         if (err?.code === 'INCORRECT_USERNAME_OR_PASSWORD') {
             throw new SkapiError('User has migrated the account. Login with the service username and password.', { code: 'INVALID_REQUEST' });
         }
