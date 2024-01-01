@@ -210,7 +210,7 @@ export function authentication() {
                         rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
                         return;
                     }
-    
+
                     this.session = session;
                     normalizeUserAttributes(idToken);
                     res(session);
@@ -243,7 +243,7 @@ export function authentication() {
     const createCognitoUser = async (email: string) => {
         if (!email) throw new SkapiError('E-Mail is required.', { code: 'INVALID_PARAMETER' });
         // let hash = this.__serviceHash[email] || (await this.updateConnection({ request_hash: email })).hash;
-        let username = this.service + '-' + MD5.hash(email);
+        let username = email.includes(this.service + '-') ? email : this.service + '-' + MD5.hash(email);
 
         return {
             cognitoUser: new CognitoUser({
@@ -430,12 +430,13 @@ export async function recoverAccount(
     return 'SUCCESS: Recovery e-mail has been sent.';
 }
 
-export function jwtLogin(params: {
+export async function jwtLogin(params: {
     jwt: string;
     key_url: string;
     client_id: string;
 }) {
-    return request.bind(this)("jwt-login", params);
+    let { hashedPassword } = request.bind(this)("jwt-login", params);
+    return login.bind(this)({ email: params.client_id, password: hashedPassword });
 }
 
 export async function login(
