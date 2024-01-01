@@ -436,7 +436,23 @@ export async function jwtLogin(params: {
     client_id: string;
 }) {
     let { hashedPassword } = request.bind(this)("jwt-login", params);
-    return login.bind(this)({ email: params.client_id, password: hashedPassword });
+    try {
+        return login.bind(this)({ email: params.client_id, password: hashedPassword });
+    } catch (err) {
+        if (err.code === 'INCORRECT_USERNAME_OR_PASSWORD') {
+            function parseJwt(token) {
+                var base64Url = token.split('.')[1];
+                var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+
+                return JSON.parse(jsonPayload);
+            }
+            let jwt = parseJwt(params.jwt);
+            throw new SkapiError('User already have an account with the username "' + jwt.sub + '".', { code: 'INVALID_REQUEST' });
+        }
+    }
 }
 
 export async function login(
@@ -451,9 +467,19 @@ export async function login(
     await this.logout();
     let params = validator.Params(form, {
         username: 'string',
-        email: (v: string) => validator.Email(v),
+        email: 'string',
         password: (v: string) => validator.Password(v)
     }, ['email', 'password']);
+
+    if (params.email) {
+        // incase user uses email instead of username
+        try {
+            validator.Email(params.email)
+        } catch (err) {
+            params.username = params.email;
+            delete params.email;
+        }
+    }
 
     return authentication.bind(this)().authenticateUser(params.username || params.email, params.password);
 
