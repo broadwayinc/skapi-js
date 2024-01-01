@@ -469,7 +469,7 @@ export async function login(
         username: 'string',
         email: 'string',
         password: (v: string) => validator.Password(v)
-    }, ['email', 'password']);
+    }, ['password']);
 
     if (params.email) {
         // incase user uses email instead of username
@@ -479,6 +479,10 @@ export async function login(
             params.username = params.email;
             delete params.email;
         }
+    }
+
+    if (!params.username && !params.email) {
+        throw new SkapiError('Least one of "username" or "email" is required.', { code: 'INVALID_PARAMETER' });
     }
 
     return authentication.bind(this)().authenticateUser(params.username || params.email, params.password);
