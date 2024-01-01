@@ -435,7 +435,7 @@ export async function jwtLogin(params: {
     key_url: string;
     client_id: string;
 }) {
-    let { hashedPassword, username } = request.bind(this)("jwt-login", params);
+    let { hashedPassword, username } = await request.bind(this)("jwt-login", params);
     try {
         return login.bind(this)({ username: username, password: hashedPassword });
     } catch (err) {
