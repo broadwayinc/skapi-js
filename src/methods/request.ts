@@ -112,6 +112,7 @@ export async function request(
                 case 'get-newsletter-subscription':
                 case 'request-username-change':
                 case 'jwt-login':
+                case 'client-secret-request':
                     return {
                         public: admin.admin_public,
                         private: admin.admin_private
