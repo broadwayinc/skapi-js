@@ -86,12 +86,13 @@ import {
     consumeTicket,
     releaseTicket,
     getTicketKey,
-    jwtLogin
+    jwtLogin,
+    clientSecretRequest
 } from '../methods/user';
 
 export default class Skapi {
     // current version
-    version = '1.0.38';
+    version = '1.0.39';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -363,6 +364,17 @@ export default class Skapi {
         nonce?: string;
     }): Promise<string> {
         return jwtLogin.bind(this)(params);
+    }
+
+    clientSecretRequest(params: {
+        url: string;
+        clientSecretName: string;
+        method: 'get' | 'post' | 'GET' | 'POST';
+        headers?: Record<string, string>;
+        data?: Record<string, string>;
+        params?: Record<string, string>;
+    }): Promise<string> {
+        return clientSecretRequest.bind(this)(params);
     }
 
     @formHandler()
