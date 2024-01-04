@@ -91,7 +91,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.37';
+    version = '1.0.38';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -356,10 +356,11 @@ export default class Skapi {
     }
 
     jwtLogin(params: {
-        jwt: string;
+        idToken: string;
         keyUrl: string;
         clientId: string;
         provider: string;
+        nonce?: string;
     }): Promise<string> {
         return jwtLogin.bind(this)(params);
     }

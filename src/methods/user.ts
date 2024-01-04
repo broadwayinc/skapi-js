@@ -431,22 +431,19 @@ export async function recoverAccount(
 }
 
 export async function jwtLogin(params: {
-    jwt: string;
+    idToken: string;
     keyUrl: string;
     clientId: string;
     provider: string;
+    nonce?: string;
 }) {
     validator.Params(params, {
-        jwt: 'string',
+        idToken: 'string',
         clientId: 'string',
         keyUrl: (v: string) => validator.Url(v),
-        provider: (v: string) => {
-            if (v.length > 4) {
-                throw new SkapiError('"provider" is too long. Should be less than 4 characters', { code: 'INVALID_PARAMETER' });
-            }
-            return v;
-        }
-    }, ['jwt', 'keyUrl', 'clientId']);
+        provider: 'string',
+        nonce: 'string'
+    }, ['idToken', 'keyUrl', 'clientId']);
 
     let { hashedPassword, username } = await request.bind(this)("jwt-login", params);
     try {
