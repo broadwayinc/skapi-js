@@ -26,7 +26,7 @@ export default class SkapiError extends Error {
             }
         }
         else if (typeof error === 'string') {
-            super(error || 'Something went wrong.');
+            super((error || 'Something went wrong.').trim());
             this.name = "SKAPI";
             this.code = 'ERROR';
 
