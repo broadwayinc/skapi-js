@@ -11,7 +11,7 @@ export default class SkapiError extends Error {
         }) {
 
         if (Array.isArray(error) && error.length <= 2) {
-            super(error[1] || 'Something went wrong.');
+            super((error[1] || 'Something went wrong.').trim());
             this.name = options && options.name || "SKAPI";
             this.code = error[0] || "ERROR";
 
@@ -41,7 +41,7 @@ export default class SkapiError extends Error {
             }
         }
         else if (error instanceof Error) {
-            super(error.message || 'Something went wrong.');
+            super((error.message || 'Something went wrong.').trim());
             this.cause = error;
             this.name = error.name;
             if (error.hasOwnProperty('code')) {
