@@ -587,7 +587,7 @@ async function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                 }
 
                 xhr.onload = () => {
-                    if (xhr.status >= 200 && xhr.status < 300) {
+                    if (xhr.status < 400) {
                         // Status codes in the 2xx range mean success
                         if (opts.responseType == 'json' || opts.responseType == 'blob') {
                             res(xhr.response);
@@ -627,7 +627,11 @@ async function _fetch(url: string, opt: any, progress?: ProgressCallback) {
 
                         else if (typeof result === 'object' && result?.message) {
                             let code = (result?.code || (status ? status.toString() : null) || 'ERROR');
-                            rej(new SkapiError(result?.message, { code: code }));
+                            rej(new SkapiError(result.message.trim(), { code: code }));
+                        }
+
+                        else {
+                            rej(result);
                         }
                     }
                 };
@@ -754,7 +758,9 @@ export async function secureRequest<RequestParams = {
     data?: any;
     /** requests are sync when true */
     sync?: boolean;
-}>(params: RequestParams | RequestParams[]): Promise<any> {
+}, Response = { response: any; statusCode: number; url: string; }>(params: RequestParams | RequestParams[]): Promise<Response | Response[]> {
+    await this.__connection;
+
     let paramsStruct = {
         url: (v: string) => {
             return validator.Url(v);
@@ -773,7 +779,7 @@ export async function secureRequest<RequestParams = {
         params = validator.Params(params, paramsStruct);
     }
 
-    return await request.bind(this)('post-secure', params, { auth: true });
+    return request.bind(this)('post-secure', params, { auth: true });
 };
 
 export async function mock(data: Form<any | {
@@ -787,6 +793,8 @@ export async function mock(data: Form<any | {
         responseType?: string;
         contentType?: string;
     } & FormSubmitCallback): Promise<{ mockResponse: Record<string, any>; }> {
+    await this.__connection;
+
     let { auth = true, method = 'POST', meta, bypassAwaitConnection = false, responseType, contentType } = options || {};
     let { response, onerror, formData, progress } = options || {};
 
