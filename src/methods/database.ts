@@ -932,9 +932,12 @@ export async function postRecord(
                         arr.push(i.url);
                     }
                     else {
-                        throw new SkapiError(`"remove_bin" should be type: <string | BinaryFile[]>`, { code: 'INVALID_PARAMETER' });
+                        throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[]>`, { code: 'INVALID_PARAMETER' });
                     }
                 }
+            }
+            else {
+                throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[]>`, { code: 'INVALID_PARAMETER' });
             }
 
             return arr;
