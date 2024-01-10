@@ -92,7 +92,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.43';
+    version = '1.0.44';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -210,7 +210,7 @@ export default class Skapi {
         this.service = service;
         this.owner = owner;
 
-        let autoLogin = !!options.autoLogin;
+        let autoLogin = !!options?.autoLogin;
 
         // get endpoints
 
