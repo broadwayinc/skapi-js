@@ -917,7 +917,7 @@ export async function postRecord(
 
             throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
         },
-        remove_bin: (v: string[] | BinaryFile[]) => {
+        remove_bin: (v: string[] | BinaryFile[] | null) => {
             if (!v) {
                 return null;
             }
@@ -1042,8 +1042,8 @@ export async function postRecord(
             // small files
 
             // let formData = new FormData();
-            
-            if(!to_bin) {
+
+            if (!to_bin) {
                 to_bin = [];
             }
 
