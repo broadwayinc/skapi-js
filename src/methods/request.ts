@@ -839,6 +839,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             let routeWithDataKey = true;
             let formEl = null;
             let actionDestination = '';
+            let fileBase64String = {};
             if (form instanceof SubmitEvent) {
                 form.preventDefault();
 
@@ -846,18 +847,69 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                 formEl = form.target as HTMLFormElement;
                 let href = new URL(formEl.action);
                 actionDestination = href.href;
+
+                // find {placeholder} in actionDestination url string and replace it with form data value
+
+                let placeholders = actionDestination ? actionDestination.match(/(?<=\{).*?(?=\})/g) : '';
+                if (placeholders) {
+                    for (let p of placeholders) {
+                        if (!p) {
+                            continue;
+                        }
+
+                        let inputElement = formEl.querySelector(`[name="${p}"]`);
+
+                        // check if input element exists
+                        if (!inputElement) {
+                            continue;
+                        }
+
+                        // check if input element is a file input
+                        if (inputElement.type === 'file') {
+                            for (let i = 0; i <= inputElement.files.length - 1; i++) {
+                                if (!inputElement.files[i])
+                                    continue;
+
+                                if (!fileBase64String[p]) {
+                                    fileBase64String[p] = [];
+                                }
+
+                                fileBase64String[p].push(new Promise((res, rej) => {
+                                    let reader = new FileReader();
+                                    reader.onload = function () {
+                                        res(reader.result);
+                                    };
+                                    reader.readAsDataURL(inputElement.files[i]);
+                                }));
+                            }
+                        }
+                        else {
+                            var value = inputElement.value;
+                            actionDestination = actionDestination.replace(`{${p}}`, value);
+                        }
+                    }
+                }
+
                 if (!formEl.action || href.href === currentUrl) {
                     routeWithDataKey = false;
                 }
             }
 
-            const handleResponse = (response: any) => {
+            const handleResponse = async (response: any) => {
                 if (option?.response) {
                     if (typeof option.response === 'function') {
                         return option.response(response);
                     }
                     else {
                         throw new SkapiError('Callback "response" should be type: function.', { code: 'INVALID_PARAMETER' });
+                    }
+                }
+
+                if (actionDestination) {
+                    for (let k in fileBase64String) {
+                        if (fileBase64String[k].length) {
+                            actionDestination = actionDestination.replace(`{${k}}`, (await Promise.all(fileBase64String[k])).join(','));
+                        }
                     }
                 }
 
@@ -917,7 +969,8 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                     return (async () => {
                         try {
                             let resolved = await response;
-                            return handleResponse(resolved);
+                            let data = await handleResponse(resolved);
+                            return data;
                         }
                         catch (err) {
                             let is_err = handleError(err);
