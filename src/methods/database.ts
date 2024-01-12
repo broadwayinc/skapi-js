@@ -901,7 +901,7 @@ export async function postRecord(
             }
 
             if (typeof v === 'string') {
-                return [v];
+                return v.split(',').map(t => t.trim());
             }
 
             if (Array.isArray(v)) {
