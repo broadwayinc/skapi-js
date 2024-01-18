@@ -294,6 +294,7 @@ export default class Skapi {
                 }
 
                 let exec = () => {
+                    this.closeRealtime();
                     let data: Record<string, any> = {};
 
                     const to_be_cached = [
