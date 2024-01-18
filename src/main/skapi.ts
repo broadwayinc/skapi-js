@@ -294,7 +294,6 @@ export default class Skapi {
                 }
 
                 let exec = () => {
-                    this.closeRealtime();
                     let data: Record<string, any> = {};
 
                     const to_be_cached = [
@@ -318,7 +317,10 @@ export default class Skapi {
             };
 
             // attach event to save session on close
-            window.addEventListener('beforeunload', storeClassProperties);
+            window.addEventListener('beforeunload', ()=>{
+                this.closeRealtime();
+                storeClassProperties();
+            });
             window.addEventListener("visibilitychange", storeClassProperties);
 
             await process;
