@@ -92,7 +92,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.44';
+    version = '1.0.47';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -317,8 +317,11 @@ export default class Skapi {
             };
 
             // attach event to save session on close
-            window.addEventListener('beforeunload', storeClassProperties);
-            window.addEventListener("visibilitychange", storeClassProperties);
+            window.addEventListener('beforeunload', () => {
+                storeClassProperties();
+                this.closeRealtime();
+            });
+            // window.addEventListener("visibilitychange", storeClassProperties);
 
             await process;
             await this.__authConnection;

@@ -901,7 +901,7 @@ export async function postRecord(
             }
 
             if (typeof v === 'string') {
-                return [v];
+                return v.split(',').map(t => t.trim());
             }
 
             if (Array.isArray(v)) {
@@ -917,7 +917,7 @@ export async function postRecord(
 
             throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
         },
-        remove_bin: (v: string[] | BinaryFile[]) => {
+        remove_bin: (v: string[] | BinaryFile[] | null) => {
             if (!v) {
                 return null;
             }
@@ -932,9 +932,12 @@ export async function postRecord(
                         arr.push(i.url);
                     }
                     else {
-                        throw new SkapiError(`"remove_bin" should be type: <string | BinaryFile[]>`, { code: 'INVALID_PARAMETER' });
+                        throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[]>`, { code: 'INVALID_PARAMETER' });
                     }
                 }
+            }
+            else {
+                throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[]>`, { code: 'INVALID_PARAMETER' });
             }
 
             return arr;
@@ -1039,8 +1042,8 @@ export async function postRecord(
             // small files
 
             // let formData = new FormData();
-            
-            if(!to_bin) {
+
+            if (!to_bin) {
                 to_bin = [];
             }
 
