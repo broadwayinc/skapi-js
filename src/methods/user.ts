@@ -478,8 +478,16 @@ export function clientSecretRequest(params: {
             }
         }
     }
+    if (params.headers) {
+        for (let k in params.headers) {
+            if (typeof params.headers[k] === 'string' && params.headers[k].includes('$CLIENT_SECRET')) {
+                hasSecret = true;
+                break;
+            }
+        }
+    }
     if (!hasSecret) {
-        throw new SkapiError(`At least one parameter value should include "$CLIENT_SECRET" in ${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'}.`, { code: 'INVALID_PARAMETER' });
+        throw new SkapiError(`At least one parameter value should include "$CLIENT_SECRET" in ${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} or "headers".`, { code: 'INVALID_PARAMETER' });
     }
 
     return request.bind(this)("client-secret-request", params);
