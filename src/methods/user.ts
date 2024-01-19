@@ -478,8 +478,16 @@ export function clientSecretRequest(params: {
             }
         }
     }
+    if (params.headers) {
+        for (let k in params.headers) {
+            if (typeof params.headers[k] === 'string' && params.headers[k].includes('$CLIENT_SECRET')) {
+                hasSecret = true;
+                break;
+            }
+        }
+    }
     if (!hasSecret) {
-        throw new SkapiError(`At least one parameter value should include "$CLIENT_SECRET" in ${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'}.`, { code: 'INVALID_PARAMETER' });
+        throw new SkapiError(`At least one parameter value should include "$CLIENT_SECRET" in ${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} or "headers".`, { code: 'INVALID_PARAMETER' });
     }
 
     return request.bind(this)("client-secret-request", params);
@@ -570,7 +578,15 @@ export async function signup(
         birthdate_public: ['boolean', () => false],
         phone_number_public: ['boolean', () => false],
         access_group: 'number',
-        misc: 'string'
+        misc: 'string',
+
+        picture: (v: string) => validator.Url(v),
+        profile: (v: string) => validator.Url(v),
+        family_name: 'string',
+        given_name: 'string',
+        middle_name: 'string',
+        nickname: 'string',
+        website: (v: string) => validator.Url(v),
     }, is_admin ? ['email'] : ['email', 'password']);
 
     let admin_creating_account = is_admin && params.service && this.service !== params.service;
@@ -882,7 +898,15 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
         address_public: 'boolean',
         gender_public: 'boolean',
         birthdate_public: 'boolean',
-        misc: 'string'
+        misc: 'string',
+
+        picture: (v: string) => validator.Url(v),
+        profile: (v: string) => validator.Url(v),
+        family_name: 'string',
+        given_name: 'string',
+        middle_name: 'string',
+        nickname: 'string',
+        website: (v: string) => validator.Url(v),
     });
 
     if (params && typeof params === 'object' && !Object.keys(params).length) {
