@@ -317,11 +317,11 @@ export default class Skapi {
             };
 
             // attach event to save session on close
-            window.addEventListener('beforeunload', ()=>{
-                this.closeRealtime();
+            window.addEventListener('beforeunload', () => {
                 storeClassProperties();
+                this.closeRealtime();
             });
-            window.addEventListener("visibilitychange", storeClassProperties);
+            // window.addEventListener("visibilitychange", storeClassProperties);
 
             await process;
             await this.__authConnection;
