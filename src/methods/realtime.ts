@@ -74,14 +74,20 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 
                 socket.onmessage = event => {
                     let data = JSON.parse(decodeURI(event.data));
-                    let ret: any = { status: 'message', message: data?.['#message'] || null };
+                    let status = 'message';
+
+                    if (data?.['#private']) {
+                        status = 'private';
+                    }
+
+                    else if (data?.['#notice']) {
+                        status = 'notice';
+                    }
+
+                    let ret: any = { status, message: (data?.['#message'] || data?.['#private'] || data?.['#notice']) || null };
 
                     if (data?.['#user_id']) {
                         ret.sender = data['#user_id'];
-                    }
-
-                    if (data?.['#notice']) {
-                        Object.assign(ret, { status: 'notice', message: data['#notice'] });
                     }
 
                     cb(ret);
