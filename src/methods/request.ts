@@ -298,81 +298,84 @@ export async function request(
         return null;
     }
 
-    if (!(__pendingRequest[requestKey] instanceof Promise)) {
-        // new request
+    // prevent duplicate request
+    if (__pendingRequest[requestKey] instanceof Promise) {
+        return __pendingRequest[requestKey];
+    }
 
-        let headers: Record<string, any> = {
-            'Accept': '*/*'
-        };
+    // new request
 
-        if (token) {
-            headers.Authorization = token;
+    let headers: Record<string, any> = {
+        'Accept': '*/*'
+    };
+
+    if (token) {
+        headers.Authorization = token;
+    }
+
+    if (meta) {
+        let meta_key = '__meta__' + generateRandom(16);
+        if (data instanceof FormData) {
+            headers["Content-Meta"] = window.btoa(encodeURIComponent(JSON.stringify({
+                meta_key: meta_key,
+                merge: 'data' // merge data(not meta) to data key
+            })));
+
+            data.set(meta_key, new Blob([JSON.stringify(meta)], {
+                type: 'application/json'
+            }));
+        }
+        // else {
+        //     headers["Content-Meta"] = window.btoa(encodeURIComponent(typeof meta === 'string' ? meta : JSON.stringify(meta)));
+        // }
+    }
+
+    if (options.hasOwnProperty('contentType')) {
+        if (options?.contentType) {
+            headers["Content-Type"] = options.contentType;
+        }
+    }
+
+    else if (!(data instanceof FormData)) {
+        headers["Content-Type"] = 'application/json';
+    }
+
+    let opt: RequestInit & { responseType?: string | null, headers: Record<string, any>; } = { headers };
+    if (options?.responseType) {
+        opt.responseType = options.responseType;
+    }
+
+    // pending call request
+    // this prevents recursive calls
+    if (method === 'post') {
+        __pendingRequest[requestKey] = _post.bind(this)(endpoint, data, opt, progress);
+    }
+    else if (method === 'get') {
+        __pendingRequest[requestKey] = _get.bind(this)(endpoint, data, opt, progress, options?.noParams);
+    }
+
+    try {
+        let response = await __pendingRequest[requestKey];
+
+        // should not use startKey when post is a form (is a post)
+        if (isForm) {
+            return response;
         }
 
-        if (meta) {
-            let meta_key = '__meta__' + generateRandom(16);
-            if (data instanceof FormData) {
-                headers["Content-Meta"] = window.btoa(encodeURIComponent(JSON.stringify({
-                    meta_key: meta_key,
-                    merge: 'data' // merge data(not meta) to data key
-                })));
-
-                data.set(meta_key, new Blob([JSON.stringify(meta)], {
-                    type: 'application/json'
-                }));
-            }
-            // else {
-            //     headers["Content-Meta"] = window.btoa(encodeURIComponent(typeof meta === 'string' ? meta : JSON.stringify(meta)));
-            // }
+        else {
+            return update_startKey_keys.bind(this)({
+                hashedParam: requestKey,
+                url,
+                response
+            });
         }
 
-        if (options.hasOwnProperty('contentType')) {
-            if (options?.contentType) {
-                headers["Content-Type"] = options.contentType;
-            }
-        }
-
-        else if (!(data instanceof FormData)) {
-            headers["Content-Type"] = 'application/json';
-        }
-
-        let opt: RequestInit & { responseType?: string | null, headers: Record<string, any>; } = { headers };
-        if (options?.responseType) {
-            opt.responseType = options.responseType;
-        }
-
-        // pending call request
-        // this prevents recursive calls
-        if (method === 'post') {
-            __pendingRequest[requestKey] = _post.bind(this)(endpoint, data, opt, progress);
-        }
-        else if (method === 'get') {
-            __pendingRequest[requestKey] = _get.bind(this)(endpoint, data, opt, progress, options?.noParams);
-        }
-
-        try {
-            let response = await __pendingRequest[requestKey];
-
-            // should not use startKey when post is a form (is a post)
-            if (isForm) {
-                return response;
-            }
-
-            else {
-                return update_startKey_keys.bind(this)({
-                    hashedParam: requestKey,
-                    url,
-                    response
-                });
-            }
-
-        } catch (err) {
-            throw err;
-        } finally {
-            // remove promise
-            if (requestKey && __pendingRequest.hasOwnProperty(requestKey)) {
-                delete __pendingRequest[requestKey];
-            }
+    } catch (err) {
+        throw err;
+    } finally {
+        // remove promise
+        if (requestKey && __pendingRequest.hasOwnProperty(requestKey)) {
+            delete __pendingRequest[requestKey];
         }
     }
 };
@@ -839,6 +842,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             let routeWithDataKey = true;
             let formEl = null;
             let actionDestination = '';
+            let fileBase64String = {};
             if (form instanceof SubmitEvent) {
                 form.preventDefault();
 
@@ -846,18 +850,69 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                 formEl = form.target as HTMLFormElement;
                 let href = new URL(formEl.action);
                 actionDestination = href.href;
+
+                // find {placeholder} in actionDestination url string and replace it with form data value
+
+                let placeholders = actionDestination ? actionDestination.match(/(?<=\{).*?(?=\})/g) : '';
+                if (placeholders) {
+                    for (let p of placeholders) {
+                        if (!p) {
+                            continue;
+                        }
+
+                        let inputElement = formEl.querySelector(`[name="${p}"]`);
+
+                        // check if input element exists
+                        if (!inputElement) {
+                            continue;
+                        }
+
+                        // check if input element is a file input
+                        if (inputElement.type === 'file') {
+                            for (let i = 0; i <= inputElement.files.length - 1; i++) {
+                                if (!inputElement.files[i])
+                                    continue;
+
+                                if (!fileBase64String[p]) {
+                                    fileBase64String[p] = [];
+                                }
+
+                                fileBase64String[p].push(new Promise((res, rej) => {
+                                    let reader = new FileReader();
+                                    reader.onload = function () {
+                                        res(reader.result);
+                                    };
+                                    reader.readAsDataURL(inputElement.files[i]);
+                                }));
+                            }
+                        }
+                        else {
+                            var value = inputElement.value;
+                            actionDestination = actionDestination.replace(`{${p}}`, value);
+                        }
+                    }
+                }
+
                 if (!formEl.action || href.href === currentUrl) {
                     routeWithDataKey = false;
                 }
             }
 
-            const handleResponse = (response: any) => {
+            const handleResponse = async (response: any) => {
                 if (option?.response) {
                     if (typeof option.response === 'function') {
                         return option.response(response);
                     }
                     else {
                         throw new SkapiError('Callback "response" should be type: function.', { code: 'INVALID_PARAMETER' });
+                    }
+                }
+
+                if (actionDestination) {
+                    for (let k in fileBase64String) {
+                        if (fileBase64String[k].length) {
+                            actionDestination = actionDestination.replace(`{${k}}`, (await Promise.all(fileBase64String[k])).join(','));
+                        }
                     }
                 }
 
@@ -917,7 +972,8 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                     return (async () => {
                         try {
                             let resolved = await response;
-                            return handleResponse(resolved);
+                            let data = await handleResponse(resolved);
+                            return data;
                         }
                         catch (err) {
                             let is_err = handleError(err);
