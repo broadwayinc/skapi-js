@@ -754,6 +754,63 @@ async function _get(
     return _fetch.bind(this)(url, opt, progress);
 };
 
+export function clientSecretRequest(params: {
+    url: string;
+    clientSecretName: string;
+    method: 'get' | 'post' | 'GET' | 'POST';
+    headers?: Record<string, string>;
+    data?: Record<string, string>;
+    params?: Record<string, string>;
+}) {
+    let hasSecret = false;
+
+    let checkClientSecretPlaceholder = (v: any) => {
+        for (let k in v) {
+            if (typeof v[k] === 'string' && v[k].includes('$CLIENT_SECRET')) {
+                hasSecret = true;
+                break;
+            }
+        }
+    }
+
+    validator.Params(params, {
+        url: 'string',
+        clientSecretName: 'string',
+        method: ['get', 'post', 'GET', 'POST'],
+        headers: (v: any) => {
+            if (v && typeof v !== 'object') {
+                throw new SkapiError('"headers" should be type: <object>.', { code: 'INVALID_PARAMETER' });
+            }
+            checkClientSecretPlaceholder(v);
+            return v;
+        },
+        data: (v: any) => {
+            if (v && typeof v !== 'object') {
+                throw new SkapiError('"data" should be type: <object>.', { code: 'INVALID_PARAMETER' });
+            }
+            checkClientSecretPlaceholder(v);
+            return v;
+        },
+        params: (v: any) => {
+            if (v && typeof v !== 'object') {
+                throw new SkapiError('"params" should be type: <object>.', { code: 'INVALID_PARAMETER' });
+            }
+            checkClientSecretPlaceholder(v);
+            return v;
+        }
+    }, ['clientSecretName', 'method', 'url']);
+    
+    if (!params.data && !params.params) {
+        throw new SkapiError(`${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} is required.`, { code: 'INVALID_PARAMETER' });
+    }
+
+    if (!hasSecret) {
+        throw new SkapiError(`At least one parameter value should include "$CLIENT_SECRET" in ${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} or "headers".`, { code: 'INVALID_PARAMETER' });
+    }
+
+    return request.bind(this)("client-secret-request", params);
+}
+
 export async function secureRequest<RequestParams = {
     /** Request url */
     url: string;
