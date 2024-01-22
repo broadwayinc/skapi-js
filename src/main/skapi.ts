@@ -376,7 +376,7 @@ export default class Skapi {
         headers?: Record<string, string>;
         data?: Record<string, string>;
         params?: Record<string, string>;
-    }): Promise<string> {
+    }): Promise<any> {
         return clientSecretRequest.bind(this)(params);
     }
 
