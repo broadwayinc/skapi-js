@@ -430,69 +430,6 @@ export async function recoverAccount(
     return 'SUCCESS: Recovery e-mail has been sent.';
 }
 
-export function clientSecretRequest(params: {
-    url: string;
-    clientSecretName: string;
-    method: 'get' | 'post' | 'GET' | 'POST';
-    headers?: Record<string, string>;
-    data?: Record<string, string>;
-    params?: Record<string, string>;
-}) {
-    validator.Params(params, {
-        url: 'string',
-        clientSecretName: 'string',
-        method: ['get', 'post', 'GET', 'POST'],
-        headers: (v: any) => v,
-        data: (v: any) => {
-            if (v && typeof v !== 'object') {
-                throw new SkapiError('"data" should be type: <object>.', { code: 'INVALID_PARAMETER' });
-            }
-            return v;
-        },
-        params: (v: any) => {
-            if (v && typeof v !== 'object') {
-                throw new SkapiError('"params" should be type: <object>.', { code: 'INVALID_PARAMETER' });
-            }
-            return v;
-        }
-    }, ['clientSecretName', 'method', 'url']);
-    let hasSecret = false;
-
-    if (!params.data && !params.params) {
-        throw new SkapiError(`${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} is required.`, { code: 'INVALID_PARAMETER' });
-    }
-
-    if (params.data) {
-        for (let k in params.data) {
-            if (typeof params.data[k] === 'string' && params.data[k].includes('$CLIENT_SECRET')) {
-                hasSecret = true;
-                break;
-            }
-        }
-    }
-    if (params.params) {
-        for (let k in params.params) {
-            if (typeof params.params[k] === 'string' && params.params[k].includes('$CLIENT_SECRET')) {
-                hasSecret = true;
-                break;
-            }
-        }
-    }
-    if (params.headers) {
-        for (let k in params.headers) {
-            if (typeof params.headers[k] === 'string' && params.headers[k].includes('$CLIENT_SECRET')) {
-                hasSecret = true;
-                break;
-            }
-        }
-    }
-    if (!hasSecret) {
-        throw new SkapiError(`At least one parameter value should include "$CLIENT_SECRET" in ${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} or "headers".`, { code: 'INVALID_PARAMETER' });
-    }
-
-    return request.bind(this)("client-secret-request", params);
-}
-
 export async function jwtLogin(params: {
     idToken: string;
     keyUrl: string;
@@ -537,7 +474,7 @@ export async function login(
     if (params.email) {
         // incase user uses email instead of username
         try {
-            validator.Email(params.email)
+            validator.Email(params.email);
         } catch (err) {
             params.username = params.email;
             delete params.email;
