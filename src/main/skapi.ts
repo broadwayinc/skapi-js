@@ -47,7 +47,8 @@ import {
     mock,
     getFormResponse,
     formHandler,
-    getConnection
+    getConnection,
+    clientSecretRequest
 } from '../methods/request';
 import {
     subscribe,
@@ -86,13 +87,12 @@ import {
     consumeTicket,
     releaseTicket,
     getTicketKey,
-    jwtLogin,
-    clientSecretRequest
+    jwtLogin
 } from '../methods/user';
 
 export default class Skapi {
     // current version
-    version = '1.0.47';
+    version = '1.0.48';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -376,7 +376,7 @@ export default class Skapi {
         headers?: Record<string, string>;
         data?: Record<string, string>;
         params?: Record<string, string>;
-    }): Promise<string> {
+    }): Promise<any> {
         return clientSecretRequest.bind(this)(params);
     }
 
