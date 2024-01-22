@@ -39,7 +39,6 @@ You need to import the library using the `<script>` tag or install via npm.
 For vanilla HTML projects, import Skapi in the script tag, and initialize the library.
 
 ```html
-<!-- index.html -->
 <!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
 <script>
