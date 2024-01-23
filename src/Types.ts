@@ -219,6 +219,10 @@ export type UserAttributes = {
     // email_subscription?: number;
     /** Additional string value that can be used freely. */
     misc?: string;
+    picture?: string;
+    profile?: string;
+    website?: string;
+    nickname?: string;
 };
 
 export type UserProfile = {
@@ -298,6 +302,10 @@ export type PublicUser = {
     user_id: string;
     /** Country code of where user first signed up from. */
     locale: string;
+    picture?: string;
+    profile?: string;
+    website?: string;
+    nickname?: string;
 };
 
 export type ProgressCallback = (e: {

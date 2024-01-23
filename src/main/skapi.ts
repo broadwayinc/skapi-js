@@ -92,7 +92,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.49';
+    version = '1.0.50';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -562,7 +562,7 @@ export default class Skapi {
     getUsers(
         params?: {
             /** Index name to search. */
-            searchFor: 'user_id' | 'email' | 'phone_number' | 'locale' | 'name' | 'address' | 'gender' | 'birthdate';
+            searchFor: 'user_id' | 'email' | 'phone_number' | 'locale' | 'name' | 'address' | 'gender' | 'birthdate' | 'subscribers' | 'timestamp';
             /** Index value to search. */
             value: string | number | boolean;
             /** Search condition. */
