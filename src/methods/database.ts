@@ -969,11 +969,11 @@ export async function postRecord(
 
         validator.specialChars(config_chkd.table.name, 'table name', true, true);
 
-        // if (isAdmin) {
-        //     if (config_chkd.table.access_group === 'private') {
-        //         throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
-        //     }
-        // }
+        if (isAdmin && !config_chkd.record_id) {
+            if (config_chkd.table.access_group === 'private') {
+                throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
+            }
+        }
 
         if (config_chkd.table?.subscription) {
             if (!config_chkd?.record_id && !config_chkd.table.hasOwnProperty('access_group')) {
