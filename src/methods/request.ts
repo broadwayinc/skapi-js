@@ -800,9 +800,9 @@ export function clientSecretRequest(params: {
         }
     }, ['clientSecretName', 'method', 'url']);
     
-    if (!params.data && !params.params) {
-        throw new SkapiError(`${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} is required.`, { code: 'INVALID_PARAMETER' });
-    }
+    // if (!params.data && !params.params) {
+    //     throw new SkapiError(`${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} is required.`, { code: 'INVALID_PARAMETER' });
+    // }
 
     if (!hasSecret) {
         throw new SkapiError(`At least one parameter value should include "$CLIENT_SECRET" in ${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} or "headers".`, { code: 'INVALID_PARAMETER' });
