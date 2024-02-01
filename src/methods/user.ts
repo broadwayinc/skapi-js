@@ -30,7 +30,7 @@ export function setUserPool(params: { UserPoolId: string; ClientId: string; }) {
 export function consumeTicket(params: {
     ticket_id: string;
     placeholder?: { [key: string]: string };
-}): Promise<string> {
+}): Promise<any> {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
@@ -48,7 +48,7 @@ export function releaseTicket(params: {
 
 export async function getTickets(params: {
     ticket_id?: string;
-}, fetchOptions?: FetchOptions): Promise<DatabaseResponse> {
+}, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
     let tickets = await request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'list' }, { auth: true, fetchOptions });
     for (let t of tickets.list) {
         let mapper = {
@@ -72,7 +72,7 @@ export async function getTickets(params: {
 
 export async function getConsumedTickets(params: {
     ticket_id?: string;
-}, fetchOptions?: FetchOptions): Promise<DatabaseResponse> {
+}, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
     let tickets = await request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'request' }, { auth: true, fetchOptions });
 
     for (let t of tickets.list) {

@@ -382,7 +382,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    consumeTicket(params: { ticket_id: string; placeholder?: { [key: string]: string } }): Promise<string> {
+    consumeTicket(params: { ticket_id: string; placeholder?: { [key: string]: string } }): Promise<any> {
         return consumeTicket.bind(this)(params);
     }
 
@@ -392,12 +392,12 @@ export default class Skapi {
     }
 
     @formHandler()
-    getConsumedTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<string> {
+    getConsumedTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any[]>> {
         return getConsumedTickets.bind(this)(params, fetchOptions);
     }
 
     @formHandler()
-    getTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<string> {
+    getTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any[]>> {
         return getConsumedTickets.bind(this)(params, fetchOptions);
     }
 
