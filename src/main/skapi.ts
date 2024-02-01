@@ -88,6 +88,8 @@ import {
     releaseTicket,
     getConsumedTickets,
     getTickets,
+    registerTicket,
+    unregisterTicket,
     jwtLogin
 } from '../methods/user';
 
@@ -382,8 +384,8 @@ export default class Skapi {
     }
 
     @formHandler()
-    consumeTicket(params: { ticket_id: string; placeholder?: { [key: string]: string } }): Promise<any> {
-        return consumeTicket.bind(this)(params);
+    consumeTicket(params: { ticket_id: string; }, placeholder: { [key: string]: string }): Promise<any> {
+        return consumeTicket.bind(this)(params, placeholder);
     }
 
     @formHandler()
@@ -399,6 +401,14 @@ export default class Skapi {
     @formHandler()
     getTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any[]>> {
         return getConsumedTickets.bind(this)(params, fetchOptions);
+    }
+
+    registerTicket(params): Promise<string> {
+        return registerTicket.bind(this)(params);
+    }
+
+    unregisterTicket(params): Promise<string> {
+        return unregisterTicket.bind(this)(params);
     }
 
     closeRealtime(): Promise<void> {
