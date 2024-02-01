@@ -29,11 +29,12 @@ export function setUserPool(params: { UserPoolId: string; ClientId: string; }) {
 
 export function consumeTicket(params: {
     ticket_id: string;
+    placeholder?: { [key: string]: string };
 }): Promise<string> {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
-    return request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'consume' }, { auth: true });
+    return request.bind(this)('ticket', { ticket_id: params.ticket_id, placeholder: params.placeholder, exec: 'consume' }, { auth: true });
 }
 
 export function releaseTicket(params: {
@@ -45,13 +46,111 @@ export function releaseTicket(params: {
     return request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'release' }, { auth: true });
 }
 
-export function getTicketKey(params: {
-    ticket_id: string;
-}): Promise<string> {
-    if (!params.ticket_id) {
-        throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
+export async function getTickets(params: {
+    ticket_id?: string;
+}, fetchOptions?: FetchOptions): Promise<DatabaseResponse> {
+    let tickets = await request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'list' }, { auth: true, fetchOptions });
+    for (let t of tickets.list) {
+        let mapper = {
+            "tkid": 'ticket_id',
+            "cond": 'condition',
+            "actn": 'action',
+            "cnt": 'count',
+            "ttl": 'time_to_live',
+            "stmp": 'timestamp',
+            'plch': 'placeholder'
+        }
+        for (let k in t) {
+            if (mapper[k]) {
+                t[mapper[k]] = t[k];
+                delete t[k];
+            }
+        }
     }
-    return request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'request' }, { auth: true });
+    return tickets;
+}
+
+export async function getConsumedTickets(params: {
+    ticket_id?: string;
+}, fetchOptions?: FetchOptions): Promise<DatabaseResponse> {
+    let tickets = await request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'request' }, { auth: true, fetchOptions });
+
+    for (let t of tickets.list) {
+        let mapper = {
+            "tkid": 'ticket_id',
+            "cond": 'condition',
+            "actn": 'action',
+            "cnt": 'count',
+            "ttl": 'time_to_live',
+            "stmp": 'timestamp',
+            'plch': 'placeholder'
+        }
+        for (let k in t) {
+            if (mapper[k]) {
+                t[mapper[k]] = t[k];
+                delete t[k];
+            }
+        }
+    }
+    return tickets;
+}
+
+export function registerTicket(
+    serviceId: string,
+    params: {
+        ticket_id: string;
+        condition?: {
+            user?: {
+                [key: string]: {
+                    value: string;
+                    operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+                };
+            },
+            record_access?: string; // record id user should have access to
+            request?: {
+                url: string;
+                method: 'GET' | 'POST';
+                headers?: {
+                    [key: string]: string;
+                };
+                data?: Record<string, any>;
+                params?: Record<string, any>;
+                match: {
+                    target_key: string; // key.to.match
+                    operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+                    value: string;
+                }
+            }
+        };
+        action?: {
+            access_group: number; // group number to give access to the user
+            record_access?: string; // record id to give access to the user
+            request?: {
+                url: string;
+                method: 'GET' | 'POST';
+                headers?: {
+                    [key: string]: string;
+                };
+                data?: Record<string, any>;
+                params?: Record<string, any>;
+            },
+            upgrade_service?: number; // only admin
+        };
+        desc: string;
+        count?: number;
+        time_to_live?: number;
+    }
+): Promise<string> {
+    return this.request('ticket', Object.assign({ exec: 'reg' }, params, { service: serviceId }), { auth: true });
+}
+
+export function unregisterTicket(
+    serviceId: string,
+    params: {
+        ticket_id: string;
+    }
+): Promise<string> {
+    return this.request('ticket', Object.assign({ exec: 'unreg' }, params, { service: serviceId }), { auth: true });
 }
 
 export function authentication() {
