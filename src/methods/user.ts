@@ -27,14 +27,11 @@ export function setUserPool(params: { UserPoolId: string; ClientId: string; }) {
     userPool = new CognitoUserPool(params);
 }
 
-export function consumeTicket(params: {
-    ticket_id: string;
-    placeholder?: { [key: string]: string };
-}): Promise<any> {
+export function consumeTicket(params: { ticket_id: string; }, placeholder?: { [key: string]: string }): Promise<any> {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
-    return request.bind(this)('ticket', Object.assign({ exec: 'consume' }, params), { auth: true });
+    return request.bind(this)('ticket', Object.assign({ exec: 'consume' }, params, { placeholder }), { auth: true });
 }
 
 export function releaseTicket(params: {
@@ -49,7 +46,7 @@ export function releaseTicket(params: {
 export async function getTickets(params: {
     ticket_id?: string;
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
-    let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'list' }, params), { auth: true, fetchOptions });
+    let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'list' }, params || {}), { auth: true, fetchOptions });
     for (let t of tickets.list) {
         let mapper = {
             "tkid": 'ticket_id',
@@ -73,7 +70,7 @@ export async function getTickets(params: {
 export async function getConsumedTickets(params: {
     ticket_id?: string;
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
-    let tickets = await request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'request' }, { auth: true, fetchOptions });
+    let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'request' }, params || {}), { auth: true, fetchOptions });
 
     for (let t of tickets.list) {
         let mapper = {
@@ -96,7 +93,6 @@ export async function getConsumedTickets(params: {
 }
 
 export function registerTicket(
-    serviceId: string,
     params: {
         ticket_id: string;
         condition?: {
@@ -141,16 +137,15 @@ export function registerTicket(
         time_to_live?: number;
     }
 ): Promise<string> {
-    return this.request('ticket', Object.assign({ exec: 'reg' }, params, { service: serviceId }), { auth: true });
+    return this.request('ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
 }
 
 export function unregisterTicket(
-    serviceId: string,
     params: {
         ticket_id: string;
     }
 ): Promise<string> {
-    return this.request('ticket', Object.assign({ exec: 'unreg' }, params, { service: serviceId }), { auth: true });
+    return this.request('ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
 }
 
 export function authentication() {
