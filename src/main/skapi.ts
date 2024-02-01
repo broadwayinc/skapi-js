@@ -86,13 +86,14 @@ import {
     requestUsernameChange,
     consumeTicket,
     releaseTicket,
-    getTicketKey,
+    getConsumedTickets,
+    getTickets,
     jwtLogin
 } from '../methods/user';
 
 export default class Skapi {
     // current version
-    version = '1.0.52';
+    version = '1.0.53';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -381,7 +382,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    consumeTicket(params: { ticket_id: string; }): Promise<string> {
+    consumeTicket(params: { ticket_id: string; placeholder?: { [key: string]: string } }): Promise<string> {
         return consumeTicket.bind(this)(params);
     }
 
@@ -391,8 +392,13 @@ export default class Skapi {
     }
 
     @formHandler()
-    getTicketKey(params: { ticket_id: string; }): Promise<string> {
-        return getTicketKey.bind(this)(params);
+    getConsumedTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<string> {
+        return getConsumedTickets.bind(this)(params, fetchOptions);
+    }
+
+    @formHandler()
+    getTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<string> {
+        return getConsumedTickets.bind(this)(params, fetchOptions);
     }
 
     closeRealtime(): Promise<void> {
