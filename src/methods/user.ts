@@ -34,7 +34,7 @@ export function consumeTicket(params: {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
-    return request.bind(this)('ticket', { ticket_id: params.ticket_id, placeholder: params.placeholder, exec: 'consume' }, { auth: true });
+    return request.bind(this)('ticket', Object.assign({ exec: 'consume' }, params), { auth: true });
 }
 
 export function releaseTicket(params: {
@@ -43,13 +43,13 @@ export function releaseTicket(params: {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
-    return request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'release' }, { auth: true });
+    return request.bind(this)('ticket', Object.assign({ exec: 'release' }, params), { auth: true });
 }
 
 export async function getTickets(params: {
     ticket_id?: string;
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
-    let tickets = await request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'list' }, { auth: true, fetchOptions });
+    let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'list' }, params), { auth: true, fetchOptions });
     for (let t of tickets.list) {
         let mapper = {
             "tkid": 'ticket_id',
