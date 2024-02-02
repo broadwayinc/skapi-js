@@ -27,26 +27,29 @@ export function setUserPool(params: { UserPoolId: string; ClientId: string; }) {
     userPool = new CognitoUserPool(params);
 }
 
-export function consumeTicket(params: { ticket_id: string; }, placeholder?: { [key: string]: string }): Promise<any> {
+export async function consumeTicket(params: { ticket_id: string; }, placeholder?: { [key: string]: string }): Promise<any> {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
+    await this.__connection;
     return request.bind(this)('ticket', Object.assign({ exec: 'consume' }, params, { placeholder }), { auth: true });
 }
 
-export function releaseTicket(params: {
+export async function releaseTicket(params: {
     ticket_id: string;
 }): Promise<string> {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
+    await this.__connection;
     return request.bind(this)('ticket', Object.assign({ exec: 'release' }, params), { auth: true });
 }
 
 export async function getTickets(params: {
     ticket_id?: string;
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
-    let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'list' }, params || {}), { auth: true, fetchOptions });
+    await this.__connection;
+    let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'list' }, params || {}), { auth: !!this.__user, fetchOptions });
     for (let t of tickets.list) {
         let mapper = {
             "tkid": 'ticket_id',
@@ -70,6 +73,7 @@ export async function getTickets(params: {
 export async function getConsumedTickets(params: {
     ticket_id?: string;
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
+    await this.__connection;
     let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'request' }, params || {}), { auth: true, fetchOptions });
 
     for (let t of tickets.list) {
