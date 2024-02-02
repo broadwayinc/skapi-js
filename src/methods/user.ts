@@ -49,7 +49,7 @@ export async function getTickets(params: {
     ticket_id?: string;
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
     await this.__connection;
-    let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'list' }, params || {}), { auth: !!this.__user, fetchOptions });
+    let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'list' }, params || {}), { auth: true, fetchOptions });
     for (let t of tickets.list) {
         let mapper = {
             "tkid": 'ticket_id',
