@@ -400,7 +400,7 @@ export default class Skapi {
 
     @formHandler()
     getTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any[]>> {
-        return getConsumedTickets.bind(this)(params, fetchOptions);
+        return getTickets.bind(this)(params, fetchOptions);
     }
 
     registerTicket(params): Promise<string> {
