@@ -27,24 +27,6 @@ export function setUserPool(params: { UserPoolId: string; ClientId: string; }) {
     userPool = new CognitoUserPool(params);
 }
 
-export async function consumeTicket(params: { ticket_id: string; }, placeholder?: { [key: string]: string }): Promise<any> {
-    if (!params.ticket_id) {
-        throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
-    }
-    await this.__connection;
-    return request.bind(this)('ticket', Object.assign({ exec: 'consume' }, params, { placeholder }), { auth: true });
-}
-
-export async function releaseTicket(params: {
-    ticket_id: string;
-}): Promise<string> {
-    if (!params.ticket_id) {
-        throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
-    }
-    await this.__connection;
-    return request.bind(this)('ticket', Object.assign({ exec: 'release' }, params), { auth: true });
-}
-
 function map_ticket_obj(t) {
     let mapper = {
         "tkid": 'ticket_id',
@@ -53,7 +35,8 @@ function map_ticket_obj(t) {
         "cnt": 'count',
         "ttl": 'time_to_live',
         "stmp": 'timestamp',
-        'plch': 'placeholder'
+        'plch': 'placeholder',
+        'hash': 'hash'
     }
     for (let k in t) {
         if (mapper[k]) {
@@ -71,6 +54,24 @@ function map_ticket_obj(t) {
             delete t[k];
         }
     }
+}
+
+export async function consumeTicket(params: { ticket_id: string; }, placeholder?: { [key: string]: string }): Promise<any> {
+    if (!params.ticket_id) {
+        throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
+    }
+    await this.__connection;
+    return map_ticket_obj(await request.bind(this)('ticket', Object.assign({ exec: 'consume' }, params, { placeholder }), { auth: true }));
+}
+
+export async function releaseTicket(params: {
+    ticket_id: string;
+}): Promise<string> {
+    if (!params.ticket_id) {
+        throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
+    }
+    await this.__connection;
+    return request.bind(this)('ticket', Object.assign({ exec: 'release' }, params), { auth: true });
 }
 
 export async function getTickets(params: {
