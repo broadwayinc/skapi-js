@@ -137,7 +137,7 @@ export function registerTicket(
                 data?: Record<string, any>;
                 params?: Record<string, any>;
             },
-            upgrade_service?: number; // only admin
+            update_service?: {[key:string]: any}; // only admin
         };
         desc: string;
         count?: number;
