@@ -13,6 +13,8 @@ import {
 import SkapiError from '../main/error';
 import { extractFormMeta, generateRandom } from '../utils/utils';
 import validator from '../utils/validator';
+import { base_decode } from '../utils/utils';
+
 import { request } from './request';
 
 const __index_number_range = 4503599627370496; // +/-
@@ -28,12 +30,6 @@ function fromBase62(str: string) {
 }
 
 export function normalizeRecord(record: Record<string, any>): RecordData {
-    function base_decode(chars) {
-        let charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-        return chars.split('').reverse().reduce((prev, curr, i) =>
-            prev + (charset.indexOf(curr) * (62 ** i)), 0);
-    }
-
     const output: Record<string, any> = {
         user_id: '',
         record_id: '',
