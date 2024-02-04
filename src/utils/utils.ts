@@ -350,8 +350,13 @@ function extractFormMeta(form: Form<any>) {
 
     return null;
 }
-
+function base_decode(chars) {
+    let charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    return chars.split('').reverse().reduce((prev, curr, i) =>
+        prev + (charset.indexOf(curr) * (62 ** i)), 0);
+}
 export {
+    base_decode,
     extractFormMeta,
     MD5,
     generateRandom

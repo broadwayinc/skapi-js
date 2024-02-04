@@ -17,7 +17,7 @@ import {
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from './request';
-import { MD5 } from '../utils/utils';
+import { MD5, base_decode } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
 
@@ -45,27 +45,41 @@ export async function releaseTicket(params: {
     return request.bind(this)('ticket', Object.assign({ exec: 'release' }, params), { auth: true });
 }
 
+function map_ticket_obj(t) {
+    let mapper = {
+        "tkid": 'ticket_id',
+        "cond": 'condition',
+        "actn": 'action',
+        "cnt": 'count',
+        "ttl": 'time_to_live',
+        "stmp": 'timestamp',
+        'plch': 'placeholder'
+    }
+    for (let k in t) {
+        if (mapper[k]) {
+            t[mapper[k]] = t[k];
+            if (k === 'tkid') {
+                let tkid = t[k].split('#');
+                if (tkid.length === 1) {
+                    continue;
+                }
+                t['ticket_id'] = tkid[1];
+                t['consume_id'] = tkid[2];
+                t['user_id'] = tkid[3];
+                t['timestamp'] = base_decode(tkid[2].slice(-4));
+            }
+            delete t[k];
+        }
+    }
+}
+
 export async function getTickets(params: {
     ticket_id?: string;
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
     await this.__connection;
     let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'list' }, params || {}), { auth: true, fetchOptions });
     for (let t of tickets.list) {
-        let mapper = {
-            "tkid": 'ticket_id',
-            "cond": 'condition',
-            "actn": 'action',
-            "cnt": 'count',
-            "ttl": 'time_to_live',
-            "stmp": 'timestamp',
-            'plch': 'placeholder'
-        }
-        for (let k in t) {
-            if (mapper[k]) {
-                t[mapper[k]] = t[k];
-                delete t[k];
-            }
-        }
+        map_ticket_obj(t);
     }
     return tickets;
 }
@@ -77,21 +91,7 @@ export async function getConsumedTickets(params: {
     let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'request' }, params || {}), { auth: true, fetchOptions });
 
     for (let t of tickets.list) {
-        let mapper = {
-            "tkid": 'ticket_id',
-            "cond": 'condition',
-            "actn": 'action',
-            "cnt": 'count',
-            "ttl": 'time_to_live',
-            "stmp": 'timestamp',
-            'plch': 'placeholder'
-        }
-        for (let k in t) {
-            if (mapper[k]) {
-                t[mapper[k]] = t[k];
-                delete t[k];
-            }
-        }
+        map_ticket_obj(t);
     }
     return tickets;
 }
@@ -119,7 +119,7 @@ export function registerTicket(
                     target_key: string; // key.to.match
                     operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
                     value: string;
-                }
+                }[];
             }
         };
         action?: {
