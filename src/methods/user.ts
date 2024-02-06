@@ -43,6 +43,7 @@ function map_ticket_obj(t) {
         if (k === 'tkid') {
             let tkid = t[k].split('#');
             if (tkid.length === 1) {
+                new_obj['ticket_id'] = tkid[0];    
                 continue;
             }
             new_obj['ticket_id'] = tkid[1];
