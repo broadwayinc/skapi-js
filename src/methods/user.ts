@@ -84,7 +84,7 @@ export async function getTickets(params: {
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
     await this.__connection;
     let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'list' }, params || {}), { auth: true, fetchOptions });
-    tickets.list.map(map_ticket_obj);
+    tickets.list = tickets.list.map(map_ticket_obj);
     return tickets;
 }
 
