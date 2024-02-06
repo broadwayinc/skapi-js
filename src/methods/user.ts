@@ -38,22 +38,26 @@ function map_ticket_obj(t) {
         'plch': 'placeholder',
         'hash': 'hash'
     }
+    let new_obj = {};
     for (let k in t) {
-        if (mapper[k]) {
-            t[mapper[k]] = t[k];
-            if (k === 'tkid') {
-                let tkid = t[k].split('#');
-                if (tkid.length === 1) {
-                    continue;
-                }
-                t['ticket_id'] = tkid[1];
-                t['consume_id'] = tkid[2];
-                t['user_id'] = tkid[3];
-                t['timestamp'] = base_decode(tkid[2].slice(-4));
+        if (k === 'tkid') {
+            let tkid = t[k].split('#');
+            if (tkid.length === 1) {
+                continue;
             }
-            delete t[k];
+            new_obj['ticket_id'] = tkid[1];
+            new_obj['consume_id'] = tkid[2];
+            new_obj['user_id'] = tkid[3];
+            new_obj['timestamp'] = base_decode(tkid[2].slice(-4));
+        }
+        else if (mapper[k]) {
+            new_obj[mapper[k]] = t[k];
+        }
+        else {
+            new_obj[k] = t[k];
         }
     }
+    return new_obj;
 }
 
 export async function consumeTicket(params: { ticket_id: string; }, placeholder?: { [key: string]: string }): Promise<any> {
@@ -62,8 +66,7 @@ export async function consumeTicket(params: { ticket_id: string; }, placeholder?
     }
     await this.__connection;
     let resp = await request.bind(this)('ticket', Object.assign({ exec: 'consume' }, params, { placeholder }), { auth: true });
-    map_ticket_obj(resp);
-    return resp;
+    return map_ticket_obj(resp);
 }
 
 export async function releaseTicket(params: {
@@ -81,9 +84,7 @@ export async function getTickets(params: {
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
     await this.__connection;
     let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'list' }, params || {}), { auth: true, fetchOptions });
-    for (let t of tickets.list) {
-        map_ticket_obj(t);
-    }
+    tickets.list.map(map_ticket_obj);
     return tickets;
 }
 
@@ -137,7 +138,7 @@ export function registerTicket(
                 data?: Record<string, any>;
                 params?: Record<string, any>;
             },
-            update_service?: {[key:string]: any}; // only admin
+            update_service?: { [key: string]: any }; // only admin
         };
         desc: string;
         count?: number;
