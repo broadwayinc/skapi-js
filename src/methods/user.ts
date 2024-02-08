@@ -43,13 +43,22 @@ function map_ticket_obj(t) {
         if (k === 'tkid') {
             let tkid = t[k].split('#');
             if (tkid.length === 1) {
-                new_obj['ticket_id'] = tkid[0];    
+                new_obj['ticket_id'] = tkid[0];
                 continue;
             }
             new_obj['ticket_id'] = tkid[1];
-            new_obj['consume_id'] = tkid[2];
+            let consume_id = tkid[2].split('-');
+            let timeCode = '';
+            if (consume_id.length > 1) {
+                new_obj['consume_id'] = consume_id.slice(-1).join('-');
+                timeCode = consume_id.slice(0, -1).join('-');
+            }
+            else {
+                new_obj['consume_id'] = tkid[2];
+                timeCode = tkid[2];
+            }
             new_obj['user_id'] = tkid[3];
-            new_obj['timestamp'] = base_decode(tkid[2].slice(-4));
+            new_obj['timestamp'] = base_decode(timeCode.slice(-4));
         }
         else if (mapper[k]) {
             new_obj[mapper[k]] = t[k];
@@ -61,7 +70,7 @@ function map_ticket_obj(t) {
     return new_obj;
 }
 
-export async function consumeTicket(params: { ticket_id: string; }, placeholder?: { [key: string]: string }): Promise<any> {
+export async function consumeTicket(params: { ticket_id: string; consume_id: string; }, placeholder?: { [key: string]: string }): Promise<any> {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
