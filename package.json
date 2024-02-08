@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "1.0.54-beta.1",
+  "version": "1.0.54-beta.2",
   "description": "Skapi: Backend API Library for HTML frontend.",
   "main": "./dist/skapi.module.js",
   "types": "./js/Main.d.ts",
