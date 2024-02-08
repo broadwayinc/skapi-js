@@ -91,7 +91,7 @@ export async function getConsumedTickets(params: {
     return tickets;
 }
 
-export function registerTicket(
+export async function registerTicket(
     params: {
         ticket_id: string;
         condition?: {
@@ -136,14 +136,22 @@ export function registerTicket(
         time_to_live?: number;
     }
 ): Promise<string> {
+    let isAdmin = await this.checkAdmin();
+    if (!isAdmin) {
+        throw new SkapiError('Admin access is required.', { code: 'INVALID_REQUEST' });
+    }
     return this.request('register-ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
 }
 
-export function unregisterTicket(
+export async function unregisterTicket(
     params: {
         ticket_id: string;
     }
 ): Promise<string> {
+    let isAdmin = await this.checkAdmin();
+    if (!isAdmin) {
+        throw new SkapiError('Admin access is required.', { code: 'INVALID_REQUEST' });
+    }
     return this.request('register-ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
 }
 
