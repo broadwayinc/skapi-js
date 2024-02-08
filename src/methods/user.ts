@@ -73,17 +73,6 @@ export async function consumeTicket(params: { ticket_id: string; }, placeholder?
     return map_ticket_obj(resp);
 }
 
-export async function releaseTicket(params: {
-    ticket_id: string;
-    consume_id: string;
-}): Promise<string> {
-    if (!params.ticket_id) {
-        throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
-    }
-    await this.__connection;
-    return request.bind(this)('ticket', Object.assign({ exec: 'release' }, params), { auth: true });
-}
-
 export async function getTickets(params: {
     ticket_id?: string;
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
@@ -97,11 +86,8 @@ export async function getConsumedTickets(params: {
     ticket_id?: string;
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
     await this.__connection;
-    let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'request' }, params || {}), { auth: true, fetchOptions });
-
-    for (let t of tickets.list) {
-        map_ticket_obj(t);
-    }
+    let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'consumed' }, params || {}), { auth: true, fetchOptions });
+    tickets.list = tickets.list.map(map_ticket_obj);
     return tickets;
 }
 
