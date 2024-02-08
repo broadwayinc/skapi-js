@@ -49,7 +49,10 @@ function map_ticket_obj(t) {
             new_obj['ticket_id'] = tkid[1];
             new_obj['consume_id'] = tkid[2];
             new_obj['user_id'] = tkid[3];
-            new_obj['timestamp'] = base_decode(tkid[2].slice(-4));
+            
+            if (!t.stmp) {
+                new_obj['timestamp'] = base_decode(tkid[2].slice(-4));
+            }
         }
         else if (mapper[k]) {
             new_obj[mapper[k]] = t[k];
