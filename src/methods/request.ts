@@ -630,7 +630,11 @@ async function _fetch(url: string, opt: any, progress?: ProgressCallback) {
 
                         else if (typeof result === 'object' && result?.message) {
                             let code = (result?.code || (status ? status.toString() : null) || 'ERROR');
-                            rej(new SkapiError(result.message.trim(), { code: code }));
+                            let msg = result.message;
+                            if (typeof msg === 'string') {
+                                msg = msg.trim();
+                            }
+                            rej(new SkapiError(msg, { code: code }));
                         }
 
                         else {
@@ -799,7 +803,7 @@ export function clientSecretRequest(params: {
             return v;
         }
     }, ['clientSecretName', 'method', 'url']);
-    
+
     // if (!params.data && !params.params) {
     //     throw new SkapiError(`${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} is required.`, { code: 'INVALID_PARAMETER' });
     // }
