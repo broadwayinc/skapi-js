@@ -155,7 +155,7 @@ export function registerTicket(
         time_to_live?: number;
     }
 ): Promise<string> {
-    return this.request('ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
+    return this.request('register-ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
 }
 
 export function unregisterTicket(
@@ -163,7 +163,7 @@ export function unregisterTicket(
         ticket_id: string;
     }
 ): Promise<string> {
-    return this.request('ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
+    return this.request('register-ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
 }
 
 export function authentication() {
