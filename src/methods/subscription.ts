@@ -27,8 +27,8 @@ function subscriptionGroupCheck(option: SubscriptionGroup<number | '*'>) {
 
         //     return v;
         // }
-    // }, ['user_id', 'group']);
-}, ['user_id']);
+        // }, ['user_id', 'group']);
+    }, ['user_id']);
 
     if (this.__user && option.user_id === this.__user.user_id) {
         throw new SkapiError(`"user_id" cannot be the user's own ID.`, { code: 'INVALID_PARAMETER' });
@@ -183,39 +183,39 @@ export async function unblockSubscriber(option: SubscriptionGroup<number | '*'>)
     return await request.bind(this)('subscription', { unblock: user_id, group: 1 }, { auth: true });
 }
 
-export async function getSubscribedTo(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any>> {
-    await this.__connection;
-    option = validator.Params(option, {
-        user_id: (v: string) => validator.UserId(v, '"user_id"'),
-        // group: 'number',
-        blocked: 'boolean'
-    }) || {};
+// export async function getSubscribedTo(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any>> {
+//     await this.__connection;
+//     option = validator.Params(option, {
+//         user_id: (v: string) => validator.UserId(v, '"user_id"'),
+//         // group: 'number',
+//         blocked: 'boolean'
+//     }) || {};
 
-    return getSubscriptions.bind(this)({
-        subscriber: option.user_id || this.__user?.user_id,
-        // group: option.group,
-        group: 1,
-        blocked: option.blocked
-    }, fetchOptions);
-};
+//     return getSubscriptions.bind(this)({
+//         subscriber: option.user_id || this.__user?.user_id,
+//         // group: option.group,
+//         group: 1,
+//         blocked: option.blocked
+//     }, fetchOptions);
+// };
 
-export async function getSubscribers(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any>> {
-    await this.__connection;
-    option = validator.Params(option, {
-        user_id: (v: string) => validator.UserId(v, '"user_id"'),
-        // group: 'number',
-        blocked: 'boolean'
-    }) || {};
+// export async function getSubscribers(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any>> {
+//     await this.__connection;
+//     option = validator.Params(option, {
+//         user_id: (v: string) => validator.UserId(v, '"user_id"'),
+//         // group: 'number',
+//         blocked: 'boolean'
+//     }) || {};
 
-    let subParams = {
-        subscription: option.user_id || this.__user?.user_id,
-        // group: option.group,
-        group: 1,
-        blocked: option.blocked
-    };
+//     let subParams = {
+//         subscription: option.user_id || this.__user?.user_id,
+//         // group: option.group,
+//         group: 1,
+//         blocked: option.blocked
+//     };
 
-    return getSubscriptions.bind(this)(subParams, fetchOptions);
-};
+//     return getSubscriptions.bind(this)(subParams, fetchOptions);
+// };
 
 // requires auth
 export async function getNewsletterSubscription(params: {

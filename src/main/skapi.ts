@@ -13,7 +13,6 @@ import {
     Form,
     PostRecordConfig,
     PublicUser,
-    // SubscriptionGroup
 } from '../Types';
 import SkapiError from './error';
 import validator from '../utils/validator';
@@ -85,7 +84,6 @@ import {
     lastVerifiedEmail,
     requestUsernameChange,
     consumeTicket,
-    releaseTicket,
     getConsumedTickets,
     getTickets,
     registerTicket,
@@ -351,6 +349,8 @@ export default class Skapi {
     private request = request.bind(this);
     // private getSubscribedTo = getSubscribedTo.bind(this);
     // private getSubscribers = getSubscribers.bind(this);
+    private registerTicket = registerTicket.bind(this);
+    private unregisterTicket = unregisterTicket.bind(this);
 
     normalizeRecord = normalizeRecord.bind(this);
 
@@ -384,13 +384,8 @@ export default class Skapi {
     }
 
     @formHandler()
-    consumeTicket(params: { ticket_id: string; consume_id: string; }, placeholder: { [key: string]: string }): Promise<any> {
+    consumeTicket(params: { ticket_id: string; }, placeholder: { [key: string]: string }): Promise<any> {
         return consumeTicket.bind(this)(params, placeholder);
-    }
-
-    @formHandler()
-    releaseTicket(params: { ticket_id: string; }): Promise<string> {
-        return releaseTicket.bind(this)(params);
     }
 
     @formHandler()
@@ -401,14 +396,6 @@ export default class Skapi {
     @formHandler()
     getTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any[]>> {
         return getTickets.bind(this)(params, fetchOptions);
-    }
-
-    registerTicket(params): Promise<string> {
-        return registerTicket.bind(this)(params);
-    }
-
-    unregisterTicket(params): Promise<string> {
-        return unregisterTicket.bind(this)(params);
     }
 
     closeRealtime(): Promise<void> {
