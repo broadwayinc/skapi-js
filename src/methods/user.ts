@@ -162,12 +162,9 @@ export async function registerTicket(
         desc: string;
         count?: number;
         time_to_live?: number;
+        placeholder?: { [key: string]: string };
     }
 ): Promise<string> {
-    let isAdmin = await this.checkAdmin();
-    if (!isAdmin) {
-        throw new SkapiError('Admin access is required.', { code: 'INVALID_REQUEST' });
-    }
     return this.request('register-ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
 }
 
