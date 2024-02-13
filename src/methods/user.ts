@@ -173,10 +173,6 @@ export async function unregisterTicket(
         ticket_id: string;
     }
 ): Promise<string> {
-    let isAdmin = await this.checkAdmin();
-    if (!isAdmin) {
-        throw new SkapiError('Admin access is required.', { code: 'INVALID_REQUEST' });
-    }
     return this.request('register-ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
 }
 
