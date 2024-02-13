@@ -36,7 +36,8 @@ function map_ticket_obj(t) {
         "ttl": 'time_to_live',
         "stmp": 'timestamp',
         'plch': 'placeholder',
-        'hash': 'hash'
+        'hash': 'hash',
+        'desc': 'description',
     }
     let new_obj = {};
     for (let k in t) {
@@ -64,12 +65,14 @@ function map_ticket_obj(t) {
     return new_obj;
 }
 
-export async function consumeTicket(params: { ticket_id: string; }, placeholder?: { [key: string]: string }): Promise<any> {
+export async function consumeTicket(params: { ticket_id: string; } & { [key: string]: any }): Promise<any> {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
+    let ticket_id = params.ticket_id;
+    delete params.ticket_id;
     await this.__connection;
-    let resp = await request.bind(this)('ticket', Object.assign({ exec: 'consume' }, params, { placeholder }), { auth: true });
+    let resp = await request.bind(this)(`https://${this.service.slice(0, 4)}.skapi.dev/consume/${this.service}/${this.owner}/${ticket_id}`, params, { auth: true });
     return map_ticket_obj(resp);
 }
 
@@ -95,12 +98,36 @@ export async function registerTicket(
     params: {
         ticket_id: string;
         condition?: {
-            user?: {
-                [key: string]: {
-                    value: string;
-                    operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
-                };
+            headers?: {
+                key: string;
+                value: string;
+                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+            }[],
+            ip?: {
+                value: string;
+                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
             },
+            user_agent?: {
+                value: string;
+                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+            },
+            data?: {
+                key: string;
+                value: any | any[];
+                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+                setValueWhenMatch?: any | any[];
+            }[],
+            params?: {
+                key: string;
+                value: string | string[];
+                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+                setValueWhenMatch?: any | any[];
+            }[],
+            user?: {
+                key: string;
+                value: string;
+                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+            }[],
             record_access?: string; // record id user should have access to
             request?: {
                 url: string;
@@ -111,9 +138,10 @@ export async function registerTicket(
                 data?: Record<string, any>;
                 params?: Record<string, any>;
                 match: {
-                    target_key: string; // key.to.match
+                    key: string; // key[to][match]
                     operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
                     value: string;
+                    setValueWhenMatched?: string;
                 }[];
             }
         };
