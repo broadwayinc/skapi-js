@@ -159,7 +159,7 @@ export async function registerTicket(
             },
             update_service?: { [key: string]: any }; // only admin
         };
-        desc: string;
+        description: string;
         count?: number;
         time_to_live?: number;
         placeholder?: { [key: string]: string };
