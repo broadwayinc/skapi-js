@@ -140,8 +140,8 @@ export async function registerTicket(
                 match: {
                     key: string; // key[to][match]
                     operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
-                    value: string;
-                    setValueWhenMatched?: string;
+                    value: any;
+                    setValueWhenMatch?: any | any[];
                 }[];
             }
         };
