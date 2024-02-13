@@ -96,17 +96,18 @@ export async function registerTicket(
     params: {
         ticket_id: string;
         condition?: {
+            method?: 'GET' | 'POST'; // any method when not given
             headers?: {
                 key: string;
-                value: string;
+                value: string | string[];
                 operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
             }[],
             ip?: {
-                value: string;
+                value: string | string[];
                 operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
             },
             user_agent?: {
-                value: string;
+                value: string | string[];
                 operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
             },
             data?: {
@@ -123,7 +124,7 @@ export async function registerTicket(
             }[],
             user?: {
                 key: string;
-                value: string;
+                value: string | string[];
                 operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
             }[],
             record_access?: string; // record id user should have access to
@@ -138,8 +139,7 @@ export async function registerTicket(
                 match: {
                     key: string; // key[to][match]
                     operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
-                    value: any;
-                    setValueWhenMatch?: any | any[];
+                    value: any | any[];
                 }[];
             }
         };
