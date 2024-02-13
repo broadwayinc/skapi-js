@@ -69,10 +69,8 @@ export async function consumeTicket(params: { ticket_id: string; } & { [key: str
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
-    let ticket_id = params.ticket_id;
-    delete params.ticket_id;
     await this.__connection;
-    let resp = await request.bind(this)(`https://${this.service.slice(0, 4)}.skapi.dev/auth/consume/${this.service}/${this.owner}/${ticket_id}`, params, { auth: true });
+    let resp = await request.bind(this)('ticket', Object.assign({ exec: 'consume' }, params), { auth: true });
     return map_ticket_obj(resp);
 }
 
