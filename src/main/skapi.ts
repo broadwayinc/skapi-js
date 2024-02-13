@@ -384,8 +384,8 @@ export default class Skapi {
     }
 
     @formHandler()
-    consumeTicket(params: { ticket_id: string; }, placeholder: { [key: string]: string }): Promise<any> {
-        return consumeTicket.bind(this)(params, placeholder);
+    consumeTicket(params: { ticket_id: string; } & { [key: string]: any }): Promise<any> {
+        return consumeTicket.bind(this)(params);
     }
 
     @formHandler()
