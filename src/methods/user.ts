@@ -17,7 +17,7 @@ import {
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from './request';
-import { MD5, base_decode } from '../utils/utils';
+import { MD5, fromBase62 } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
 
@@ -52,7 +52,7 @@ function map_ticket_obj(t) {
             new_obj['user_id'] = tkid[3];
 
             if (!t.stmp) {
-                new_obj['timestamp'] = base_decode(tkid[2].slice(0, -4));
+                new_obj['timestamp'] = fromBase62(tkid[2].slice(0, -4));
             }
         }
         else if (mapper[k]) {
