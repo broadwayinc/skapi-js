@@ -312,14 +312,6 @@ export type ProgressCallback = (e: {
     abort: () => void; // Aborts current data transfer. When abort is triggered during the FileList is on trasmit, it will continue to next file.
 }) => void;
 
-// scheduled to be deprecated
-export type FormSubmitCallback = {
-    response?(response: any): any;
-    onerror?(error: Error): any;
-    formData?(formData: FormData): Promise<FormData> | FormData;
-    progress: ProgressCallback;
-};
-
 export type FetchOptions = {
     /** Maximum number of records to fetch per call */
     limit?: number;

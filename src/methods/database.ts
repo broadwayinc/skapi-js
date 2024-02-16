@@ -1,7 +1,6 @@
 import {
     RecordData,
     Form,
-    FormSubmitCallback,
     FetchOptions,
     DatabaseResponse,
     GetRecordQuery,
@@ -11,9 +10,9 @@ import {
     BinaryFile
 } from '../Types';
 import SkapiError from '../main/error';
-import { extractFormMeta, generateRandom, fromBase62, toBase62 } from '../utils/utils';
+import { extractFormMeta, fromBase62 } from '../utils/utils';
 import validator from '../utils/validator';
-import { request } from '../utils/network';
+import { request, uploadFiles } from '../utils/network';
 
 const __index_number_range = 4503599627370496; // +/-
 
@@ -246,177 +245,6 @@ export async function deleteFiles(params: {
     }, { auth: true, method: 'post' });
 
     return updatedRec.map(r => normalizeRecord.bind(this)(r));
-}
-
-export async function uploadFiles(
-    fileList: Form<FileList | File[]>,
-    params: {
-        record_id: string; // Record ID of a record to upload files to.
-    } & FormSubmitCallback
-): Promise<{ completed: File[]; failed: File[]; bin_endpoints: string[] }> {
-    // <input type="file" webkitdirectory multiple />
-    // let input = document.querySelector('input[type="file"]');
-    // let data = new FormData();
-
-    // for (let i = 0; i < input.files.length; i++) {
-    //     // You may want to replace '\\' with '/' if you're on Mac or Linux
-    //     let path = input.files[i].webkitRelativePath || input.files[i].name;
-    //     data.append('files', input.files[i], path);
-    // }
-
-    await this.__connection;
-    let params_request = (params as any)?.request || 'post';
-    let nestKey = (params as any)?.nestKey || '';
-    let service = (params as any)?.service || this.service;
-
-    if (params_request === 'post') {
-        if (!params?.record_id) {
-            throw new SkapiError('"record_id" is required.', { code: 'INVALID_PARAMETER' });
-        }
-    }
-    else {
-        if (service === this.service) {
-            throw new SkapiError('invalid service.', { code: 'INVALID_PARAMETER' });
-        }
-        if (params_request !== 'host') {
-            throw new SkapiError('invalid request.', { code: 'INVALID_PARAMETER' });
-        }
-    }
-
-    if (fileList instanceof SubmitEvent) {
-        fileList = (fileList.target as HTMLFormElement);
-    }
-
-    if (fileList instanceof HTMLFormElement) {
-        fileList = new FormData(fileList);
-    }
-
-    let formDataKeys = [];
-    if (fileList instanceof FormData) {
-        // extract all fileList
-        let fileEntries = [];
-
-        for (let entry of fileList.entries()) {
-            let value = entry[1];
-            if (value instanceof File) {
-                let key = entry[0];
-                formDataKeys.push(key);
-                fileEntries.push(value);
-            }
-        }
-
-        fileList = fileEntries;
-    }
-
-    if (!(fileList[0] instanceof File)) {
-        throw new SkapiError('"fileList" should be a FileList or array of File object.', { code: 'INVALID_PARAMETER' });
-    }
-
-    let reserved_key = generateRandom();
-
-    let getSignedParams: Record<string, any> = {
-        reserved_key,
-        service,
-        request: params_request
-    };
-
-    if (params?.record_id) {
-        getSignedParams.id = params.record_id;
-    }
-
-    let xhr;
-    let fetchProgress = (
-        url: string,
-        body: FormData,
-        progressCallback
-    ) => {
-        return new Promise((res, rej) => {
-            xhr = new XMLHttpRequest();
-            xhr.open('POST', url);
-            xhr.onload = (e: any) => {
-                let result = xhr.responseText;
-                try {
-                    result = JSON.parse(result);
-                }
-                catch (err) { }
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    let result = xhr.responseText;
-                    try {
-                        result = JSON.parse(result);
-                    }
-                    catch (err) { }
-                    res(result);
-                } else {
-                    rej(result);
-                }
-            };
-            xhr.onerror = () => rej('Network error');
-            xhr.onabort = () => rej('Aborted');
-            xhr.ontimeout = () => rej('Timeout');
-
-            // xhr.addEventListener('error', rej);
-            if (xhr.upload && typeof params.progress === 'function') {
-                xhr.upload.onprogress = progressCallback;
-            }
-
-            xhr.send(body);
-        });
-    };
-
-    let completed = [];
-    let failed = [];
-
-    let bin_endpoints = [];
-
-    for (let i = 0; i < fileList.length; i++) {
-        let f = fileList[i];
-        let key = formDataKeys?.[i] || '';
-
-        let signedParams = Object.assign({
-            key: params_request === 'host' ? (nestKey ? nestKey + '/' : '') + f.name : key ? key + '/' + f.name : f.name,
-            sizeKey: toBase62(f.size),
-            contentType: f.type || null
-        }, getSignedParams);
-
-        let { fields = null, url, cdn } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
-
-        bin_endpoints.push(cdn);
-
-        let form = new FormData();
-
-        for (let name in fields) {
-            form.append(name, fields[name]);
-        }
-
-        form.append('file', f);
-
-        try {
-            await fetchProgress(
-                url, form,
-                (p: ProgressEvent) => {
-                    if (typeof params.progress !== 'function') return;
-
-                    params.progress(
-                        {
-                            status: 'upload',
-                            progress: p.loaded / p.total * 100,
-                            currentFile: f,
-                            completed,
-                            failed,
-                            loaded: p.loaded,
-                            total: p.total,
-                            abort: () => xhr.abort()
-                        }
-                    );
-                }
-            );
-            completed.push(f);
-        } catch (err) {
-            failed.push(f);
-        }
-    }
-
-    return { completed, failed, bin_endpoints };
 }
 
 export async function getFile(
@@ -790,7 +618,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
 
 export async function postRecord(
     form: Form<Record<string, any>> | null | undefined,
-    config: PostRecordConfig & FormSubmitCallback & { reference_private_key?: string; }
+    config: PostRecordConfig & { progress?: ProgressCallback; reference_private_key?: string; }
 ): Promise<RecordData> {
     let isAdmin = await this.checkAdmin();
     if (!config) {
@@ -802,11 +630,6 @@ export async function postRecord(
     }
 
     let fetchOptions: Record<string, any> = {};
-
-    if (typeof config?.formData === 'function') {
-        fetchOptions.formData = config.formData;
-        delete config.formData;
-    }
 
     if (typeof config.table === 'string') {
         config.table = {
@@ -967,8 +790,6 @@ export async function postRecord(
     config = config_chkd;
 
     // callbacks should be removed after checkparams
-    delete config.response;
-    delete config.onerror;
     delete config.progress;
 
     if (reference_private_key) {
