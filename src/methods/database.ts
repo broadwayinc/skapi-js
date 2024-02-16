@@ -13,7 +13,7 @@ import {
 import SkapiError from '../main/error';
 import { extractFormMeta, generateRandom, fromBase62, toBase62 } from '../utils/utils';
 import validator from '../utils/validator';
-import { request } from './request';
+import { request } from '../utils/network';
 
 const __index_number_range = 4503599627370496; // +/-
 

@@ -16,7 +16,7 @@ import {
     PublicUser
 } from '../Types';
 import validator from '../utils/validator';
-import { request } from './request';
+import { request } from '../utils/network';
 import { MD5, fromBase62 } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
@@ -99,7 +99,8 @@ export async function registerTicket(
     params: {
         ticket_id: string;
         condition?: {
-            method?: 'GET' | 'POST'; // any method when not given
+            bypassConditionMismatch?: boolean; // When true, returns 200 when condition mismatch
+            method?: 'GET' | 'POST'; // Defaults to 'GET' method when not given
             headers?: {
                 key: string;
                 value: string | string[];
@@ -114,16 +115,18 @@ export async function registerTicket(
                 operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
             },
             data?: {
-                key: string;
+                key?: string;
                 value: any | any[];
                 operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
                 setValueWhenMatch?: any | any[];
+                ignoreMismatch?: boolean;
             }[],
             params?: {
-                key: string;
+                key?: string;
                 value: string | string[];
                 operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
                 setValueWhenMatch?: any | any[];
+                ignoreMismatch?: boolean;
             }[],
             user?: {
                 key: string;
@@ -151,7 +154,7 @@ export async function registerTicket(
             record_access?: string; // record id to give access to the user
             request?: {
                 url: string;
-                method: 'GET' | 'POST';
+                method: 'GET' | 'POST'; // Defaults to 'GET' method when not given
                 headers?: {
                     [key: string]: string;
                 };
