@@ -24,7 +24,7 @@ export function getConnection(): Promise<Connection> {
 
 export async function request(
     url: string,
-    data: Form<any> | null = null,
+    data: Form<any> = null,
     options?: {
         noParams?: boolean; // when true params will not be added to get request
         fetchOptions?: FetchOptions & FormSubmitCallback;
@@ -762,7 +762,7 @@ async function _get(
 export function clientSecretRequest(params: {
     url: string;
     clientSecretName: string;
-    method: 'get' | 'post' | 'GET' | 'POST';
+    method: 'GET' | 'POST';
     headers?: Record<string, string>;
     data?: Record<string, string>;
     params?: Record<string, string>;
@@ -781,7 +781,15 @@ export function clientSecretRequest(params: {
     validator.Params(params, {
         url: 'string',
         clientSecretName: 'string',
-        method: ['get', 'post', 'GET', 'POST'],
+        method: (v: string) => {
+            if (v && typeof v !== 'string') {
+                throw new SkapiError('"method" should be type: <string>.', { code: 'INVALID_PARAMETER' });
+            }
+            if (v.toLowerCase() !== 'get' && v.toLowerCase() !== 'post') {
+                throw new SkapiError('"method" should be either "GET" or "POST".', { code: 'INVALID_PARAMETER' });
+            }
+            return v;
+        },
         headers: (v: any) => {
             if (v && typeof v !== 'object') {
                 throw new SkapiError('"headers" should be type: <object>.', { code: 'INVALID_PARAMETER' });
@@ -804,10 +812,6 @@ export function clientSecretRequest(params: {
             return v;
         }
     }, ['clientSecretName', 'method', 'url']);
-
-    // if (!params.data && !params.params) {
-    //     throw new SkapiError(`${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} is required.`, { code: 'INVALID_PARAMETER' });
-    // }
 
     if (!hasSecret) {
         throw new SkapiError(`At least one parameter value should include "$CLIENT_SECRET" in ${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} or "headers".`, { code: 'INVALID_PARAMETER' });
@@ -847,30 +851,27 @@ export async function secureRequest<RequestParams = {
     return request.bind(this)('post-secure', params, { auth: true });
 };
 
-export async function mock(data: Form<any | {
+export async function mock(data: Form<any & {
     raise?: 'ERR_INVALID_REQUEST' | 'ERR_INVALID_PARAMETER' | 'SOMETHING_WENT_WRONG' | 'ERR_EXISTS' | 'ERR_NOT_EXISTS';
 }>,
     options?: {
         auth?: boolean;
         method?: string;
-        meta?: Record<string, any>;
-        bypassAwaitConnection?: boolean;
         responseType?: string;
         contentType?: string;
-    } & FormSubmitCallback): Promise<{ mockResponse: Record<string, any>; }> {
+        progress?: ProgressCallback;
+        bypassAwaitConnection?: boolean;
+    }): Promise<{ mockResponse: Record<string, any>; }> {
     await this.__connection;
+    let { auth = true, method = 'POST', bypassAwaitConnection = false, responseType, contentType, progress } = options || {};
 
-    let { auth = true, method = 'POST', meta, bypassAwaitConnection = false, responseType, contentType } = options || {};
-    let { response, onerror, formData, progress } = options || {};
+    options = Object.assign(
+        { auth, method, bypassAwaitConnection, responseType, contentType },
+        {
+            fetchOptions: { progress }
+        }
+    );
 
-    if (options) {
-        Object.assign(
-            { auth, method, meta, bypassAwaitConnection, responseType, contentType },
-            {
-                fetchOptions:
-                    { response, onerror, formData, progress }
-            });
-    }
     return request.bind(this)('mock', data, options);
 };
 
@@ -900,7 +901,6 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
 
         descriptor.value = function (...arg: any[]) {
             let form: Form<any> = arg[0];
-            let option: FormSubmitCallback = arg?.[1] || {};
             let routeWithDataKey = true;
             let formEl = null;
             let actionDestination = '';
@@ -961,15 +961,6 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             }
 
             const handleResponse = async (response: any) => {
-                if (option?.response) {
-                    if (typeof option.response === 'function') {
-                        return option.response(response);
-                    }
-                    else {
-                        throw new SkapiError('Callback "response" should be type: function.', { code: 'INVALID_PARAMETER' });
-                    }
-                }
-
                 if (actionDestination) {
                     for (let k in fileBase64String) {
                         if (fileBase64String[k].length) {
@@ -991,10 +982,6 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
 
             let response: any;
             let handleError = (err: any) => {
-                if (form instanceof SubmitEvent) {
-                    form.preventDefault();
-                }
-
                 if (err instanceof SkapiError) {
                     err.name = propertyKey + '()';
                 }
@@ -1003,49 +990,23 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                     err = err instanceof Error ? err : new SkapiError(err, { name: propertyKey + '()' });
                 }
 
-                if (option?.onerror) {
-                    if (typeof option.onerror === 'function') {
-                        return option.onerror(err);
-                    }
-                    else {
-                        return new SkapiError('Callback "onerror" should be type: function.', { code: 'INVALID_PARAMETER', name: propertyKey + '()' });
-                    }
-                }
-
-                return err;
+                throw err;
             };
 
-            const executeMethod = () => {
+            const executeMethod = async () => {
                 try {
                     // execute
                     response = fn.bind(this)(...arg);
+
+                    if (response instanceof Promise) {
+                        // handle promise
+                        let resolved = await response;
+                        await handleResponse(resolved);
+                        return response;
+                    }
                 }
                 catch (err) {
-                    let is_err = handleError(err);
-                    if (is_err instanceof Error) {
-                        throw is_err;
-                    }
-
-                    return is_err;
-                }
-
-                if (response instanceof Promise) {
-                    // handle promise
-                    return (async () => {
-                        try {
-                            let resolved = await response;
-                            let data = await handleResponse(resolved);
-                            return data;
-                        }
-                        catch (err) {
-                            let is_err = handleError(err);
-                            if (is_err instanceof Error) {
-                                throw is_err;
-                            }
-
-                            return is_err;
-                        }
-                    })();
+                    throw handleError(err);
                 }
             };
 
