@@ -92,8 +92,6 @@ export async function request(
 
     if (!bypassAwaitConnection) {
         __connection = await this.__connection;
-        service = __connection?.service;
-        owner = __connection?.owner;
         if (!__connection) {
             throw new SkapiError('Invalid connection. The service could have been disabled, or has a restricted CORS.', { code: 'INVALID_REQUEST' });
         }
