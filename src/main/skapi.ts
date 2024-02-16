@@ -23,7 +23,6 @@ import {
     getTables,
     getIndexes,
     getTags,
-    uploadFiles,
     getFile,
     grantPrivateRecordAccess,
     removePrivateRecordAccess,
@@ -41,21 +40,23 @@ import {
     getRealtimeGroups
 } from '../methods/realtime';
 import {
-    request,
     secureRequest,
     mock,
-    getFormResponse,
-    formHandler,
     getConnection,
     clientSecretRequest
 } from '../methods/request';
+import {
+    request,
+    getFormResponse,
+    formHandler,
+    uploadFiles,
+    hostFiles,
+} from '../utils/network';
 import {
     subscribe,
     unsubscribe,
     blockSubscriber,
     unblockSubscriber,
-    // getSubscribers,
-    // getSubscribedTo,
     getSubscriptions,
     subscribeNewsletter,
     getNewsletters,
@@ -347,10 +348,9 @@ export default class Skapi {
 
     private checkAdmin = checkAdmin.bind(this);
     private request = request.bind(this);
-    // private getSubscribedTo = getSubscribedTo.bind(this);
-    // private getSubscribers = getSubscribers.bind(this);
     private registerTicket = registerTicket.bind(this);
     private unregisterTicket = unregisterTicket.bind(this);
+    private hostFiles = hostFiles.bind(this);
 
     normalizeRecord = normalizeRecord.bind(this);
 
@@ -672,11 +672,11 @@ export default class Skapi {
         options?: {
             auth?: boolean;
             method?: string;
-            meta?: Record<string, any>;
             bypassAwaitConnection?: boolean;
             responseType?: string;
             contentType?: string;
-        } & FormSubmitCallback): Promise<{ mockResponse: Record<string, any>; }> { return mock.bind(this)(data, options); }
+            progress?: ProgressCallback;
+        }): Promise<{ mockResponse: Record<string, any>; }> { return mock.bind(this)(data, options); }
     @formHandler({ preventMultipleCalls: true })
     login(
         form: Form<{
