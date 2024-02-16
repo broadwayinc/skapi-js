@@ -9,7 +9,6 @@ import {
     UserAttributes,
     UserProfile,
     Newsletters,
-    FormSubmitCallback,
     Form,
     PostRecordConfig,
     PublicUser,
@@ -664,7 +663,8 @@ export default class Skapi {
         fileList: Form<FileList | File[]>,
         params: {
             record_id: string; // Record ID of a record to upload files to. Not required if request is 'host'.
-        } & FormSubmitCallback
+            progress?: ProgressCallback;
+        }
     ): Promise<{ completed: File[], failed: File[]; }> { return uploadFiles.bind(this)(fileList, params); }
     @formHandler()
     mock(
@@ -710,7 +710,7 @@ export default class Skapi {
              * Automatically login to account after signup. Will not work if signup confirmation is required.
              */
             login?: boolean;
-        } & FormSubmitCallback): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
+        } & { progress?: ProgressCallback }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
         return signup.bind(this)(form, option);
     }
     @formHandler({ preventMultipleCalls: true })
@@ -748,7 +748,7 @@ export default class Skapi {
     @formHandler()
     postRecord(
         form: Form<Record<string, any>> | null | undefined,
-        config: PostRecordConfig & FormSubmitCallback
+        config: PostRecordConfig & { progress?: ProgressCallback }
     ): Promise<RecordData> { return postRecord.bind(this)(form, config); }
     @formHandler()
     getSubscriptions(
