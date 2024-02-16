@@ -11,23 +11,11 @@ import {
     BinaryFile
 } from '../Types';
 import SkapiError from '../main/error';
-import { extractFormMeta, generateRandom } from '../utils/utils';
+import { extractFormMeta, generateRandom, fromBase62, toBase62 } from '../utils/utils';
 import validator from '../utils/validator';
-import { base_decode } from '../utils/utils';
-
 import { request } from './request';
 
 const __index_number_range = 4503599627370496; // +/-
-
-// function to decode base62 string
-function fromBase62(str: string) {
-    const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    let result = 0;
-    for (let i = 0; i < str.length; i++) {
-        result = result * 62 + base62Chars.indexOf(str[i]);
-    }
-    return result;
-}
 
 export function normalizeRecord(record: Record<string, any>): RecordData {
     const output: Record<string, any> = {
@@ -63,7 +51,7 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
             if (!r) return;
             output.record_id = r;
             let base62timestamp = r.substring(0, r.length - 9); // id: [base62 timestamp][random 5 char][suid 4 char]
-            let uploaded = base_decode(base62timestamp);
+            let uploaded = fromBase62(base62timestamp);
             output.uploaded = uploaded;
         },
         'usr': (r: string) => {
@@ -377,17 +365,6 @@ export async function uploadFiles(
 
     let completed = [];
     let failed = [];
-
-    function toBase62(num: number) {
-        const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-        if (num === 0) return base62Chars[0];
-        let result = '';
-        while (num > 0) {
-            result = base62Chars[num % 62] + result;
-            num = Math.floor(num / 62);
-        }
-        return result;
-    }
 
     let bin_endpoints = [];
 
