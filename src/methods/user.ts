@@ -8,12 +8,12 @@ import {
 } from 'amazon-cognito-identity-js';
 import {
     Form,
-    FormSubmitCallback,
     UserProfile,
     FetchOptions,
     DatabaseResponse,
     UserAttributes,
-    PublicUser
+    PublicUser,
+ProgressCallback
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
@@ -623,7 +623,7 @@ export async function signup(
         signup_confirmation?: boolean | string;
         email_subscription?: boolean;
         login?: boolean;
-    } & FormSubmitCallback): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
+    } & { progress?: ProgressCallback }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
     let is_admin = await checkAdmin.bind(this)();
 
     let params = validator.Params(form || {}, {

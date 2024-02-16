@@ -520,7 +520,7 @@ function update_startKey_keys(option: Record<string, any>) {
 }
 
 export async function hostFiles(
-    fileList: FileList | File[],
+    fileList: FormData,
     params: {
         service?: string;
         dir?: string;
@@ -538,8 +538,8 @@ export async function hostFiles(
         throw new SkapiError('invalid service.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (!(fileList[0] instanceof File)) {
-        throw new SkapiError('"fileList" should be a FileList or array of File object.', { code: 'INVALID_PARAMETER' });
+    if (!(fileList instanceof FormData)) {
+        throw new SkapiError('"fileList" should be a FormData or HTMLFormElement.', { code: 'INVALID_PARAMETER' });
     }
 
     let getSignedParams: Record<string, any> = {
@@ -584,8 +584,11 @@ export async function hostFiles(
     let failed = [];
     let bin_endpoints = [];
 
-    for (let i = 0; i < fileList.length; i++) {
-        let f = fileList[i];
+    for (let [key, f] of (fileList as any).entries()) {
+        if (!(f instanceof File)) {
+            continue;
+        }
+
         let signedParams = Object.assign({
             key: dir + f.name,
             sizeKey: toBase62(f.size),
