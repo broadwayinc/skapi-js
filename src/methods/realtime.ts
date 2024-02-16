@@ -2,7 +2,7 @@
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { extractFormMeta } from '../utils/utils';
-import { request } from './request';
+import { request } from '../utils/network';
 import { DatabaseResponse, FetchOptions } from '../Types';
 
 async function prepareWebsocket() {
