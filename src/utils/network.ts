@@ -573,7 +573,7 @@ export async function hostFiles(
             xhr.onabort = () => rej('Aborted');
             xhr.ontimeout = () => rej('Timeout');
 
-            if (xhr.upload && typeof params.progress === 'function') {
+            if (xhr.upload && typeof progressCallback === 'function') {
                 xhr.upload.onprogress = progressCallback;
             }
             xhr.send(body);
@@ -608,20 +608,18 @@ export async function hostFiles(
             await fetchProgress(
                 url,
                 form,
-                typeof params.progress !== 'function' ? (p: ProgressEvent) => {
-                    params.progress(
-                        {
-                            status: 'upload',
-                            progress: p.loaded / p.total * 100,
-                            currentFile: f,
-                            completed,
-                            failed,
-                            loaded: p.loaded,
-                            total: p.total,
-                            abort: () => xhr.abort()
-                        }
-                    );
-                } : null
+                typeof progress === 'function' ? (p: ProgressEvent) => progress(
+                    {
+                        status: 'upload',
+                        progress: p.loaded / p.total * 100,
+                        currentFile: f,
+                        completed,
+                        failed,
+                        loaded: p.loaded,
+                        total: p.total,
+                        abort: () => xhr.abort()
+                    }
+                ) : null
             );
             completed.push(f);
         } catch (err) {
@@ -654,6 +652,10 @@ export async function uploadFiles(
         fileList = new FormData(fileList);
     }
 
+    if (!(fileList instanceof FormData)) {
+        throw new SkapiError('"fileList" should be a FormData or HTMLFormElement.', { code: 'INVALID_PARAMETER' });
+    }
+
     let reserved_key = generateRandom();
 
     let getSignedParams: Record<string, any> = {
@@ -670,7 +672,7 @@ export async function uploadFiles(
     let fetchProgress = (
         url: string,
         body: FormData,
-        progressCallback
+        progressCallback: (p: ProgressEvent) => void
     ) => {
         return new Promise((res, rej) => {
             xhr = new XMLHttpRequest();
@@ -692,7 +694,7 @@ export async function uploadFiles(
             xhr.ontimeout = () => rej('Timeout');
 
             // xhr.addEventListener('error', rej);
-            if (xhr.upload && typeof params.progress === 'function') {
+            if (xhr.upload && typeof progressCallback === 'function') {
                 xhr.upload.onprogress = progressCallback;
             }
 
@@ -743,7 +745,7 @@ export async function uploadFiles(
             await fetchProgress(
                 url,
                 form,
-                typeof params.progress !== 'function' ? (p: ProgressEvent) => params.progress(
+                typeof progress === 'function' ? (p: ProgressEvent) => progress(
                     {
                         status: 'upload',
                         progress: p.loaded / p.total * 100,
@@ -899,3 +901,18 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
         }
     }
 }
+
+export async function getFormResponse(): Promise<any> {
+    await this.__connection;
+    let responseKey = `${this.service}:${MD5.hash(window.location.href.split('?')[0])}`;
+    let stored = window.sessionStorage.getItem(responseKey);
+    if (stored !== null) {
+        try {
+            stored = JSON.parse(stored);
+        } catch (err) { }
+
+        return stored;
+    }
+
+    return null;
+};

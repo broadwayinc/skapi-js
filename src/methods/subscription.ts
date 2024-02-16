@@ -7,7 +7,7 @@ import {
 } from '../Types';
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
-import { request } from './request';
+import { request } from '../utils/network';
 
 function subscriptionGroupCheck(option: SubscriptionGroup<number | '*'>) {
     option = validator.Params(option, {
@@ -182,40 +182,6 @@ export async function unblockSubscriber(option: SubscriptionGroup<number | '*'>)
     let { user_id } = subscriptionGroupCheck.bind(this)(option);
     return await request.bind(this)('subscription', { unblock: user_id, group: 1 }, { auth: true });
 }
-
-// export async function getSubscribedTo(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any>> {
-//     await this.__connection;
-//     option = validator.Params(option, {
-//         user_id: (v: string) => validator.UserId(v, '"user_id"'),
-//         // group: 'number',
-//         blocked: 'boolean'
-//     }) || {};
-
-//     return getSubscriptions.bind(this)({
-//         subscriber: option.user_id || this.__user?.user_id,
-//         // group: option.group,
-//         group: 1,
-//         blocked: option.blocked
-//     }, fetchOptions);
-// };
-
-// export async function getSubscribers(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any>> {
-//     await this.__connection;
-//     option = validator.Params(option, {
-//         user_id: (v: string) => validator.UserId(v, '"user_id"'),
-//         // group: 'number',
-//         blocked: 'boolean'
-//     }) || {};
-
-//     let subParams = {
-//         subscription: option.user_id || this.__user?.user_id,
-//         // group: option.group,
-//         group: 1,
-//         blocked: option.blocked
-//     };
-
-//     return getSubscriptions.bind(this)(subParams, fetchOptions);
-// };
 
 // requires auth
 export async function getNewsletterSubscription(params: {
