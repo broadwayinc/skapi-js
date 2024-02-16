@@ -74,10 +74,6 @@ export async function request(
         contentType?: string;
     }
 ): Promise<any> {
-    if (Array.isArray(data) || typeof data !== 'object' || !data && typeof data !== 'undefined') {
-        throw new SkapiError('Request data should be an Object | FormData | HTMLFormElement.', { code: 'INVALID_REQUEST' });
-    }
-
     options = options || {};
 
     let {
