@@ -112,8 +112,6 @@ export async function request(
             }
 
             token = this.session?.idToken?.jwtToken;
-            service = this.session?.attributes?.['custom:service'];
-            owner = this.session?.attributes?.['custom:owner'];
         }
         else {
             this.logout();
