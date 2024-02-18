@@ -240,30 +240,30 @@ export async function request(
 
     if (method === 'GET') {
         if (data) {
+            let query = [];
             if (data instanceof FormData) {
                 for (let [name, value] of data.entries()) {
                     if (typeof value === 'string') {
                         value = encodeURIComponent(value);
-                        endpoint += `&${name}=${value}`;
+                        query.push(`&${name}=${value}`);
                     }
                 }
             }
             else {
-                if (url.substring(url.length - 1) !== '?') {
-                    url = url + '?';
-                }
-
-                let query = Object.keys(data)
+                query = Object.keys(data)
                     .map(k => {
                         let value = data[k];
                         if (typeof value !== 'string') {
                             value = JSON.stringify(value);
                         }
                         return encodeURIComponent(k) + '=' + encodeURIComponent(value);
-                    })
-                    .join('&');
-
-                endpoint += query;
+                    });
+            }
+            if (query.length) {
+                if (endpoint.substring(endpoint.length - 1) !== '?') {
+                    endpoint = endpoint + '?';
+                }
+                endpoint += query.join('&');
             }
         }
         opt.body = null;
