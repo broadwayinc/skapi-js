@@ -239,6 +239,33 @@ export async function request(
     }
 
     if (method === 'GET') {
+        if (data && typeof data === 'object' && !data && Object.keys(data).length) {
+            if (data instanceof FormData) {
+                for (let [name, value] of data.entries()) {
+                    if (typeof value === 'string') {
+                        value = encodeURIComponent(value);
+                        endpoint += `&${name}=${value}`;
+                    }
+                }
+            }
+            else {
+                if (url.substring(url.length - 1) !== '?') {
+                    url = url + '?';
+                }
+
+                let query = Object.keys(data)
+                    .map(k => {
+                        let value = data[k];
+                        if (typeof value !== 'string') {
+                            value = JSON.stringify(value);
+                        }
+                        return encodeURIComponent(k) + '=' + encodeURIComponent(value);
+                    })
+                    .join('&');
+
+                endpoint += query;
+            }
+        }
         opt.body = null;
     }
     else {
