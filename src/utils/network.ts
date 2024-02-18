@@ -239,7 +239,7 @@ export async function request(
     }
 
     if (method === 'GET') {
-        if (data && typeof data === 'object' && !data && Object.keys(data).length) {
+        if (data) {
             if (data instanceof FormData) {
                 for (let [name, value] of data.entries()) {
                     if (typeof value === 'string') {
