@@ -281,11 +281,11 @@ export default class Skapi {
 
         // connects to server
         this.__connection = (async (): Promise<Connection> => {
-            let process: Promise<Connection> = null;
+            let connection: Promise<Connection> = null;
 
             if (!restore?.connection) {
                 // await for first connection
-                process = this.updateConnection();
+                connection = this.updateConnection();
             }
 
             const storeClassProperties = () => {
@@ -313,7 +313,7 @@ export default class Skapi {
                     }
                 };
 
-                return (process instanceof Promise) ? process.then(() => exec()) : exec();
+                return (connection instanceof Promise) ? connection.then(() => exec()) : exec();
             };
 
             // attach event to save session on close
@@ -323,7 +323,7 @@ export default class Skapi {
             });
             // window.addEventListener("visibilitychange", storeClassProperties);
 
-            await process;
+            await connection;
             await this.__authConnection;
             let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
             console.log(`Built with:\n${skapi}Version: ${this.version}\n\nDocumentation: https://docs.skapi.com`, `font-family: monospace; color:blue;`);
