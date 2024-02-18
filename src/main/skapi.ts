@@ -41,7 +41,6 @@ import {
 import {
     secureRequest,
     mock,
-    getConnection,
     clientSecretRequest
 } from '../methods/request';
 import {
@@ -433,9 +432,8 @@ export default class Skapi {
         return joinRealtime.bind(this)(params);
     }
 
-    @formHandler()
     getConnection(): Promise<Connection> {
-        return getConnection.bind(this)();
+        return this.__connection;
     }
 
     @formHandler()

@@ -1,19 +1,10 @@
 import {
     Form,
-    Connection,
     ProgressCallback
 } from '../Types';
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
-
-/**
- * When skapi instance is created via new Skapi(...) skapi immediately connects the browser to the server.
- * You can use getConnection() when you need to await for connection to be established.
- */
-export function getConnection(): Promise<Connection> {
-    return this.__connection;
-}
 
 export function clientSecretRequest(params: {
     url: string;
