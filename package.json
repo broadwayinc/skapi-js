@@ -9,7 +9,7 @@
     "dist/"
   ],
   "scripts": {
-    "build": "npx tsc --project tsconfig.json; npx webpack --config webpack.config.js; cp -r dist playground;",
+    "build": "npx tsc --project tsconfig.json; npx webpack --config webpack.config.js",
     "dev": "(cd playground; node server.js)"
   },
   "repository": {
