@@ -160,8 +160,7 @@ export async function registerTicket(
                 };
                 data?: Record<string, any>;
                 params?: Record<string, any>;
-            },
-            update_service?: { [key: string]: any }; // only admin
+            }
         };
         description: string;
         count?: number;
