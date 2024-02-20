@@ -159,6 +159,23 @@ class MD5 {
     }
 }
 
+function toBase62(num: number) {
+    const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    if (num === 0) return base62Chars[0];
+    let result = '';
+    while (num > 0) {
+        result = base62Chars[num % 62] + result;
+        num = Math.floor(num / 62);
+    }
+    return result;
+}
+
+function fromBase62(chars) {
+    let charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    return chars.split('').reverse().reduce((prev, curr, i) =>
+        prev + (charset.indexOf(curr) * (62 ** i)), 0);
+}
+
 function generateRandom(length = 6) {
     let result = '';
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -352,6 +369,8 @@ function extractFormMeta(form: Form<any>) {
 }
 
 export {
+    fromBase62,
+    toBase62,
     extractFormMeta,
     MD5,
     generateRandom

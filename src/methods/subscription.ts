@@ -7,7 +7,7 @@ import {
 } from '../Types';
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
-import { request } from './request';
+import { request } from '../utils/network';
 
 function subscriptionGroupCheck(option: SubscriptionGroup<number | '*'>) {
     option = validator.Params(option, {
@@ -27,8 +27,8 @@ function subscriptionGroupCheck(option: SubscriptionGroup<number | '*'>) {
 
         //     return v;
         // }
-    // }, ['user_id', 'group']);
-}, ['user_id']);
+        // }, ['user_id', 'group']);
+    }, ['user_id']);
 
     if (this.__user && option.user_id === this.__user.user_id) {
         throw new SkapiError(`"user_id" cannot be the user's own ID.`, { code: 'INVALID_PARAMETER' });
@@ -183,40 +183,6 @@ export async function unblockSubscriber(option: SubscriptionGroup<number | '*'>)
     return await request.bind(this)('subscription', { unblock: user_id, group: 1 }, { auth: true });
 }
 
-export async function getSubscribedTo(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any>> {
-    await this.__connection;
-    option = validator.Params(option, {
-        user_id: (v: string) => validator.UserId(v, '"user_id"'),
-        // group: 'number',
-        blocked: 'boolean'
-    }) || {};
-
-    return getSubscriptions.bind(this)({
-        subscriber: option.user_id || this.__user?.user_id,
-        // group: option.group,
-        group: 1,
-        blocked: option.blocked
-    }, fetchOptions);
-};
-
-export async function getSubscribers(option: SubscriptionGroup<number | undefined> & { blocked?: boolean; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any>> {
-    await this.__connection;
-    option = validator.Params(option, {
-        user_id: (v: string) => validator.UserId(v, '"user_id"'),
-        // group: 'number',
-        blocked: 'boolean'
-    }) || {};
-
-    let subParams = {
-        subscription: option.user_id || this.__user?.user_id,
-        // group: option.group,
-        group: 1,
-        blocked: option.blocked
-    };
-
-    return getSubscriptions.bind(this)(subParams, fetchOptions);
-};
-
 // requires auth
 export async function getNewsletterSubscription(params: {
     group?: number | 'public' | 'authorized';
@@ -347,12 +313,12 @@ export async function getNewsletters(
          */
         searchFor: 'message_id' | 'timestamp' | 'read' | 'complaint' | 'subject';
         value: string | number;
-        range: string | number;
+        group: 'public' | 'authorized' | number;
+        range?: string | number;
         /**
          * Defaults to '='
          */
         condition?: '>' | '>=' | '=' | '<' | '<=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte';
-        group: 'public' | 'authorized' | number;
     },
     fetchOptions?: FetchOptions
 ): Promise<Newsletters> {
@@ -367,23 +333,21 @@ export async function getNewsletters(
     };
 
     if (!params) {
-        if (!fetchOptions) {
-            fetchOptions = {};
-        }
-        fetchOptions.ascending = false;
+        fetchOptions = Object.assign({ ascending: false }, (fetchOptions || {}));
     }
 
-    let _params = params || {
+    params = params || {
         searchFor: 'timestamp',
-        value: 0,
-        condition: '>'
+        value: Date.now(),
+        condition: '<',
+        group: 'public'
     };
 
-    params = validator.Params(_params, {
+    params = validator.Params(params, {
         searchFor: ['message_id', 'timestamp', 'read', 'complaint', 'group', 'subject'],
         value: (v: number | string) => {
-            if (typeof v !== searchType[_params.searchFor]) {
-                throw new SkapiError(`"value" type does not match the type of "${_params.searchFor}" index.`, { code: 'INVALID_PARAMETER' });
+            if (typeof v !== searchType[params.searchFor]) {
+                throw new SkapiError(`"value" type does not match the type of "${params.searchFor}" index.`, { code: 'INVALID_PARAMETER' });
             }
             else if (typeof v === 'string' && !v) {
                 throw new SkapiError('"value" should not be empty string.', { code: 'INVALID_PARAMETER' });
@@ -392,31 +356,34 @@ export async function getNewsletters(
             return v;
         },
         range: (v: number | string) => {
-            if (!_params.hasOwnProperty('value') || typeof v !== typeof _params.value) {
+            if (!params.hasOwnProperty('value') || typeof v !== typeof params.value) {
                 throw new SkapiError('"range" should match type of "value".', { code: 'INVALID_PARAMETER' });
             }
             return v;
         },
         condition: ['>', '>=', '=', '<', '<=', 'gt', 'gte', 'eq', 'lt', 'lte', () => '='],
         group: (x: number | string) => {
+            if (x === 'public') {
+                return 0;
+            }
+
             if (!this.session) {
                 throw new SkapiError('User should be logged in.', { code: 'INVALID_REQUEST' });
             }
 
-            if (x === 'public') {
-                return 0;
-            }
-            else if (x === 'authorized') {
+            if (x === 'authorized') {
                 return 1;
             }
 
-            else if (typeof x === 'number') {
+            if (typeof x === 'number') {
                 if (!isAdmin && x > parseInt(this.session.idToken.payload.access_group)) {
                     throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
                 }
+
+                return x;
             }
 
-            return x;
+            throw new SkapiError('"group" should be type: number | "public" | "authorized".', { code: 'INVALID_PARAMETER' });
         }
     }, ['searchFor', 'value', 'group']);
 
@@ -444,7 +411,7 @@ export async function getNewsletters(
         'bounced': 0,
         'url': ''
     };
-
+    
     mails.list = mails.list.map(m => {
         let remapped = {};
         for (let k in remap) {
