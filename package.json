@@ -9,7 +9,7 @@
     "dist/"
   ],
   "scripts": {
-    "build": "npx tsc --project tsconfig.json; npx webpack --config webpack.config.js",
+    "build": "npx tsc --project tsconfig.json; npx webpack --config webpack.config.js;cp dist/skapi.js playground/skapi.js",
     "dev": "(cd playground; node server.js)"
   },
   "repository": {
