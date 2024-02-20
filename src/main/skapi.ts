@@ -9,11 +9,9 @@ import {
     UserAttributes,
     UserProfile,
     Newsletters,
-    FormSubmitCallback,
     Form,
     PostRecordConfig,
     PublicUser,
-    // SubscriptionGroup
 } from '../Types';
 import SkapiError from './error';
 import validator from '../utils/validator';
@@ -24,7 +22,6 @@ import {
     getTables,
     getIndexes,
     getTags,
-    uploadFiles,
     getFile,
     grantPrivateRecordAccess,
     removePrivateRecordAccess,
@@ -42,21 +39,22 @@ import {
     getRealtimeGroups
 } from '../methods/realtime';
 import {
-    request,
     secureRequest,
     mock,
-    getFormResponse,
-    formHandler,
-    getConnection,
     clientSecretRequest
 } from '../methods/request';
+import {
+    request,
+    getFormResponse,
+    formHandler,
+    uploadFiles,
+    hostFiles,
+} from '../utils/network';
 import {
     subscribe,
     unsubscribe,
     blockSubscriber,
     unblockSubscriber,
-    // getSubscribers,
-    // getSubscribedTo,
     getSubscriptions,
     subscribeNewsletter,
     getNewsletters,
@@ -85,14 +83,16 @@ import {
     lastVerifiedEmail,
     requestUsernameChange,
     consumeTicket,
-    releaseTicket,
-    getTicketKey,
+    getConsumedTickets,
+    getTickets,
+    registerTicket,
+    unregisterTicket,
     jwtLogin
 } from '../methods/user';
 
 export default class Skapi {
     // current version
-    version = '1.0.50';
+    version = '1.0.60';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -281,11 +281,11 @@ export default class Skapi {
 
         // connects to server
         this.__connection = (async (): Promise<Connection> => {
-            let process: Promise<Connection> = null;
+            let connection: Promise<Connection> = null;
 
             if (!restore?.connection) {
                 // await for first connection
-                process = this.updateConnection();
+                connection = this.updateConnection();
             }
 
             const storeClassProperties = () => {
@@ -313,7 +313,7 @@ export default class Skapi {
                     }
                 };
 
-                return (process instanceof Promise) ? process.then(() => exec()) : exec();
+                return (connection instanceof Promise) ? connection.then(() => exec()) : exec();
             };
 
             // attach event to save session on close
@@ -323,7 +323,7 @@ export default class Skapi {
             });
             // window.addEventListener("visibilitychange", storeClassProperties);
 
-            await process;
+            await connection;
             await this.__authConnection;
             let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
             console.log(`Built with:\n${skapi}Version: ${this.version}\n\nDocumentation: https://docs.skapi.com`, `font-family: monospace; color:blue;`);
@@ -346,8 +346,9 @@ export default class Skapi {
 
     private checkAdmin = checkAdmin.bind(this);
     private request = request.bind(this);
-    // private getSubscribedTo = getSubscribedTo.bind(this);
-    // private getSubscribers = getSubscribers.bind(this);
+    private registerTicket = registerTicket.bind(this);
+    private unregisterTicket = unregisterTicket.bind(this);
+    private hostFiles = hostFiles.bind(this);
 
     normalizeRecord = normalizeRecord.bind(this);
 
@@ -381,18 +382,18 @@ export default class Skapi {
     }
 
     @formHandler()
-    consumeTicket(params: { ticket_id: string; }): Promise<string> {
+    consumeTicket(params: { ticket_id: string; } & { [key: string]: any }): Promise<any> {
         return consumeTicket.bind(this)(params);
     }
 
     @formHandler()
-    releaseTicket(params: { ticket_id: string; }): Promise<string> {
-        return releaseTicket.bind(this)(params);
+    getConsumedTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any[]>> {
+        return getConsumedTickets.bind(this)(params, fetchOptions);
     }
 
     @formHandler()
-    getTicketKey(params: { ticket_id: string; }): Promise<string> {
-        return getTicketKey.bind(this)(params);
+    getTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any[]>> {
+        return getTickets.bind(this)(params, fetchOptions);
     }
 
     closeRealtime(): Promise<void> {
@@ -431,9 +432,8 @@ export default class Skapi {
         return joinRealtime.bind(this)(params);
     }
 
-    @formHandler()
     getConnection(): Promise<Connection> {
-        return getConnection.bind(this)();
+        return this.__connection;
     }
 
     @formHandler()
@@ -661,7 +661,8 @@ export default class Skapi {
         fileList: Form<FileList | File[]>,
         params: {
             record_id: string; // Record ID of a record to upload files to. Not required if request is 'host'.
-        } & FormSubmitCallback
+            progress?: ProgressCallback;
+        }
     ): Promise<{ completed: File[], failed: File[]; }> { return uploadFiles.bind(this)(fileList, params); }
     @formHandler()
     mock(
@@ -669,11 +670,11 @@ export default class Skapi {
         options?: {
             auth?: boolean;
             method?: string;
-            meta?: Record<string, any>;
             bypassAwaitConnection?: boolean;
             responseType?: string;
             contentType?: string;
-        } & FormSubmitCallback): Promise<{ mockResponse: Record<string, any>; }> { return mock.bind(this)(data, options); }
+            progress?: ProgressCallback;
+        }): Promise<{ mockResponse: Record<string, any>; }> { return mock.bind(this)(data, options); }
     @formHandler({ preventMultipleCalls: true })
     login(
         form: Form<{
@@ -707,7 +708,7 @@ export default class Skapi {
              * Automatically login to account after signup. Will not work if signup confirmation is required.
              */
             login?: boolean;
-        } & FormSubmitCallback): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
+        } & { progress?: ProgressCallback }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
         return signup.bind(this)(form, option);
     }
     @formHandler({ preventMultipleCalls: true })
@@ -745,7 +746,7 @@ export default class Skapi {
     @formHandler()
     postRecord(
         form: Form<Record<string, any>> | null | undefined,
-        config: PostRecordConfig & FormSubmitCallback
+        config: PostRecordConfig & { progress?: ProgressCallback }
     ): Promise<RecordData> { return postRecord.bind(this)(form, config); }
     @formHandler()
     getSubscriptions(

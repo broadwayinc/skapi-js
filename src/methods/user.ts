@@ -8,16 +8,16 @@ import {
 } from 'amazon-cognito-identity-js';
 import {
     Form,
-    FormSubmitCallback,
     UserProfile,
     FetchOptions,
     DatabaseResponse,
     UserAttributes,
-    PublicUser
+    PublicUser,
+ProgressCallback
 } from '../Types';
 import validator from '../utils/validator';
-import { request } from './request';
-import { MD5 } from '../utils/utils';
+import { request } from '../utils/network';
+import { MD5, fromBase62 } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
 
@@ -27,31 +27,156 @@ export function setUserPool(params: { UserPoolId: string; ClientId: string; }) {
     userPool = new CognitoUserPool(params);
 }
 
-export function consumeTicket(params: {
-    ticket_id: string;
-}): Promise<string> {
-    if (!params.ticket_id) {
-        throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
+function map_ticket_obj(t) {
+    let mapper = {
+        "tkid": 'ticket_id',
+        "cond": 'condition',
+        "actn": 'action',
+        "cnt": 'count',
+        "ttl": 'time_to_live',
+        "stmp": 'timestamp',
+        'plch': 'placeholder',
+        'hash': 'hash',
+        'desc': 'description',
     }
-    return request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'consume' }, { auth: true });
+    let new_obj = {};
+    for (let k in t) {
+        if (k === 'tkid') {
+            let tkid = t[k].split('#');
+            if (tkid.length === 1) {
+                new_obj['ticket_id'] = tkid[0];
+                continue;
+            }
+            new_obj['ticket_id'] = tkid[1];
+            new_obj['consume_id'] = tkid[2];
+            new_obj['user_id'] = tkid[3];
+
+            if (!t.stmp) {
+                new_obj['timestamp'] = fromBase62(tkid[2].slice(0, -4));
+            }
+        }
+        else if (mapper[k]) {
+            new_obj[mapper[k]] = t[k];
+        }
+        else {
+            new_obj[k] = t[k];
+        }
+    }
+    return new_obj;
 }
 
-export function releaseTicket(params: {
-    ticket_id: string;
-}): Promise<string> {
+export async function consumeTicket(params: { ticket_id: string; } & { [key: string]: any }): Promise<any> {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
-    return request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'release' }, { auth: true });
+    let ticket_id = params.ticket_id;
+    delete params.ticket_id;
+
+    await this.__connection;
+    let resp = await request.bind(this)(`https://${this.service.slice(0, 4)}.skapi.dev/auth/consume/${this.service}/${this.owner}/${ticket_id}`, params, { auth: true });
+    return map_ticket_obj(resp);
 }
 
-export function getTicketKey(params: {
-    ticket_id: string;
-}): Promise<string> {
-    if (!params.ticket_id) {
-        throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
+export async function getTickets(params: {
+    ticket_id?: string;
+}, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
+    await this.__connection;
+    let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'list' }, params || {}), { auth: true, fetchOptions });
+    tickets.list = tickets.list.map(map_ticket_obj);
+    return tickets;
+}
+
+export async function getConsumedTickets(params: {
+    ticket_id?: string;
+}, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
+    await this.__connection;
+    let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'consumed' }, params || {}), { auth: true, fetchOptions });
+    tickets.list = tickets.list.map(map_ticket_obj);
+    return tickets;
+}
+
+export async function registerTicket(
+    params: {
+        ticket_id: string;
+        condition?: {
+            bypassConditionMismatch?: boolean; // When true, returns 200 when condition mismatch
+            method?: 'GET' | 'POST'; // Defaults to 'GET' method when not given
+            headers?: {
+                key: string;
+                value: string | string[];
+                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+            }[],
+            ip?: {
+                value: string | string[];
+                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+            },
+            user_agent?: {
+                value: string | string[];
+                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+            },
+            data?: {
+                key?: string;
+                value: any | any[];
+                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+                setValueWhenMatch?: any | any[];
+                ignoreMismatch?: boolean;
+            }[],
+            params?: {
+                key?: string;
+                value: string | string[];
+                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+                setValueWhenMatch?: any | any[];
+                ignoreMismatch?: boolean;
+            }[],
+            user?: {
+                key: string;
+                value: string | string[];
+                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+            }[],
+            record_access?: string; // record id user should have access to
+            request?: {
+                url: string;
+                method: 'GET' | 'POST';
+                headers?: {
+                    [key: string]: string;
+                };
+                data?: Record<string, any>;
+                params?: Record<string, any>;
+                match: {
+                    key: string; // key[to][match]
+                    operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+                    value: any | any[];
+                }[];
+            }
+        };
+        action?: {
+            access_group: number; // group number to give access to the user
+            record_access?: string; // record id to give access to the user
+            request?: {
+                url: string;
+                method: 'GET' | 'POST'; // Defaults to 'GET' method when not given
+                headers?: {
+                    [key: string]: string;
+                };
+                data?: Record<string, any>;
+                params?: Record<string, any>;
+            }
+        };
+        description: string;
+        count?: number;
+        time_to_live?: number;
+        placeholder?: { [key: string]: string };
     }
-    return request.bind(this)('ticket', { ticket_id: params.ticket_id, exec: 'request' }, { auth: true });
+): Promise<string> {
+    return this.request('register-ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
+}
+
+export async function unregisterTicket(
+    params: {
+        ticket_id: string;
+    }
+): Promise<string> {
+    return this.request('register-ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
 }
 
 export function authentication() {
@@ -497,7 +622,7 @@ export async function signup(
         signup_confirmation?: boolean | string;
         email_subscription?: boolean;
         login?: boolean;
-    } & FormSubmitCallback): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
+    } & { progress?: ProgressCallback }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
     let is_admin = await checkAdmin.bind(this)();
 
     let params = validator.Params(form || {}, {
