@@ -11,35 +11,37 @@ export default class SkapiError extends Error {
         }) {
 
         if (Array.isArray(error) && error.length <= 2) {
-            super((error[1] || 'Something went wrong.').trim());
-            this.name = options && options.name || "SKAPI";
-            this.code = error[0] || "ERROR";
+            // "code: msg".split(':') => ["code", "msg"]
 
-            if (options) {
-                if (options.code) {
-                    this.code = options.code;
-                }
-
-                if (options.cause) {
-                    this.cause = options.cause;
+            let msg = error[1];
+            if (error.length > 2) {
+                for (let i = 2; i < error.length; i++) {
+                    if (typeof error[i] === 'string') {
+                        msg += error[i];
+                    }
+                    else {
+                        break;
+                    }
                 }
             }
+
+            super((msg || 'Something went wrong.').trim());
+            this.name = options?.name || "SKAPI";
+            this.code = options?.code || error[0] || "ERROR";
+            if (options?.cause) {
+                this.cause = options.cause;
+            }
         }
+
         else if (typeof error === 'string') {
             super((error || 'Something went wrong.').trim());
-            this.name = "SKAPI";
-            this.code = 'ERROR';
-
-            if (options) {
-                if (options.code) {
-                    this.code = options.code;
-                }
-
-                if (options.cause) {
-                    this.cause = options.cause;
-                }
+            this.name = options?.name || "SKAPI";
+            this.code = options?.code || 'ERROR';
+            if (options?.cause) {
+                this.cause = options.cause;
             }
         }
+
         else if (error instanceof Error) {
             super((error.message || 'Something went wrong.').trim());
             this.cause = error;

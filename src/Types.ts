@@ -134,13 +134,6 @@ export type Connection = {
     group: number;
 };
 
-export type FormSubmitCallback = {
-    response?(response: any): any;
-    onerror?(error: Error): any;
-    formData?(formData: FormData): Promise<FormData> | FormData;
-    progress: ProgressCallback;
-};
-
 export type Form<T> = HTMLFormElement | FormData | SubmitEvent | T;
 
 export type Newsletters = {
