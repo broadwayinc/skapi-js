@@ -27,8 +27,7 @@ import {
     removePrivateRecordAccess,
     listPrivateRecordAccess,
     requestPrivateRecordAccessKey,
-    deleteFiles,
-    normalizeRecord
+    deleteFiles
 } from '../methods/database';
 import {
     connectRealtime,
@@ -92,7 +91,7 @@ import {
 
 export default class Skapi {
     // current version
-    version = '1.0.60';
+    version = '1.0.61';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -349,8 +348,6 @@ export default class Skapi {
     private registerTicket = registerTicket.bind(this);
     private unregisterTicket = unregisterTicket.bind(this);
     private hostFiles = hostFiles.bind(this);
-
-    normalizeRecord = normalizeRecord.bind(this);
 
     connectRealtime(cb: (rt: {
         status: 'message' | 'error' | 'success' | 'close' | 'notice';
