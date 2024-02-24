@@ -204,7 +204,7 @@ function Params(
         return checkParams(p, struct, required);
     }
     catch (err) {
-        throw new SkapiError({ code: 'INVALID_PARAMETER', message: err });
+        throw new SkapiError(err, { code: 'INVALID_PARAMETER' });
     }
 }
 
@@ -255,6 +255,16 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
                 }
             }
         }
+
+        if (struct === 'object') {
+            if (typeof params === struct) {
+                return params
+            }
+            else {
+                throw `Invalid type "${typeof params}"${invalid_in} Should be: ${struct}`;
+            }
+        }
+
         for (let k in params) {
             let parentKey = (_parentKey === null ? '' : _parentKey) + (_parentKey !== null ? '[' + k + ']' : k);
             if (!isArrayWithValues(struct) && !struct.hasOwnProperty(k)) {
