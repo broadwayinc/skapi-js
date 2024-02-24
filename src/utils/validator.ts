@@ -1,6 +1,6 @@
 
 import SkapiError from '../main/error';
-import { extractFormMeta } from './utils';
+import { extractFormData } from './utils';
 
 function UserId(id: string, param = 'User ID') {
     let uuid_regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -188,226 +188,27 @@ function specialChars(
 function Params(
     params: any,
     struct: Record<string, any>,
-    required: string[] | null = null,
-    bypassCheck: string[] | null = [],
-    _parentKey: string | null = null
+    required: string[] = []
 ): any {
     // struct = {
-    //     a: 'boolean',
-    //     b: ['number', 'boolean', 'string', 'array', 'function', 'custom value', () => 'default value'],
+    //     a: 'type or value',
+    //     b: ['number', 'boolean', 'string', 'array', 'function', 'custom value', () => 'default value when none match, or is missing'],
     //     c: (v: any) => { return 'value to assign'; }
     // }
 
-    if (Array.isArray(bypassCheck)) {
-        bypassCheck = bypassCheck.concat([
-            // list of default key names to bypass
-            'service',
-            'owner',
-            // 'alertError',
-            // 'response',
-            // 'startKey'
-        ]);
+    struct.service = 'string';
+    struct.owner = 'string';
+    let p = extractFormData(params)?.data || params;
+
+    try {
+        return checkParams(p, struct, required);
     }
-
-    function isObjectWithKeys(obj: any) {
-        if (obj instanceof Promise) {
-            throw new SkapiError('Parameter should not be a promise', { code: 'INVALID_PARAMETER' });
-        }
-        return obj && typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length;
+    catch (err) {
+        throw new SkapiError({ code: 'INVALID_PARAMETER', message: err });
     }
-
-    function isEmptyObject(obj: any) {
-        return obj && typeof obj === 'object' && !Array.isArray(obj) && !Object.keys(obj).length;
-    }
-
-    let _params = params; // params to process
-    let val: any; // value to return
-    let errToThrow: any = null; // error msg to output
-    let isInvalid = _parentKey ? ` in "${_parentKey}" is invalid.` : '. Parameter should be type <object>.';
-
-    if (_parentKey === null) {
-        // parent level. executes on first run
-        if (isObjectWithKeys(_params)) {
-            if (_params instanceof HTMLFormElement || _params instanceof FormData || _params instanceof SubmitEvent) {
-                // first execution, it's an object or form element
-                _params = extractFormMeta(params)?.meta;
-            }
-
-            else {
-                _params = JSON.parse(JSON.stringify(params));
-            }
-
-            for (let k in _params) {
-                // check if there is invalid key names
-                if (!struct.hasOwnProperty(k) && Array.isArray(bypassCheck) && !bypassCheck.includes(k)) {
-                    throw new SkapiError(`Key name "${k}" is invalid in parameter.`, { code: 'INVALID_PARAMETER' });
-                }
-            }
-
-            if (Array.isArray(required) && required.length) {
-                // check if any required key names are missing
-                for (let k of required) {
-                    if (!Object.keys(_params).includes(k)) {
-                        throw new SkapiError(`Key "${k}" is required in parameter.`, { code: 'INVALID_PARAMETER' });
-                    }
-                }
-            }
-        }
-
-        else if (isEmptyObject(_params) || typeof _params === 'undefined') {
-            // parameter is empty or undefined
-            let defaults: Record<string, any> = {};
-
-            // sets default for all keys
-            // key: [()=>'default']
-            for (let s in struct) {
-                // iterate whole structure object
-                let structValue = struct[s];
-                if (Array.isArray(structValue) && typeof structValue[structValue.length - 1] === 'function')
-                    // set all default values
-                    defaults[s] = structValue[structValue.length - 1]();
-            }
-
-            // return if there is any default value
-            return Object.keys(defaults).length ? defaults : _params;
-        }
-
-        if (_params === null) {
-            // if null ignore defaults
-            return null;
-        }
-    }
-
-    if (isObjectWithKeys(struct) && isObjectWithKeys(_params)) {
-        for (let s in struct) {
-            // loop through structure keys
-            let structValue = struct[s];
-            if (_params.hasOwnProperty(s) && _params[s] === null) {
-                // null is accepted in object structure
-                _params[s] = null;
-            }
-
-            else if (_params.hasOwnProperty(s) && typeof _params[s] !== 'undefined') {
-                // recurse to check data type
-                _params[s] = Params(_params[s], structValue, null, null, s);
-            }
-
-            else {
-                // if current _params does not have the corresponding key name
-                let defaultSetter =
-                    Array.isArray(structValue) &&
-                        typeof structValue[structValue.length - 1] === 'function' ? structValue[structValue.length - 1] : null;
-
-                if (defaultSetter) {
-                    // set default
-                    let def = defaultSetter();
-                    if (def !== undefined) {
-                        _params[s] = def;
-                    }
-                }
-            }
-        }
-
-        val = _params;
-    }
-
-    // recursive level
-    else if (Array.isArray(struct)) {
-        // loop through value types
-        for (let s of struct) {
-            try {
-                if (typeof _params !== undefined && typeof s !== 'function') {
-                    // dive in, check value types
-                    val = Params(_params, s, null, null, _parentKey);
-                }
-                // if error, loop to next, otherwise break
-                break;
-            } catch (err) {
-                if (typeof err === 'string' && err.substring(0, 6) === 'BREAK:') {
-                    // break on BREAK message
-                    err = err.substring(6);
-                    let errMsg = (err as string).split(':');
-                    errToThrow = new SkapiError(errMsg[1], { code: errMsg[0] });
-                    break;
-                }
-                else {
-                    errToThrow = err;
-                }
-            }
-        }
-    }
-
-    // returned values will be applied to params
-    else if (typeof struct === 'function') {
-        return struct(_params);
-    }
-
-    else if (typeof struct === 'string') {
-        // setup value type range
-        if (Array.isArray(_params)) {
-            // check for array
-            if (struct !== 'array') {
-                throw new SkapiError(`Invalid type "${typeof _params}"${isInvalid}`, { code: 'INVALID_PARAMETER' });
-            }
-
-            // array only accepts number, string, boolean, null.
-            // object is not allowed to be nested in array.
-            for (let p of _params) {
-                if (!['number', 'string', 'boolean'].includes(typeof p) && p !== null) {
-                    throw new SkapiError(`Invalid type "${typeof p}" in "${_parentKey}" array value.`, { code: 'INVALID_PARAMETER' });
-                }
-            }
-
-            val = _params;
-        }
-        else if (!['number', 'string', 'boolean', 'array', 'function'].includes(struct)) {
-            // match custom string values
-            if (_params === struct) {
-                val = _params;
-            }
-
-            else {
-                throw new SkapiError(`Value: ${_params}${isInvalid}`, { code: 'INVALID_PARAMETER' });
-            }
-        }
-        else if (typeof _params === struct) {
-            if (struct === 'number') {
-                // throws error if number range is invalid
-                if (Math.abs(_params) > 4503599627370496) {
-                    throw `BREAK:INVALID_PARAMETER:"${_parentKey}" integer value should be within -4503599627370496 ~ +4503599627370546.`;
-                }
-            }
-
-            val = _params;
-        }
-        else {
-            throw new SkapiError(`Value: ${_params}${isInvalid}`, { code: 'INVALID_PARAMETER' });
-        }
-    }
-
-    else if (struct === null) {
-        // bypass value on null
-        val = _params;
-    }
-
-    if (val === undefined && errToThrow) {
-        throw errToThrow;
-    }
-
-    return val;
 }
 
-function checkParams(params: any, struct: any, required: string[] = [], _parentKey: string = null) {
-    if (_parentKey === null) {
-        if (required.length) {
-            for (let r of required) {
-                if (!params.hasOwnProperty(r)) {
-                    throw `Key "${r}" is required.`;
-                }
-            }
-        }
-    }
-
+function checkParams(params: any, struct: any, required: string[] = [], _parentKey = null) {
     function isObjectWithKeys(obj) {
         return obj && typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length;
     }
@@ -438,6 +239,22 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
         return val;
     }
     if (isObjectWithKeys(params)) {
+        if (isObjectWithKeys(struct)) {
+            for (let k in struct) {
+                // scan defaults
+                let key = (_parentKey === null ? '' : _parentKey) + (_parentKey !== null ? '[' + k + ']' : k);
+
+                if (!params.hasOwnProperty(k)) {
+                    if (required.includes(key)) {
+                        throw `Key "${key}" is required.`;
+                    }
+
+                    if (isArrayWithValues(struct[k]) && typeof struct[k][struct[k].length - 1] === 'function') {
+                        params[k] = struct[k][struct[k].length - 1]();
+                    }
+                }
+            }
+        }
         for (let k in params) {
             let parentKey = (_parentKey === null ? '' : _parentKey) + (_parentKey !== null ? '[' + k + ']' : k);
             if (!isArrayWithValues(struct) && !struct.hasOwnProperty(k)) {
@@ -471,6 +288,5 @@ export default {
     Email,
     Url,
     specialChars,
-    Params,
-    checkParams
+    Params
 };
