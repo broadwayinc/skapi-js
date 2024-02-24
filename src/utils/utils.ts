@@ -368,10 +368,149 @@ function extractFormMeta(form: Form<any>) {
     return null;
 }
 
+
+function extractFormData(form) {
+    let data = {};
+    let files = [];
+
+    function appendData(data, key, val) {
+        // key is a[b][c]
+        // a[b][c][0] when array
+        // if a[b][c] exists, then a[b][c] = [a[b][c], val]
+        let keys = key.split('[').map(k => {
+            let key = k.replace(']', '')
+            if (key.match(/\d+/)) {
+                key = Number(key);
+            }
+            else if (key[0] === '"' && key[key.length - 1] === '"' || key[0] === "'" && key[key.length - 1] === "'") {
+                key = key.replace(/"/g, '');
+            }
+            return key;
+        });
+        let obj = data;
+        for (let i = 0; i < keys.length; i++) {
+            let k = keys[i];
+            if (i === keys.length - 1) {
+                if (Array.isArray(obj)) {
+                    obj.push(val);
+                }
+                else if (obj[k] !== undefined) {
+                    obj[k] = [obj[k], val];
+                }
+                else {
+                    obj[k] = val;
+                }
+            }
+            else {
+                if (obj[k] === undefined) {
+                    obj[k] = typeof k === 'number' ? [] : {};
+                }
+                obj = obj[k];
+            }
+        }
+    }
+    function handleFile(files, name, v) {
+        if (v instanceof File) {
+            files.push({ name, file: v });
+        }
+        else if (v instanceof FileList) {
+            if (v && v.length > 0) {
+                for (let idx = 0; idx <= v.length - 1; idx++) {
+                    let file = v.item(idx)
+                    if (file) {
+                        files.push({ name, file });
+                    }
+                }
+            }
+        }
+    }
+    if (form instanceof FormData) {
+        for (let pair of form.entries()) {
+            let name = pair[0];
+            let v = pair[1];
+            if ((v instanceof File) || (v instanceof FileList)) {
+                handleFile(files, name, v);
+            }
+            else {
+                appendData(data, name, v);
+            }
+        }
+        return { data, files };
+    }
+    if (form instanceof SubmitEvent) {
+        form = form.target;
+    }
+    if (form instanceof HTMLFormElement) {
+        let inputs = form.querySelectorAll('input');
+        let selects = form.querySelectorAll('select');
+        let textarea = form.querySelectorAll('textarea');
+        for (let idx = 0; idx < selects.length; idx++) {
+            let i = selects[idx];
+            if (i.name) {
+                appendData(data, i.name, i.value);
+            }
+        }
+        for (let idx = 0; idx < textarea.length; idx++) {
+            let i = textarea[idx];
+            if (i.name) {
+                appendData(data, i.name, i.value);
+            }
+        }
+        for (let idx = 0; idx < inputs.length; idx++) {
+            let i = inputs[idx];
+            if (i.name) {
+                if (i.type === 'number') {
+                    if (i.value) {
+                        appendData(data, i.name, Number(i.value));
+                    }
+                }
+                else if (i.type === 'checkbox' || i.type === 'radio') {
+                    if (i.checked) {
+                        if (i.value === '' && i.type === 'checkbox' || i.value === 'on' || i.value === 'true') {
+                            appendData(data, i.name, true);
+                        }
+                        else if (i.value === 'false') {
+                            appendData(data, i.name, false);
+                        }
+                        else if (i.value) {
+                            appendData(data, i.name, i.value);
+                        }
+                    }
+                    else if (i.type === 'checkbox') {
+                        if (i.value === '' || i.value === 'on' || i.value === 'true') {
+                            appendData(data, i.name, false);
+                        }
+                        else if (i.value === 'false') {
+                            appendData(data, i.name, true);
+                        }
+                    }
+                }
+                else if (i.type === 'file') {
+                    if (i.files && i.files.length > 0) {
+                        handleFile(files, i.name, i.files);
+                    }
+                }
+                else {
+                    appendData(data, i.name, i.value);
+                }
+            }
+        }
+        function sizeof(object) {
+            return new Blob([JSON.stringify(object)]).size;
+        }
+        if (sizeof(data) > 2 * 1024 * 1024) {
+            throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
+        }
+        return { data, files };
+    }
+    return null;
+}
+
 export {
     fromBase62,
     toBase62,
     extractFormMeta,
+    extractFormData,
     MD5,
     generateRandom
 };

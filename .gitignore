@@ -107,7 +107,7 @@ typings/
 .idea
 .vscode
 .DS_Store
-/js
+js/
 dist/
 esm/
 deploy.py
