@@ -1,7 +1,7 @@
 
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
-import { extractFormMeta } from '../utils/utils';
+import { extractFormData } from '../utils/utils';
 import { request } from '../utils/network';
 import { DatabaseResponse, FetchOptions } from '../Types';
 
@@ -139,9 +139,7 @@ export async function postRealtime(message: any, recipient: string): Promise<{ s
         throw new SkapiError(`No recipient.`, { code: 'INVALID_REQUEST' });
     }
 
-    if (message instanceof FormData || message instanceof SubmitEvent || message instanceof HTMLFormElement) {
-        message = extractFormMeta(message).meta;
-    }
+    message = extractFormData(message).data || message;
 
     if (socket.readyState === 1) {
         try {
@@ -179,9 +177,7 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
         throw new SkapiError(`No realtime connection. Execute connectRealtime() before this method.`, { code: 'INVALID_REQUEST' });
     }
 
-    if (params instanceof FormData || params instanceof SubmitEvent || params instanceof HTMLFormElement) {
-        params = extractFormMeta(params).meta;
-    }
+    params = extractFormData(params).data || params;
 
     let { group = null } = params;
 
