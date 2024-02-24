@@ -397,6 +397,72 @@ function Params(
     return val;
 }
 
+function checkParams(params: any, struct: any, required: string[] = [], _parentKey: string = null) {
+    if (_parentKey === null) {
+        if (required.length) {
+            for (let r of required) {
+                if (!params.hasOwnProperty(r)) {
+                    throw `Key "${r}" is required.`;
+                }
+            }
+        }
+    }
+
+    function isObjectWithKeys(obj) {
+        return obj && typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length;
+    }
+    function isArrayWithValues(arr) {
+        return Array.isArray(arr) && arr.length;
+    }
+    if (_parentKey === null && !isObjectWithKeys(struct)) {
+        throw 'Argument "struct" is required.';
+    }
+    let invalid_in = _parentKey !== null ? ` in key "${_parentKey}" is invalid.` : '. Parameter should be type <object>.';
+    if (isArrayWithValues(struct)) {
+        let should_be = struct.map(s => (['string', 'number', 'boolean', 'object', 'array'].includes(s) ? `Type<${s}>` : JSON.stringify(s, null, 2))).join(' or ');
+        let pass = false;
+        let val;
+        for (let s of struct) {
+            try {
+                val = checkParams(params, s, required, _parentKey);
+                pass = true;
+                break;
+            }
+            catch (err) {
+                pass = false;
+            }
+        }
+        if (!pass) {
+            throw `Invalid type "${typeof params}"${invalid_in} Should be: ${should_be}`
+        }
+        return val;
+    }
+    if (isObjectWithKeys(params)) {
+        for (let k in params) {
+            let parentKey = (_parentKey === null ? '' : _parentKey) + (_parentKey !== null ? '[' + k + ']' : k);
+            if (!isArrayWithValues(struct) && !struct.hasOwnProperty(k)) {
+                throw `Key name "${parentKey}" is invalid in parameter.`;
+            }
+            if (isArrayWithValues(params[k])) {
+                for (let i = 0; i < params[k].length; i++) {
+                    params[k][i] = checkParams(params[k][i], struct[k], required, parentKey + `[${i}]`);
+                }
+            }
+            else {
+                params[k] = checkParams(params[k], struct[k], required, parentKey);
+            }
+        }
+        return params;
+    }
+    if (typeof struct === 'function') {
+        return struct(params);
+    }
+    if (struct === 'array' && Array.isArray(params) || struct === typeof params || params === struct) {
+        return params;
+    }
+    throw `Invalid type "${typeof params}"${invalid_in} Should be: ${(['string', 'number', 'boolean', 'object', 'array'].includes(struct) ? `Type<${struct}>` : JSON.stringify(struct, null, 2))}`;
+}
+
 export default {
     UserId,
     PhoneNumber,
@@ -405,5 +471,6 @@ export default {
     Email,
     Url,
     specialChars,
-    Params
+    Params,
+    checkParams
 };
