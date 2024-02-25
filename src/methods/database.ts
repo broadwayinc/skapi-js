@@ -753,11 +753,11 @@ export async function postRecord(
             if (v === null || v === undefined) {
                 return v;
             }
-
+            console.log({v})
             if (typeof v === 'string') {
-                return v.split(',').map(t => t.trim());
+                v = v.split(',').map(t => t.trim());
             }
-
+            console.log({v})
             return validator.specialChars(v, 'tag', false, true);
         },
         remove_bin: (v: string[] | BinaryFile[] | null) => {
