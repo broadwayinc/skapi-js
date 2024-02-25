@@ -198,6 +198,9 @@ function Params(
 
     let p = extractFormData(params)?.data || params;
 
+    struct.service = 'string';
+    struct.owner = 'string';
+
     let toCheck = {};
     for (let s in struct) {
         if (p.hasOwnProperty(s)) {
@@ -277,7 +280,8 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
         for (let k in params) {
             let parentKey = (_parentKey === null ? '' : _parentKey) + (_parentKey !== null ? '[' + k + ']' : k);
             if (!isArrayWithValues(struct) && !struct.hasOwnProperty(k)) {
-                throw `Key name "${parentKey}" is invalid in parameter.`;
+                // throw `Key name "${parentKey}" is invalid in parameter.`;
+                continue;
             }
             if (isArrayWithValues(params[k])) {
                 if (struct[k] === 'array') {
@@ -299,7 +303,10 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
     if (struct === 'array' && Array.isArray(params) || struct === typeof params || params === struct) {
         return params;
     }
-    if (params === null || params === undefined) {
+    function isEmptyObject(obj) {
+        return obj && typeof obj === 'object' && !Array.isArray(obj) && !Object.keys(obj).length;
+    }
+    if (params === null || params === undefined || isEmptyObject(params)) {
         return params;
     }
     throw `Invalid type "${typeof params}"${invalid_in} Should be: ${(['string', 'number', 'boolean', 'object', 'array'].includes(struct) ? `Type<${struct}>` : JSON.stringify(struct, null, 2))}`;
