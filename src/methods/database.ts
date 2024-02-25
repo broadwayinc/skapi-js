@@ -419,11 +419,13 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
     else {
         const struct = {
             table: {
-                name: v => {
-                    validator.specialChars(v, 'table name', true, true);
-                    return v;
-                },
-                access_group: v => {
+                name: [v => {
+                    if (!v) {
+                        throw new SkapiError('"table.name" cannot be empty string.', { code: 'INVALID_PARAMETER' });
+                    }
+                    return validator.specialChars(v, 'table name', true, true)
+                }, () => { throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' }) }],
+                access_group: [v => {
                     if (v === undefined) {
                         // access_group defaults to 1 if subscription value is present, else 0
                         if (!this.__user && query.table.hasOwnProperty('subscription')) {
@@ -431,17 +433,6 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                         }
                         else {
                             return 0;
-                        }
-                    }
-                    if (typeof v === 'string') {
-                        v = {
-                            private: 'private',
-                            public: 0,
-                            authorized: 1
-                        }[v]
-
-                        if (v === 'private' && !this.__user) {
-                            throw new SkapiError('Unsigned users have no access to private records.', { code: 'INVALID_REQUEST' });
                         }
                     }
 
@@ -453,14 +444,31 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                             throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
                         }
                     }
+                    else if (typeof v === 'string') {
+                        v = {
+                            private: 'private',
+                            public: 0,
+                            authorized: 1
+                        }[v]
 
-                    if (v === undefined) {
-                        throw new SkapiError('"table.access_group" is invalid.', { code: 'INVALID_PARAMETER' });
+                        if (v === 'private' && !this.__user) {
+                            throw new SkapiError('Unsigned users have no access to private records.', { code: 'INVALID_REQUEST' });
+                        }
+
+                        if (v === undefined) {
+                            throw new SkapiError('"table.access_group" is invalid.', { code: 'INVALID_PARAMETER' });
+                        }
+                    }
+                    else {
+                        throw new SkapiError('"table.access_group" should be type: <number | string>.', { code: 'INVALID_PARAMETER' });
                     }
 
                     return v;
-                },
+                }],
                 subscription: (v: string) => {
+                    if (v === null || v === undefined) {
+                        return v;
+                    }
                     validator.UserId(v, 'User ID in "subscription"')
                     if (!this.__user) {
                         throw new SkapiError('Unsigned users have no access to subscription records.', { code: 'INVALID_REQUEST' });
@@ -472,6 +480,9 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                 }
             },
             reference: v => {
+                if (v === null || v === undefined) {
+                    return v;
+                }
                 if (typeof v === 'string') {
                     try {
                         ref_user = validator.UserId(v);
@@ -516,7 +527,10 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
 
                         if (typeof tp === 'string') {
                             if (typeof v === tp) {
-                                return v;
+                                if (!v) {
+                                    return;
+                                }
+                                return validator.specialChars((v as string), 'index.value', false, true);
                             }
 
                             else {
@@ -539,8 +553,6 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                     else if (typeof v === 'boolean') {
                         return v;
                     }
-
-                    return validator.specialChars((v as string), 'index.value', false, true);
                 },
                 condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne'],
                 range: (v: number | boolean | string) => {
@@ -564,6 +576,9 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                 }
             },
             tag: v => {
+                if (v === null || v === undefined) {
+                    return v;
+                }
                 if (typeof v === 'string') {
                     return validator.specialChars(v, 'tag', false, true)
                 }
@@ -639,7 +654,7 @@ export async function postRecord(
                 if (!v) {
                     throw new SkapiError('"table.name" cannot be empty string.', { code: 'INVALID_PARAMETER' });
                 }
-                validator.specialChars(v, 'table name', true, true)
+                return validator.specialChars(v, 'table name', true, true)
             },
             // subscription_group: ['number', null],
             subscription: v => {
@@ -735,7 +750,7 @@ export async function postRecord(
             }]
         },
         tags: (v: string | string[]) => {
-            if (v === null) {
+            if (v === null || v === undefined) {
                 return v;
             }
 
@@ -743,18 +758,7 @@ export async function postRecord(
                 return v.split(',').map(t => t.trim());
             }
 
-            if (Array.isArray(v)) {
-                for (let i of v) {
-                    if (typeof i !== 'string') {
-                        throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
-                    }
-
-                    validator.specialChars(v, 'tag', false, true);
-                }
-                return v;
-            }
-
-            throw new SkapiError(`"tags" should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
+            return validator.specialChars(v, 'tag', false, true);
         },
         remove_bin: (v: string[] | BinaryFile[] | null) => {
             if (!v) {
