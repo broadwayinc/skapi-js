@@ -204,11 +204,16 @@ function Params(
     let toCheck = {};
     for (let s in struct) {
         if (p.hasOwnProperty(s)) {
-            try {
-                toCheck[s] = JSON.parse(JSON.stringify(p[s]));
-            }
-            catch (err) {
+            if (typeof p[s] === 'function') {
                 toCheck[s] = p[s];
+            }
+            else {
+                try {
+                    toCheck[s] = JSON.parse(JSON.stringify(p[s]));
+                }
+                catch (err) {
+                    toCheck[s] = p[s];
+                }
             }
         }
     }
