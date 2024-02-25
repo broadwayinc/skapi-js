@@ -292,6 +292,10 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
                 if (struct[k] === 'array') {
                     continue;
                 }
+                if (typeof struct[k] === 'function') {
+                    params[k] = struct[k](params[k]);
+                    continue;
+                }
                 for (let i = 0; i < params[k].length; i++) {
                     params[k][i] = checkParams(params[k][i], struct[k], required, parentKey + `[${i}]`);
                 }
