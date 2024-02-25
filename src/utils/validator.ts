@@ -299,6 +299,9 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
     if (struct === 'array' && Array.isArray(params) || struct === typeof params || params === struct) {
         return params;
     }
+    if (params === null || params === undefined) {
+        return params;
+    }
     throw `Invalid type "${typeof params}"${invalid_in} Should be: ${(['string', 'number', 'boolean', 'object', 'array'].includes(struct) ? `Type<${struct}>` : JSON.stringify(struct, null, 2))}`;
 }
 
