@@ -575,7 +575,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
         };
 
         let isAdmin = await this.checkAdmin();
-        validator.Params(query || {}, struct, ref_user || isAdmin ? [] : ['table']);
+        query = validator.Params(query || {}, struct, ref_user || isAdmin ? [] : ['table']);
     }
 
     let result = await request.bind(this)(
@@ -611,8 +611,6 @@ export async function postRecord(
         throw new SkapiError('Login is required.', { code: 'INVALID_REQUEST' });
     }
 
-    let fetchOptions: Record<string, any> = {};
-
     if (typeof config.table === 'string') {
         config.table = {
             name: config.table
@@ -629,7 +627,7 @@ export async function postRecord(
         }
     }
 
-    validator.Params(config || {}, {
+    let _config = validator.Params(config || {}, {
         record_id: ['string', () => {
             if (!config.table || !config.table.name) {
                 throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
@@ -649,10 +647,9 @@ export async function postRecord(
                     if (!config.record_id && !config.table.access_group || config.table.access_group === 0 || config.table.access_group === 'public') {
                         throw new SkapiError('Public records cannot require subscription.', { code: 'INVALID_REQUEST' });
                     }
-
-                    delete config.table.subscription;
-                    Object.assign(config.table, { subscription_group: 1 });
                 }
+
+                return v;
             },
             access_group: v => {
                 if (typeof v === 'string') {
@@ -788,10 +785,14 @@ export async function postRecord(
     });
 
     let progress = config.progress || null;
+    if (config.table.hasOwnProperty('subscription')) {
+        _config.table.subscription_group = config.table.subscription ? 1 : null;
+        delete _config.table.subscription;
+    }
     // callbacks should be removed after checkparams
-    delete config.progress;
+    delete _config.progress;
 
-    let options: Record<string, any> = { auth: true };
+    let options: { [key: string]: any } = { auth: true };
     let postData = null;
     let to_bin = null;
     let extractedForm = extractFormData(form);
@@ -800,12 +801,14 @@ export async function postRecord(
             to_bin = extractedForm.files;
         }
 
-        postData = Object.assign({ data: extractedForm.data }, config);
+        postData = Object.assign({ data: extractedForm.data }, _config);
     }
 
     else {
-        postData = Object.assign({ data: form }, config);
+        postData = Object.assign({ data: form }, _config);
     }
+
+    let fetchOptions: { [key: string]: any } = {};
 
     if (typeof progress === 'function') {
         fetchOptions.progress = progress;
@@ -825,8 +828,8 @@ export async function postRecord(
             record_id: rec.rec,
             progress
         }
-        if (config.hasOwnProperty('service')) {
-            uploadFileParams['service'] = (config as any).service;
+        if (_config.hasOwnProperty('service')) {
+            uploadFileParams['service'] = _config.service;
         }
         let { bin_endpoints } = await uploadFiles.bind(this)(bin_formData, uploadFileParams);
         if (!rec.bin) {
@@ -1079,10 +1082,6 @@ export async function deleteRecords(params: {
 
     else {
         if (!params?.table) {
-            if (isAdmin) {
-                return null;
-            }
-
             throw new SkapiError('Either "table" or "record_id" is required.', { code: 'INVALID_PARAMETER' });
         }
 
@@ -1113,58 +1112,36 @@ export async function deleteRecords(params: {
             },
             name: 'string',
             subscription: (v: string | boolean) => {
-                if (isAdmin && typeof params?.table?.subscription === 'string') {
+                if (typeof v === 'boolean') {
+                    if (v) {
+                        v = this.__user.user_id;
+                        return v;
+                    }
+                }
+
+                if (!params.table.hasOwnProperty('access_group')) {
+                    throw new SkapiError('"table.access_group" is required for subscription records.', { code: 'INVALID_PARAMETER' });
+                }
+                else if (params.table.access_group === 0) {
+                    throw new SkapiError('Public tables does not hold subscription records.', { code: 'INVALID_REQUEST' });
+                }
+
+                if (isAdmin && typeof v === 'string') {
                     // admin targets user id
                     return validator.UserId((v as string), 'User ID in "table.subscription"');
                 }
 
-                if (typeof v === 'boolean') {
-                    if (v) {
-                        return this.__user.user_id;
-                    }
-                    else {
-                        return null;
-                    }
-                }
-
                 throw new SkapiError('"table.subscription" is an invalid parameter key.', { code: 'INVALID_PARAMETER' });
-            },
-            // subscription_group: (v: number) => {
-            //     if (isAdmin && typeof params?.table?.subscription !== 'string') {
-            //         throw new SkapiError('"table.subscription" is required.', { code: 'INVALID_PARAMETER' });
-            //     }
-
-            //     if (typeof v === 'number') {
-            //         if (v >= 0 && v < 99) {
-            //             return v;
-            //         }
-            //     }
-
-            //     throw new SkapiError('Subscription group should be between 0 ~ 99.', { code: 'INVALID_PARAMETER' });
-            // }
+            }
         };
 
-        let table_p = validator.Params(params.table || {}, struct, isAdmin ? [] : ['name']);
-
-        if (table_p.hasOwnProperty('subscription')) {
-            if (table_p.subscription === null) {
-                delete table_p.subscription;
-            }
-            else {
-                if (!table_p.hasOwnProperty('access_group')) {
-                    throw new SkapiError('"table.access_group" is required for subscription records.', { code: 'INVALID_PARAMETER' });
-                }
-                else if (table_p.access_group === 0) {
-                    throw new SkapiError('Public tables does not hold subscription records.', { code: 'INVALID_REQUEST' });
-                }
-                table_p.subscription_group = 1;
-            }
+        let table = validator.Params(params.table || {}, struct, isAdmin ? [] : ['name']);
+        if (table.subscription) {
+            table.subscription_group = 1;
         }
-
-        params.table = table_p;
+        let toDelete = Object.assign({}, params, { table });
+        return await request.bind(this)('del-records', toDelete, { auth: true });
     }
-
-    return await request.bind(this)('del-records', params, { auth: true });
 }
 
 export function grantPrivateRecordAccess(params: {

@@ -196,12 +196,22 @@ function Params(
     //     c: (v: any) => { return 'value to assign'; }
     // }
 
-    struct.service = 'string';
-    struct.owner = 'string';
     let p = extractFormData(params)?.data || params;
 
+    let toCheck = {};
+    for (let s in struct) {
+        if (p.hasOwnProperty(s)) {
+            try {
+                toCheck[s] = JSON.parse(JSON.stringify(p[s]));
+            }
+            catch (err) {
+                toCheck[s] = p[s];
+            }
+        }
+    }
+
     try {
-        return checkParams(p, struct, required);
+        return checkParams(toCheck, struct, required);
     }
     catch (err) {
         throw new SkapiError(err, { code: 'INVALID_PARAMETER' });
@@ -256,13 +266,12 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
             }
         }
 
-        if (struct === 'object') {
-            if (typeof params === struct) {
-                return params
-            }
-            else {
-                throw `Invalid type "${typeof params}"${invalid_in} Should be: ${struct}`;
-            }
+        if ('object' === struct) {
+            return params
+        }
+
+        else if (typeof struct === 'function') {
+            return struct(params);
         }
 
         for (let k in params) {
@@ -271,6 +280,9 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
                 throw `Key name "${parentKey}" is invalid in parameter.`;
             }
             if (isArrayWithValues(params[k])) {
+                if (struct[k] === 'array') {
+                    continue;
+                }
                 for (let i = 0; i < params[k].length; i++) {
                     params[k][i] = checkParams(params[k][i], struct[k], required, parentKey + `[${i}]`);
                 }
