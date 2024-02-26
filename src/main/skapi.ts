@@ -89,12 +89,11 @@ import {
     jwtLogin
 } from '../methods/user';
 import {
-    extractFormData,
-    generateRandom
+    extractFormData
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.62';
+    version = '1.0.63';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -191,10 +190,8 @@ export default class Skapi {
         }
     };
 
-    util = {
-        extractFormData,
-        generateRandom
-    }
+
+    extractFormData = extractFormData;
 
     private __connection: Promise<Connection>;
     private __authConnection: Promise<void>;
