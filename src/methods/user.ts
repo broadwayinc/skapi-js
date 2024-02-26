@@ -13,7 +13,7 @@ import {
     DatabaseResponse,
     UserAttributes,
     PublicUser,
-ProgressCallback
+    ProgressCallback
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
@@ -167,7 +167,7 @@ export async function registerTicket(
         placeholder?: { [key: string]: string };
     }
 ): Promise<string> {
-    return this.request('register-ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
+    return request.bind(this)('register-ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
 }
 
 export async function unregisterTicket(
@@ -175,7 +175,7 @@ export async function unregisterTicket(
         ticket_id: string;
     }
 ): Promise<string> {
-    return this.request('register-ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
+    return request.bind(this)('register-ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
 }
 
 export function authentication() {
