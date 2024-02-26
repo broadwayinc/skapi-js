@@ -320,7 +320,6 @@ export async function getFile(
     }
 
     else if (needAuth) {
-        // "auth/ap21oijFZdpDm1nxxckv/4d4a36a5-b318-4093-92ae-7cf11feae989/4d4a36a5-b318-4093-92ae-7cf11feae989/records/Tp8mGdutyTuyxckv/01/file/98/03e4bed487738547e062dde90c78d194"
         let token = this.session?.idToken?.jwtToken; // idToken
 
         let access_group = target_key[6] === '**' ? '**' : parseInt(target_key[6]);
