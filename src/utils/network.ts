@@ -64,13 +64,13 @@ const __pendingRequest: Record<string, Promise<any>> = {};
 
 export async function request(
     url: string,
-    data: Form<any> | null = null,
+    data: Form<any> = null,
     options?: {
         fetchOptions?: FetchOptions;
         auth?: boolean;
         method?: string;
         bypassAwaitConnection?: boolean;
-        responseType?: 'json' | 'blob' | 'text' | 'arrayBuffer' | 'formData' | 'document' | null;
+        responseType?: 'json' | 'blob' | 'text' | 'arrayBuffer' | 'formData' | 'document';
         contentType?: string;
     }
 ): Promise<any> {
