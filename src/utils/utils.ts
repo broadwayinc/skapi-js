@@ -210,7 +210,27 @@ function extractFormData(form) {
             let k = keys[i];
             if (i === keys.length - 1) {
                 if (Array.isArray(obj)) {
-                    obj.push(val);
+                    if (typeof k === 'number') {
+                        if (obj[k] === undefined) {
+                            obj[k] = val;
+                        }
+                        else if (obj[k]) {
+                            if (Array.isArray(obj[k])) {
+                                obj[k].push(val);
+                            }
+                            else {
+                                obj[k] = [obj[k], val];
+                            }
+                        }
+                    }
+                    else if (typeof k === 'string') {
+                        if (obj[0] && typeof obj[0] === 'object' && obj[0].hasOwnProperty(k)) {
+                            obj.push(val);
+                        }
+                        else {
+                            obj.push({ [k]: val });
+                        }
+                    }
                 }
                 else if (obj[k] !== undefined) {
                     obj[k] = [obj[k], val];
