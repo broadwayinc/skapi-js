@@ -209,8 +209,6 @@ function extractFormData(form) {
         for (let i = 0; i < keys.length; i++) {
             let k = keys[i];
             if (i === keys.length - 1) {
-                let parentKey = keys[i - 1];
-                
                 if (Array.isArray(obj)) {
                     if (typeof k === 'number') {
                         if (obj[k] === undefined) {
@@ -235,7 +233,7 @@ function extractFormData(form) {
                                 }
                                 else {
                                     if (lastItem.hasOwnProperty(k)) {
-                                        lastItem[k] = [lastItem[k], { [k]: val }];
+                                        obj.push({ [k]: val });
                                     }
                                     else {
                                         lastItem[k] = val;
