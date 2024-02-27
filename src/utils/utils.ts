@@ -229,7 +229,7 @@ function extractFormData(form) {
 
                             if (lastItem && typeof lastItem === 'object' && !Array.isArray(lastItem)) {
                                 if (lastItem.hasOwnProperty(k)) {
-                                    lastItem[k] = [lastItem[k], val];
+                                    lastItem[k] = [lastItem[k], { [k]: val }];
                                 }
                                 else {
                                     lastItem[k] = val;
