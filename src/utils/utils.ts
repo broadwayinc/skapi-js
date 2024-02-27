@@ -209,6 +209,8 @@ function extractFormData(form) {
         for (let i = 0; i < keys.length; i++) {
             let k = keys[i];
             if (i === keys.length - 1) {
+                let parentKey = keys[i - 1];
+                
                 if (Array.isArray(obj)) {
                     if (typeof k === 'number') {
                         if (obj[k] === undefined) {
@@ -227,18 +229,23 @@ function extractFormData(form) {
                         if (obj.length) {
                             let lastItem = obj[obj.length - 1];
 
-                            if (lastItem && typeof lastItem === 'object' && !Array.isArray(lastItem)) {
-                                if (lastItem.hasOwnProperty(k)) {
-                                    lastItem[k] = [lastItem[k], { [k]: val }];
+                            if (lastItem && typeof lastItem === 'object') {
+                                if (Array.isArray(lastItem)) {
+                                    lastItem.push({ [k]: val });
                                 }
                                 else {
-                                    lastItem[k] = val;
+                                    if (lastItem.hasOwnProperty(k)) {
+                                        lastItem[k] = [lastItem[k], { [k]: val }];
+                                    }
+                                    else {
+                                        lastItem[k] = val;
+                                    }
                                 }
-                                continue;
                             }
                         }
-
-                        obj.push({ [k]: val });
+                        else {
+                            obj.push({ [k]: val });
+                        }
                     }
                 }
                 else if (obj[k] !== undefined) {
