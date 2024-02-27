@@ -224,12 +224,21 @@ function extractFormData(form) {
                         }
                     }
                     else if (typeof k === 'string') {
-                        if (obj[0] && typeof obj[0] === 'object' && obj[0].hasOwnProperty(k)) {
-                            obj.push(val);
+                        if (obj.length) {
+                            let lastItem = obj[obj.length - 1];
+
+                            if (lastItem && typeof lastItem === 'object' && !Array.isArray(lastItem)) {
+                                if (lastItem.hasOwnProperty(k)) {
+                                    lastItem[k] = [lastItem[k], val];
+                                }
+                                else {
+                                    lastItem[k] = val;
+                                }
+                                continue;
+                            }
                         }
-                        else {
-                            obj.push({ [k]: val });
-                        }
+
+                        obj.push({ [k]: val });
                     }
                 }
                 else if (obj[k] !== undefined) {
