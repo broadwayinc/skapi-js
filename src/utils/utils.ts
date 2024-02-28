@@ -214,7 +214,7 @@ function extractFormData(form) {
                 obj = data;
             }
 
-            if (i < keys.length) {
+            if (i < keys.length - 1) {
                 if (obj[k] === undefined) {
                     obj[k] = typeof keys[i + 1] === 'number' ? [] : {};
                 }
