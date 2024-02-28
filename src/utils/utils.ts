@@ -198,7 +198,7 @@ function extractFormData(form) {
         let keys = key.split('[').map(k => {
             let key = k.replace(']', '')
             if (key.match(/\d+/) && !key.includes('.')) {
-                key = Number(key);
+                throw new SkapiError('Invalid key', { code: 'INVALID_REQUEST' });
             }
             else if (key[0] === '"' && key[key.length - 1] === '"' || key[0] === "'" && key[key.length - 1] === "'") {
                 key = key.replace(/"/g, '').replace(/'/g, '');
@@ -209,54 +209,15 @@ function extractFormData(form) {
         for (let i = 0; i < keys.length; i++) {
             let k = keys[i];
 
-            if (!i && typeof k === 'number') {
-                data = [];
-                obj = data;
-            }
-
             if (i < keys.length - 1) {
                 if (obj[k] === undefined) {
-                    obj[k] = typeof keys[i + 1] === 'number' ? [] : {};
+                    obj[k] = {};
                 }
                 obj = obj[k];
             }
             else {
-                if (Array.isArray(obj)) {
-                    if (typeof k === 'number') {
-                        if (obj[k] === undefined) {
-                            obj[k] = val;
-                        }
-                        else if (obj[k]) {
-                            if (Array.isArray(obj[k])) {
-                                obj[k].push(val);
-                            }
-                            else {
-                                obj[k] = [obj[k], val];
-                            }
-                        }
-                    }
-                    else if (typeof k === 'string') {
-                        if (obj.length) {
-                            let lastItem = obj[obj.length - 1];
-
-                            if (lastItem && typeof lastItem === 'object') {
-                                if (Array.isArray(lastItem)) {
-                                    lastItem.push({ [k]: val });
-                                }
-                                else {
-                                    if (lastItem.hasOwnProperty(k)) {
-                                        obj.push({ [k]: val });
-                                    }
-                                    else {
-                                        lastItem[k] = val;
-                                    }
-                                }
-                            }
-                        }
-                        else {
-                            obj.push({ [k]: val });
-                        }
-                    }
+                if (Array.isArray(obj[k])) {
+                    obj[k].push(val);
                 }
                 else if (obj[k] !== undefined) {
                     obj[k] = [obj[k], val];
