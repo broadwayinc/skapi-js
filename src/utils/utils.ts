@@ -208,7 +208,19 @@ function extractFormData(form) {
         let obj = data;
         for (let i = 0; i < keys.length; i++) {
             let k = keys[i];
-            if (i === keys.length - 1) {
+
+            if (!i && typeof k === 'number') {
+                data = [];
+                obj = data;
+            }
+
+            if (i < keys.length) {
+                if (obj[k] === undefined) {
+                    obj[k] = typeof keys[i + 1] === 'number' ? [] : {};
+                }
+                obj = obj[k];
+            }
+            else {
                 if (Array.isArray(obj)) {
                     if (typeof k === 'number') {
                         if (obj[k] === undefined) {
@@ -252,12 +264,6 @@ function extractFormData(form) {
                 else {
                     obj[k] = val;
                 }
-            }
-            else {
-                if (obj[k] === undefined) {
-                    obj[k] = typeof k === 'number' ? [] : {};
-                }
-                obj = obj[k];
             }
         }
     }
