@@ -198,7 +198,7 @@ function extractFormData(form) {
         let keys = key.split('[').map(k => {
             let key = k.replace(']', '')
             if (key.match(/\d+/) && !key.includes('.')) {
-                throw new SkapiError('Invalid key', { code: 'INVALID_REQUEST' });
+                key = Number(key);
             }
             else if (key[0] === '"' && key[key.length - 1] === '"' || key[0] === "'" && key[key.length - 1] === "'") {
                 key = key.replace(/"/g, '').replace(/'/g, '');
@@ -206,24 +206,32 @@ function extractFormData(form) {
             return key;
         });
         let obj = data;
+        if(typeof keys[0] === 'number') {
+            throw new SkapiError('Form key cannot start with an array index.', { code: 'INVALID_REQUEST' });
+        }
         for (let i = 0; i < keys.length; i++) {
             let k = keys[i];
-
             if (i < keys.length - 1) {
                 if (obj[k] === undefined) {
-                    obj[k] = {};
+                    let next = keys[i + 1];
+                    if(typeof next === 'number') {
+                        obj[k] = [];
+                    }
+                    else {
+                        obj[k] = {};
+                    }
                 }
                 obj = obj[k];
             }
             else {
-                if (Array.isArray(obj[k])) {
+                if (obj[k] === undefined) {
+                    obj[k] = val;
+                }
+                else if(Array.isArray(obj[k])) {
                     obj[k].push(val);
                 }
-                else if (obj[k] !== undefined) {
-                    obj[k] = [obj[k], val];
-                }
                 else {
-                    obj[k] = val;
+                    obj[k] = [obj[k], val];
                 }
             }
         }
