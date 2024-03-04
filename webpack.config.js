@@ -15,10 +15,23 @@ module.exports = [
         // webpack
         mode: 'production',
         target: 'web',
-        entry: './js/Main.js',
+        // entry: './js/Main.js',
+        entry: './src/Main.ts',
         output: {
             filename: 'skapi.module.js',
             libraryTarget: 'module'
+        },
+        module: {
+            rules: [
+                {
+                    test: /\.tsx?$/,
+                    use: 'ts-loader',
+                    exclude: /node_modules/,
+                },
+            ],
+        },
+        resolve: {
+            extensions: ['.tsx', '.ts', '.js'],
         },
         experiments: {
             outputModule: true
