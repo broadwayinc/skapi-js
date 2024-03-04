@@ -104,7 +104,7 @@ export async function mock(data: Form<any & {
     options?: {
         auth?: boolean;
         method?: string;
-        responseType?: string;
+        responseType?: 'blob' | 'json' | 'text' | 'arrayBuffer' | 'formData' | 'document';
         contentType?: string;
         progress?: ProgressCallback;
         bypassAwaitConnection?: boolean;

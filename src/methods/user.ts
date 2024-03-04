@@ -569,12 +569,13 @@ export async function jwtLogin(params: {
         nonce: 'string'
     }, ['idToken', 'keyUrl', 'clientId']);
 
-    let { hashedPassword, username } = await request.bind(this)("jwt-login", params);
+    let { hashedPassword, username, email } = await request.bind(this)("jwt-login", params);
     try {
-        return login.bind(this)({ username: username, password: hashedPassword });
-    } catch (err: SkapiError | any) {
+        return login.bind(this)({ username: username, password: hashedPassword, email });
+    }
+    catch (err: SkapiError | any) {
         if (err?.code === 'INCORRECT_USERNAME_OR_PASSWORD') {
-            throw new SkapiError('User has migrated the account. Login with the service username and password.', { code: 'INVALID_REQUEST' });
+            throw new SkapiError('User has migrated the account. Login with the service email and password.', { code: 'INVALID_REQUEST' });
         }
     }
 }
@@ -846,11 +847,13 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>)
     });
 }
 
-export function verifyPhoneNumber(form?: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'> {
+export function verifyPhoneNumber(form?: Form<{ code: string; }>): Promise<string> {
+    // 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'
     return verifyAttribute.bind(this)('phone_number', form);
 }
 
-export function verifyEmail(form?: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'> {
+export function verifyEmail(form?: Form<{ code: string; }>): Promise<string> {
+    // 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'
     return verifyAttribute.bind(this)('email', form);
 }
 

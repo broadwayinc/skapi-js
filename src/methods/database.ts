@@ -146,7 +146,7 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
                         path,
                         size: fromBase62(size),
                         uploaded: fromBase62(uploaded),
-                        getFile: (dataType?: 'base64' | 'endpoint' | 'blob', progress?: ProgressCallback) => {
+                        getFile: (dataType: 'base64' | 'endpoint' | 'blob' | 'download', progress?: ProgressCallback) => {
                             let config = {
                                 dataType: dataType || 'download',
                                 progress
@@ -239,7 +239,7 @@ export async function deleteFiles(params: {
         throw new SkapiError('"endpoints" should be type: array | string.', { code: 'INVALID_PARAMETER' });
     }
 
-    let updatedRec = request.bind(this)('del-files', {
+    let updatedRec = await request.bind(this)('del-files', {
         endpoints,
         storage: 'records'
     }, { auth: true, method: 'post' });
@@ -374,7 +374,7 @@ export async function getFile(
             let b = await request.bind(this)(
                 url,
                 { service: service || this.service },
-                { method: 'get', noParams: true, contentType: null, responseType: 'blob', fetchOptions: { progress: config?.progress } }
+                { method: 'get', contentType: null, responseType: 'blob', fetchOptions: { progress: config?.progress } }
             );
 
             if (config?.dataType === 'base64') {
@@ -1185,11 +1185,11 @@ export function removePrivateRecordAccess(params: {
     });
 }
 
-export function listPrivateRecordAccess(params: {
+export async function listPrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
-}) {
-    let list = recordAccess.bind(this)({
+}):Promise<DatabaseResponse<{record_id:string;user_id:string;}>> {
+    let list = await recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'list'
@@ -1200,6 +1200,8 @@ export function listPrivateRecordAccess(params: {
         i.user_id = i.rec_usr.split('/')[1];
         return i;
     });
+
+    return list;
 }
 
 export function requestPrivateRecordAccessKey(record_id: string) {
@@ -1214,7 +1216,7 @@ function recordAccess(params: {
     record_id: string;
     user_id: string | string[];
     execute: 'add' | 'remove' | 'list';
-}) {
+}): Promise<any>{
     let execute = params.execute;
     let req = validator.Params(params,
         {
