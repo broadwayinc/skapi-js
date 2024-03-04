@@ -368,14 +368,14 @@ export default class Skapi {
         clientId: string;
         provider: string;
         nonce?: string;
-    }): Promise<string> {
+    }): Promise<UserProfile> {
         return jwtLogin.bind(this)(params);
     }
 
     clientSecretRequest(params: {
         url: string;
         clientSecretName: string;
-        method: 'get' | 'post' | 'GET' | 'POST';
+        method: 'GET' | 'POST';
         headers?: Record<string, string>;
         data?: Record<string, string>;
         params?: Record<string, string>;
@@ -647,7 +647,7 @@ export default class Skapi {
     listPrivateRecordAccess(params: {
         record_id: string;
         user_id: string | string[];
-    }): Promise<string> { return listPrivateRecordAccess.bind(this)(params); }
+    }): Promise<DatabaseResponse<{record_id:string;user_id:string;}>> { return listPrivateRecordAccess.bind(this)(params); }
     @formHandler()
     requestPrivateRecordAccessKey(record_id: string): Promise<string> {
         return requestPrivateRecordAccessKey.bind(this)(record_id);
@@ -660,7 +660,7 @@ export default class Skapi {
     }
     @formHandler()
     uploadFiles(
-        fileList: Form<FileList | File[]>,
+        fileList: FormData | HTMLFormElement | SubmitEvent,
         params: {
             record_id: string; // Record ID of a record to upload files to. Not required if request is 'host'.
             progress?: ProgressCallback;
@@ -673,7 +673,7 @@ export default class Skapi {
             auth?: boolean;
             method?: string;
             bypassAwaitConnection?: boolean;
-            responseType?: string;
+            responseType?: 'blob' | 'json' | 'text' | 'arrayBuffer' | 'formData' | 'document';
             contentType?: string;
             progress?: ProgressCallback;
         }): Promise<{ mockResponse: Record<string, any>; }> { return mock.bind(this)(data, options); }
@@ -718,16 +718,18 @@ export default class Skapi {
         /** Signin E-Mail */
         email: string;
         /** The verification code user has received. */
-        code?: string | number;
+        code: string | number;
         /** New password to set. Verification code is required. */
-        new_password?: string;
+        new_password: string;
     }>): Promise<"SUCCESS: New password has been set."> { return resetPassword.bind(this)(form); }
     @formHandler({ preventMultipleCalls: true })
-    verifyEmail(form?: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'> {
+    verifyEmail(form?: Form<{ code: string; }>): Promise<string> {
+        // 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'
         return verifyEmail.bind(this)(form);
     }
     @formHandler({ preventMultipleCalls: true })
-    verifyPhoneNumber(form?: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'> {
+    verifyPhoneNumber(form?: Form<{ code: string; }>): Promise<string> {
+        // 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'
         return verifyPhoneNumber.bind(this)(form);
     }
     @formHandler({ preventMultipleCalls: true })

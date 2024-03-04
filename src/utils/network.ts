@@ -218,8 +218,8 @@ export async function request(
     }
 
     // prevent duplicate request
-    if (__pendingRequest[requestKey] instanceof Promise) {
-        return __pendingRequest[requestKey];
+    if (typeof requestKey === 'string' && __pendingRequest[requestKey] instanceof Promise) {
+        return __pendingRequest[requestKey as string];
     }
 
     // new request
@@ -274,19 +274,19 @@ export async function request(
 
     opt.method = method;
 
-    __pendingRequest[requestKey] = _fetch.bind(this)(endpoint, opt, progress);
+    __pendingRequest[requestKey as string] = _fetch.bind(this)(endpoint, opt, progress);
 
     try {
         return update_startKey_keys.bind(this)({
             hashedParam: requestKey,
             url,
-            fetched: await __pendingRequest[requestKey]
+            fetched: await __pendingRequest[requestKey as string]
         });
     }
     finally {
         // remove promise
-        if (requestKey && __pendingRequest.hasOwnProperty(requestKey)) {
-            delete __pendingRequest[requestKey];
+        if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
+            delete __pendingRequest[requestKey as string];
         }
     }
 }
