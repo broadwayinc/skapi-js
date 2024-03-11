@@ -203,10 +203,10 @@ function Params(
 
     let toCheck = {};
     
-    if(p && typeof p === 'object' && Object.keys(p).length) {
+    if(!p || typeof p === 'object' && !Object.keys(p).length) {
         return p;
     }
-    
+
     for (let s in struct) {
         if (p.hasOwnProperty(s)) {
             if (typeof p[s] === 'function') {
