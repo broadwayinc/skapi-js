@@ -81,7 +81,7 @@ export async function secureRequest<RequestParams = {
         url: (v: string) => {
             return validator.Url(v);
         },
-        data: null,
+        data: v => v,
         sync: ['boolean', () => true]
     };
 
