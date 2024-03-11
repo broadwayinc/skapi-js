@@ -202,13 +202,9 @@ function Params(
     struct.owner = 'string';
 
     let toCheck = {};
-    
-    if(!p || typeof p === 'object' && !Object.keys(p).length) {
-        return p;
-    }
 
     for (let s in struct) {
-        if (p.hasOwnProperty(s)) {
+        if (p && typeof p === 'object' && !Array.isArray(p) && p.hasOwnProperty(s)) {
             if (typeof p[s] === 'function') {
                 toCheck[s] = p[s];
             }
