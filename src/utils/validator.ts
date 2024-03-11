@@ -202,6 +202,11 @@ function Params(
     struct.owner = 'string';
 
     let toCheck = {};
+    
+    if(p && typeof p === 'object' && Object.keys(p).length) {
+        return p;
+    }
+    
     for (let s in struct) {
         if (p.hasOwnProperty(s)) {
             if (typeof p[s] === 'function') {
@@ -237,6 +242,7 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
         throw 'Argument "struct" is required.';
     }
     let invalid_in = _parentKey !== null ? ` in key "${_parentKey}" is invalid.` : '. Parameter should be type <object>.';
+    
     if (isArrayWithValues(struct)) {
         let should_be = struct.map(s => (['string', 'number', 'boolean', 'object', 'array'].includes(s) ? `Type<${s}>` : JSON.stringify(s, null, 2))).join(' or ');
         let pass = false;
