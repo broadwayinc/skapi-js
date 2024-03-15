@@ -8,6 +8,7 @@ import {
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
+import { checkAdmin } from './user';
 
 function subscriptionIdCheck(option: SubscriptionGroup<number | '*'>) {
     return validator.Params(option, {
@@ -168,7 +169,7 @@ export async function getNewsletterSubscription(params: {
     subscribed_email: string;
 }[]> {
     await this.__connection;
-    let isAdmin = await this.checkAdmin();
+    let isAdmin = await checkAdmin.bind(this)();
 
     params = validator.Params(
         params,
@@ -297,7 +298,7 @@ export async function getNewsletters(
     },
     fetchOptions?: FetchOptions
 ): Promise<Newsletters> {
-    let isAdmin = await this.checkAdmin();
+    let isAdmin = await checkAdmin.bind(this)();
 
     let searchType = {
         'message_id': 'string',

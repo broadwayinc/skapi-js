@@ -13,6 +13,7 @@ import SkapiError from '../main/error';
 import { extractFormData, fromBase62 } from '../utils/utils';
 import validator from '../utils/validator';
 import { request, uploadFiles } from '../utils/network';
+import { checkAdmin } from './user';
 
 const __index_number_range = 4503599627370496; // +/-
 
@@ -588,7 +589,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
             private_key: 'string'
         };
 
-        let isAdmin = await this.checkAdmin();
+        let isAdmin = await checkAdmin.bind(this)();
         query = validator.Params(query || {}, struct, ref_user || isAdmin ? [] : ['table']);
     }
 
@@ -616,7 +617,7 @@ export async function postRecord(
     form: Form<Record<string, any>> | null | undefined,
     config: PostRecordConfig & { progress?: ProgressCallback; reference_private_key?: string; }
 ): Promise<RecordData> {
-    let isAdmin = await this.checkAdmin();
+    let isAdmin = await checkAdmin.bind(this)();
     if (!config) {
         throw new SkapiError('"config" argument is required.', { code: 'INVALID_PARAMETER' });
     }
@@ -1056,7 +1057,7 @@ export async function deleteRecords(params: {
         // subscription_group?: number;
     };
 }): Promise<string> {
-    let isAdmin = await this.checkAdmin();
+    let isAdmin = await checkAdmin.bind(this)();
     if (isAdmin && !params?.service) {
         throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
     }
