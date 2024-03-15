@@ -46,8 +46,7 @@ import {
     request,
     getFormResponse,
     formHandler,
-    uploadFiles,
-    hostFiles,
+    uploadFiles
 } from '../utils/network';
 import {
     subscribe,
@@ -352,7 +351,6 @@ export default class Skapi {
     private request = request.bind(this);
     private registerTicket = registerTicket.bind(this);
     private unregisterTicket = unregisterTicket.bind(this);
-    private hostFiles = hostFiles.bind(this);
 
     connectRealtime(cb: (rt: {
         status: 'message' | 'error' | 'success' | 'close' | 'notice';
