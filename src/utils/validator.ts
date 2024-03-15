@@ -196,7 +196,7 @@ function Params(
     //     c: (v: any) => { return 'value to assign'; }
     // }
 
-    let p = extractFormData(params)?.data || params;
+    let p = extractFormData(params).data;
 
     struct.service = 'string';
     struct.owner = 'string';

@@ -187,7 +187,7 @@ function generateRandom(length = 6) {
     return result;
 }
 
-function extractFormData(form: FormData | HTMLFormElement | SubmitEvent): { data: any, files: { name: string, file: File }[] } | null {
+function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key: string]: any }): { data: any, files: { name: string, file: File }[] } {
     let data = {};
     let files = [];
 
@@ -330,7 +330,7 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent): { data
         }
         return { data, files };
     }
-    return null;
+    return { data: form, files };
 }
 
 export {
