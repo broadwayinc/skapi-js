@@ -2,7 +2,7 @@
 import SkapiError from '../main/error';
 import { Form, FetchOptions, DatabaseResponse, ProgressCallback } from '../Types';
 import validator from './validator';
-import { MD5, generateRandom, toBase62 } from './utils';
+import { MD5, generateRandom } from './utils';
 
 async function getEndpoint(dest: string, auth: boolean) {
     const endpoints = await Promise.all([
@@ -72,6 +72,9 @@ export async function request(
         bypassAwaitConnection?: boolean;
         responseType?: 'json' | 'blob' | 'text' | 'arrayBuffer' | 'formData' | 'document';
         contentType?: string;
+    },
+    _etc?: {
+        ignoreService: boolean;
     }
 ): Promise<any> {
     options = options || {};
@@ -147,7 +150,7 @@ export async function request(
         );
     }
 
-    let required = { service, owner };
+    let required = _etc?.ignoreService ? {} : { service, owner };
     Object.assign(required, fetchOptions);
 
     if (data instanceof SubmitEvent) {
