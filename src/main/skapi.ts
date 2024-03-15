@@ -196,9 +196,7 @@ export default class Skapi {
         toBase62,
         fromBase62,
         extractFormData,
-        request: (url, data, option) => {
-            return request.bind(this)(url, data, option, { ignoreService: true });
-        }
+        request: (url, data, option) => request.bind(this)(url, data, option, { ignoreService: true })
     }
 
     private __connection: Promise<Connection>;
