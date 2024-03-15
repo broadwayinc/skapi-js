@@ -60,7 +60,6 @@ import {
     getNewsletterSubscription
 } from '../methods/subscription';
 import {
-    checkAdmin,
     getProfile,
     logout,
     recoverAccount,
@@ -88,11 +87,14 @@ import {
     jwtLogin
 } from '../methods/user';
 import {
-    extractFormData
+    extractFormData,
+    fromBase62,
+    generateRandom,
+    toBase62
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.63';
+    version = '1.0.64';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -189,8 +191,15 @@ export default class Skapi {
         }
     };
 
-
-    extractFormData = extractFormData;
+    util = {
+        generateRandom,
+        toBase62,
+        fromBase62,
+        extractFormData,
+        request: (url, data, option) => {
+            return request.bind(this)(url, data, option, { ignoreService: true });
+        }
+    }
 
     private __connection: Promise<Connection>;
     private __authConnection: Promise<void>;
@@ -347,8 +356,6 @@ export default class Skapi {
         return this.connection;
     }
 
-    private checkAdmin = checkAdmin.bind(this);
-    private request = request.bind(this);
     private registerTicket = registerTicket.bind(this);
     private unregisterTicket = unregisterTicket.bind(this);
 
@@ -645,7 +652,7 @@ export default class Skapi {
     listPrivateRecordAccess(params: {
         record_id: string;
         user_id: string | string[];
-    }): Promise<DatabaseResponse<{record_id:string;user_id:string;}>> { return listPrivateRecordAccess.bind(this)(params); }
+    }): Promise<DatabaseResponse<{ record_id: string; user_id: string; }>> { return listPrivateRecordAccess.bind(this)(params); }
     @formHandler()
     requestPrivateRecordAccessKey(record_id: string): Promise<string> {
         return requestPrivateRecordAccessKey.bind(this)(record_id);
