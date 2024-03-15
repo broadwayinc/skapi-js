@@ -753,11 +753,9 @@ export async function postRecord(
             if (v === null || v === undefined) {
                 return v;
             }
-            console.log({v})
             if (typeof v === 'string') {
                 v = v.split(',').map(t => t.trim());
             }
-            console.log({v})
             return validator.specialChars(v, 'tag', false, true);
         },
         remove_bin: (v: string[] | BinaryFile[] | null) => {
@@ -800,17 +798,12 @@ export async function postRecord(
     let postData = null;
     let to_bin = null;
     let extractedForm = extractFormData(form);
-    if (extractedForm) {
-        if (extractedForm.files.length) {
-            to_bin = extractedForm.files;
-        }
 
-        postData = Object.assign({ data: extractedForm.data }, _config);
+    if (extractedForm.files.length) {
+        to_bin = extractedForm.files;
     }
 
-    else {
-        postData = Object.assign({ data: form }, _config);
-    }
+    postData = Object.assign({ data: extractedForm.data }, _config);
 
     let fetchOptions: { [key: string]: any } = {};
 
@@ -1189,7 +1182,7 @@ export function removePrivateRecordAccess(params: {
 export async function listPrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
-}):Promise<DatabaseResponse<{record_id:string;user_id:string;}>> {
+}): Promise<DatabaseResponse<{ record_id: string; user_id: string; }>> {
     let list = await recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id || null,
@@ -1217,7 +1210,7 @@ function recordAccess(params: {
     record_id: string;
     user_id: string | string[];
     execute: 'add' | 'remove' | 'list';
-}): Promise<any>{
+}): Promise<any> {
     let execute = params.execute;
     let req = validator.Params(params,
         {

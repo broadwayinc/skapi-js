@@ -139,7 +139,7 @@ export async function postRealtime(message: any, recipient: string): Promise<{ s
         throw new SkapiError(`No recipient.`, { code: 'INVALID_REQUEST' });
     }
 
-    message = extractFormData(message).data || message;
+    message = extractFormData(message).data;
 
     if (socket.readyState === 1) {
         try {
@@ -177,7 +177,7 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
         throw new SkapiError(`No realtime connection. Execute connectRealtime() before this method.`, { code: 'INVALID_REQUEST' });
     }
 
-    params = extractFormData(params).data || params;
+    params = extractFormData(params).data;
 
     let { group = null } = params;
 
