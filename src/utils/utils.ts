@@ -187,7 +187,7 @@ function generateRandom(length = 6) {
     return result;
 }
 
-function extractFormData(form) {
+function extractFormData(form: FormData | HTMLFormElement | SubmitEvent): { data: any, files: { name: string, file: File }[] } | null {
     let data = {};
     let files = [];
 
@@ -206,7 +206,7 @@ function extractFormData(form) {
             return key;
         });
         let obj = data;
-        if(typeof keys[0] === 'number') {
+        if (typeof keys[0] === 'number') {
             throw new SkapiError('Form key cannot start with an array index.', { code: 'INVALID_REQUEST' });
         }
         for (let i = 0; i < keys.length; i++) {
@@ -214,7 +214,7 @@ function extractFormData(form) {
             if (i < keys.length - 1) {
                 if (obj[k] === undefined) {
                     let next = keys[i + 1];
-                    if(typeof next === 'number') {
+                    if (typeof next === 'number') {
                         obj[k] = [];
                     }
                     else {
@@ -227,7 +227,7 @@ function extractFormData(form) {
                 if (obj[k] === undefined) {
                     obj[k] = val;
                 }
-                else if(Array.isArray(obj[k])) {
+                else if (Array.isArray(obj[k])) {
                     obj[k].push(val);
                 }
                 else {
