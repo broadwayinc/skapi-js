@@ -6,7 +6,7 @@ import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
 
-export function clientSecretRequest(params: {
+export async function clientSecretRequest(params: {
     url: string;
     clientSecretName: string;
     method: 'GET' | 'POST';
@@ -64,7 +64,10 @@ export function clientSecretRequest(params: {
         throw new SkapiError(`At least one parameter value should include "$CLIENT_SECRET" in ${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} or "headers".`, { code: 'INVALID_PARAMETER' });
     }
 
-    return request.bind(this)("client-secret-request", params);
+    await this.__connection;
+    let auth = !!this.__user;
+
+    return request.bind(this)("client-secret-request" + !auth ? '-public' : '', params, { auth });
 }
 
 export async function secureRequest<RequestParams = {
