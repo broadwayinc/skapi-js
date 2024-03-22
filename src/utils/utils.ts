@@ -197,8 +197,9 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
         // if a[b][c] exists, then a[b][c] = [a[b][c], val]
         let keys = key.split('[').map(k => {
             let key = k.replace(']', '')
-            if (key.match(/\d+/) && !key.includes('.')) {
-                key = Number(key);
+            let numb = Number(key);
+            if (!isNaN(numb) && !key.includes('.')) {
+                key = numb;
             }
             else if (key[0] === '"' && key[key.length - 1] === '"' || key[0] === "'" && key[key.length - 1] === "'") {
                 key = key.replace(/"/g, '').replace(/'/g, '');
