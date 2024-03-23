@@ -1,5 +1,4 @@
 import SkapiError from "../main/error";
-import { Form } from "../Types";
 
 class MD5 {
     private static readonly alphabet = '0123456789abcdef';
@@ -188,188 +187,7 @@ function generateRandom(length = 6) {
     return result;
 }
 
-function extractFormMeta(form: Form<any>) {
-    // creates meta object to post
-
-    function appendData(meta, key, val) {
-
-        let fchar = key.slice(0, 1);
-        let lchar = key.slice(-1);
-
-        if (fchar === '.') {
-            key = key.slice(1);
-        }
-
-        if (lchar === '.') {
-            key = key.slice(0, -1);
-        }
-
-        if (key.includes('.')) {
-            let nestKey = key.split('.');
-            key = nestKey.pop();
-
-            for (let k of nestKey) {
-                if (!k) {
-                    continue;
-                }
-
-                if (!meta.hasOwnProperty(k)) {
-                    meta[k] = {};
-                }
-
-                meta = meta[k];
-            }
-        }
-
-        if (meta.hasOwnProperty(key)) {
-            if (Array.isArray(meta[key])) {
-                meta[key].push(val);
-            }
-            else {
-                meta[key] = [meta[key], val];
-            }
-        }
-        else {
-            meta[key] = val;
-        }
-    }
-
-    let to_bin = [];
-
-    if (form instanceof FormData) {
-        let meta = {};
-        let totalFileSize = 0;
-        let files = [];
-
-        for (let pair of form.entries()) {
-            let name = pair[0];
-            let v: any = pair[1];
-
-            if (v instanceof File) {
-                if ((totalFileSize + v.size) > 4000000) {
-                    to_bin.push({ name, file: v });
-                    continue;
-                }
-
-                totalFileSize += v.size;
-                files.push({ name, file: v });
-            }
-
-            else if (v instanceof FileList) {
-                if (v && v.length > 0) {
-                    for (let idx = 0; idx <= v.length - 1; idx++) {
-                        if ((totalFileSize + v.item(idx).size) > 4000000) {
-                            to_bin.push({ name, file: v.item(idx) });
-                            continue;
-                        }
-
-                        totalFileSize += v.item(idx).size;
-                        files.push({ name, file: v.item(idx) });
-                    }
-                }
-            }
-
-            else {
-                appendData(meta, name, v);
-            }
-        }
-
-        return { meta, files, to_bin };
-    }
-
-    if (form instanceof SubmitEvent) {
-        form = form.target;
-    }
-
-    if (form instanceof HTMLFormElement) {
-        let meta = {};
-        let files = [];
-        let totalFileSize = 0;
-        let inputs = form.querySelectorAll('input');
-        let textarea = form.querySelectorAll('textarea');
-
-        for (let idx = 0; idx < textarea.length; idx++) {
-            let i = textarea[idx];
-            if (i.name) {
-                appendData(meta, i.name, i.value);
-            }
-        }
-
-        for (let idx = 0; idx < inputs.length; idx++) {
-            let i = inputs[idx];
-            if (i.name) {
-                if (i.type === 'number') {
-                    if (i.value) {
-                        appendData(meta, i.name, Number(i.value));
-                    }
-                }
-
-                else if (i.type === 'checkbox' || i.type === 'radio') {
-                    if (i.checked) {
-                        if (i.value === '' && i.type === 'checkbox' || i.value === 'on' || i.value === 'true') {
-                            appendData(meta, i.name, true);
-                        }
-
-                        else if (i.value === 'false') {
-                            appendData(meta, i.name, false);
-                        }
-
-                        else if (i.value) {
-                            appendData(meta, i.name, i.value);
-                        }
-                    }
-                    else if (i.type === 'checkbox') {
-                        if (i.value === '' || i.value === 'on' || i.value === 'true') {
-                            appendData(meta, i.name, false);
-                        }
-                        else if (i.value === 'false') {
-                            appendData(meta, i.name, true);
-                        }
-                        else {
-                            appendData(meta, i.name, undefined);
-                        }
-                    }
-                }
-
-                else if (i.type === 'file') {
-                    if (i.files && i.files.length > 0) {
-                        for (let idx = 0; idx <= i.files.length - 1; idx++) {
-                            if ((totalFileSize + i.files.item(idx).size) > 4000000) {
-                                to_bin.push({ name: i.name, file: i.files.item(idx) });
-                                continue;
-                            }
-
-                            totalFileSize += i.files.item(idx).size;
-                            files.push({ name: i.name, file: i.files.item(idx) });
-                        }
-                    }
-                }
-
-                else {
-                    appendData(meta, i.name, i.value);
-                }
-            }
-        }
-
-        // check if meta does not exceed 2mb
-        function sizeof(object: any) {
-            return new Blob([JSON.stringify(object)]).size;
-        }
-
-
-        // check if meta does not exceed 2mb
-        if (sizeof(meta) > 2 * 1024 * 1024) { // 2MB
-            throw new SkapiError('JSON Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
-        }
-
-        return { meta, files, to_bin };
-    }
-
-    return null;
-}
-
-
-function extractFormData(form) {
+function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key: string]: any }): { data: any, files: { name: string, file: File }[] } {
     let data = {};
     let files = [];
 
@@ -379,33 +197,43 @@ function extractFormData(form) {
         // if a[b][c] exists, then a[b][c] = [a[b][c], val]
         let keys = key.split('[').map(k => {
             let key = k.replace(']', '')
-            if (key.match(/\d+/)) {
-                key = Number(key);
+            let numb = Number(key);
+            if (!isNaN(numb) && !key.includes('.')) {
+                key = numb;
             }
             else if (key[0] === '"' && key[key.length - 1] === '"' || key[0] === "'" && key[key.length - 1] === "'") {
-                key = key.replace(/"/g, '');
+                key = key.replace(/"/g, '').replace(/'/g, '');
             }
             return key;
         });
         let obj = data;
+        if (typeof keys[0] === 'number') {
+            throw new SkapiError('Form key cannot start with an array index.', { code: 'INVALID_REQUEST' });
+        }
         for (let i = 0; i < keys.length; i++) {
             let k = keys[i];
-            if (i === keys.length - 1) {
-                if (Array.isArray(obj)) {
-                    obj.push(val);
+            if (i < keys.length - 1) {
+                if (obj[k] === undefined) {
+                    let next = keys[i + 1];
+                    if (typeof next === 'number') {
+                        obj[k] = [];
+                    }
+                    else {
+                        obj[k] = {};
+                    }
                 }
-                else if (obj[k] !== undefined) {
-                    obj[k] = [obj[k], val];
-                }
-                else {
-                    obj[k] = val;
-                }
+                obj = obj[k];
             }
             else {
                 if (obj[k] === undefined) {
-                    obj[k] = typeof k === 'number' ? [] : {};
+                    obj[k] = val;
                 }
-                obj = obj[k];
+                else if (Array.isArray(obj[k])) {
+                    obj[k].push(val);
+                }
+                else {
+                    obj[k] = [obj[k], val];
+                }
             }
         }
     }
@@ -428,7 +256,7 @@ function extractFormData(form) {
         for (let pair of form.entries()) {
             let name = pair[0];
             let v = pair[1];
-            if ((v instanceof File) || (v instanceof FileList)) {
+            if ((v instanceof File) || ((v as any) instanceof FileList)) {
                 handleFile(files, name, v);
             }
             else {
@@ -503,13 +331,12 @@ function extractFormData(form) {
         }
         return { data, files };
     }
-    return null;
+    return { data: form, files };
 }
 
 export {
     fromBase62,
     toBase62,
-    extractFormMeta,
     extractFormData,
     MD5,
     generateRandom
