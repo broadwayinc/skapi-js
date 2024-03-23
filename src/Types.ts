@@ -52,7 +52,7 @@ export type PostRecordConfig = {
         // subscription_group?: number;
         /** When true, Record will be only accessible for subscribed users. */
         subscription?: boolean;
-    } | string;
+    };
 
     /** If record ID string is given, "reference.record_id" will be set with default parameters. */
     reference?: {
