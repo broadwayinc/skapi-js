@@ -97,8 +97,12 @@ export async function getConsumedTickets(params: {
 export async function registerTicket(
     params: {
         ticket_id: string;
+        description: string;
+        count?: number;
+        time_to_live?: number;
+        placeholder?: { [key: string]: string };
         condition?: {
-            bypassConditionMismatch?: boolean; // When true, returns 200 when condition mismatch
+            return200?: boolean; // When true, returns 200 when regardless condition mismatch
             method?: 'GET' | 'POST'; // Defaults to 'GET' method when not given
             headers?: {
                 key: string;
@@ -118,14 +122,12 @@ export async function registerTicket(
                 value: any | any[];
                 operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
                 setValueWhenMatch?: any | any[];
-                ignoreMismatch?: boolean;
             }[],
             params?: {
                 key?: string;
                 value: string | string[];
                 operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
                 setValueWhenMatch?: any | any[];
-                ignoreMismatch?: boolean;
             }[],
             user?: {
                 key: string;
@@ -161,10 +163,6 @@ export async function registerTicket(
                 params?: Record<string, any>;
             }
         };
-        description: string;
-        count?: number;
-        time_to_live?: number;
-        placeholder?: { [key: string]: string };
     }
 ): Promise<string> {
     return request.bind(this)('register-ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
