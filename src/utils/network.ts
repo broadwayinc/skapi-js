@@ -2,7 +2,7 @@
 import SkapiError from '../main/error';
 import { Form, FetchOptions, DatabaseResponse, ProgressCallback } from '../Types';
 import validator from './validator';
-import { MD5, generateRandom, toBase62 } from './utils';
+import { MD5, generateRandom } from './utils';
 
 async function getEndpoint(dest: string, auth: boolean) {
     const endpoints = await Promise.all([
@@ -38,6 +38,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'request-username-change':
         case 'jwt-login':
         case 'client-secret-request':
+        case 'client-secret-request-public':
             return (auth ? admin.admin_private : admin.admin_public) + dest + query;
 
         case 'post-record':
@@ -64,14 +65,17 @@ const __pendingRequest: Record<string, Promise<any>> = {};
 
 export async function request(
     url: string,
-    data: Form<any> | null = null,
+    data: Form<any> = null,
     options?: {
         fetchOptions?: FetchOptions;
         auth?: boolean;
         method?: string;
         bypassAwaitConnection?: boolean;
-        responseType?: 'json' | 'blob' | 'text' | 'arrayBuffer' | 'formData' | 'document' | null;
+        responseType?: 'json' | 'blob' | 'text' | 'arrayBuffer' | 'formData' | 'document';
         contentType?: string;
+    },
+    _etc?: {
+        ignoreService: boolean;
     }
 ): Promise<any> {
     options = options || {};
@@ -147,7 +151,7 @@ export async function request(
         );
     }
 
-    let required = { service, owner };
+    let required = _etc?.ignoreService ? {} : { service, owner };
     Object.assign(required, fetchOptions);
 
     if (data instanceof SubmitEvent) {
@@ -218,8 +222,8 @@ export async function request(
     }
 
     // prevent duplicate request
-    if (__pendingRequest[requestKey] instanceof Promise) {
-        return __pendingRequest[requestKey];
+    if (typeof requestKey === 'string' && __pendingRequest[requestKey] instanceof Promise) {
+        return __pendingRequest[requestKey as string];
     }
 
     // new request
@@ -274,19 +278,19 @@ export async function request(
 
     opt.method = method;
 
-    __pendingRequest[requestKey] = _fetch.bind(this)(endpoint, opt, progress);
+    __pendingRequest[requestKey as string] = _fetch.bind(this)(endpoint, opt, progress);
 
     try {
         return update_startKey_keys.bind(this)({
             hashedParam: requestKey,
             url,
-            fetched: await __pendingRequest[requestKey]
+            fetched: await __pendingRequest[requestKey as string]
         });
     }
     finally {
         // remove promise
-        if (requestKey && __pendingRequest.hasOwnProperty(requestKey)) {
-            delete __pendingRequest[requestKey];
+        if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
+            delete __pendingRequest[requestKey as string];
         }
     }
 }
@@ -536,120 +540,6 @@ function update_startKey_keys(option: Record<string, any>) {
     }
 
     return Object.assign({ startKeyHistory: this.__startKeyHistory[url][hashedParam] }, fetched);
-}
-
-export async function hostFiles(
-    fileList: FormData,
-    params: {
-        service?: string;
-        dir?: string;
-        progress?: ProgressCallback;
-    }
-): Promise<{ completed: File[]; failed: File[]; bin_endpoints: string[] }> {
-    await this.__connection;
-    let { service, dir = '', progress } = params;
-
-    if (dir) {
-        dir = dir.replace(/^\//, '').replace(/\/$/, '') + '/'; // remove leading and trailing slashes and add trailing slash
-    }
-
-    if (!service || service === this.service) {
-        throw new SkapiError('invalid service.', { code: 'INVALID_PARAMETER' });
-    }
-
-    if (!(fileList instanceof FormData)) {
-        throw new SkapiError('"fileList" should be a FormData or HTMLFormElement.', { code: 'INVALID_PARAMETER' });
-    }
-
-    let getSignedParams: Record<string, any> = {
-        reserved_key: generateRandom(),
-        service,
-        request: 'host'
-    };
-
-    let xhr;
-    let fetchProgress = (
-        url: string,
-        body: FormData,
-        progressCallback: (p: ProgressEvent) => void
-    ) => {
-        return new Promise((res, rej) => {
-            xhr = new XMLHttpRequest();
-            xhr.open('POST', url);
-            xhr.onload = () => {
-                let result = xhr.responseText;
-                try {
-                    result = JSON.parse(result);
-                }
-                catch (err) { }
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    res(result);
-                } else {
-                    rej(result);
-                }
-            };
-            xhr.onerror = () => rej('Network error');
-            xhr.onabort = () => rej('Aborted');
-            xhr.ontimeout = () => rej('Timeout');
-
-            if (xhr.upload && typeof progressCallback === 'function') {
-                xhr.upload.onprogress = progressCallback;
-            }
-            xhr.send(body);
-        });
-    };
-
-    let completed = [];
-    let failed = [];
-    let bin_endpoints = [];
-
-    for (let [key, f] of (fileList as any).entries()) {
-        if (!(f instanceof File)) {
-            continue;
-        }
-
-        let signedParams = Object.assign({
-            key: dir + f.name,
-            sizeKey: toBase62(f.size),
-            contentType: f.type || null
-        }, getSignedParams);
-
-        let { fields = null, url, cdn } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
-
-        bin_endpoints.push(cdn);
-
-        let form = new FormData();
-
-        for (let name in fields) {
-            form.append(name, fields[name]);
-        }
-
-        form.append('file', f);
-
-        try {
-            await fetchProgress(
-                url,
-                form,
-                typeof progress === 'function' ? (p: ProgressEvent) => progress(
-                    {
-                        status: 'upload',
-                        progress: p.loaded / p.total * 100,
-                        currentFile: f,
-                        completed,
-                        failed,
-                        loaded: p.loaded,
-                        total: p.total,
-                        abort: () => xhr.abort()
-                    }
-                ) : null
-            );
-            completed.push(f);
-        } catch (err) {
-            failed.push(f);
-        }
-    }
-
-    return { completed, failed, bin_endpoints };
 }
 
 export async function uploadFiles(

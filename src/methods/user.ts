@@ -13,7 +13,7 @@ import {
     DatabaseResponse,
     UserAttributes,
     PublicUser,
-ProgressCallback
+    ProgressCallback
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
@@ -70,7 +70,6 @@ export async function consumeTicket(params: { ticket_id: string; } & { [key: str
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
     let ticket_id = params.ticket_id;
-    delete params.ticket_id;
 
     await this.__connection;
     let resp = await request.bind(this)(`https://${this.service.slice(0, 4)}.skapi.dev/auth/consume/${this.service}/${this.owner}/${ticket_id}`, params, { auth: true });
@@ -98,8 +97,12 @@ export async function getConsumedTickets(params: {
 export async function registerTicket(
     params: {
         ticket_id: string;
+        description: string;
+        count?: number;
+        time_to_live?: number;
+        placeholder?: { [key: string]: string };
         condition?: {
-            bypassConditionMismatch?: boolean; // When true, returns 200 when condition mismatch
+            return200?: boolean; // When true, returns 200 when regardless condition mismatch
             method?: 'GET' | 'POST'; // Defaults to 'GET' method when not given
             headers?: {
                 key: string;
@@ -119,14 +122,12 @@ export async function registerTicket(
                 value: any | any[];
                 operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
                 setValueWhenMatch?: any | any[];
-                ignoreMismatch?: boolean;
             }[],
             params?: {
                 key?: string;
                 value: string | string[];
                 operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
                 setValueWhenMatch?: any | any[];
-                ignoreMismatch?: boolean;
             }[],
             user?: {
                 key: string;
@@ -162,13 +163,9 @@ export async function registerTicket(
                 params?: Record<string, any>;
             }
         };
-        description: string;
-        count?: number;
-        time_to_live?: number;
-        placeholder?: { [key: string]: string };
     }
 ): Promise<string> {
-    return this.request('register-ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
+    return request.bind(this)('register-ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
 }
 
 export async function unregisterTicket(
@@ -176,7 +173,7 @@ export async function unregisterTicket(
         ticket_id: string;
     }
 ): Promise<string> {
-    return this.request('register-ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
+    return request.bind(this)('register-ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
 }
 
 export function authentication() {
@@ -570,12 +567,13 @@ export async function jwtLogin(params: {
         nonce: 'string'
     }, ['idToken', 'keyUrl', 'clientId']);
 
-    let { hashedPassword, username } = await request.bind(this)("jwt-login", params);
+    let { hashedPassword, username, email } = await request.bind(this)("jwt-login", params);
     try {
-        return login.bind(this)({ username: username, password: hashedPassword });
-    } catch (err: SkapiError | any) {
+        return login.bind(this)({ username: username, password: hashedPassword, email });
+    }
+    catch (err: SkapiError | any) {
         if (err?.code === 'INCORRECT_USERNAME_OR_PASSWORD') {
-            throw new SkapiError('User has migrated the account. Login with the service username and password.', { code: 'INVALID_REQUEST' });
+            throw new SkapiError('User has migrated the account. Login with the service email and password.', { code: 'INVALID_REQUEST' });
         }
     }
 }
@@ -847,11 +845,13 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>)
     });
 }
 
-export function verifyPhoneNumber(form?: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'> {
+export function verifyPhoneNumber(form?: Form<{ code: string; }>): Promise<string> {
+    // 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'
     return verifyAttribute.bind(this)('phone_number', form);
 }
 
-export function verifyEmail(form?: Form<{ code: string; }>): Promise<'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'> {
+export function verifyEmail(form?: Form<{ code: string; }>): Promise<string> {
+    // 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'
     return verifyAttribute.bind(this)('email', form);
 }
 
