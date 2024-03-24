@@ -46,7 +46,9 @@ For vanilla HTML projects, import Skapi in the script tag, and initialize the li
 </script>
 ```
 
-**Be sure to replace `'service_id'` and `'owner_id'` with the actual values of your service.**
+**Be sure to replace `'service_id'` and `'owner_id'` with the actual values of your service**
+
+For more information, check out our [documentation](https://docs.skapi.com/introduction/getting-started.html).
 
 ### For SPA projects:
 
