@@ -94,7 +94,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.68';
+    version = '1.0.69';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -196,7 +196,18 @@ export default class Skapi {
         toBase62,
         fromBase62,
         extractFormData,
-        request: (url, data, option) => request.bind(this)(url, data, option, { ignoreService: true })
+        request: (
+            url: string,
+            data?: Form<any>,
+            options?: {
+                fetchOptions?: FetchOptions;
+                auth?: boolean;
+                method?: string;
+                bypassAwaitConnection?: boolean;
+                responseType?: 'json' | 'blob' | 'text' | 'arrayBuffer' | 'formData' | 'document';
+                contentType?: string;
+            }
+        ) => request.bind(this)(url, data, options, { ignoreService: true })
     }
 
     private __connection: Promise<Connection>;
@@ -331,7 +342,6 @@ export default class Skapi {
                 storeClassProperties();
                 this.closeRealtime();
             });
-            // window.addEventListener("visibilitychange", storeClassProperties);
 
             await connection;
             await this.__authConnection;
