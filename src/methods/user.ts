@@ -1082,11 +1082,7 @@ export async function getUsers(
         fetchOptions.ascending = false;
     }
 
-    let isAdmin = await checkAdmin.bind(this)();
-
-    if (isAdmin && !params.hasOwnProperty('service')) {
-        throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
-    }
+    await this.__connection;
 
     const searchForTypes = {
         'user_id': (v: string) => validator.UserId(v),
