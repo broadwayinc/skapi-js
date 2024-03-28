@@ -238,9 +238,20 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
         throw 'Argument "struct" is required.';
     }
     let invalid_in = _parentKey !== null ? ` in key "${_parentKey}" is invalid.` : '. Parameter should be type <object>.';
-    
+
     if (isArrayWithValues(struct)) {
-        let should_be = struct.map(s => (['string', 'number', 'boolean', 'object', 'array'].includes(s) ? `Type<${s}>` : JSON.stringify(s, null, 2))).join(' or ');
+        let should_be = ''
+        struct.forEach(s => {
+            if (['string', 'number', 'boolean', 'object', 'array'].includes(s)) {
+                should_be += `Type<${s}>, `
+            }
+            else if (typeof s !== 'function') {
+                should_be += JSON.stringify(s, null, 2) + ', '
+            }
+        });
+
+        should_be = should_be.slice(0, -2);
+
         let pass = false;
         let val;
         for (let s of struct) {
@@ -254,7 +265,7 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
             }
         }
         if (!pass) {
-            throw `Invalid type "${typeof params}"${invalid_in} Should be: ${should_be}`
+            throw `Invalid type "${typeof params}"${invalid_in} Should be: ${should_be}.`
         }
         return val;
     }
