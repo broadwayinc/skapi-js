@@ -33,8 +33,9 @@
     "backend",
     "skapi",
     "api",
+    "daas",
     "serverless",
     "frontend",
-    "html"
+    "database"
   ]
 }
