@@ -17,7 +17,7 @@ import { checkAdmin } from './user';
 
 const __index_number_range = 4503599627370496; // +/-
 
-export function normalizeRecord(record: Record<string, any>): RecordData {
+export async function normalizeRecord(record: Record<string, any>): Promise<RecordData> {
     const output: Record<string, any> = {
         user_id: '',
         record_id: '',
@@ -70,7 +70,6 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
             //     };
             // }
             if (rSplit?.[3]) {
-                // output.table.subscription_group = parseInt(rSplit[4]);
                 output.table.subscription = true;
             }
             else {
@@ -90,7 +89,6 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
             //     };
             // }
             if (rSplit?.[4]) {
-                // output.table.subscription_group = parseInt(rSplit[4]);
                 output.table.subscription = true;
             }
             else {
@@ -126,13 +124,13 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
         'rfd': (r: number) => {
             output.reference.referenced_count = r;
         },
-        'bin': (r: string[]) => {
+        'bin': async (r: string[]) => {
             let binObj = {};
 
             if (Array.isArray(r)) {
                 for (let url of r) {
-                    let path = url.split('/').slice(3).join('/');
                     // publ/ap21piquKpzLtjAJxckv/4d4a36a5-b318-4093-92ae-7cf11feae989/4d4a36a5-b318-4093-92ae-7cf11feae989/records/TrNFqeRsKGXyxckv/00/bin/TrNFron/IuqU/gogo/Skapi_IR deck_Final_KOR.pptx
+                    let path = url.split('/').slice(3).join('/');
                     let splitPath = path.split('/');
                     let filename = decodeURIComponent(splitPath.slice(-1)[0]);
                     let pathKey = decodeURIComponent(splitPath[10]);
@@ -140,10 +138,17 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
                     let uploaded = splitPath[8];
                     let access_group = splitPath[6] == '**' ? 'private' : parseInt(splitPath[6]);
                     access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group;
+
+                    let url_endpoint = url;
+                    if (access_group !== 'public') {
+                        let resolved_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint', expires: access_group === 'private' && this.__user?.user_id !== path[0] ? 3600 : 0 }) as string);
+                        url_endpoint = resolved_endpoint;
+                    }
+
                     let obj = {
                         access_group,
                         filename,
-                        url,
+                        url: url_endpoint,
                         path,
                         size: fromBase62(size),
                         uploaded: fromBase62(uploaded),
@@ -184,7 +189,10 @@ export function normalizeRecord(record: Record<string, any>): RecordData {
 
     for (let k in keys) {
         if (record.hasOwnProperty(k)) {
-            keys[k](record[k]);
+            let exec = keys[k](record[k]);
+            if (exec instanceof Promise) {
+                await exec;
+            }
         }
     }
 
@@ -245,7 +253,11 @@ export async function deleteFiles(params: {
         storage: 'records'
     }, { auth: true, method: 'post' });
 
-    return updatedRec.map(r => normalizeRecord.bind(this)(r));
+    for (let i in updatedRec) {
+        updatedRec[i] = normalizeRecord.bind(this)(updatedRec[i]);
+    }
+
+    return await Promise.all(updatedRec);
 }
 
 export async function getFile(
@@ -599,9 +611,12 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
             method: !!this.__user ? 'post' : 'get'
         }
     );
+
     for (let i in result.list) {
         result.list[i] = normalizeRecord.bind(this)(result.list[i]);
     };
+
+    result.list = await Promise.all(result.list);
 
     if (is_reference_fetch && result?.reference_private_key) {
         this.__private_access_key[is_reference_fetch] = result.reference_private_key;
