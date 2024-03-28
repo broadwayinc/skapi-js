@@ -424,7 +424,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                         throw new SkapiError('"table.name" cannot be empty string.', { code: 'INVALID_PARAMETER' });
                     }
                     return validator.specialChars(v, 'table name', true, true)
-                }, () => { throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' }) }],
+                }],
                 access_group: [v => {
                     if (v === undefined) {
                         // access_group defaults to 1 if subscription value is present, else 0
@@ -437,10 +437,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                     }
 
                     if (typeof v === 'number') {
-                        if (!this.__user && v > 0) {
-                            throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
-                        }
-                        if (this.__user.access_group < v) {
+                        if ((this.__user?.access_group || 0) < v) {
                             throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
                         }
                     }
@@ -602,7 +599,6 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
             method: !!this.__user ? 'post' : 'get'
         }
     );
-
     for (let i in result.list) {
         result.list[i] = normalizeRecord.bind(this)(result.list[i]);
     };
@@ -641,7 +637,6 @@ export async function postRecord(
             record_id: config.reference
         }
     }
-
     let _config = validator.Params(config || {}, {
         record_id: ['string', () => {
             if (!config.table || !config.table.name) {
@@ -785,7 +780,6 @@ export async function postRecord(
         },
         progress: 'function',
     });
-
     let progress = config.progress || null;
     if (config.table.hasOwnProperty('subscription')) {
         _config.table.subscription_group = config.table.subscription ? 1 : null;
@@ -814,7 +808,6 @@ export async function postRecord(
     if (Object.keys(fetchOptions).length) {
         Object.assign(options, { fetchOptions });
     }
-
     let rec = await request.bind(this)('post-record', postData, options);
     if (to_bin) {
         let bin_formData = new FormData();
