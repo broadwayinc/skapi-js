@@ -78,6 +78,9 @@ export async function request(
         ignoreService: boolean;
     }
 ): Promise<any> {
+    if (this.__network_logs) {
+        console.log(JSON.parse(JSON.stringify({ url, data, options })));
+    }
     options = options || {};
 
     let {
