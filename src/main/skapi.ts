@@ -145,8 +145,8 @@ export default class Skapi {
         // setting user is bypassed
     }
 
-    private admin_endpoint: Promise<Record<string, any>>;
-    private record_endpoint: Promise<Record<string, any>>;
+    admin_endpoint: Promise<Record<string, any>>;
+    record_endpoint: Promise<Record<string, any>>;
 
     validate = {
         userId(val: string) {
