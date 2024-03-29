@@ -250,22 +250,29 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
             }
         });
 
-        should_be = should_be.slice(0, -2);
+        should_be = should_be ? ' Should be: ' + should_be.slice(0, -2) : '';
 
         let pass = false;
         let val;
+        let err_msg = ''
         for (let s of struct) {
             try {
                 val = checkParams(params, s, required, _parentKey);
                 pass = true;
                 break;
             }
-            catch (err) {
+            catch (err: any) {
+                if (typeof s === 'function') {
+                    err_msg = err?.message || err;
+                }
+                else {
+                    err_msg = '';
+                }
                 pass = false;
             }
         }
         if (!pass) {
-            throw `Invalid type "${typeof params}"${invalid_in} Should be: ${should_be}.`
+            throw err_msg || `Invalid type "${typeof params}"${invalid_in}${should_be}.`
         }
         return val;
     }
@@ -288,7 +295,7 @@ function checkParams(params: any, struct: any, required: string[] = [], _parentK
         }
 
         if ('object' === struct) {
-            return params
+            return params;
         }
 
         else if (typeof struct === 'function') {
