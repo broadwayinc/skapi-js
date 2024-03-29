@@ -745,17 +745,25 @@ export async function postRecord(
                 throw new SkapiError('"index.name" should be type: string.', { code: 'INVALID_PARAMETER' });
             }],
             value: [v => {
-                if (!v) {
+                if (!v && typeof v !== 'boolean') {
                     throw new SkapiError('"index.value" is required.', { code: 'INVALID_PARAMETER' });
                 }
+
+                let availTypes = ['boolean', 'string', 'number'];
+                if (!availTypes.includes(typeof v)) {
+                    throw new SkapiError('"index.value" should be type: <boolean | string | number>.', { code: 'INVALID_PARAMETER' });
+                }
+
                 if (typeof v === 'string') {
                     validator.specialChars(v, 'index value', false, true);
                 }
+
                 else if (typeof v === 'number') {
                     if (v > __index_number_range || v < -__index_number_range) {
                         throw new SkapiError(`Number value should be within range -${__index_number_range} ~ +${__index_number_range}`, { code: 'INVALID_PARAMETER' });
                     }
                 }
+
                 return v;
             }]
         },
