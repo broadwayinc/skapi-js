@@ -94,7 +94,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.77';
+    version = '1.0.80';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -322,6 +322,7 @@ export default class Skapi {
 
                     const to_be_cached = [
                         '__startKeyHistory', // startKey key : {}
+                        '__disabledAccount', // disabled account : null
                         '__cached_requests', // cached records : {}
                         '__request_signup_confirmation', // for resend signup confirmation : null
                         'connection', // service info : null
