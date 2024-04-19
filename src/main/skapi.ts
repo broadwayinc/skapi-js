@@ -393,9 +393,9 @@ export default class Skapi {
         url: string;
         clientSecretName: string;
         method: 'GET' | 'POST';
-        headers?: Record<string, string>;
-        data?: Record<string, string>;
-        params?: Record<string, string>;
+        headers?: { [key: string]: string };
+        data?: { [key: string]: any };
+        params?: { [key: string]: string };
     }): Promise<any> {
         return clientSecretRequest.bind(this)(params);
     }
