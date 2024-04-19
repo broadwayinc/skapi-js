@@ -390,6 +390,7 @@ export function authentication() {
 
                 initUser.cognitoUser.authenticateUser(authenticationDetails, {
                     newPasswordRequired: (userAttributes, requiredAttributes) => {
+                        this.__disabledAccount = null;
                         this.__request_signup_confirmation = username;
                         if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER') {
                             // auto confirm
@@ -408,6 +409,7 @@ export function authentication() {
                         }
                     },
                     onSuccess: _ => getSession().then(_ => {
+                        this.__disabledAccount = null;
                         res(this.user);
                     }),
                     onFailure: (err: any) => {
@@ -548,7 +550,6 @@ export async function recoverAccount(
     }
 
     await request.bind(this)("recover-account", { username: this.__disabledAccount, redirect });
-    this.__disabledAccount = null;
     return 'SUCCESS: Recovery e-mail has been sent.';
 }
 
