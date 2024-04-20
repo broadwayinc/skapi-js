@@ -95,7 +95,6 @@ export type RecordData = {
         name: string;
         /** Number range: 0 ~ 99 */
         access_group: 'private' | 'public' | 'authorized' | number;
-        // subscription_group?: number;
         subscription: boolean;
     },
     reference: {
