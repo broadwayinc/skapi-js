@@ -59,40 +59,50 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         },
         'tbl': (r: string) => {
             if (!r) return;
-            let rSplit = r.split('/');
             // table/service/group(** | group)/[subscription(user id)/group(00 - 99)]/[tag]
-            output.table.name = rSplit[0];
-            output.table.access_group = rSplit[2] == '**' ? 'private' : parseInt(rSplit[2]);
-            // if (rSplit?.[3]) {
-            //     output.table.subscription = {
-            //         user_id: rSplit[3],
-            //         group: parseInt(rSplit[4])
-            //     };
-            // }
-            if (rSplit?.[3]) {
-                output.table.subscription = true;
-            }
-            else {
-                output.table.subscription = false;
+            if (!output.table.name) {
+                let rSplit = r.split('/');
+                output.table.name = rSplit[0];
+                let access_group = rSplit[2] == '**' ? 'private' : parseInt(rSplit[2]);
+                access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group;
+                output.table.access_group = access_group;
+                // if (rSplit?.[3]) {
+                //     output.table.subscription = {
+                //         user_id: rSplit[3],
+                //         group: parseInt(rSplit[4])
+                //     };
+                // }
+                if (rSplit?.[3]) {
+                    output.table.subscription = true;
+                }
+                else {
+                    output.table.subscription = false;
+                }
             }
         },
         'usr_tbl': (r: string) => {
             // user-id/table/service/group(** | group)[/subscription(user id)/group(00 - 99)][/tag]
             let rSplit = r.split('/');
-            output.user_id = rSplit[0];
-            output.table.name = rSplit[1];
-            output.table.access_group = rSplit[3] == '**' ? 'private' : parseInt(rSplit[3]);
-            // if (rSplit?.[4]) {
-            //     output.table.subscription = {
-            //         user_id: rSplit[4],
-            //         group: parseInt(rSplit[5])
-            //     };
-            // }
-            if (rSplit?.[4]) {
-                output.table.subscription = true;
+            if (!output.user_id) {
+                output.user_id = rSplit[0];
             }
-            else {
-                output.table.subscription = false;
+            if (!output.table.name) {
+                output.table.name = rSplit[1];
+                let access_group = rSplit[3] == '**' ? 'private' : parseInt(rSplit[3]);
+                access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group;
+                output.table.access_group = access_group;
+                // if (rSplit?.[4]) {
+                //     output.table.subscription = {
+                //         user_id: rSplit[4],
+                //         group: parseInt(rSplit[5])
+                //     };
+                // }
+                if (rSplit?.[4]) {
+                    output.table.subscription = true;
+                }
+                else {
+                    output.table.subscription = false;
+                }
             }
         },
         'idx': (r: string) => {
