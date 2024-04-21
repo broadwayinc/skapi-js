@@ -114,6 +114,7 @@ export default class Skapi {
             [hashedParams: string]: DatabaseResponse<any>;
         };
     } = {};
+
     private __startKeyHistory: {
         /** List of startkeys */
         [url: string]: {
@@ -214,7 +215,6 @@ export default class Skapi {
     private __authConnection: Promise<void>;
     private __socket: WebSocket;
     private __socket_group: string;
-
     private __network_logs = false;
 
     constructor(service: string, owner: string, options?: { autoLogin: boolean; }, __etc?: any) {
@@ -233,7 +233,7 @@ export default class Skapi {
         this.service = service;
         this.owner = owner;
 
-        let autoLogin = true;
+        let autoLogin = false;
 
         if (options) {
             if (typeof options.autoLogin === 'boolean') {
@@ -291,20 +291,18 @@ export default class Skapi {
                 ClientId: admin_endpoint.userpool_client
             });
 
-            if (!restore?.connection && !autoLogin) {
-                let currentUser = userPool.getCurrentUser();
-                if (currentUser) {
-                    currentUser.signOut();
-                }
-            }
-
-            if (autoLogin) {
-                // session reload or autoLogin
+            if (restore?.connection || autoLogin) {
                 try {
                     await authentication.bind(this)().getSession({ refreshToken: !restore?.connection })
                 }
                 catch (err) {
                     this.__user = null;
+                }
+            }
+            else {
+                let currentUser = userPool.getCurrentUser();
+                if (currentUser) {
+                    currentUser.signOut();
                 }
             }
         })()
