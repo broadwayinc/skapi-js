@@ -94,7 +94,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.85';
+    version = '1.0.86';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -636,7 +636,7 @@ export default class Skapi {
     }
     @formHandler()
     getNewsletterSubscription(params: {
-        group?: number;
+        group?: number | 'public' | 'authorized';
     }): Promise<{
         active: boolean;
         timestamp: number;
@@ -813,12 +813,12 @@ export default class Skapi {
     }
     @formHandler()
     subscribeNewsletter(
-        form: Form<{
+        params: Form<{
             email?: string;
             group: number | 'public' | 'authorized';
             redirect?: string;
         }>
     ): Promise<string> {
-        return subscribeNewsletter.bind(this)(form);
+        return subscribeNewsletter.bind(this)(params);
     }
 }
