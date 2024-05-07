@@ -391,7 +391,7 @@ export async function getNewsletters(
     mails.list = mails.list.map(m => {
         let remapped = {};
         for (let k in remap) {
-            remapped[k] = m[remap[k]] || defaults[remap[k]];
+            remapped[k] = m[remap[k]] || defaults[k];
         }
         return remapped;
     });
