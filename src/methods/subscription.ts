@@ -297,7 +297,7 @@ export async function getNewsletters(
         condition?: '>' | '>=' | '=' | '<' | '<=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte';
     },
     fetchOptions?: FetchOptions
-): Promise<Newsletters> {
+): Promise<DatabaseResponse<Newsletters>> {
     let isAdmin = await checkAdmin.bind(this)();
 
     let searchType = {
