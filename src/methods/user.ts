@@ -641,13 +641,13 @@ export async function signup(
         access_group: 'number',
         misc: 'string',
 
-        picture: (v: string) => validator.Url(v),
-        profile: (v: string) => validator.Url(v),
+        picture: (v: string) => { if (v) return validator.Url(v); else return undefined },
+        profile: (v: string) => { if (v) return validator.Url(v); else return undefined },
         family_name: 'string',
         given_name: 'string',
         middle_name: 'string',
         nickname: 'string',
-        website: (v: string) => validator.Url(v),
+        website: (v: string) => { if (v) return validator.Url(v); else return undefined },
     }, is_admin ? ['email'] : ['email', 'password']);
 
     let admin_creating_account = is_admin && params.service && this.service !== params.service;
