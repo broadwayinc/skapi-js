@@ -157,29 +157,44 @@ export type Newsletters = {
     url: string;
 };
 
+type UserProfilePublicSettings = {
+    /** User's E-mail is public when true. E-Mail should be verified. */
+    email_public?: boolean;
+    /** User's phone number is public when true. Phone number should be verified. */
+    phone_number_public?: boolean;
+    /** User's address is public when true. */
+    address_public?: boolean;
+    /** User's gender is public when true. */
+    gender_public?: boolean;
+    /** User's birthdate is public when true. */
+    birthdate_public?: boolean;
+}
+
 export type UserAttributes = {
     /** User's name */
     name?: string;
     /**
      * User's E-Mail for signin.<br>
      * 64 character max.<br>
-     * When E-Mail is changed, E-Mail verified state will be changed to false.<br>
-     * E-Mail is only visible to others when set to public.<br>
+     * When E-Mail is changed, E-Mail verified state will be changed to false.
+     * E-Mail is only visible to others when set to public.
      * E-Mail should be verified to set to public.
      * */
     email?: string;
     /**
      * User's phone number. Format: "+0012341234"<br>
-     * When phone number is changed, phone number verified state will be changed to false.<br>
-     * Phone number is only visible to others when set to public.<br>
+     * When phone number is changed, phone number verified state will be changed to false.
+     * Phone number is only visible to others when set to public.
      * Phone number should be verified to set to public.
      */
     phone_number?: string;
-    /** User's address */
+    /** User's address, only visible to others when set to public. */
     address?: string | {
-        // Full mailing address, formatted for display or use on a mailing label. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
-        // street_address
-        // Full street address component, which MAY include house number, street name, Post Office Box, and multi-line extended street address information. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+        /**
+         * Full mailing address, formatted for display or use on a mailing label. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+         * street_address
+         * Full street address component, which MAY include house number, street name, Post Office Box, and multi-line extended street address information. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+        */
         formatted: string;
         // City or locality component.
         locality: string;
@@ -191,25 +206,15 @@ export type UserAttributes = {
         country: string;
     };
     /**
-     * User's gender. Can be "female" and "male".<br>
+     * User's gender. Can be "female" and "male".
      * Other values may be used when neither of the defined values are applicable.
+     * Only visible to others when set to public.
      */
     gender?: string;
-    /** User's birthdate. String format: "1969-07-16" */
+    /** User's birthdate. String format: "1969-07-16", only visible to others when set to public.*/
     birthdate?: string;
-    /** User's E-mail is public when true. E-Mail should be verified. */
-    email_public?: boolean;
-    /** User's phone number is public when true. Phone number should be verified. */
-    phone_number_public?: boolean;
-    /** User's address is public when true. */
-    address_public?: boolean;
-    /** User's gender is public when true. */
-    gender_public?: boolean;
-    /** User's birthdate is public when true. */
-    birthdate_public?: boolean;
-    // /** User has subscribed to service e-mail when positive number. Number value is the access group of the user account. E-mail should be verified. */
-    // email_subscription?: number;
-    /** Additional string value that can be used freely. */
+
+    /** Additional string value that can be used freely. This is only accessible to the owner of the account and the admins. */
     misc?: string;
     picture?: string;
     profile?: string;
@@ -234,56 +239,9 @@ export type UserProfile = {
     phone_number_verified?: boolean;
     /** Shows 'PASS' if the user's account signup was successful. 'MEMBER' if signup confirmation was successful. */
     signup_ticket?: string;
-} & UserAttributes;
+} & UserAttributes & UserProfilePublicSettings;
 
 export type PublicUser = {
-    /** User's name */
-    name?: string;
-    /**
-     * User's E-Mail for signin.<br>
-     * 64 character max.<br>
-     * When E-Mail is changed, E-Mail verified state will be changed to false.<br>
-     * E-Mail is only visible to others when set to public.<br>
-     * E-Mail should be verified to set to public.
-     * */
-    email?: string;
-    /**
-     * User's phone number. Format: "+0012341234"<br>
-     * When phone number is changed, phone number verified state will be changed to false.<br>
-     * Phone number is only visible to others when set to public.<br>
-     * Phone number should be verified to set to public.
-     */
-    phone_number?: string;
-    /** User's address */
-    address?: string | {
-        // Full mailing address, formatted for display or use on a mailing label. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
-        // street_address
-        // Full street address component, which MAY include house number, street name, Post Office Box, and multi-line extended street address information. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
-        formatted: string;
-        // City or locality component.
-        locality: string;
-        // State, province, prefecture, or region component.
-        region: string;
-        // Zip code or postal code component.
-        postal_code: string;
-        // Country name component.
-        country: string;
-    };
-    /**
-     * User's gender. Can be "female" and "male".<br>
-     * Other values may be used when neither of the defined values are applicable.
-     */
-    gender?: string;
-    /** User's birthdate. String format: "1969-07-16" */
-    birthdate?: string;
-    /** Additional string value that can be used freely. */
-    misc?: string;
-    /** Number of the user's subscribers. */
-    subscribers?: number;
-    /** Number of the records the user have created. */
-    records?: number;
-    /** Timestamp of user signup time. */
-    timestamp: number;
     /** Service id of the user account. */
     service: string;
     /** User ID of the service owner. */
@@ -294,11 +252,13 @@ export type PublicUser = {
     user_id: string;
     /** Country code of where user first signed up from. */
     locale: string;
-    picture?: string;
-    profile?: string;
-    website?: string;
-    nickname?: string;
-};
+    /** Number of the user's subscribers. */
+    subscribers?: number;
+    /** Number of the records the user have created. */
+    records?: number;
+    /** Timestamp of user last signup time. */
+    timestamp: number;
+} & UserAttributes;
 
 export type ProgressCallback = (e: {
     status: 'upload' | 'download';
