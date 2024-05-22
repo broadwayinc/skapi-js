@@ -94,7 +94,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.89';
+    version = '1.0.90';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
