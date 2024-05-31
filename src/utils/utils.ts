@@ -187,11 +187,21 @@ function generateRandom(length = 6) {
     return result;
 }
 
-function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key: string]: any }): { data: any, files: { name: string, file: File }[] } {
+function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key: string]: any }, options?: {
+    nullIfEmpty?: boolean,
+    ignoreEmpty?: boolean,
+}): { data: any, files: { name: string, file: File }[] } {
     let data = {};
     let files = [];
 
     function appendData(data, key, val) {
+        if (options?.ignoreEmpty && val === '') {
+            return;
+        }
+        if (options?.nullIfEmpty && val === '') {
+            val = null;
+        }
+        
         // key is a[b][c]
         // a[b][c][0] when array
         // if a[b][c] exists, then a[b][c] = [a[b][c], val]
