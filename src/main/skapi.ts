@@ -94,7 +94,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.93';
+    version = '1.0.94';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -396,7 +396,7 @@ export default class Skapi {
     clientSecretRequest(params: {
         url: string;
         clientSecretName: string;
-        method: 'GET' | 'POST';
+        method: 'GET' | 'POST' | 'DELETE' | 'PUT';
         headers?: { [key: string]: string };
         data?: { [key: string]: any };
         params?: { [key: string]: string };
