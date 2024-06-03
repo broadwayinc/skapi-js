@@ -30,12 +30,13 @@ export async function clientSecretRequest(params: {
         clientSecretName: 'string',
         method: (v: string) => {
             if (v && typeof v !== 'string') {
-                throw new SkapiError('"method" should be type: <string>.', { code: 'INVALID_PARAMETER' });
+                throw new SkapiError('"method" should be either "GET" or "POST" or "DELETE" or "PUT".', { code: 'INVALID_PARAMETER' });
             }
-            if (v.toLowerCase() !== 'get' && v.toLowerCase() !== 'post') {
-                throw new SkapiError('"method" should be either "GET" or "POST".', { code: 'INVALID_PARAMETER' });
+            let lo = v.toLowerCase();
+            if (lo !== 'get' && lo !== 'post' && lo !== 'delete' && lo !== 'put') {
+                throw new SkapiError('"method" should be either "GET" or "POST" or "DELETE" or "PUT".', { code: 'INVALID_PARAMETER' });
             }
-            return v.toLowerCase();
+            return lo;
         },
         headers: (v: any) => {
             if (v && typeof v !== 'object') {
