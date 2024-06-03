@@ -9,7 +9,7 @@ import { request } from '../utils/network';
 export async function clientSecretRequest(params: {
     url: string;
     clientSecretName: string;
-    method: 'GET' | 'POST';
+    method: 'GET' | 'POST' | 'DELETE' | 'PUT';
     headers?: { [key: string]: string };
     data?: { [key: string]: any };
     params?: { [key: string]: string };
