@@ -94,7 +94,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.95';
+    version = '1.0.96';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -686,7 +686,7 @@ export default class Skapi {
             record_id: string; // Record ID of a record to upload files to. Not required if request is 'host'.
             progress?: ProgressCallback;
         }
-    ): Promise<{ completed: File[], failed: File[]; }> { return uploadFiles.bind(this)(fileList, params); }
+    ): Promise<{ completed: File[], failed: File[], bin_endpoints: string[] }> { return uploadFiles.bind(this)(fileList, params); }
     @formHandler()
     mock(
         data: Form<any | { raise: 'ERR_INVALID_REQUEST' | 'ERR_INVALID_PARAMETER' | 'SOMETHING_WENT_WRONG' | 'ERR_EXISTS' | 'ERR_NOT_EXISTS'; }>,
