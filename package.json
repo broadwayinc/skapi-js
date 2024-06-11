@@ -1,7 +1,7 @@
 {
   "name": "skapi-js",
   "version": "1.0.96",
-  "description": "Skapi: Backend API Library for HTML frontend.",
+  "description": "Skapi: Backend API for HTML frontend.",
   "main": "dist/skapi.module.js",
   "types": "js/Main.d.ts",
   "files": [
@@ -35,7 +35,6 @@
     "api",
     "daas",
     "serverless",
-    "frontend",
     "database"
   ]
 }
