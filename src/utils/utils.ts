@@ -187,18 +187,19 @@ function generateRandom(length = 6) {
     return result;
 }
 
-function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key: string]: any }, options?: {
+function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key: string]: any } | number | string | boolean | null, options?: {
     nullIfEmpty?: boolean,
     ignoreEmpty?: boolean,
 }): { data: any, files: { name: string, file: File }[] } {
     let data = {};
     let files = [];
 
-    function sizeof(object) {
-        let str;
+    function sizeof(object: any) {
+        let str: string;
         try {
             str = JSON.stringify(object);
-        } catch (e) {
+        }
+        catch (e) {
             throw new SkapiError('Invalid data type.', { code: 'INVALID_REQUEST' });
         }
         return new Blob([str]).size;
@@ -257,7 +258,7 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
             }
         }
     }
-    
+
     function handleFile(files, name, v) {
         if (v instanceof File) {
             files.push({ name, file: v });
@@ -354,6 +355,7 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
         }
         return { data, files };
     }
+    
     if (sizeof(form) > 2 * 1024 * 1024) {
         throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
     }
