@@ -194,6 +194,16 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
     let data = {};
     let files = [];
 
+    function sizeof(object) {
+        let str;
+        try {
+            str = JSON.stringify(object);
+        } catch (e) {
+            throw new SkapiError('Invalid data type.', { code: 'INVALID_REQUEST' });
+        }
+        return new Blob([str]).size;
+    }
+
     function appendData(data, key, val) {
         if (options?.ignoreEmpty && val === '') {
             return;
@@ -201,7 +211,7 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
         if (options?.nullIfEmpty && val === '') {
             val = null;
         }
-        
+
         // key is a[b][c]
         // a[b][c][0] when array
         // if a[b][c] exists, then a[b][c] = [a[b][c], val]
@@ -247,6 +257,7 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
             }
         }
     }
+    
     function handleFile(files, name, v) {
         if (v instanceof File) {
             files.push({ name, file: v });
@@ -262,6 +273,7 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
             }
         }
     }
+
     if (form instanceof FormData) {
         for (let pair of form.entries()) {
             let name = pair[0];
@@ -272,6 +284,9 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
             else {
                 appendData(data, name, v);
             }
+        }
+        if (sizeof(data) > 2 * 1024 * 1024) {
+            throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
         }
         return { data, files };
     }
@@ -333,13 +348,14 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
                 }
             }
         }
-        function sizeof(object) {
-            return new Blob([JSON.stringify(object)]).size;
-        }
+
         if (sizeof(data) > 2 * 1024 * 1024) {
             throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
         }
         return { data, files };
+    }
+    if (sizeof(form) > 2 * 1024 * 1024) {
+        throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
     }
     return { data: form, files };
 }
