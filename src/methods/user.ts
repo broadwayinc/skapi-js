@@ -890,7 +890,7 @@ export async function createAccount(
             Value: this.owner
         }),
         new CognitoUserAttribute({
-            Name: 'custom:signup_key',
+            Name: 'custom:signup',
             Value: signup_key
         })
     ];
