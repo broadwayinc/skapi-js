@@ -425,7 +425,22 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                         catch (err) { }
                         res(result);
                     }
-                } else {
+                }
+
+                else if (xhr.status === 429) {
+                    // too many requests
+                    let retryAfter = xhr.getResponseHeader('Retry-After');
+                    if (retryAfter) {
+                        setTimeout(() => {
+                            _fetch(url, opt, progress).then(res, rej);
+                        }, parseInt(retryAfter) * 1000);
+                    }
+                    else {
+                        rej('Too many requests');
+                    }
+                }
+
+                else {
                     // Status codes outside the 2xx range indicate errors
                     let status = xhr.status;
                     let errCode = [
@@ -600,7 +615,20 @@ export async function uploadFiles(
                 catch (err) { }
                 if (xhr.status >= 200 && xhr.status < 300) {
                     res(result);
-                } else {
+                }
+                else if (xhr.status === 429) {
+                    // too many requests
+                    let retryAfter = xhr.getResponseHeader('Retry-After');
+                    if (retryAfter) {
+                        setTimeout(() => {
+                            fetchProgress(url, body, progressCallback).then(res, rej);
+                        }, parseInt(retryAfter) * 1000);
+                    }
+                    else {
+                        rej('Too many requests');
+                    }
+                }
+                else {
                     rej(result);
                 }
             };
