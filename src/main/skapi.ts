@@ -84,7 +84,8 @@ import {
     getTickets,
     registerTicket,
     unregisterTicket,
-    jwtLogin
+    jwtLogin,
+    createAccount
 } from '../methods/user';
 import {
     extractFormData,
@@ -710,6 +711,32 @@ export default class Skapi {
         }>): Promise<UserProfile> { return login.bind(this)(form); }
     @formHandler()
     logout(): Promise<'SUCCESS: The user has been logged out.'> { return logout.bind(this)(); }
+
+    @formHandler({ preventMultipleCalls: true })
+    createAccount(
+        form: Form<UserAttributes & { email: String, password: String; username?:string; }>,
+        option?: {
+            /**
+             * When true, the service will send out confirmation E-Mail.
+             * User will not be able to signin to their account unless they have confirm their email.
+             * Parameter also accepts URL string for user to be taken to when clicked on confirmation link.
+             * Default is false.
+             */
+            signup_confirmation?: boolean | string;
+            /**
+             * When true, user will be subscribed to the service newsletter (group 1) once they are signed up.
+             * User's signup confirmation is required for this parameter.
+             * Default is false.
+             */
+            email_subscription?: boolean;
+            /**
+             * Automatically login to account after signup. Will not work if signup confirmation is required.
+             */
+            login?: boolean;
+        } & { progress?: ProgressCallback }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
+        return createAccount.bind(this)(form, option);
+    }
+
     @formHandler({ preventMultipleCalls: true })
     signup(
         form: Form<UserAttributes & { email: String, password: String; }>,
