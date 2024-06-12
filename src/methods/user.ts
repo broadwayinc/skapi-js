@@ -362,10 +362,8 @@ export function authentication() {
         });
     };
 
-    const createCognitoUser = async (email: string) => {
-        if (!email) throw new SkapiError('E-Mail is required.', { code: 'INVALID_PARAMETER' });
-        // let hash = this.__serviceHash[email] || (await this.updateConnection({ request_hash: email })).hash;
-        let username = email.includes(this.service + '-') ? email : this.service + '-' + MD5.hash(email);
+    const createCognitoUser = (un: string) => {
+        let username = un.includes(this.service + '-') ? un : this.service + '-' + MD5.hash(un);
 
         return {
             cognitoUser: new CognitoUser({
@@ -381,77 +379,77 @@ export function authentication() {
             this.__request_signup_confirmation = null;
             this.__disabledAccount = null;
 
-            createCognitoUser(email).then(initUser => {
-                let username = initUser.cognitoUsername;
-                let authenticationDetails = new AuthenticationDetails({
-                    Username: username,
-                    Password: password
-                });
+            let initUser = createCognitoUser(email);
+            let username = initUser.cognitoUsername;
+            let authenticationDetails = new AuthenticationDetails({
+                Username: username,
+                Password: password
+            });
 
-                initUser.cognitoUser.authenticateUser(authenticationDetails, {
-                    newPasswordRequired: (userAttributes, requiredAttributes) => {
-                        this.__disabledAccount = null;
-                        this.__request_signup_confirmation = username;
-                        if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER') {
-                            // auto confirm
-                            initUser.cognitoUser.completeNewPasswordChallenge(password, {}, {
-                                onSuccess: _ => {
-                                    cognitoUser = initUser.cognitoUser;
-                                    getSession().then(session => res(this.user));
-                                },
-                                onFailure: (err: any) => {
-                                    rej(new SkapiError(err.message || 'Failed to authenticate user.', { code: err.code }));
-                                }
-                            });
+            initUser.cognitoUser.authenticateUser(authenticationDetails, {
+                newPasswordRequired: (userAttributes, requiredAttributes) => {
+                    this.__disabledAccount = null;
+                    this.__request_signup_confirmation = username;
+                    if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER') {
+                        // auto confirm - (setting password from admin created account)
+                        initUser.cognitoUser.completeNewPasswordChallenge(password, {}, {
+                            onSuccess: _ => {
+                                cognitoUser = initUser.cognitoUser;
+                                getSession().then(session => res(this.user));
+                            },
+                            onFailure: (err: any) => {
+                                rej(new SkapiError(err.message || 'Failed to authenticate user.', { code: err.code }));
+                            }
+                        });
+                    }
+                    else {
+                        // legacy method... will be deprecated
+                        rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
+                    }
+                },
+                onSuccess: _ => getSession().then(_ => {
+                    this.__disabledAccount = null;
+                    res(this.user);
+                }),
+                onFailure: (err: any) => {
+                    let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
+
+                    if (err.code === "NotAuthorizedException") {
+                        if (err.message === "User is disabled.") {
+                            this.__disabledAccount = username;
+                            error = ['This account is disabled.', 'USER_IS_DISABLED'];
                         }
+
                         else {
-                            rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
-                        }
-                    },
-                    onSuccess: _ => getSession().then(_ => {
-                        this.__disabledAccount = null;
-                        res(this.user);
-                    }),
-                    onFailure: (err: any) => {
-                        let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
-
-                        if (err.code === "NotAuthorizedException") {
-                            if (err.message === "User is disabled.") {
-                                this.__disabledAccount = username;
-                                error = ['This account is disabled.', 'USER_IS_DISABLED'];
-                            }
-
-                            else {
-                                error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
-                            }
-                        }
-                        else if (err.code === "UserNotFoundException") {
                             error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
                         }
-                        // else if (err.code === "UserNotConfirmedException") {
-                        //     this.__request_signup_confirmation = username;
-                        //     error = ["User's signup confirmation is required.", 'SIGNUP_CONFIRMATION_NEEDED'];
-                        // }
-                        else if (err.code === "TooManyRequestsException" || err.code === "LimitExceededException") {
-                            error = ['Too many attempts. Please try again later.', 'REQUEST_EXCEED'];
-                        }
-
-                        let errCode = error[1];
-                        let errMsg = error[0];
-                        let customErr = error[0].split('#');
-
-                        // "#INVALID_REQUEST: the account has been blacklisted."
-                        // "#NOT_EXISTS: the account does not exist."
-
-                        if (customErr.length > 1) {
-                            customErr = customErr[customErr.length - 1].split(':');
-                            errCode = customErr[0];
-                            errMsg = customErr[1];
-                        }
-
-                        rej(new SkapiError(errMsg, { code: errCode, cause: err }));
                     }
-                });
+                    else if (err.code === "UserNotFoundException") {
+                        error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
+                    }
+                    else if (err.code === "UserNotConfirmedException") {
+                        this.__request_signup_confirmation = username;
+                        error = ["User's signup confirmation is required.", 'SIGNUP_CONFIRMATION_NEEDED'];
+                    }
+                    else if (err.code === "TooManyRequestsException" || err.code === "LimitExceededException") {
+                        error = ['Too many attempts. Please try again later.', 'REQUEST_EXCEED'];
+                    }
+
+                    let errCode = error[1];
+                    let errMsg = error[0];
+                    let customErr = error[0].split('#');
+
+                    // "#INVALID_REQUEST: the account has been blacklisted."
+                    // "#NOT_EXISTS: the account does not exist."
+
+                    if (customErr.length > 1) {
+                        customErr = customErr[customErr.length - 1].split(':');
+                        errCode = customErr[0];
+                        errMsg = customErr[1];
+                    }
+
+                    rej(new SkapiError(errMsg, { code: errCode, cause: err }));
+                }
             });
         });
     };
@@ -629,7 +627,19 @@ export async function signup(
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v),
         name: 'string',
-        address: 'string',
+        address: (v: any) => {
+            if (!v) return '';
+
+            if (typeof v === 'string') {
+                return v;
+            }
+
+            if (typeof v === 'object') {
+                return JSON.stringify(v);
+            }
+
+            return undefined;
+        },
         gender: 'string',
         birthdate: (v: string) => validator.Birthdate(v),
         phone_number: (v: string) => validator.PhoneNumber(v),
@@ -721,7 +731,7 @@ export async function signup(
 
     if (!is_admin) {
         if (signup_confirmation) {
-            let u = await authentication.bind(this)().createCognitoUser(params.username || params.email);
+            let u = authentication.bind(this)().createCognitoUser(params.username || params.email);
             cognitoUser = u.cognitoUser;
             this.__request_signup_confirmation = u.cognitoUsername;
             return "SUCCESS: The account has been created. User's signup confirmation is required.";
@@ -736,6 +746,197 @@ export async function signup(
     }
 
     return resp;
+}
+
+export async function createAccount(
+    form: Form<UserAttributes & { email: String; password: String; username?: string; }>,
+    option?: {
+        signup_confirmation?: boolean | string;
+        email_subscription?: boolean;
+        login?: boolean;
+    } & { progress?: ProgressCallback }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
+    let is_admin = await checkAdmin.bind(this)();
+    let paramRestrictions = {
+        username: 'string',
+
+        email: (v: string) => validator.Email(v),
+        password: (v: string) => validator.Password(v),
+        name: 'string',
+        address: (v: any) => {
+            if (!v) return '';
+
+            if (typeof v === 'string') {
+                return v;
+            }
+
+            if (typeof v === 'object') {
+                return JSON.stringify(v);
+            }
+
+            return undefined;
+        },
+        gender: 'string',
+        birthdate: (v: string) => validator.Birthdate(v),
+        phone_number: (v: string) => validator.PhoneNumber(v),
+
+        email_public: ['boolean', () => false],
+        address_public: ['boolean', () => false],
+        gender_public: ['boolean', () => false],
+        birthdate_public: ['boolean', () => false],
+        phone_number_public: ['boolean', () => false],
+        access_group: 'number',
+        misc: 'string',
+
+        picture: (v: string) => { if (v) return validator.Url(v); else return undefined },
+        profile: (v: string) => { if (v) return validator.Url(v); else return undefined },
+        family_name: 'string',
+        given_name: 'string',
+        middle_name: 'string',
+        nickname: 'string',
+        website: (v: string) => { if (v) return validator.Url(v); else return undefined },
+    };
+
+    let params = validator.Params(form || {}, paramRestrictions, is_admin ? ['email'] : ['email', 'password']);
+
+    let admin_creating_account = is_admin && params.service && this.service !== params.service;
+
+    if (!is_admin) {
+        if (params.access_group) {
+            throw new SkapiError('Only admins can set "access_group" parameter.', { code: 'INVALID_PARAMETER' });
+        }
+
+        // always logout before creating an account (for users)
+        await this.logout();
+    }
+
+    option = validator.Params(option || {}, {
+        email_subscription: (v: boolean) => {
+            if (typeof v !== 'boolean') {
+                throw new SkapiError('"option.email_subscription" should be type: <boolean>.', { code: 'INVALID_PARAMETER' });
+            }
+            if (!option?.signup_confirmation) {
+                // requires to be url or true
+                throw new SkapiError('"option.signup_confirmation" is required for email subscription.', { code: 'INVALID_PARAMETER' });
+            }
+            return v;
+        },
+        signup_confirmation: (v: string | boolean) => {
+            if (typeof v === 'string') {
+                return validator.Url(v);
+            }
+            else if (typeof v === 'boolean') {
+                return v;
+            }
+            else {
+                throw new SkapiError('"option.signup_confirmation" should be type: <string | boolean>.', { code: 'INVALID_PARAMETER' });
+            }
+        },
+        login: (v: boolean) => {
+            if (typeof v === 'boolean') {
+                if (option.signup_confirmation && v) {
+                    throw new SkapiError('"login" is not allowed when "option.signup_confirmation" is true.', { code: 'INVALID_PARAMETER' });
+                }
+                return v;
+            }
+            throw new SkapiError('"option.login" should be type: boolean.', { code: 'INVALID_PARAMETER' });
+        }
+    });
+
+    let logUser = option?.login || false;
+    let signup_confirmation = option?.signup_confirmation || false;
+
+    if (admin_creating_account && signup_confirmation && params?.password) {
+        throw new SkapiError('Admins cannot create an account with "option.signup_confirmation" option.', { code: 'INVALID_PARAMETER' });
+    }
+
+    if (params.email_public && !signup_confirmation) {
+        throw new SkapiError('"option.signup_confirmation" should be true if "email_public" is set to true.', { code: 'INVALID_PARAMETER' });
+    }
+
+    params.signup_confirmation = signup_confirmation;
+    params.email_subscription = option?.email_subscription || false;
+
+    if (!admin_creating_account) {
+        delete params.service;
+        delete params.owner;
+    }
+
+    // cognito signup process below
+
+    if (is_admin) {
+        let resp = await request.bind(this)("signup", params, { auth: is_admin });
+        return resp;
+    }
+
+    let newUser = authentication.bind(this)().createCognitoUser(params.username || params.email);
+
+    let signup_key = await request.bind(this)('signupkey', {
+        username: newUser.cognitoUsername,
+        signup_confirmation: typeof signup_confirmation === 'boolean' ? JSON.stringify(signup_confirmation) : signup_confirmation,
+        email_subscription: params.email_subscription,
+    })
+
+    let attributeList = [
+        new CognitoUserAttribute({
+            Name: 'preferred_username',
+            Value: newUser.cognitoUsername
+        }),
+        new CognitoUserAttribute({
+            Name: 'custom:service',
+            Value: this.service
+        }),
+        new CognitoUserAttribute({
+            Name: 'custom:owner',
+            Value: this.owner
+        }),
+        new CognitoUserAttribute({
+            Name: 'custom:signup',
+            Value: signup_key
+        })
+    ];
+
+    for (let k in paramRestrictions) {
+        let customParams = [
+            'email_public',
+            'address_public',
+            'gender_public',
+            'birthdate_public',
+            'phone_number_public',
+            'access_group',
+            'misc'
+        ];
+        if (k === 'username') {
+            attributeList.push(new CognitoUserAttribute({
+                Name: 'preferred_username',
+                Value: newUser.cognitoUsername
+            }));
+        }
+        else if (customParams.includes(k)) {
+            attributeList.push(new CognitoUserAttribute({
+                Name: 'custom:' + k,
+                Value: params[k]
+            }));
+        }
+        else {
+            attributeList.push(new CognitoUserAttribute({
+                Name: k,
+                Value: params[k]
+            }));
+        }
+    }
+
+    if (signup_confirmation) {
+        cognitoUser = newUser.cognitoUser;
+        this.__request_signup_confirmation = newUser.cognitoUsername;
+        return "SUCCESS: The account has been created. User's signup confirmation is required.";
+    }
+
+    if (logUser) {
+        // log user in
+        return login.bind(this)({ email: params.username || params.email, password: params.password });
+    }
+
+    return 'SUCCESS: The account has been created.';
 }
 
 export async function disableAccount(): Promise<'SUCCESS: account has been disabled.'> {
@@ -766,7 +967,7 @@ export async function resetPassword(form: Form<{
     }
 
     return new Promise(async (res, rej) => {
-        let cognitoUser = (await authentication.bind(this)().createCognitoUser(params.email)).cognitoUser;
+        let cognitoUser = authentication.bind(this)().createCognitoUser(params.email).cognitoUser;
 
         cognitoUser.confirmPassword(code, new_password, {
             onSuccess: result => {
@@ -869,7 +1070,7 @@ export async function forgotPassword(
     }, ['email']);
 
     return new Promise(async (res, rej) => {
-        let cognitoUser = (await authentication.bind(this)().createCognitoUser(params.email)).cognitoUser;
+        let cognitoUser = authentication.bind(this)().createCognitoUser(params.email).cognitoUser;
         cognitoUser.forgotPassword({
             onSuccess: result => {
                 res("SUCCESS: Verification code has been sent.");
@@ -950,7 +1151,7 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
                 return JSON.stringify(v);
             }
 
-            return '';
+            return undefined;
         },
         name: 'string',
         gender: 'string',
