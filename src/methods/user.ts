@@ -896,14 +896,6 @@ export async function createAccount(
 
     let attributeList = [
         new CognitoUserAttribute({
-            Name: 'custom:service',
-            Value: this.service
-        }),
-        new CognitoUserAttribute({
-            Name: 'custom:owner',
-            Value: this.owner
-        }),
-        new CognitoUserAttribute({
             Name: 'custom:signup',
             Value: signup_key
         })
@@ -916,12 +908,19 @@ export async function createAccount(
             'gender_public',
             'birthdate_public',
             'phone_number_public',
-            'misc'
+            'misc',
+            'service',
+            'owner'
         ];
+        if (k === "") {
+            continue;
+        }
+
         if (k === 'username' || k === 'password' || k === 'access_group') {
             continue;
         }
-        else if (customParams.includes(k)) {
+        
+        if (customParams.includes(k)) {
             attributeList.push(new CognitoUserAttribute({
                 Name: 'custom:' + k,
                 Value: params[k]
