@@ -776,9 +776,9 @@ export async function createAccount(
     let is_admin = await checkAdmin.bind(this)();
     let paramRestrictions = {
         username: 'string',
+        password: (v: string) => validator.Password(v),
 
         email: (v: string) => validator.Email(v),
-        password: (v: string) => validator.Password(v),
         name: 'string',
         address: (v: any) => {
             if (!v) return '';
@@ -916,14 +916,10 @@ export async function createAccount(
             'gender_public',
             'birthdate_public',
             'phone_number_public',
-            'access_group',
             'misc'
         ];
-        if (k === 'username') {
-            attributeList.push(new CognitoUserAttribute({
-                Name: 'preferred_username',
-                Value: newUser.cognitoUsername
-            }));
+        if (k === 'username' || k === 'password' || k === 'access_group') {
+            continue;
         }
         else if (customParams.includes(k)) {
             attributeList.push(new CognitoUserAttribute({
