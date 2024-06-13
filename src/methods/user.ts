@@ -885,7 +885,7 @@ export async function createAccount(
 
     // user creating account
     let newUser = authentication.bind(this)().createCognitoUser(params.username || params.email);
-
+    
     let signup_key = await request.bind(this)('signupkey', {
         username: newUser.cognitoUsername,
         signup_confirmation: typeof signup_confirmation === 'boolean' ? JSON.stringify(signup_confirmation) : signup_confirmation,
@@ -899,7 +899,11 @@ export async function createAccount(
         }),
         new CognitoUserAttribute({
             Name: 'locale',
-            Value: signup_key.split('#')[2]
+            Value: signup_key.split('#')[3]
+        }),
+        new CognitoUserAttribute({
+            Name: 'custom:signup_ticket',
+            Value: signup_confirmation ? signup_key.split('#')[1] : 'PASS'
         })
     ];
 
