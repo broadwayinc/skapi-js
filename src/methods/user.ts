@@ -874,16 +874,14 @@ export async function createAccount(
     params.signup_confirmation = signup_confirmation;
     params.email_subscription = option?.email_subscription || false;
 
-    if (!admin_creating_account) {
-        delete params.service;
-        delete params.owner;
-    }
-
     // cognito signup process below
 
     if (is_admin) {
         return await request.bind(this)("signup", params, { auth: is_admin });
     }
+
+    params.service = this.service;
+    params.owner = this.owner;
 
     // user creating account
     let newUser = authentication.bind(this)().createCognitoUser(params.username || params.email);
@@ -898,6 +896,10 @@ export async function createAccount(
         new CognitoUserAttribute({
             Name: 'custom:signup',
             Value: signup_key
+        }),
+        new CognitoUserAttribute({
+            Name: 'locale',
+            Value: signup_key.split('#')[2]
         })
     ];
 
@@ -919,7 +921,7 @@ export async function createAccount(
         if (k === 'username' || k === 'password' || k === 'access_group') {
             continue;
         }
-        
+
         if (customParams.includes(k)) {
             attributeList.push(new CognitoUserAttribute({
                 Name: 'custom:' + k,
