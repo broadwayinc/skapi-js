@@ -439,13 +439,18 @@ export function authentication() {
                     let errMsg = error[0];
                     let customErr = error[0].split('#');
 
-                    // "#INVALID_REQUEST: the account has been blacklisted."
-                    // "#NOT_EXISTS: the account does not exist."
+                    // "#INVALID_REQUEST: the account has been blacklisted"
+                    // "#NOT_EXISTS: the account does not exist"
+                    // "#CONFIRM_REQUIRED": The account signup needs to be confirmed"
 
                     if (customErr.length > 1) {
                         customErr = customErr[customErr.length - 1].split(':');
                         errCode = customErr[0];
                         errMsg = customErr[1];
+                        if(errCode === 'CONFIRM_REQUIRED') {
+                            this.__request_signup_confirmation = username;
+                            rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
+                        }
                     }
 
                     rej(new SkapiError(errMsg, { code: errCode, cause: err }));
