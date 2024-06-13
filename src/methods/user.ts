@@ -914,7 +914,7 @@ export async function createAccount(
             'service',
             'owner'
         ];
-        if (k === "") {
+        if (params[k] === "") {
             continue;
         }
 
