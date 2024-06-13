@@ -447,7 +447,7 @@ export function authentication() {
                         customErr = customErr[customErr.length - 1].split(':');
                         errCode = customErr[0];
                         errMsg = customErr[1];
-                        if(errCode === 'CONFIRM_REQUIRED') {
+                        if (errCode === 'CONFIRM_REQUIRED') {
                             this.__request_signup_confirmation = username;
                             rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
                         }
@@ -459,12 +459,25 @@ export function authentication() {
         });
     };
 
+    const signup = (username: string, password: string, attributes: CognitoUserAttribute[]) => {
+        return new Promise((res, rej) => {
+            userPool.signUp(username, password, attributes, null, (err, result) => {
+                if (err) {
+                    rej(err);
+                    return;
+                }
+                res(result);
+                return;
+            });
+        })
+    }
+
     return {
         getSession,
         authenticateUser,
         createCognitoUser,
         getUser,
-        // signup
+        signup
     };
 }
 
@@ -869,10 +882,10 @@ export async function createAccount(
     // cognito signup process below
 
     if (is_admin) {
-        let resp = await request.bind(this)("signup", params, { auth: is_admin });
-        return resp;
+        return await request.bind(this)("signup", params, { auth: is_admin });
     }
 
+    // user creating account
     let newUser = authentication.bind(this)().createCognitoUser(params.username || params.email);
 
     let signup_key = await request.bind(this)('signupkey', {
@@ -929,6 +942,9 @@ export async function createAccount(
             }));
         }
     }
+
+    let signupResult = await authentication.bind(this)().signup(newUser.cognitoUsername, params.password, attributeList);
+    console.log({ signupResult });
 
     if (signup_confirmation) {
         cognitoUser = newUser.cognitoUser;
