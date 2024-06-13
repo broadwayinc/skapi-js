@@ -896,15 +896,15 @@ export async function createAccount(
 
     let attributeList = [
         new CognitoUserAttribute({
-            Name: 'custom:service',
+            Name: 'service',
             Value: this.service
         }),
         new CognitoUserAttribute({
-            Name: 'custom:owner',
+            Name: 'owner',
             Value: this.owner
         }),
         new CognitoUserAttribute({
-            Name: 'custom:signup',
+            Name: 'signup',
             Value: signup_key
         })
     ];
