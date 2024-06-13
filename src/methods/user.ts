@@ -936,8 +936,7 @@ export async function createAccount(
         }
     }
 
-    let signupResult = await authentication.bind(this)().signup(newUser.cognitoUsername, params.password, attributeList);
-    console.log({ signupResult });
+    await authentication.bind(this)().signup(newUser.cognitoUsername, params.password, attributeList);
 
     if (signup_confirmation) {
         cognitoUser = newUser.cognitoUser;
