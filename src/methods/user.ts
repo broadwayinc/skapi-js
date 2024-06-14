@@ -772,7 +772,7 @@ export async function createAccount(
         signup_confirmation?: boolean | string;
         email_subscription?: boolean;
         login?: boolean;
-    } & { progress?: ProgressCallback }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
+    }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
     let is_admin = await checkAdmin.bind(this)();
     let paramRestrictions = {
         username: 'string',
@@ -890,7 +890,7 @@ export async function createAccount(
         username: newUser.cognitoUsername,
         signup_confirmation: typeof signup_confirmation === 'boolean' ? JSON.stringify(signup_confirmation) : signup_confirmation,
         email_subscription: params.email_subscription,
-    })
+    });
 
     let attributeList = [
         new CognitoUserAttribute({
@@ -903,7 +903,7 @@ export async function createAccount(
         }),
         new CognitoUserAttribute({
             Name: 'custom:signup_ticket',
-            Value: signup_confirmation ? signup_key.split('#')[1] : 'PASS'
+            Value: signup_confirmation ? signup_key.split('#')[1] : 'PASS' // 16 random char | 'PASS'
         })
     ];
 
