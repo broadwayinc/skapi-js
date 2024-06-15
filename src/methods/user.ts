@@ -877,7 +877,7 @@ export async function createAccount(
     // cognito signup process below
 
     if (is_admin) {
-        return await request.bind(this)("signup", params, { auth: is_admin });
+        return await request.bind(this)("admin-signup", params, { auth: true });
     }
 
     params.service = this.service;
