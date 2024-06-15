@@ -683,7 +683,7 @@ export async function signup(
 
     let admin_creating_account = is_admin && params.service && this.service !== params.service;
 
-    if (!is_admin) {
+    if (!admin_creating_account) {
         if (params.access_group) {
             throw new SkapiError('Only admins can set "access_group" parameter.', { code: 'INVALID_PARAMETER' });
         }
@@ -704,15 +704,22 @@ export async function signup(
             return v;
         },
         signup_confirmation: (v: string | boolean) => {
+            let value = v;
             if (typeof v === 'string') {
-                return validator.Url(v);
+                value = validator.Url(v);
             }
             else if (typeof v === 'boolean') {
-                return v;
+                value = v;
             }
             else {
                 throw new SkapiError('"option.signup_confirmation" should be type: <string | boolean>.', { code: 'INVALID_PARAMETER' });
             }
+
+            if (value && !params.email) {
+                throw new SkapiError('"email" is required for signup confirmation.', { code: 'INVALID_PARAMETER' });
+            }
+
+            return value;
         },
         login: (v: boolean) => {
             if (typeof v === 'boolean') {
@@ -726,22 +733,17 @@ export async function signup(
     });
 
     let logUser = option?.login || false;
-    let signup_confirmation = option?.signup_confirmation || false;
 
-    if (admin_creating_account && signup_confirmation && params?.password) {
-        throw new SkapiError('Admins cannot create an account with "option.signup_confirmation" option.', { code: 'INVALID_PARAMETER' });
-    }
+    params.signup_confirmation = option?.signup_confirmation || false;;
+    params.email_subscription = option?.email_subscription || false;
 
-    if (params.email_public && !signup_confirmation) {
+    if (params.email_public && !params.signup_confirmation) {
         throw new SkapiError('"option.signup_confirmation" should be true if "email_public" is set to true.', { code: 'INVALID_PARAMETER' });
     }
 
-    params.signup_confirmation = signup_confirmation;
-    params.email_subscription = option?.email_subscription || false;
-
     // cognito signup process below
 
-    if (is_admin) {
+    if (admin_creating_account) {
         return await request.bind(this)("admin-signup", params, { auth: true });
     }
 
@@ -750,10 +752,10 @@ export async function signup(
 
     // user creating account
     let newUser = authentication.bind(this)().createCognitoUser(params.username || params.email);
-    
+
     let signup_key = await request.bind(this)('signupkey', {
         username: newUser.cognitoUsername,
-        signup_confirmation: typeof signup_confirmation === 'boolean' ? JSON.stringify(signup_confirmation) : signup_confirmation,
+        signup_confirmation: typeof params.signup_confirmation === 'boolean' ? JSON.stringify(params.signup_confirmation) : params.signup_confirmation,
         email_subscription: params.email_subscription,
     });
 
@@ -768,7 +770,7 @@ export async function signup(
         }),
         new CognitoUserAttribute({
             Name: 'custom:signup_ticket',
-            Value: signup_confirmation ? signup_key.split('#')[1] : 'PASS' // 16 random char | 'PASS'
+            Value: params.signup_confirmation ? signup_key.split('#')[1] : 'PASS' // 16 random char | 'PASS'
         })
     ];
 
@@ -807,12 +809,12 @@ export async function signup(
 
     await authentication.bind(this)().signup(newUser.cognitoUsername, params.password, attributeList);
 
-    if (signup_confirmation) {
+    if (params.signup_confirmation) {
         cognitoUser = newUser.cognitoUser;
         this.__request_signup_confirmation = newUser.cognitoUsername;
         return "SUCCESS: The account has been created. User's signup confirmation is required.";
     }
-    else if (logUser && !admin_creating_account) {
+    else if (logUser) {
         // log user in
         return login.bind(this)({ email: params.username || params.email, password: params.password });
     }
