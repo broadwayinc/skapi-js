@@ -90,7 +90,8 @@ import {
     extractFormData,
     fromBase62,
     generateRandom,
-    toBase62
+    toBase62,
+    MD5
 } from '../utils/utils';
 export default class Skapi {
     // current version
@@ -193,6 +194,7 @@ export default class Skapi {
     };
 
     util = {
+        MD5,
         generateRandom,
         toBase62,
         fromBase62,
