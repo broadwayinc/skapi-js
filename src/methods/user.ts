@@ -638,7 +638,7 @@ export async function signup(
         email_subscription?: boolean;
         login?: boolean;
     }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
-    let is_admin = await checkAdmin.bind(this)();
+
     let paramRestrictions = {
         username: 'string',
         password: (v: string) => validator.Password(v),
@@ -679,18 +679,10 @@ export async function signup(
         website: (v: string) => { if (v) return validator.Url(v); else return undefined },
     };
 
-    let params = validator.Params(form || {}, paramRestrictions, is_admin ? ['email'] : ['email', 'password']);
+    let params = validator.Params(form || {}, paramRestrictions, ['email', 'password']);
 
-    let admin_creating_account = is_admin && params.service && this.service !== params.service;
-
-    if (!admin_creating_account) {
-        if (params.access_group) {
-            throw new SkapiError('Only admins can set "access_group" parameter.', { code: 'INVALID_PARAMETER' });
-        }
-
-        // always logout before creating an account (for users)
-        await this.logout();
-    }
+    // always logout before creating an account (for users)
+    await this.logout();
 
     option = validator.Params(option || {}, {
         email_subscription: (v: boolean) => {
@@ -742,10 +734,6 @@ export async function signup(
     }
 
     // cognito signup process below
-
-    if (admin_creating_account) {
-        return await request.bind(this)("admin-signup", params, { auth: true });
-    }
 
     params.service = this.service;
     params.owner = this.owner;
