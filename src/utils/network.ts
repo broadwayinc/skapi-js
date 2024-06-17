@@ -25,7 +25,6 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'post-secure':
         case 'subscribe-newsletter':
         case 'subscribe-public-newsletter':
-        case 'signup':
         case 'admin-signup':
         case 'confirm-signup':
         case 'recover-account':
