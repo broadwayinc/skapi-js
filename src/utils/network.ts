@@ -2,7 +2,7 @@
 import SkapiError from '../main/error';
 import { Form, FetchOptions, DatabaseResponse, ProgressCallback } from '../Types';
 import validator from './validator';
-import { MD5, generateRandom } from './utils';
+import { MD5, generateRandom, extractFormData } from './utils';
 
 async function getEndpoint(dest: string, auth: boolean) {
     const endpoints = await Promise.all([
@@ -111,7 +111,6 @@ export async function request(
             if (this.session.idToken.payload.exp < currTime) {
                 try {
                     await this.authentication().getSession({ refreshToken: true });
-
                 }
                 catch (err) {
                     this.logout();
@@ -158,31 +157,13 @@ export async function request(
     let required = _etc?.ignoreService ? {} : { service, owner };
     Object.assign(required, fetchOptions);
 
-    if (data instanceof SubmitEvent) {
-        data = data?.target;
-    }
-
-    if (data instanceof HTMLFormElement) {
-        data = new FormData(data);
-    }
-
-    let isForm = (data instanceof FormData);
+    data = extractFormData(data).data;
 
     if (!data) {
         // set data to required parameter
         data = required;
     }
-    else if (isForm) {
-        for (let k in required) {
-            // add required parameters as json in form
-            if (required[k] !== undefined) {
-                data.set(k, new Blob([JSON.stringify(required[k])], {
-                    type: 'application/json'
-                }));
-            }
-        }
-    }
-    else {
+    else if (data && typeof data === 'object') {
         // add required to data
         data = Object.assign(required, data);
     }
@@ -234,7 +215,7 @@ export async function request(
 
     let headers: Record<string, any> = {
         'Accept': '*/*',
-        "Content-Type": options?.contentType || (data instanceof FormData) ? 'multipart/form-data' : 'application/json'
+        "Content-Type": options?.contentType || 'application/json'
     };
 
     if (token) {
@@ -277,7 +258,7 @@ export async function request(
         opt.body = null;
     }
     else {
-        opt.body = data instanceof FormData ? data : data ? JSON.stringify(data) : null;
+        opt.body = data ? JSON.stringify(data) : null;
     }
 
     opt.method = method;
