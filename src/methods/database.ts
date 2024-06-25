@@ -544,25 +544,18 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                     if (indexTypes.hasOwnProperty(query.index.name)) {
                         let tp = indexTypes[query.index.name];
 
-                        if (typeof tp === 'string') {
-                            if (typeof v === tp) {
-                                if (!v) {
-                                    return;
-                                }
-                                return validator.specialChars((v as string), 'index.value', false, true);
-                            }
-
-                            else {
-                                throw new SkapiError(`"index.value" should be type: ${tp}.`, { code: 'INVALID_PARAMETER' });
-                            }
-                        }
-
                         if (typeof tp === 'function') {
                             return tp(v);
                         }
+
+                        if(tp !== typeof v) {
+                            throw new SkapiError(`"index.value" should be type: ${tp}.`, { code: 'INVALID_PARAMETER' });
+                        }
+
+                        return v;
                     }
 
-                    if (typeof v === 'number') {
+                    else if (typeof v === 'number') {
                         if (v > __index_number_range || v < -__index_number_range) {
                             throw new SkapiError(`Number value should be within range -${__index_number_range} ~ +${__index_number_range}`, { code: 'INVALID_PARAMETER' });
                         }
