@@ -216,7 +216,7 @@ export default class Skapi {
     private __connection: Promise<Connection>;
     private __authConnection: Promise<void>;
     private __socket: WebSocket;
-    private __socket_group: string;
+    private __socket_room: string;
     private __network_logs = false;
 
     constructor(service: string, owner: string, options?: { autoLogin: boolean; }, __etc?: any) {
@@ -378,7 +378,7 @@ export default class Skapi {
     private unregisterTicket = unregisterTicket.bind(this);
 
     connectRealtime(cb: (rt: {
-        status: 'message' | 'error' | 'success' | 'close' | 'notice';
+        type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private';
         message: any;
         sender?: string; // user_id of the sender
     }) => Promise<WebSocket>) {
@@ -448,12 +448,12 @@ export default class Skapi {
     }
 
     @formHandler()
-    postRealtime(message: any, recipient: string): Promise<{ status: 'success', message: 'Message sent.' }> {
+    postRealtime(message: any, recipient: string): Promise<{ type: 'success', message: 'Message sent.' }> {
         return postRealtime.bind(this)(message, recipient);
     }
 
     @formHandler()
-    joinRealtime(params: { group: string | null }): Promise<{ status: 'success', message: string }> {
+    joinRealtime(params: { group: string | null }): Promise<{ type: 'success', message: string }> {
         return joinRealtime.bind(this)(params);
     }
 
