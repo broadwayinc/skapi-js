@@ -450,6 +450,7 @@ export function authentication() {
                         if (errCode === 'CONFIRM_REQUIRED') {
                             this.__request_signup_confirmation = username;
                             rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
+                            return;
                         }
                     }
 
