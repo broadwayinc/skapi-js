@@ -21,25 +21,12 @@ async function prepareWebsocket() {
 }
 
 type RealtimeCallback = (rt: {
-    status: 'message' | 'error' | 'success' | 'close' | 'notice';
+    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private';
     message: any;
     sender?: string; // user_id of the sender
 }) => void;
 
 let reconnectAttempts = 0;
-
-export async function closeRealtime(): Promise<void> {
-    let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
-
-    if (socket) {
-        socket.close();
-    }
-
-    this.__socket = null;
-    this.__socket_group = null;
-
-    return null;
-}
 
 export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSocket> {
     if (typeof cb !== 'function') {
@@ -60,12 +47,12 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 
                 socket.onopen = () => {
                     reconnectAttempts = 0;
-                    cb({ status: 'success', message: 'Connected to WebSocket server.' });
+                    cb({ type: 'success', message: 'Connected to WebSocket server.' });
 
-                    if (this.__socket_group) {
+                    if (this.__socket_room) {
                         socket.send(JSON.stringify({
-                            action: 'joinGroup',
-                            rid: this.__socket_group,
+                            action: 'joinRoom',
+                            rid: this.__socket_room,
                             token: this.session.accessToken.jwtToken
                         }));
                     }
@@ -74,30 +61,34 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 
                 socket.onmessage = event => {
                     let data = JSON.parse(decodeURI(event.data));
-                    let status = 'message';
+                    let type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' = 'message';
 
                     if (data?.['#private']) {
-                        status = 'private';
+                        type = 'private';
                     }
 
                     else if (data?.['#notice']) {
-                        status = 'notice';
+                        type = 'notice';
                     }
 
-                    let ret: any = { status, message: (data?.['#message'] || data?.['#private'] || data?.['#notice']) || null };
+                    let msg: {
+                        type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private';
+                        message: any;
+                        sender?: string;
+                    } = { type, message: (data?.['#message'] || data?.['#private'] || data?.['#notice']) || null };
 
                     if (data?.['#user_id']) {
-                        ret.sender = data['#user_id'];
+                        msg.sender = data['#user_id'];
                     }
 
-                    cb(ret);
+                    cb(msg);
                 };
 
                 socket.onclose = event => {
                     if (event.wasClean) {
-                        cb({ status: 'close', message: 'WebSocket connection closed.' });
+                        cb({ type: 'close', message: 'WebSocket connection closed.' });
                         this.__socket = null;
-                        this.__socket_group = null;
+                        this.__socket_room = null;
                     }
                     else {
                         // close event was unexpected
@@ -106,18 +97,18 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 
                         if (reconnectAttempts < maxAttempts) {
                             let delay = Math.min(1000 * (2 ** reconnectAttempts), 30000); // max delay is 30 seconds
-                            cb({ status: 'error', message: `Skapi: WebSocket connection error. Reconnecting in ${delay / 1000} seconds...` });
+                            cb({ type: 'error', message: `Skapi: WebSocket connection error. Reconnecting in ${delay / 1000} seconds...` });
                             connectRealtime.bind(this)(cb, delay);
                         } else {
                             // Handle max reconnection attempts reached
-                            cb({ status: 'error', message: 'Skapi: WebSocket connection error. Max reconnection attempts reached.' });
+                            cb({ type: 'error', message: 'Skapi: WebSocket connection error. Max reconnection attempts reached.' });
                             this.__socket = null;
                         }
                     }
                 };
 
                 socket.onerror = () => {
-                    cb({ status: 'error', message: 'Skapi: WebSocket connection error.' });
+                    cb({ type: 'error', message: 'Skapi: WebSocket connection error.' });
                     throw new SkapiError(`Skapi: WebSocket connection error.`, { code: 'ERROR' });
                 };
             }, delay);
@@ -127,7 +118,20 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
     return this.__socket;
 }
 
-export async function postRealtime(message: any, recipient: string): Promise<{ status: 'success', message: 'Message sent.' }> {
+export async function closeRealtime(): Promise<void> {
+    let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
+
+    if (socket) {
+        socket.close();
+    }
+
+    this.__socket = null;
+    this.__socket_room = null;
+
+    return null;
+}
+
+export async function postRealtime(message: any, recipient: string): Promise<{ type: 'success', message: 'Message sent.' }> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
 
     if (!socket) {
@@ -152,7 +156,7 @@ export async function postRealtime(message: any, recipient: string): Promise<{ s
             }));
 
         } catch (err) {
-            if (this.__socket_group !== recipient) {
+            if (this.__socket_room !== recipient) {
                 throw new SkapiError(`User has not joined to the recipient group. Run joinRealtime({ group: "${recipient}" })`, { code: 'INVALID_REQUEST' });
             }
 
@@ -164,13 +168,13 @@ export async function postRealtime(message: any, recipient: string): Promise<{ s
             }));
         }
 
-        return { status: 'success', message: 'Message sent.' };
+        return { type: 'success', message: 'Message sent.' };
     }
 
     throw new SkapiError('Realtime connection is not open. Try reconnecting with connectRealtime().', { code: 'INVALID_REQUEST' });
 }
 
-export async function joinRealtime(params: { group?: string | null }): Promise<{ status: 'success', message: string }> {
+export async function joinRealtime(params: { group?: string | null }): Promise<{ type: 'success', message: string }> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
 
     if (!socket) {
@@ -181,8 +185,8 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
 
     let { group = null } = params;
 
-    if (!group && !this.__socket_group) {
-        return { status: 'success', message: 'Left realtime message group.' }
+    if (!group && !this.__socket_room) {
+        return { type: 'success', message: 'Left realtime message group.' }
     }
 
     if (group !== null && typeof group !== 'string') {
@@ -190,14 +194,14 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
     }
 
     socket.send(JSON.stringify({
-        action: 'joinGroup',
+        action: 'joinRoom',
         rid: group,
         token: this.session.accessToken.jwtToken
     }));
 
-    this.__socket_group = group;
+    this.__socket_room = group;
 
-    return { status: 'success', message: group ? `Joined realtime message group: "${group}".` : 'Left realtime message group.' }
+    return { type: 'success', message: group ? `Joined realtime message group: "${group}".` : 'Left realtime message group.' }
 }
 
 export async function getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<string[]>> {
