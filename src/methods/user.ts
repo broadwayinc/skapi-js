@@ -12,8 +12,7 @@ import {
     FetchOptions,
     DatabaseResponse,
     UserAttributes,
-    PublicUser,
-    ProgressCallback
+    PublicUser
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
