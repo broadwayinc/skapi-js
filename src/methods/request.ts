@@ -114,7 +114,7 @@ export async function mock(data: Form<any & {
         bypassAwaitConnection?: boolean;
     }): Promise<{ mockResponse: Record<string, any>; }> {
     await this.__connection;
-    let { auth = true, method = 'POST', bypassAwaitConnection = false, responseType, contentType, progress } = options || {};
+    let { auth = false, method = 'POST', bypassAwaitConnection = false, responseType, contentType, progress } = options || {};
 
     options = Object.assign(
         { auth, method, bypassAwaitConnection, responseType, contentType },
