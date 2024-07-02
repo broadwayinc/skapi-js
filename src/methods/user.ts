@@ -1205,9 +1205,7 @@ export async function getUsers(
         value: (v: any) => {
             let checker = searchForTypes[params.searchFor];
             if (typeof checker === 'function') {
-                if (!params?.condition || params?.condition === '=' || params?.range) {
-                    return checker(v);
-                }
+                return checker(v);
             }
 
             else if (typeof v !== checker) {
