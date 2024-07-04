@@ -741,24 +741,26 @@ export async function signup(
     // user creating account
     let newUser = authentication.bind(this)().createCognitoUser(params.username || params.email);
 
-    let signup_key = await request.bind(this)('signupkey', {
+    let signup_key = (await request.bind(this)('signupkey', {
         username: newUser.cognitoUsername,
         signup_confirmation: typeof params.signup_confirmation === 'boolean' ? JSON.stringify(params.signup_confirmation) : params.signup_confirmation,
         email_subscription: params.email_subscription,
-    });
+    })).split(':');
+
+    let signup_ticket = signup_key.slice(1).join(':');
 
     let attributeList = [
         new CognitoUserAttribute({
             Name: 'custom:signup',
-            Value: signup_key
+            Value: signup_key[0]
         }),
         new CognitoUserAttribute({
             Name: 'locale',
-            Value: signup_key.split('#')[3]
+            Value: signup_ticket.split('#')[1]
         }),
         new CognitoUserAttribute({
             Name: 'custom:signup_ticket',
-            Value: params.signup_confirmation ? signup_key.split('#')[1] : 'PASS' // 16 random char | 'PASS'
+            Value: signup_ticket
         })
     ];
 
