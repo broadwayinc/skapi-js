@@ -698,12 +698,6 @@ export async function postRecord(
                     throw new SkapiError('"table.access_group" is invalid.', { code: 'INVALID_PARAMETER' });
                 }
 
-                if (isAdmin && !config.record_id) {
-                    if (v === 'private') {
-                        throw new SkapiError('Service owner cannot write private records.', { code: 'INVALID_REQUEST' });
-                    }
-                }
-
                 return v;
             }
         },
