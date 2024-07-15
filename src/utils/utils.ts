@@ -190,7 +190,7 @@ function generateRandom(length = 6) {
 function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key: string]: any } | number | string | boolean | null, options?: {
     nullIfEmpty?: boolean,
     ignoreEmpty?: boolean,
-}): { data: any, files: { name: string, file: File }[] } {
+}, callback?: (name:string, value:any)=>any): { data: any, files: { name: string, file: File }[] } {
     let data = {};
     let files = [];
 
@@ -212,7 +212,12 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
         if (options?.nullIfEmpty && val === '') {
             val = null;
         }
-
+        if(typeof callback === 'function') {
+            let v = callback(key, val);
+            if(v !== undefined) {
+                val = v;
+            }
+        }
         // key is a[b][c]
         // a[b][c][0] when array
         // if a[b][c] exists, then a[b][c] = [a[b][c], val]
