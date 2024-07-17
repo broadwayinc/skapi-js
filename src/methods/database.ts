@@ -548,7 +548,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                             return tp(v);
                         }
 
-                        if(tp !== typeof v) {
+                        if (tp !== typeof v) {
                             throw new SkapiError(`"index.value" should be type: ${tp}.`, { code: 'INVALID_PARAMETER' });
                         }
 
@@ -563,6 +563,10 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                     }
 
                     else if (typeof v === 'boolean') {
+                        return v;
+                    }
+
+                    else if (typeof v === 'string') {
                         return v;
                     }
                 },
