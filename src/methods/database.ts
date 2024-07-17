@@ -595,7 +595,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                     return v;
                 }
             },
-            tag: v => {
+            tag: (v: string) => {
                 if (v === null || v === undefined) {
                     return v;
                 }
