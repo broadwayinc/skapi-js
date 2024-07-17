@@ -569,6 +569,10 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                     else if (typeof v === 'string') {
                         return v;
                     }
+
+                    else {
+                        throw new SkapiError(`"index.value" should be type: <number | boolean | string>.`, { code: 'INVALID_PARAMETER' });
+                    }
                 },
                 condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne'],
                 range: (v: number | boolean | string) => {
