@@ -151,7 +151,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
 
                     let url_endpoint = url;
                     if (access_group !== 'public') {
-                        let resolved_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint', expires: access_group === 'private' && this.__user?.user_id !== path[0] ? 3600 : 0 }) as string);
+                        let resolved_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint', expires: access_group === 'private' && this.__user?.user_id !== path[0] ? 3600 : 0 }).catch(() => '__is_private__') as string);
                         url_endpoint = resolved_endpoint;
                     }
 
