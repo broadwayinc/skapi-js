@@ -753,7 +753,7 @@ export async function postRecord(
                 throw new SkapiError('"index.name" should be type: string.', { code: 'INVALID_PARAMETER' });
             }],
             value: [v => {
-                if (!v && typeof v !== 'boolean') {
+                if (!v && typeof v !== 'boolean' && v !== 0) {
                     throw new SkapiError('"index.value" is required.', { code: 'INVALID_PARAMETER' });
                 }
 
