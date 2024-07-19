@@ -95,7 +95,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.110';
+    version = '1.0.111';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -353,7 +353,7 @@ export default class Skapi {
                 this.closeRealtime();
             });
             // for mobile
-            window.addEventListener("visibilitychange", (event) => {
+            window.addEventListener("visibilitychange", () => {
                 storeClassProperties();
             });
 
