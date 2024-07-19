@@ -352,6 +352,10 @@ export default class Skapi {
                 storeClassProperties();
                 this.closeRealtime();
             });
+            // for mobile
+            window.addEventListener("visibilitychange", (event) => {
+                storeClassProperties();
+            });
 
             await connection;
             await this.__authConnection;
@@ -715,7 +719,7 @@ export default class Skapi {
 
     @formHandler({ preventMultipleCalls: true })
     signup(
-        form: Form<UserAttributes & { email: String, password: String; username?:string; }>,
+        form: Form<UserAttributes & { email: String, password: String; username?: string; }>,
         option?: {
             /**
              * When true, the service will send out confirmation E-Mail.
