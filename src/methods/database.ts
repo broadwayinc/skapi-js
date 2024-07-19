@@ -812,7 +812,7 @@ export async function postRecord(
         progress: 'function',
     });
     let progress = config.progress || null;
-    if (config.table.hasOwnProperty('subscription')) {
+    if (config.table && config.table.hasOwnProperty('subscription')) {
         _config.table.subscription_group = config.table.subscription ? 1 : null;
         delete _config.table.subscription;
     }
