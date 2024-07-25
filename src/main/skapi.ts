@@ -689,7 +689,7 @@ export default class Skapi {
     uploadFiles(
         fileList: FormData | HTMLFormElement | SubmitEvent,
         params: {
-            record_id: string; // Record ID of a record to upload files to. Not required if request is 'host'.
+            record_id: string; // Record ID of a record to upload files to.
             progress?: ProgressCallback;
         }
     ): Promise<{ completed: File[], failed: File[], bin_endpoints: string[] }> { return uploadFiles.bind(this)(fileList, params); }
