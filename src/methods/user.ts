@@ -741,6 +741,18 @@ export async function signup(
     // user creating account
     let newUser = authentication.bind(this)().createCognitoUser(params.username || params.email);
 
+    for (let k of ['email_public',
+        'address_public',
+        'gender_public',
+        'birthdate_public',
+        'phone_number_public']) {
+        params[k] = params[k] ? '1' : '0';
+    }
+
+    if (params.access_group) {
+        params.access_group = params.access_group.toString();
+    }
+
     let signup_key = (await request.bind(this)('signupkey', {
         username: newUser.cognitoUsername,
         signup_confirmation: typeof params.signup_confirmation === 'boolean' ? JSON.stringify(params.signup_confirmation) : params.signup_confirmation,
