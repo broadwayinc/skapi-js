@@ -707,7 +707,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             let formEl = null;
             let actionDestination = '';
             let fileBase64String = {};
-
+            let refreshPage = false;
             if (form instanceof SubmitEvent) {
                 form.preventDefault();
 
@@ -758,8 +758,11 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                     }
                 }
 
-                if (!formEl.action || href.href === currentUrl) {
+                if (!formEl.action) {
                     storeResponseKey = false;
+                }
+                else {
+                    refreshPage = href.href === currentUrl;
                 }
             }
 
@@ -775,7 +778,12 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                 if (formEl) {
                     if (storeResponseKey) {
                         window.sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
-                        window.location.href = actionDestination;
+                        if(refreshPage) {
+                            window.location.replace(actionDestination);
+                        }
+                        else {
+                            window.location.href = actionDestination;
+                        }
                     }
                 }
 
