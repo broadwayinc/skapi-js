@@ -235,7 +235,7 @@ export default class Skapi {
         this.service = service;
         this.owner = owner;
 
-        let autoLogin = false;
+        let autoLogin = true;
 
         if (options) {
             if (typeof options.autoLogin === 'boolean') {
@@ -370,11 +370,20 @@ export default class Skapi {
     }
 
     async updateConnection(): Promise<Connection> {
-        this.connection = await request.bind(this)('service', {
-            service: this.service,
-            owner: this.owner
-        }, { bypassAwaitConnection: true, method: 'get' });
+        try {
+            this.connection = await request.bind(this)('service', {
+                service: this.service,
+                owner: this.owner
+            }, { bypassAwaitConnection: true, method: 'get' });
+        }
+        catch (err: any) {
+            if (window) {
+                window.alert('Service is not available: ' + (err.message || err.toString()));
+            }
 
+            this.connection = null;
+            throw err;
+        }
         return this.connection;
     }
 
