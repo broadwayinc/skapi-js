@@ -880,7 +880,7 @@ export async function getTables(
     let res = await request.bind(this)('get-table', validator.Params(query || {}, {
         table: 'string',
         condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
-    }), Object.assign({ auth: true }, { fetchOptions }));
+    }), Object.assign({ auth: !!this.__user }, { fetchOptions }));
 
     let convert = {
         'cnt_rec': 'number_of_records',
@@ -978,7 +978,7 @@ export async function getIndexes(
         'get-index',
         p,
         Object.assign(
-            { auth: true },
+            { auth: !!this.__user },
             { fetchOptions }
         )
     );
@@ -1040,7 +1040,7 @@ export async function getTags(
                 condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
             }
         ),
-        Object.assign({ auth: true }, { fetchOptions })
+        Object.assign({ auth: !!this.__user }, { fetchOptions })
     );
 
     if (Array.isArray(res?.list)) {
