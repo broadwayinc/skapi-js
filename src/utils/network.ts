@@ -758,7 +758,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                     }
                 }
 
-                if (!formEl.action) {
+                if (!formEl.action || !formEl.getAttribute('action')) {
                     storeResponseKey = false;
                 }
                 else {
