@@ -363,10 +363,11 @@ export async function getNewsletters(
         }
     }, ['searchFor', 'value', 'group']);
 
+    let endpointTarget = params.group === 0 ? 'get-public-newsletters' : 'get-newsletters';
     let mails = await request.bind(this)(
-        params.group === 0 ? 'get-public-newsletters' : 'get-newsletters',
+        endpointTarget,
         params,
-        Object.assign({ method: 'get', auth: !!this.__user }, { fetchOptions })
+        Object.assign({ method: 'get', auth: endpointTarget === 'get-public-newsletters' ? !!this.__user : true }, { fetchOptions })
     );
 
     let remap = {
