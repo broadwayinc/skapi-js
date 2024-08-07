@@ -158,7 +158,7 @@ class MD5 {
     }
 }
 
-function toBase62(num: number) {
+function toBase62(num: number):string {
     const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     if (num === 0) return base62Chars[0];
     let result = '';
@@ -169,13 +169,13 @@ function toBase62(num: number) {
     return result;
 }
 
-function fromBase62(chars) {
+function fromBase62(chars: string):number {
     let charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
     return chars.split('').reverse().reduce((prev, curr, i) =>
         prev + (charset.indexOf(curr) * (62 ** i)), 0);
 }
 
-function generateRandom(length = 6) {
+function generateRandom(length:number = 6):string {
     let result = '';
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     const charactersLength = characters.length;

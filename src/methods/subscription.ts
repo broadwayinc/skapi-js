@@ -366,7 +366,7 @@ export async function getNewsletters(
     let mails = await request.bind(this)(
         params.group === 0 ? 'get-public-newsletters' : 'get-newsletters',
         params,
-        Object.assign({ method: 'get', auth: params.group !== 0 }, { fetchOptions })
+        Object.assign({ method: 'get', auth: !!this.__user }, { fetchOptions })
     );
 
     let remap = {
