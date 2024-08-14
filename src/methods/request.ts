@@ -26,7 +26,16 @@ export async function clientSecretRequest(params: {
     }
 
     validator.Params(params, {
-        url: 'string',
+        url: (v: string) => {
+            if (!v || typeof v !== 'string') {
+                throw new SkapiError('"url" should be type: <string>.', { code: 'INVALID_PARAMETER' });
+            }
+            validator.Url(v);
+            if (v.includes('$CLIENT_SECRET')) {
+                hasSecret = true;
+            }
+            return v;
+        },
         clientSecretName: 'string',
         method: (v: string) => {
             if (v && typeof v !== 'string') {
