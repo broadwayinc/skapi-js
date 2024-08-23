@@ -235,7 +235,7 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
         }
     )
 
-    res.list.map((v: any) => {
+    res.list = res.list.map((v: any) => {
         return {
             user_id: v.uid.split('#')[1],
             connection_id: v.cid
