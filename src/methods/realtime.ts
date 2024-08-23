@@ -24,6 +24,7 @@ type RealtimeCallback = (rt: {
     type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private';
     message: any;
     sender?: string; // user_id of the sender
+    sender_cid?: string; // scid of the sender
 }) => void;
 
 let reconnectAttempts = 0;
@@ -75,12 +76,16 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                         type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private';
                         message: any;
                         sender?: string;
+                        sender_cid?: string;
                     } = { type, message: (data?.['#message'] || data?.['#private'] || data?.['#notice']) || null };
 
                     if (data?.['#user_id']) {
                         msg.sender = data['#user_id'];
                     }
 
+                    if (data?.['#scid']) {
+                        msg.sender_cid = data['#scid'];
+                    }
                     cb(msg);
                 };
 

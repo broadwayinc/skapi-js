@@ -95,7 +95,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.122';
+    version = '1.0.123';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -394,6 +394,7 @@ export default class Skapi {
         type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private';
         message: any;
         sender?: string; // user_id of the sender
+        sender_cid?: string; // connection id of the sender
     }) => Promise<WebSocket>) {
         return connectRealtime.bind(this)(cb);
     }
