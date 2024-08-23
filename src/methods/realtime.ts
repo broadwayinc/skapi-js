@@ -60,6 +60,17 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                             token: this.session.accessToken.jwtToken
                         }));
                     }
+
+                    // keep alive
+                    setInterval(() => {
+                        if (socket.readyState === 1) {
+                            socket.send(JSON.stringify({
+                                action: 'keepAlive',
+                                token: this.session.accessToken.jwtToken
+                            }));
+                        }
+                    }, 30000);
+
                     resolve(socket);
                 };
 
