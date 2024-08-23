@@ -440,7 +440,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<string[]>> {
+    getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{user_id: string;connection_id:string}[]>> {
         return getRealtimeUsers.bind(this)(params, fetchOptions);
     }
 
