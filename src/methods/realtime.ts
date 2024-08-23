@@ -29,6 +29,9 @@ type RealtimeCallback = (rt: {
 
 let reconnectAttempts = 0;
 
+let __roomList = {}; // { group: { user_id: [connection_id, ...] } }
+let __roomPending = {}; // { group: Promise }
+
 export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSocket> {
     if (typeof cb !== 'function') {
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
@@ -60,7 +63,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                     resolve(socket);
                 };
 
-                socket.onmessage = event => {
+                socket.onmessage = async (event) => {
                     let data = JSON.parse(decodeURI(event.data));
                     let type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' = 'message';
 
@@ -85,6 +88,46 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 
                     if (data?.['#scid']) {
                         msg.sender_cid = data['#scid'];
+                    }
+
+                    if(type === 'notice') {
+                        if(this.__socket_room && (msg.message.includes('has left the message group.') || msg.message.includes('has been disconnected.'))) {
+                            if(__roomPending[this.__socket_room]) {
+                                await __roomPending[this.__socket_room];
+                            }
+
+                            let user_id = msg.sender;
+                            if(__roomList?.[this.__socket_room]?.[user_id]) {
+                                __roomList[this.__socket_room][user_id] = __roomList[this.__socket_room][user_id].filter(v=>v!==msg.sender_cid);
+                            }
+
+                            if(__roomList?.[this.__socket_room]?.[user_id] && __roomList[this.__socket_room][user_id].length === 0) {
+                                delete __roomList[this.__socket_room][user_id];
+                            }
+
+                            if(__roomList?.[this.__socket_room]?.[user_id]) {
+                                return
+                            }
+                        }
+                        else if(this.__socket_room && msg.message.includes('has joined the message group.')) {
+                            if(__roomPending[this.__socket_room]) {
+                                await __roomPending[this.__socket_room];
+                            }
+                            
+                            let user_id = msg.sender;
+                            if(!__roomList?.[this.__socket_room]) {
+                                __roomList[this.__socket_room] = {};
+                            }
+                            if(!__roomList[this.__socket_room][user_id]) {
+                                __roomList[this.__socket_room][user_id] = [msg.sender_cid];
+                            }
+                            else {
+                                if(!__roomList[this.__socket_room][user_id].includes(msg.sender_cid)) {
+                                    __roomList[this.__socket_room][user_id].push(msg.sender_cid);
+                                }
+                                return;
+                            }
+                        }
                     }
                     cb(msg);
                 };
@@ -225,7 +268,13 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
         throw new SkapiError(`"group" is required.`, { code: 'INVALID_PARAMETER' });
     }
 
-    let res = await request.bind(this)(
+    if(!params.user_id) {
+        if(__roomPending[params.group]) {
+            return __roomPending[params.group];
+        }
+    }
+
+    let req = request.bind(this)(
         'get-ws-group',
         params,
         {
@@ -233,16 +282,40 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
             auth: true,
             method: 'post'
         }
-    )
+    ).then(res=>{
+        res.list = res.list.map((v: any) => {
+            let user_id = v.uid.split('#')[1];
 
-    res.list = res.list.map((v: any) => {
-        return {
-            user_id: v.uid.split('#')[1],
-            connection_id: v.cid
-        }
+            if(!params.user_id) {
+                if(!__roomList[params.group]) {
+                    __roomList[params.group] = {};
+                }
+                if(!__roomList[params.group][user_id]) {
+                    __roomList[params.group][user_id] = [v.cid];
+                }
+                else if(!__roomList[params.group][user_id].includes(v.cid)) {
+                    __roomList[params.group][user_id].push(v.cid);
+                }
+            }
+
+            return {
+                user_id,
+                connection_id: v.cid
+            }
+        });
+        
+        return res;
+    }).finally(()=>{
+        delete __roomPending[params.group];
     });
 
-    return res;
+    if(!params.user_id) {
+        if(!__roomPending[params.group]) {
+            __roomPending[params.group] = req;
+        }
+    }
+    
+    return req;
 }
 
 export async function getRealtimeGroups(
