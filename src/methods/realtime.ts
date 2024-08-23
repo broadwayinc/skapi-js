@@ -31,7 +31,7 @@ let reconnectAttempts = 0;
 
 let __roomList = {}; // { group: { user_id: [connection_id, ...] } }
 let __roomPending = {}; // { group: Promise }
-
+let __keepAliveInterval = null;
 export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSocket> {
     if (typeof cb !== 'function') {
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
@@ -62,7 +62,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                     }
 
                     // keep alive
-                    setInterval(() => {
+                    __keepAliveInterval = setInterval(() => {
                         if (socket.readyState === 1) {
                             socket.send(JSON.stringify({
                                 action: 'keepAlive',
@@ -145,6 +145,10 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 
                 socket.onclose = event => {
                     if (event.wasClean) {
+                        // remove keep alive
+                        clearInterval(__keepAliveInterval);
+                        __keepAliveInterval = null;
+
                         cb({ type: 'close', message: 'WebSocket connection closed.' });
                         this.__socket = null;
                         this.__socket_room = null;
