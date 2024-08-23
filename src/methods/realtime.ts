@@ -209,7 +209,7 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
     return { type: 'success', message: group ? `Joined realtime message group: "${group}".` : 'Left realtime message group.' }
 }
 
-export async function getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<string[]>> {
+export async function getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{user_id: string;connection_id:string}[]>> {
     await this.__connection;
 
     params = validator.Params(
@@ -235,9 +235,12 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
         }
     )
 
-    for (let i = 0; i < res.list.length; i++) {
-        res.list[i] = res.list[i].uid.split('#')[1];
-    }
+    res.list.map((v: any) => {
+        return {
+            user_id: v.uid.split('#')[1],
+            connection_id: v.cid
+        }
+    });
 
     return res;
 }
