@@ -136,7 +136,6 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         },
         'bin': async (r: string[]) => {
             let binObj = {};
-
             if (Array.isArray(r)) {
                 for (let url of r) {
                     let path = url.split('/').slice(3).join('/');
@@ -150,7 +149,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
 
                     let url_endpoint = url;
                     if (access_group !== 'public') {
-                        if(access_group === 'private' && this.__user?.user_id !== path[0]) {
+                        if(access_group === 'private' && this.__user?.user_id !== splitPath[3]) {
                             url_endpoint = url;
                         }
                         else {
