@@ -275,7 +275,7 @@ export async function deleteFiles(params: {
 export async function getFile(
     url: string, // cdn endpoint url https://xxxx.cloudfront.net/path/file
     config?: {
-        dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // default 'download'
+        dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text'; // default 'download'
         expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
         progress?: ProgressCallback;
     }
@@ -406,6 +406,11 @@ export async function getFile(
                 const reader = new FileReader();
                 reader.onloadend = () => res((reader.result as string));
                 reader.readAsDataURL(b);
+            }
+            else if(config?.dataType === 'text') {
+                const reader = new FileReader();
+                reader.onloadend = () => res((reader.result as string));
+                reader.readAsText(b);
             }
         } catch (err) {
             rej(err);
