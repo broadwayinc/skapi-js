@@ -316,7 +316,7 @@ export async function getFile(
 
     config = validator.Params(config, {
         expires: ['number', () => 0],
-        dataType: ['base64', 'blob', 'endpoint', () => 'download'],
+        dataType: ['base64', 'blob', 'endpoint', 'text', () => 'download'],
         progress: 'function'
     });
 
@@ -327,7 +327,7 @@ export async function getFile(
         if(!isValidEndpoint) {
             throw new SkapiError('Expires option can only be used on skapi cdn endpoints.', { code: 'INVALID_PARAMETER' });
         }
-        
+
         if (expires < 0) {
             throw new SkapiError('"config.expires" should be > 0. (seconds)', { code: 'INVALID_PARAMETER' });
         }
