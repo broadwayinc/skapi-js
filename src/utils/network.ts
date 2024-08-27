@@ -215,7 +215,7 @@ export async function request(
 
     let headers: Record<string, any> = {
         'Accept': '*/*',
-        "Content-Type": options?.contentType || 'application/json'
+        "Content-Type": options.hasOwnProperty('contentType') ? options.contentType === null ? 'application/octet-stream' : options.contentType : 'application/json'
     };
 
     if (token) {
