@@ -403,7 +403,8 @@ export async function getFile(
             let b = await request.bind(this)(
                 url,
                 { service: service || this.service },
-                { method: 'get', contentType: null, responseType: config?.dataType === 'text' ? 'text' : 'blob', fetchOptions: { progress: config?.progress } }
+                { method: 'get', contentType: null, responseType: config?.dataType === 'text' ? 'text' : 'blob', fetchOptions: { progress: config?.progress } },
+                { ignoreService: true }
             );
             if (config?.dataType === 'base64') {
                 const reader = new FileReader();
