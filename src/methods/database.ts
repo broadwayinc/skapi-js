@@ -402,7 +402,7 @@ export async function getFile(
         try {
             let b = await request.bind(this)(
                 url,
-                { service: service || this.service },
+                null,
                 { method: 'get', contentType: null, responseType: config?.dataType === 'text' ? 'text' : 'blob', fetchOptions: { progress: config?.progress } },
                 { ignoreService: true }
             );
