@@ -297,17 +297,18 @@ export async function getFile(
     }
 
     let target_key = splitUrl.slice(3);
-
+    let needAuth = false;
     if (!isValidEndpoint) {
-        if (target_key[0] !== 'auth' && target_key[0] !== 'publ') {
-            throw new SkapiError('Invalid file url.', { code: 'INVALID_PARAMETER' });
-        }
-        try {
-            validator.UserId(target_key[2]);
-            validator.UserId(target_key[3]);
-        }
-        catch {
-            throw new SkapiError('Invalid file url.', { code: 'INVALID_PARAMETER' });
+        if (target_key[0] === 'auth' || target_key[0] === 'publ') {
+            try {
+                validator.UserId(target_key[2]);
+                validator.UserId(target_key[3]);
+                needAuth = target_key[0] == 'auth';
+                isValidEndpoint = true;
+            }
+            catch {
+                throw new SkapiError('Invalid file url.', { code: 'INVALID_PARAMETER' });
+            }
         }
     }
 
@@ -319,11 +320,14 @@ export async function getFile(
         progress: 'function'
     });
 
-    let needAuth = target_key[0] == 'auth';
     let filename = url.split('/').slice(-1)[0];
     let expires = config.expires;
 
     if (expires) {
+        if(!isValidEndpoint) {
+            throw new SkapiError('Expires option can only be used on skapi cdn endpoints.', { code: 'INVALID_PARAMETER' });
+        }
+        
         if (expires < 0) {
             throw new SkapiError('"config.expires" should be > 0. (seconds)', { code: 'INVALID_PARAMETER' });
         }
