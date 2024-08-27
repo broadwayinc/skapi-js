@@ -359,10 +359,12 @@ export default class Skapi {
 
             await connection;
             await this.__authConnection;
-            let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
-            console.log(`Built with:\n${skapi}Version: ${this.version}\n\nDocumentation: https://docs.skapi.com`, `font-family: monospace; color:blue;`);
-            if (this.connection.group === 1) {
-                console.log(`%cSKAPI: THE SERVICE IS IN TRIAL MODE. ALL THE USERS AND DATA WILL BE INITIALIZED EVERY 7 DAYS.`, `font-family: monospace; color:red;`);
+            if(this.connection.group < 3) {
+                let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
+                console.log(`Built with:\n${skapi}Version: ${this.version}\n\nDocumentation: https://docs.skapi.com`, `font-family: monospace; color:blue;`);
+                if (this.connection.group === 1) {
+                    console.log(`%cSKAPI: THE SERVICE IS IN TRIAL MODE. ALL THE USERS AND DATA WILL BE INITIALIZED EVERY 30 DAYS.`, `font-family: monospace; color:red;`);
+                }
             }
 
             return this.connection;
