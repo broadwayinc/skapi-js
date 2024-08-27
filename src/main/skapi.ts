@@ -95,7 +95,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.130';
+    version = '1.0.131';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -484,7 +484,7 @@ export default class Skapi {
     getFile(
         url: string, // cdn endpoint url https://xxxx.cloudfront.net/path/file
         config?: {
-            dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // default 'download'
+            dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text'; // default 'download'
             expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
             progress?: ProgressCallback;
         }
