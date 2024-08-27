@@ -403,7 +403,7 @@ export async function getFile(
             let b = await request.bind(this)(
                 url,
                 null,
-                { method: 'get', contentType: null, responseType: config?.dataType === 'text' ? 'text' : 'blob', fetchOptions: { progress: config?.progress } },
+                { method: 'get', contentType: config?.dataType === 'text' ? 'text/html; charset=UTF-8' : null, responseType: config?.dataType === 'text' ? 'text' : 'blob', fetchOptions: { progress: config?.progress } },
                 { ignoreService: true }
             );
             if (config?.dataType === 'base64') {
