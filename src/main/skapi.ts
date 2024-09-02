@@ -96,7 +96,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.140';
+    version = '1.0.141';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -455,7 +455,7 @@ export default class Skapi {
         subject: string;
         message: string;
     }>): Promise<"SUCCESS: Inquiry has been sent."> {
-        return sendInquiry(data);
+        return sendInquiry.bind(this)(data);
     }
 
     @formHandler()
