@@ -105,7 +105,7 @@ export async function sendInquiry(data: Form<{
         'message'
     ]);
 
-    await request.bind(this)('send-inquery', data);
+    await request.bind(this)('send-inquiry', data);
 
     return 'SUCCESS: Inquiry has been sent.';
 }
