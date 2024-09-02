@@ -39,6 +39,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'jwt-login':
         case 'client-secret-request':
         case 'signupkey':
+        case 'send-inquiry':
         case 'client-secret-request-public':
             return (auth ? admin.admin_private : admin.admin_public) + dest + query;
 
