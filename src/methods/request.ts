@@ -80,6 +80,36 @@ export async function clientSecretRequest(params: {
     return request.bind(this)("client-secret-request" + (!auth ? '' : '-public'), params, { auth });
 }
 
+export async function sendInquiry(data: Form<{
+    name: string;
+    email: string;
+    subject: string;
+    message: string;
+}>): Promise<"SUCCESS: Inquiry has been sent."> {
+    await this.__connection;
+
+    let params = {
+        name: 'string',
+        email: v=>{
+            validator.Email(v);
+            return v;
+        },
+        subject: 'string',
+        message: 'string'
+    }
+
+    data = validator.Params(data, params, [
+        'name',
+        'email',
+        'subject',
+        'message'
+    ]);
+
+    await request.bind(this)('send-inquery', data);
+
+    return 'SUCCESS: Inquiry has been sent.';
+}
+
 export async function secureRequest<RequestParams = {
     /** Request url */
     url: string;
