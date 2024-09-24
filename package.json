@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "1.0.147",
+  "version": "1.0.148",
   "description": "Skapi: Backend API for HTML frontend.",
   "main": "dist/skapi.module.js",
   "types": "js/Main.d.ts",
@@ -23,7 +23,7 @@
   },
   "homepage": "https://www.skapi.com",
   "devDependencies": {
-    "amazon-cognito-identity-js": "^6.3.7",
+    "amazon-cognito-identity-js": "^6.3.12",
     "ts-loader": "^9.5.1",
     "typescript": "^5.3.3",
     "webpack": "^5.74.0",
