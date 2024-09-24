@@ -96,7 +96,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    private __version = '1.0.144';
+    private __version = '1.0.145';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -358,13 +358,13 @@ export default class Skapi {
                 storeClassProperties();
             });
 
-            await connection;
+            let res_connection = await connection;
             await this.__authConnection;
-            if(this.connection.group < 3) {
+            if((res_connection?.group || 0) < 3) {
                 this.version();
             }
 
-            return this.connection;
+            return res_connection;
         })();
     }
 
