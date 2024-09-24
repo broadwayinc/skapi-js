@@ -364,7 +364,6 @@ export default class Skapi {
         })();
 
         this.__connection.then(conn => {
-            console.log({conn});
             if((conn?.group || 0) < 3) {
                 this.version();
             }
