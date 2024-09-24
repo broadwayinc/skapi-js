@@ -96,7 +96,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    private __version = '1.0.145';
+    private __version = '1.0.146';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -360,12 +360,14 @@ export default class Skapi {
 
             let res_connection = await connection;
             await this.__authConnection;
+            return res_connection;
+        })();
+
+        this.__connection.then(res_connection => {
             if((res_connection?.group || 0) < 3) {
                 this.version();
             }
-
-            return res_connection;
-        })();
+        });
     }
 
     async updateConnection(): Promise<Connection> {
@@ -389,7 +391,9 @@ export default class Skapi {
     private registerTicket = registerTicket.bind(this);
     private unregisterTicket = unregisterTicket.bind(this);
 
-    version(): string {
+    async version(): Promise<string> {
+        await this.__connection;
+
         let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
         console.log(`Built with:\n${skapi}Version: ${this.__version}\n\nDocumentation: https://docs.skapi.com`, `font-family: monospace; color:blue;`);
         if (this.connection.group === 1) {
