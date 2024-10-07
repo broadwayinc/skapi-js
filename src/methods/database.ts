@@ -136,7 +136,6 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         },
         'bin': async (r: string[]) => {
             let binObj = {};
-
             if (Array.isArray(r)) {
                 for (let url of r) {
                     let path = url.split('/').slice(3).join('/');
@@ -150,7 +149,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
 
                     let url_endpoint = url;
                     if (access_group !== 'public') {
-                        if(access_group === 'private' && this.__user?.user_id !== path[0]) {
+                        if(access_group === 'private' && this.__user?.user_id !== splitPath[3]) {
                             url_endpoint = url;
                         }
                         else {
@@ -276,7 +275,7 @@ export async function deleteFiles(params: {
 export async function getFile(
     url: string, // cdn endpoint url https://xxxx.cloudfront.net/path/file
     config?: {
-        dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // default 'download'
+        dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text'; // default 'download'
         expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
         progress?: ProgressCallback;
     }
@@ -298,17 +297,18 @@ export async function getFile(
     }
 
     let target_key = splitUrl.slice(3);
-
+    let needAuth = false;
     if (!isValidEndpoint) {
-        if (target_key[0] !== 'auth' && target_key[0] !== 'publ') {
-            throw new SkapiError('Invalid file url.', { code: 'INVALID_PARAMETER' });
-        }
-        try {
-            validator.UserId(target_key[2]);
-            validator.UserId(target_key[3]);
-        }
-        catch {
-            throw new SkapiError('Invalid file url.', { code: 'INVALID_PARAMETER' });
+        if (target_key[0] === 'auth' || target_key[0] === 'publ') {
+            try {
+                validator.UserId(target_key[2]);
+                validator.UserId(target_key[3]);
+                needAuth = target_key[0] == 'auth';
+                isValidEndpoint = true;
+            }
+            catch {
+                throw new SkapiError('Invalid file url.', { code: 'INVALID_PARAMETER' });
+            }
         }
     }
 
@@ -316,15 +316,18 @@ export async function getFile(
 
     config = validator.Params(config, {
         expires: ['number', () => 0],
-        dataType: ['base64', 'blob', 'endpoint', () => 'download'],
+        dataType: ['base64', 'blob', 'endpoint', 'text', () => 'download'],
         progress: 'function'
     });
 
-    let needAuth = target_key[0] == 'auth';
     let filename = url.split('/').slice(-1)[0];
     let expires = config.expires;
 
     if (expires) {
+        if(!isValidEndpoint) {
+            throw new SkapiError('Expires option can only be used on skapi cdn endpoints.', { code: 'INVALID_PARAMETER' });
+        }
+
         if (expires < 0) {
             throw new SkapiError('"config.expires" should be > 0. (seconds)', { code: 'INVALID_PARAMETER' });
         }
@@ -399,14 +402,17 @@ export async function getFile(
         try {
             let b = await request.bind(this)(
                 url,
-                { service: service || this.service },
-                { method: 'get', contentType: null, responseType: 'blob', fetchOptions: { progress: config?.progress } }
+                null,
+                { method: 'get', contentType: null, responseType: config?.dataType === 'text' ? 'text' : 'blob', fetchOptions: { progress: config?.progress } },
+                { ignoreService: true }
             );
-
             if (config?.dataType === 'base64') {
                 const reader = new FileReader();
                 reader.onloadend = () => res((reader.result as string));
                 reader.readAsDataURL(b);
+            }
+            else {
+                res(b);
             }
         } catch (err) {
             rej(err);
