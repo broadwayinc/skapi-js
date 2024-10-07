@@ -24,10 +24,14 @@ type RealtimeCallback = (rt: {
     type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private';
     message: any;
     sender?: string; // user_id of the sender
+    sender_cid?: string; // scid of the sender
 }) => void;
 
 let reconnectAttempts = 0;
 
+let __roomList = {}; // { group: { user_id: [connection_id, ...] } }
+let __roomPending = {}; // { group: Promise }
+let __keepAliveInterval = null;
 export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSocket> {
     if (typeof cb !== 'function') {
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
@@ -56,10 +60,21 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                             token: this.session.accessToken.jwtToken
                         }));
                     }
+
+                    // keep alive
+                    __keepAliveInterval = setInterval(() => {
+                        if (socket.readyState === 1) {
+                            socket.send(JSON.stringify({
+                                action: 'keepAlive',
+                                token: this.session.accessToken.jwtToken
+                            }));
+                        }
+                    }, 30000);
+
                     resolve(socket);
                 };
 
-                socket.onmessage = event => {
+                socket.onmessage = async (event) => {
                     let data = JSON.parse(decodeURI(event.data));
                     let type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' = 'message';
 
@@ -75,17 +90,65 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                         type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private';
                         message: any;
                         sender?: string;
+                        sender_cid?: string;
                     } = { type, message: (data?.['#message'] || data?.['#private'] || data?.['#notice']) || null };
 
                     if (data?.['#user_id']) {
                         msg.sender = data['#user_id'];
                     }
 
+                    if (data?.['#scid']) {
+                        msg.sender_cid = data['#scid'];
+                    }
+
+                    if(type === 'notice') {
+                        if(this.__socket_room && (msg.message.includes('has left the message group.') || msg.message.includes('has been disconnected.'))) {
+                            if(__roomPending[this.__socket_room]) {
+                                await __roomPending[this.__socket_room];
+                            }
+
+                            let user_id = msg.sender;
+                            if(__roomList?.[this.__socket_room]?.[user_id]) {
+                                __roomList[this.__socket_room][user_id] = __roomList[this.__socket_room][user_id].filter(v=>v!==msg.sender_cid);
+                            }
+
+                            if(__roomList?.[this.__socket_room]?.[user_id] && __roomList[this.__socket_room][user_id].length === 0) {
+                                delete __roomList[this.__socket_room][user_id];
+                            }
+
+                            if(__roomList?.[this.__socket_room]?.[user_id]) {
+                                return
+                            }
+                        }
+                        else if(this.__socket_room && msg.message.includes('has joined the message group.')) {
+                            if(__roomPending[this.__socket_room]) {
+                                await __roomPending[this.__socket_room];
+                            }
+                            
+                            let user_id = msg.sender;
+                            if(!__roomList?.[this.__socket_room]) {
+                                __roomList[this.__socket_room] = {};
+                            }
+                            if(!__roomList[this.__socket_room][user_id]) {
+                                __roomList[this.__socket_room][user_id] = [msg.sender_cid];
+                            }
+                            else {
+                                if(!__roomList[this.__socket_room][user_id].includes(msg.sender_cid)) {
+                                    __roomList[this.__socket_room][user_id].push(msg.sender_cid);
+                                }
+                                return;
+                            }
+                        }
+                    }
                     cb(msg);
                 };
 
                 socket.onclose = event => {
                     if (event.wasClean) {
+                        // remove keep alive
+                        clearInterval(__keepAliveInterval);
+                        __keepAliveInterval = null;
+
                         cb({ type: 'close', message: 'WebSocket connection closed.' });
                         this.__socket = null;
                         this.__socket_room = null;
@@ -204,7 +267,7 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
     return { type: 'success', message: group ? `Joined realtime message group: "${group}".` : 'Left realtime message group.' }
 }
 
-export async function getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<string[]>> {
+export async function getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{user_id: string;connection_id:string}[]>> {
     await this.__connection;
 
     params = validator.Params(
@@ -220,7 +283,13 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
         throw new SkapiError(`"group" is required.`, { code: 'INVALID_PARAMETER' });
     }
 
-    let res = await request.bind(this)(
+    if(!params.user_id) {
+        if(__roomPending[params.group]) {
+            return __roomPending[params.group];
+        }
+    }
+
+    let req = request.bind(this)(
         'get-ws-group',
         params,
         {
@@ -228,13 +297,40 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
             auth: true,
             method: 'post'
         }
-    )
+    ).then(res=>{
+        res.list = res.list.map((v: any) => {
+            let user_id = v.uid.split('#')[1];
 
-    for (let i = 0; i < res.list.length; i++) {
-        res.list[i] = res.list[i].uid.split('#')[1];
+            if(!params.user_id) {
+                if(!__roomList[params.group]) {
+                    __roomList[params.group] = {};
+                }
+                if(!__roomList[params.group][user_id]) {
+                    __roomList[params.group][user_id] = [v.cid];
+                }
+                else if(!__roomList[params.group][user_id].includes(v.cid)) {
+                    __roomList[params.group][user_id].push(v.cid);
+                }
+            }
+
+            return {
+                user_id,
+                connection_id: v.cid
+            }
+        });
+        
+        return res;
+    }).finally(()=>{
+        delete __roomPending[params.group];
+    });
+
+    if(!params.user_id) {
+        if(!__roomPending[params.group]) {
+            __roomPending[params.group] = req;
+        }
     }
-
-    return res;
+    
+    return req;
 }
 
 export async function getRealtimeGroups(

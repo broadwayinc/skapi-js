@@ -40,7 +40,8 @@ import {
 import {
     secureRequest,
     mock,
-    clientSecretRequest
+    clientSecretRequest,
+    sendInquiry
 } from '../methods/request';
 import {
     request,
@@ -95,7 +96,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    version = '1.0.122';
+    private __version = '1.0.148';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -359,14 +360,14 @@ export default class Skapi {
 
             await connection;
             await this.__authConnection;
-            let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
-            console.log(`Built with:\n${skapi}Version: ${this.version}\n\nDocumentation: https://docs.skapi.com`, `font-family: monospace; color:blue;`);
-            if (this.connection.group === 1) {
-                console.log(`%cSKAPI: THE SERVICE IS IN TRIAL MODE. ALL THE USERS AND DATA WILL BE INITIALIZED EVERY 7 DAYS.`, `font-family: monospace; color:red;`);
-            }
-
             return this.connection;
         })();
+
+        this.__connection.then(conn => {
+            if((conn?.group || 0) < 3) {
+                this.version();
+            }
+        });
     }
 
     async updateConnection(): Promise<Connection> {
@@ -390,10 +391,22 @@ export default class Skapi {
     private registerTicket = registerTicket.bind(this);
     private unregisterTicket = unregisterTicket.bind(this);
 
+    async version(): Promise<string> {
+        await this.__connection;
+
+        let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
+        console.log(`Built with:\n${skapi}Version: ${this.__version}\n\nDocumentation: https://docs.skapi.com`, `font-family: monospace; color:blue;`);
+        if (this.connection.group === 1) {
+            console.log(`%cSKAPI: THE SERVICE IS IN TRIAL MODE. ALL THE USERS AND DATA WILL BE INITIALIZED EVERY 30 DAYS.`, `font-family: monospace; color:red;`);
+        }
+        return this.__version;
+    }
+
     connectRealtime(cb: (rt: {
         type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private';
         message: any;
         sender?: string; // user_id of the sender
+        sender_cid?: string; // connection id of the sender
     }) => Promise<WebSocket>) {
         return connectRealtime.bind(this)(cb);
     }
@@ -407,7 +420,8 @@ export default class Skapi {
     }): Promise<UserProfile> {
         return jwtLogin.bind(this)(params);
     }
-
+    
+    @formHandler()
     clientSecretRequest(params: {
         url: string;
         clientSecretName: string;
@@ -439,8 +453,18 @@ export default class Skapi {
     }
 
     @formHandler()
-    getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<string[]>> {
+    getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{user_id: string;connection_id:string}[]>> {
         return getRealtimeUsers.bind(this)(params, fetchOptions);
+    }
+
+    @formHandler()
+    sendInquiry(data: Form<{
+        name: string;
+        email: string;
+        subject: string;
+        message: string;
+    }>): Promise<"SUCCESS: Inquiry has been sent."> {
+        return sendInquiry.bind(this)(data);
     }
 
     @formHandler()
@@ -482,7 +506,7 @@ export default class Skapi {
     getFile(
         url: string, // cdn endpoint url https://xxxx.cloudfront.net/path/file
         config?: {
-            dataType?: 'base64' | 'download' | 'endpoint' | 'blob'; // default 'download'
+            dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text'; // default 'download'
             expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
             progress?: ProgressCallback;
         }
