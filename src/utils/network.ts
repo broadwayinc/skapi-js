@@ -56,6 +56,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'request-private-access-key':
         case 'get-ws-group':
         case 'del-files':
+        case 'check-schema':
             return (auth ? record.record_private : record.record_public) + dest + query;
 
         default:
