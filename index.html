@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/dist/skapi.js"></script>
+    <title>Document</title>
+</head>
+<body>
+    
+</body>
+<script>
+    const skapi = new Skapi("ap21RABJ9rO9JhIiCmGr", "5750ee2c-f7f7-43ff-b6a5-cce599d30101", null, {"hostDomain": "skapi.app","target_cdn": "d1wrj5ymxrt2ir"})
+
+    console.log(skapi)
+
+    async function main() {
+        await skapi.login({
+            email: 'test@email.com',
+            password: '123123'
+        })
+
+        skapi.postRecord({'a':'ssss'}, {table: 'test'})
+    }
+
+    main();
+</script>
+</html>
