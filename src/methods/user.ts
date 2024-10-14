@@ -341,21 +341,21 @@ export function authentication() {
                     cognitoUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
                         if (refreshErr) {
                             rej(refreshErr);
+                            return;
+                        }
+                        if (refreshedSession.isValid()) {
+                            respond(refreshedSession);
+                            return;
                         }
                         else {
-                            if (refreshedSession.isValid()) {
-                                return respond(refreshedSession);
-                                // session = refreshedSession;
-                            }
-                            else {
-                                rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
-                                return;
-                            }
+                            rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
+                            return;
                         }
                     });
                 }
                 else {
-                    return respond(session);
+                    respond(session);
+                    return;
                 }
             });
         });
