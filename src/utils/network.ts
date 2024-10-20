@@ -273,6 +273,13 @@ export async function request(
             fetched: await __pendingRequest[requestKey as string]
         });
     }
+    catch (err) {
+        // remove promise
+        if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
+            delete __pendingRequest[requestKey as string];
+        }
+        throw err;
+    }
     finally {
         // remove promise
         if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
@@ -779,7 +786,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                 if (formEl) {
                     if (storeResponseKey) {
                         window.sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
-                        if(refreshPage) {
+                        if (refreshPage) {
                             window.location.replace(actionDestination);
                         }
                         else {
