@@ -5,6 +5,7 @@ import {
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
+import { extractFormData } from '../utils/utils';
 
 export async function clientSecretRequest(params: {
     url: string;
@@ -117,8 +118,22 @@ export async function secureRequest<RequestParams = {
     data?: any;
     /** requests are sync when true */
     sync?: boolean;
-}, Response = { response: any; statusCode: number; url: string; }>(params: RequestParams | RequestParams[]): Promise<Response | Response[]> {
+}, Response = { response: any; statusCode: number; url: string; }>(params: RequestParams[] | Form<RequestParams>, url?:string): Promise<Response | Response[]> {
     await this.__connection;
+    
+    if((params instanceof FormData) || (params instanceof HTMLFormElement) || (params instanceof SubmitEvent)){
+        if(!url) {
+            throw new SkapiError('Url string as a second argument is required when form is passed.', { code: 'INVALID_PARAMETER' });
+        }
+
+        let formData = extractFormData(params);
+
+        params = {
+            url,
+            data: formData.data,
+            sync: true
+        } as Form<RequestParams>
+    }
 
     let paramsStruct = {
         url: (v: string) => {

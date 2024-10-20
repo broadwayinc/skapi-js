@@ -96,7 +96,7 @@ import {
 } from '../utils/utils';
 export default class Skapi {
     // current version
-    private __version = '1.0.150';
+    private __version = '1.0.151';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -521,8 +521,8 @@ export default class Skapi {
         data?: any;
         /** requests are sync when true */
         sync?: boolean;
-    }, Response = { response: any; statusCode: number; url: string; }>(params: Params | Params[]): Promise<Response | Response[]> {
-        return secureRequest.bind(this)(params);
+    }, Response = { response: any; statusCode: number; url: string; }>(params: Params[] | Form<Params>, url?:string): Promise<Response | Response[]> {
+        return secureRequest.bind(this)(params, url);
     }
     @formHandler()
     getFormResponse(): Promise<any> {
