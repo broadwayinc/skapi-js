@@ -263,28 +263,30 @@ export async function request(
     }
 
     opt.method = method;
-
-    __pendingRequest[requestKey as string] = _fetch.bind(this)(endpoint, opt, progress);
+    let promise = _fetch.bind(this)(endpoint, opt, progress);
+    __pendingRequest[requestKey as string] = promise;
 
     try {
-        return update_startKey_keys.bind(this)({
+        let result = update_startKey_keys.bind(this)({
             hashedParam: requestKey,
             url,
-            fetched: await __pendingRequest[requestKey as string]
+            fetched: await promise
         });
+
+        // remove promise
+        if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
+            delete __pendingRequest[requestKey as string];
+        }
+        
+        return result;
     }
     catch (err) {
         // remove promise
         if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
             delete __pendingRequest[requestKey as string];
         }
+        
         throw err;
-    }
-    finally {
-        // remove promise
-        if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
-            delete __pendingRequest[requestKey as string];
-        }
     }
 }
 
