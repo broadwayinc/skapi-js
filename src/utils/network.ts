@@ -213,14 +213,17 @@ export async function request(
     }
 
     // new request
-
     let headers: Record<string, any> = {
         'Accept': '*/*',
         "Content-Type": options.hasOwnProperty('contentType') ? options.contentType === null ? 'application/x-www-form-urlencoded' : options.contentType || 'application/json' : 'application/json'
     };
-
     if (token) {
         headers.Authorization = token;
+    }
+
+    if(headers['Content-Type'] !== 'application/json') {
+        // add service and owner to headers
+        headers['Content-Meta'] = JSON.stringify({ service, owner });
     }
 
     let opt: RequestInit & { responseType?: string | null, headers: Record<string, any>; } = { headers }; // request options
