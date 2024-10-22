@@ -214,14 +214,17 @@ export async function request(
     }
 
     // new request
-
     let headers: Record<string, any> = {
         'Accept': '*/*',
-        "Content-Type": options.hasOwnProperty('contentType') ? options.contentType === null ? 'application/x-www-form-urlencoded' : options.contentType : 'application/json'
+        "Content-Type": options.hasOwnProperty('contentType') ? options.contentType === null ? 'application/x-www-form-urlencoded' : options.contentType || 'application/json' : 'application/json'
     };
-
     if (token) {
         headers.Authorization = token;
+    }
+
+    if(headers['Content-Type'] !== 'application/json') {
+        // add service and owner to headers
+        headers['Content-Meta'] = JSON.stringify({ service, owner });
     }
 
     let opt: RequestInit & { responseType?: string | null, headers: Record<string, any>; } = { headers }; // request options
@@ -264,21 +267,30 @@ export async function request(
     }
 
     opt.method = method;
-
-    __pendingRequest[requestKey as string] = _fetch.bind(this)(endpoint, opt, progress);
+    let promise = _fetch.bind(this)(endpoint, opt, progress);
+    __pendingRequest[requestKey as string] = promise;
 
     try {
-        return update_startKey_keys.bind(this)({
+        let result = update_startKey_keys.bind(this)({
             hashedParam: requestKey,
             url,
-            fetched: await __pendingRequest[requestKey as string]
+            fetched: await promise
         });
-    }
-    finally {
+
         // remove promise
         if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
             delete __pendingRequest[requestKey as string];
         }
+        
+        return result;
+    }
+    catch (err) {
+        // remove promise
+        if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
+            delete __pendingRequest[requestKey as string];
+        }
+        
+        throw err;
     }
 }
 
@@ -780,7 +792,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                 if (formEl) {
                     if (storeResponseKey) {
                         window.sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
-                        if(refreshPage) {
+                        if (refreshPage) {
                             window.location.replace(actionDestination);
                         }
                         else {
