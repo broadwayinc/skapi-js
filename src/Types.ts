@@ -326,7 +326,7 @@ export type Service = {
     /** E-Mail template for welcome E-Mail that user receives after signup process. This can be changed by trigger E-Mail. */
     template_welcome: {
         url: string;
-        subject: string; subscri
+        subject: string;
     };
     /** 13 digit timestamp  */
     timestamp: number;
