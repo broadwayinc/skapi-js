@@ -277,6 +277,7 @@ export function authentication() {
         };
 
         this.__user = user;
+        return user;
     };
 
     const getUser = (): Promise<UserProfile | null> => {
@@ -333,6 +334,14 @@ export function authentication() {
                     }
 
                     this.session = session;
+                    // cognitoUser.getUserAttributes(function (err, attributes) {
+                    //     if (err) {
+                    //         // Handle error
+                    //     } else {
+                    //         console.log({attributes});
+                    //     }
+                    // });
+                    // console.log({idToken});
                     normalizeUserAttributes(idToken);
                     res(session);
                 }
@@ -408,7 +417,7 @@ export function authentication() {
                 },
                 onSuccess: _ => getSession().then(_ => {
                     this.__disabledAccount = null;
-                    res(this.user);
+                    res(this.__user);
                 }),
                 onFailure: (err: any) => {
                     let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
