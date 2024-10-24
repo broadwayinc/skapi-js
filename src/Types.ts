@@ -131,6 +131,12 @@ export type Connection = {
     ip: string;
     /** Service level */
     group: number;
+    /** Service options */
+    opt: {
+        freeze_database:boolean;
+        prevent_inquiry:boolean;
+        prevent_signup:boolean;
+    }
 };
 
 export type Form<T> = HTMLFormElement | FormData | SubmitEvent | T;
