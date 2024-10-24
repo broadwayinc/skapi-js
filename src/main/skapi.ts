@@ -125,7 +125,7 @@ export default class Skapi {
     } = {};
     private __request_signup_confirmation: string | null = null;
     private __private_access_key: {
-        [record_id: string]: string
+        [record_id: string]: string;
     } = {}
 
     // true when session is stored successfully to session storage
@@ -295,8 +295,15 @@ export default class Skapi {
             });
 
             if (restore?.connection || autoLogin) {
+                // let currRes = userPool.getCurrentUser();
+                // console.log({currRes})
+                
                 try {
-                    await authentication.bind(this)().getSession({ refreshToken: !restore?.connection })
+                    await authentication.bind(this)().getSession({ refreshToken: !restore?.connection });
+                    // let session = await authentication.bind(this)().getSession({ refreshToken: !restore?.connection });
+                    // console.log({session});
+                    // let curr = userPool.getCurrentUser();
+                    // console.log({curr})
                 }
                 catch (err) {
                     this.__user = null;
@@ -304,6 +311,7 @@ export default class Skapi {
             }
             else {
                 let currentUser = userPool.getCurrentUser();
+                // console.log({currentUser})
                 if (currentUser) {
                     currentUser.signOut();
                 }
