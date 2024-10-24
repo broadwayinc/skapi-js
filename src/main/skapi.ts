@@ -12,6 +12,7 @@ import {
     Form,
     PostRecordConfig,
     PublicUser,
+    UserProfilePublicSettings
 } from '../Types';
 import SkapiError from './error';
 import validator from '../utils/validator';
@@ -94,6 +95,12 @@ import {
     toBase62,
     MD5
 } from '../utils/utils';
+import {
+    blockAccount,
+    unblockAccount,
+    deleteAccount,
+    adminSignup
+} from '../methods/admin';
 export default class Skapi {
     // current version
     private __version = '1.0.155';
@@ -473,6 +480,34 @@ export default class Skapi {
         message: string;
     }>): Promise<"SUCCESS: Inquiry has been sent."> {
         return sendInquiry.bind(this)(data);
+    }
+
+    @formHandler()
+    blockAccount(params: {user_id: string}): Promise<"SUCCESS: The user has been blocked."> {
+        return blockAccount.bind(this)(params);
+    }
+
+    @formHandler()
+    unblockAccount(params: {user_id: string}): Promise<"SUCCESS: The user has been unblocked."> {
+        return unblockAccount.bind(this)(params);
+    }
+
+    @formHandler()
+    deleteAccount(params: {user_id: string}): Promise<"SUCCESS: Account has been deleted."> {
+        return deleteAccount.bind(this)(params);
+    }
+
+    @formHandler()
+    adminSignup(params: {
+        form: UserAttributes & UserProfilePublicSettings & 
+            { email: String; password?: String; username?: string } & 
+            { access_group?: number; service?: string }
+        option?: {
+            signup_confirmation?: boolean | string;
+            email_subscription?: boolean;
+        }
+    }): Promise<UserProfile & { email_admin: string }> {
+        return adminSignup.bind(this)(params);
     }
 
     @formHandler()

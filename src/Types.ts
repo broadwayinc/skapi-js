@@ -163,7 +163,7 @@ export type Newsletters = {
     url: string;
 };
 
-type UserProfilePublicSettings = {
+export type UserProfilePublicSettings = {
     /** User's E-mail is public when true. E-Mail should be verified. */
     email_public?: boolean;
     /** User's phone number is public when true. Phone number should be verified. */

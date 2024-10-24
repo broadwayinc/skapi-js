@@ -676,7 +676,7 @@ export async function signup(
         gender_public: ['boolean', () => false],
         birthdate_public: ['boolean', () => false],
         phone_number_public: ['boolean', () => false],
-        access_group: 'number',
+        access_group: 'number', // v=>{if(v > 0 && v < 100) return v else throw SkapiError(...)}
         misc: 'string',
 
         picture: (v: string) => { if (v) return validator.Url(v); else return undefined },

@@ -10,17 +10,18 @@
     
 </body>
 <script>
-    const skapi = new Skapi("ap21RABJ9rO9JhIiCmGr", "5750ee2c-f7f7-43ff-b6a5-cce599d30101", null, {"hostDomain": "skapi.app","target_cdn": "d1wrj5ymxrt2ir"})
+    const skapi = new Skapi("eu71zettahertzesskpi", "skapi", null, {"hostDomain": "skapi.app","target_cdn": "d1wrj5ymxrt2ir"})
 
     console.log(skapi)
 
     async function main() {
         await skapi.login({
-            email: 'test@email.com',
-            password: '123123'
+            email: 'kkb7528@broadwayinc.com',
+            password: 'qweqwe'
         })
 
-        skapi.postRecord({'a':'ssss'}, {table: 'test'})
+        // skapi.deleteAccount({user_id: '366d0a4d-32b9-4ad9-998b-9e81301ab7ae', owner: '5750ee2c-f7f7-43ff-b6a5-cce599d30101', service: 'ap21RABJ9rO9JhIiCmGr'})
+        // skapi.adminSignup({form: {email: 'abcd@email.com', password: '112233'}, owner: '5750ee2c-f7f7-43ff-b6a5-cce599d30101', service: 'ap21RABJ9rO9JhIiCmGr'});
     }
 
     main();
