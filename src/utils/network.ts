@@ -41,6 +41,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'signupkey':
         case 'send-inquiry':
         case 'client-secret-request-public':
+        case 'block-account':
             return (auth ? admin.admin_private : admin.admin_public) + dest + query;
 
         case 'post-record':
