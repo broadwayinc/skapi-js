@@ -1,4 +1,4 @@
-# Skapi
+# Skapi Beta
 
 Skapi is a backend API Library for HTML Frontend.
 Now you can build fullstack web applications directly from your HTML frontend without the need for a backend server deployment.
