@@ -12,6 +12,7 @@ import {
     Form,
     PostRecordConfig,
     PublicUser,
+    UserProfilePublicSettings
 } from '../Types';
 import SkapiError from './error';
 import validator from '../utils/validator';
@@ -94,9 +95,17 @@ import {
     toBase62,
     MD5
 } from '../utils/utils';
+import {
+    blockAccount,
+    unblockAccount,
+    deleteAccount,
+    inviteUser,
+    createUser,
+    grantAccess
+} from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.156';
+    private __version = '1.0.157';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -473,6 +482,50 @@ export default class Skapi {
         message: string;
     }>): Promise<"SUCCESS: Inquiry has been sent."> {
         return sendInquiry.bind(this)(data);
+    }
+
+    @formHandler()
+    blockAccount(form: {user_id: string}): Promise<"SUCCESS: The user has been blocked."> {
+        return blockAccount.bind(this)(form);
+    }
+
+    @formHandler()
+    unblockAccount(form: {user_id: string}): Promise<"SUCCESS: The user has been unblocked."> {
+        return unblockAccount.bind(this)(form);
+    }
+
+    @formHandler()
+    deleteAccount(form: {user_id: string}): Promise<"SUCCESS: Account has been deleted."> {
+        return deleteAccount.bind(this)(form);
+    }
+
+    @formHandler()
+    inviteUser(
+        form: UserAttributes & UserProfilePublicSettings & { email: string; },
+        options?: {
+            confirmation_url?: string;
+            email_subscription?: boolean;
+        }
+    ): Promise<'SUCCESS: Invitation has been sent.'> {
+        return inviteUser.bind(this)(form, options);
+    }
+
+    @formHandler()
+    createUser(
+        form: UserAttributes & UserProfilePublicSettings & { email: string; password: string; },
+        options: {
+            email_subscription?: boolean;
+        }
+    ): Promise<UserProfile & PublicUser & { email_admin: string; approved: string; log: number; username: string; }> {
+        return createUser.bind(this)(form, options);
+    }
+
+    @formHandler()
+    grantAccess(params: {
+        user_id: string;
+        access_group: number;
+    }): Promise<'SUCCESS: Access has been granted to the user.'> {
+        return grantAccess.bind(this)(params);
     }
 
     @formHandler()
