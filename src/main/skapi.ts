@@ -99,7 +99,9 @@ import {
     blockAccount,
     unblockAccount,
     deleteAccount,
-    adminSignup
+    inviteUser,
+    createUser,
+    grantAccess
 } from '../methods/admin';
 export default class Skapi {
     // current version
@@ -483,31 +485,47 @@ export default class Skapi {
     }
 
     @formHandler()
-    blockAccount(params: {user_id: string}): Promise<"SUCCESS: The user has been blocked."> {
-        return blockAccount.bind(this)(params);
+    blockAccount(form: {user_id: string}): Promise<"SUCCESS: The user has been blocked."> {
+        return blockAccount.bind(this)(form);
     }
 
     @formHandler()
-    unblockAccount(params: {user_id: string}): Promise<"SUCCESS: The user has been unblocked."> {
-        return unblockAccount.bind(this)(params);
+    unblockAccount(form: {user_id: string}): Promise<"SUCCESS: The user has been unblocked."> {
+        return unblockAccount.bind(this)(form);
     }
 
     @formHandler()
-    deleteAccount(params: {user_id: string}): Promise<"SUCCESS: Account has been deleted."> {
-        return deleteAccount.bind(this)(params);
+    deleteAccount(form: {user_id: string}): Promise<"SUCCESS: Account has been deleted."> {
+        return deleteAccount.bind(this)(form);
     }
 
     @formHandler()
-    adminSignup(params: {
-        form: UserAttributes & UserProfilePublicSettings & 
-            { email: String; password?: String; username?: string } & 
-            { access_group?: number; service?: string }
-        option?: {
-            signup_confirmation?: boolean | string;
+    inviteUser(
+        form: UserAttributes & UserProfilePublicSettings & { email: string; },
+        options?: {
+            confirmation_url?: string;
             email_subscription?: boolean;
         }
-    }): Promise<UserProfile & { email_admin: string }> {
-        return adminSignup.bind(this)(params);
+    ): Promise<'SUCCESS: Invitation has been sent.'> {
+        return inviteUser.bind(this)(form, options);
+    }
+
+    @formHandler()
+    createUser(
+        form: UserAttributes & UserProfilePublicSettings & { email: string; password: string; },
+        options: {
+            email_subscription?: boolean;
+        }
+    ): Promise<UserProfile & PublicUser & { email_admin: string; approved: string; log: number; username: string; }> {
+        return createUser.bind(this)(form, options);
+    }
+
+    @formHandler()
+    grantAccess(params: {
+        user_id: string;
+        access_group: number;
+    }): Promise<'SUCCESS: Access has been granted to the user.'> {
+        return grantAccess.bind(this)(params);
     }
 
     @formHandler()
