@@ -644,6 +644,10 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
     return result;
 }
 
+async function checkSchema(params) {
+    return request.bind(this)('check-schema', params);
+}
+
 export async function postRecord(
     form: Form<Record<string, any>> | null | undefined,
     config: PostRecordConfig & { progress?: ProgressCallback; reference_private_key?: string; }
@@ -845,6 +849,11 @@ export async function postRecord(
     if (Object.keys(fetchOptions).length) {
         Object.assign(options, { fetchOptions });
     }
+
+    postData.schema_pass = await checkSchema.bind(this)(_config);
+
+    console.log(postData.schema_pass);
+
     let rec = await request.bind(this)('post-record', postData, options);
     if (to_bin) {
         let bin_formData = new FormData();
