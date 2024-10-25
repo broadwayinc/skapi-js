@@ -111,7 +111,6 @@ js/
 dist/
 esm/
 deploy.py
-package-lock.json
 playground/
 deploy.py
 test.js
