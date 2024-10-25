@@ -41,6 +41,8 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'signupkey':
         case 'send-inquiry':
         case 'client-secret-request-public':
+        case 'block-account':
+        case 'grant-access':
             return (auth ? admin.admin_private : admin.admin_public) + dest + query;
 
         case 'post-record':
@@ -56,6 +58,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'request-private-access-key':
         case 'get-ws-group':
         case 'del-files':
+        case 'check-schema':
             return (auth ? record.record_private : record.record_public) + dest + query;
 
         default:
