@@ -180,6 +180,8 @@ export function authentication() {
 
     const normalizeUserAttributes = (attr: any) => {
         let user: any = {};
+        console.log({attributesToNormalize: attr});
+
         if (Array.isArray(attr)) {
             // parse attribute structure: [ { Name, Value }, ... ]
             let normalized_user_attribute_keys = {};
@@ -298,9 +300,7 @@ export function authentication() {
         });
     };
 
-    const getSession = async (option?: {
-        refreshToken?: boolean;
-    }): Promise<CognitoUserSession> => {
+    const getSession = async (option?: {refreshToken: boolean;}): Promise<CognitoUserSession> => {
         // fetch session, updates user attributes
         let { refreshToken = false } = option || {};
 
@@ -308,11 +308,14 @@ export function authentication() {
             cognitoUser = userPool?.getCurrentUser() || null;
 
             if (cognitoUser === null) {
+                // no user session
                 rej(null);
                 return;
             }
 
             cognitoUser.getSession((err: any, session: CognitoUserSession) => {
+                console.log({getSession: {err, session}});
+
                 if (err) {
                     rej(err);
                     return;
@@ -324,9 +327,10 @@ export function authentication() {
                 }
 
                 let respond = (session) => {
-                    let idToken = session.getIdToken().payload;
+                    let usrAtt = session.getIdToken().payload;
+                    console.log({usrAttInRespond: usrAtt});
 
-                    if (idToken['custom:service'] !== this.service) {
+                    if (usrAtt['custom:service'] !== this.service) {
                         cognitoUser.signOut();
                         this.session = null;
                         rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
@@ -342,12 +346,14 @@ export function authentication() {
                     //     }
                     // });
                     // console.log({idToken});
-                    normalizeUserAttributes(idToken);
+                    normalizeUserAttributes(usrAtt);
                     res(session);
                 }
                 // try refresh when invalid token
                 if (refreshToken || !session.isValid()) {
                     cognitoUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
+                        console.log({refreshErr, refreshedSession});
+
                         if (refreshErr) {
                             rej(refreshErr);
                             return;
