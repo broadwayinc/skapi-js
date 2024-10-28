@@ -304,26 +304,34 @@ export default class Skapi {
             });
 
             if (restore?.connection || autoLogin) {
-                // let currRes = userPool.getCurrentUser();
-                // console.log({currRes})
+                let currRes = userPool.getCurrentUser();
+                console.log({currRes})
                 
                 try {
                     await authentication.bind(this)().getSession({ refreshToken: !restore?.connection });
                     // let session = await authentication.bind(this)().getSession({ refreshToken: !restore?.connection });
                     // console.log({session});
-                    // let curr = userPool.getCurrentUser();
-                    // console.log({curr})
+                    let curr = userPool.getCurrentUser();
+                    console.log({curr})
                 }
                 catch (err) {
                     this.__user = null;
                 }
             }
             else {
+                // userPool.storage.sync(function (err, result) {
+                //     if (err) {
+                //     } else if (result === 'SUCCESS') {
+                //         console.log('hal?');
+                //         // var cognitoUser = userPool.getCurrentUser();
+                //         // Continue with steps in Use case 16
+                //     }
+                // });
                 let currentUser = userPool.getCurrentUser();
-                // console.log({currentUser})
-                if (currentUser) {
-                    currentUser.signOut();
-                }
+                console.log({currentUser})
+                // if (currentUser) {
+                //     currentUser.signOut();
+                // }
             }
         })()
 
