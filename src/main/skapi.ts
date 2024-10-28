@@ -100,7 +100,7 @@ import {
     unblockAccount,
     deleteAccount,
     inviteUser,
-    createUser,
+    createAccount,
     grantAccess
 } from '../methods/admin';
 export default class Skapi {
@@ -511,13 +511,13 @@ export default class Skapi {
     }
 
     @formHandler()
-    createUser(
+    createAccount(
         form: UserAttributes & UserProfilePublicSettings & { email: string; password: string; },
         options: {
             email_subscription?: boolean;
         }
     ): Promise<UserProfile & PublicUser & { email_admin: string; approved: string; log: number; username: string; }> {
-        return createUser.bind(this)(form, options);
+        return createAccount.bind(this)(form, options);
     }
 
     @formHandler()

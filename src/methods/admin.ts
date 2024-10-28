@@ -191,7 +191,7 @@ export async function inviteUser (
     return await request.bind(this)('admin-signup', Object.assign({access_group: 1}, params), { auth: true });
 }
 
-export async function createUser (
+export async function createAccount (
     form: Form<
         UserAttributes & UserProfilePublicSettings & 
         { email: string; password: string; } & 
