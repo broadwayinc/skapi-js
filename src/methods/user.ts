@@ -300,7 +300,7 @@ export function authentication() {
         });
     };
 
-    const getSession = async (option?: {refreshToken: boolean;}): Promise<CognitoUserSession> => {
+    const getSession = async (option?: { refreshToken?: boolean; }): Promise<CognitoUserSession> => {
         // fetch session, updates user attributes
         let { refreshToken = false } = option || {};
 

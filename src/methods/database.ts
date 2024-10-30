@@ -852,8 +852,6 @@ export async function postRecord(
 
     postData.schema_pass = await checkSchema.bind(this)(_config);
 
-    console.log(postData.schema_pass);
-
     let rec = await request.bind(this)('post-record', postData, options);
     if (to_bin) {
         let bin_formData = new FormData();
