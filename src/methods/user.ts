@@ -173,21 +173,7 @@ export function authentication() {
 
     const getUserProfile = (): UserProfile => {
         // get users updated attribute
-        if (!this.session) {
-            this.session = null;
-            return null;
-        }
-        if (cognitoUser === null) {
-            this.session = null;
-            throw new SkapiError('Invalid session', { code: 'INVALID_REQUEST' });
-        }
-
-        let attr = cognitoUser?.getSignInUserSession()?.getIdToken()?.payload || null;
-        if (!attr) {
-            this.session = null;
-            return null;
-        }
-
+        let attr = cognitoUser.getSignInUserSession().getIdToken().payload || null;
         let user: any = {};
         this.log('attributes to normalize:', attr);
 
@@ -270,49 +256,43 @@ export function authentication() {
         let { refreshToken = false } = option || {};
 
         return new Promise((res, rej) => {
-            cognitoUser = this.userPool?.getCurrentUser() || null;
+            cognitoUser = this.userPool.getCurrentUser() || null;
 
-            if (cognitoUser === null) {
-                this.log('getSession:cognitoUser:', cognitoUser);
-                this.session = null;
+            if (!cognitoUser) {
+                this.log('getSession:cognitoUser', cognitoUser);
                 // no user session
+                _out.bind(this)();
                 rej(null);
                 return;
             }
 
             cognitoUser.getSession((err: any, session: CognitoUserSession) => {
-                this.log('getSession:getSessionCallback:', { err, session });
+                this.log('getSession:getSessionCallback', { err, session });
 
                 if (err) {
-                    this.session = null;
-                    if (typeof this.onLogin === 'function') {
-                        this.onLogin(null);
-                    }
+                    _out.bind(this)();
                     rej(err);
                     return;
                 }
 
                 if (!session) {
-                    this.session = null;
-                    if (typeof this.onLogin === 'function') {
-                        this.onLogin(null);
-                    }
+                    _out.bind(this)();
                     rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
                     return;
                 }
 
-                let respond = (session) => {
-                    let sessionAttribute = session.getIdToken().payload;
+                let respond = async (s: CognitoUserSession) => {
+                    let sessionAttribute = s.getIdToken().payload;
                     this.log('getSession:respond:sessionAttribute', sessionAttribute);
 
                     if (sessionAttribute['custom:service'] !== this.service) {
                         this.log('getSession:respond', 'invalid service, signing out');
-                        logout.bind(this)();
+                        _out.bind(this)();
                         rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
                         return;
                     }
 
-                    this.session = session;
+                    this.session = s;
                     getUserProfile();
                     if (typeof this.onLogin === 'function') {
                         this.onLogin(this.user);
@@ -320,28 +300,27 @@ export function authentication() {
 
                     res(this.session);
                 }
+                
                 // try refresh when invalid token
                 if (refreshToken || !session.isValid()) {
-                    cognitoUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
-                        this.log('getSession:refreshSessionCallback:', { err, session });
+                    cognitoUser.refreshSession(session.getRefreshToken(), async (refreshErr, refreshedSession) => {
+                        this.log('getSession:refreshSessionCallback:', { err, refreshedSession });
 
                         if (refreshErr) {
+                            _out.bind(this)();
                             rej(refreshErr);
-                            return;
                         }
-                        if (refreshedSession.isValid()) {
+                        else if (refreshedSession.isValid()) {
                             respond(refreshedSession);
-                            return;
                         }
                         else {
+                            _out.bind(this)();
                             rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
-                            return;
                         }
                     });
                 }
                 else {
                     respond(session);
-                    return;
                 }
             });
         });
@@ -462,7 +441,6 @@ export function authentication() {
         getSession,
         authenticateUser,
         createCognitoUser,
-        getUserProfile,
         signup
     };
 }
@@ -490,9 +468,7 @@ export async function checkAdmin() {
     return false;
 }
 
-export async function logout(): Promise<'SUCCESS: The user has been logged out.'> {
-    await this.__connection;
-
+function _out() {
     if (cognitoUser) {
         cognitoUser.signOut();
     }
@@ -511,7 +487,11 @@ export async function logout(): Promise<'SUCCESS: The user has been logged out.'
     if (typeof this.onLogin === 'function') {
         this.onLogin(null);
     }
+}
 
+export async function logout(): Promise<'SUCCESS: The user has been logged out.'> {
+    await this.__connection;
+    _out.bind(this)();
     return 'SUCCESS: The user has been logged out.';
 }
 
