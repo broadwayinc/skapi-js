@@ -256,12 +256,11 @@ export function authentication() {
         let { refreshToken = false } = option || {};
 
         return new Promise((res, rej) => {
-            cognitoUser = this.userPool.getCurrentUser() || null;
+            cognitoUser = this.userPool.getCurrentUser();
 
             if (!cognitoUser) {
                 this.log('getSession:cognitoUser', cognitoUser);
-                // no user session
-                _out.bind(this)();
+                // no user session. wasn't logged in.
                 rej(null);
                 return;
             }
@@ -300,7 +299,7 @@ export function authentication() {
 
                     res(this.session);
                 }
-                
+
                 // try refresh when invalid token
                 if (refreshToken || !session.isValid()) {
                     cognitoUser.refreshSession(session.getRefreshToken(), async (refreshErr, refreshedSession) => {
