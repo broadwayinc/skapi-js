@@ -14,6 +14,13 @@ import {
     PublicUser,
     UserProfilePublicSettings
 } from '../Types';
+import {
+    // CognitoUserAttribute,
+    // CognitoUser,
+    // AuthenticationDetails,
+    // CognitoUserSession,
+    CognitoUserPool
+} from 'amazon-cognito-identity-js';
 import SkapiError from './error';
 import validator from '../utils/validator';
 import {
@@ -77,8 +84,8 @@ import {
     changePassword,
     updateProfile,
     getUsers,
-    setUserPool,
-    userPool,
+    // setUserPool,
+    // userPool,
     lastVerifiedEmail,
     requestUsernameChange,
     consumeTicket,
@@ -110,7 +117,8 @@ export default class Skapi {
     owner: string;
     session: Record<string, any> | null = null;
     connection: Connection | null = null;
-
+    userPool: CognitoUserPool | null = null;
+    
     private host = 'skapi';
 
     private hostDomain = 'skapi.com';
@@ -156,6 +164,8 @@ export default class Skapi {
     set user(value) {
         // setting user is bypassed
     }
+
+    loginState:Function = (user:UserProfile):void => {};
 
     admin_endpoint: Promise<Record<string, any>>;
     record_endpoint: Promise<Record<string, any>>;
@@ -288,6 +298,8 @@ export default class Skapi {
 
         const restore = JSON.parse(window.sessionStorage.getItem(`${service}#${owner}`) || 'null');
 
+        this.log('constructor:restore', restore);
+
         if (restore?.connection) {
             // apply all data to class properties
             for (let k in restore) {
@@ -297,41 +309,28 @@ export default class Skapi {
 
         this.__authConnection = (async () => {
             const admin_endpoint = await this.admin_endpoint;
-
-            setUserPool({
+            this.userPool = new CognitoUserPool({
                 UserPoolId: admin_endpoint.userpool_id,
                 ClientId: admin_endpoint.userpool_client
             });
+            // setUserPool.bind(this)({
+            //     UserPoolId: admin_endpoint.userpool_id,
+            //     ClientId: admin_endpoint.userpool_client
+            // });
 
             if (restore?.connection || autoLogin) {
-                let currRes = userPool.getCurrentUser();
-                console.log({currRes})
-                
                 try {
                     await authentication.bind(this)().getSession({ refreshToken: !restore?.connection });
-                    // let session = await authentication.bind(this)().getSession({ refreshToken: !restore?.connection });
-                    // console.log({session});
-                    let curr = userPool.getCurrentUser();
-                    console.log({curr})
                 }
                 catch (err) {
                     this.__user = null;
                 }
             }
             else {
-                // userPool.storage.sync(function (err, result) {
-                //     if (err) {
-                //     } else if (result === 'SUCCESS') {
-                //         console.log('hal?');
-                //         // var cognitoUser = userPool.getCurrentUser();
-                //         // Continue with steps in Use case 16
-                //     }
-                // });
-                let currentUser = userPool.getCurrentUser();
-                console.log({currentUser})
-                // if (currentUser) {
-                //     currentUser.signOut();
-                // }
+                let currentUser = this.userPool.getCurrentUser();
+                if (currentUser) {
+                    currentUser.signOut();
+                }
             }
         })()
 
@@ -389,7 +388,7 @@ export default class Skapi {
         })();
 
         this.__connection.then(conn => {
-            if((conn?.group || 0) < 3) {
+            if ((conn?.group || 0) < 3) {
                 this.version();
             }
         });
@@ -427,6 +426,16 @@ export default class Skapi {
         return this.__version;
     }
 
+    log(n:string, v: any) {
+        if (this.__network_logs) {
+            try {
+                console.log(n, JSON.parse(JSON.stringify(v)));
+            } catch (err) {
+                console.log(n, v);
+            }
+        }
+    }
+
     connectRealtime(cb: (rt: {
         type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private';
         message: any;
@@ -445,7 +454,7 @@ export default class Skapi {
     }): Promise<UserProfile> {
         return jwtLogin.bind(this)(params);
     }
-    
+
     @formHandler()
     clientSecretRequest(params: {
         url: string;
@@ -478,7 +487,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{user_id: string;connection_id:string}[]>> {
+    getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{ user_id: string; connection_id: string }[]>> {
         return getRealtimeUsers.bind(this)(params, fetchOptions);
     }
 
@@ -493,17 +502,17 @@ export default class Skapi {
     }
 
     @formHandler()
-    blockAccount(form: {user_id: string}): Promise<"SUCCESS: The user has been blocked."> {
+    blockAccount(form: { user_id: string }): Promise<"SUCCESS: The user has been blocked."> {
         return blockAccount.bind(this)(form);
     }
 
     @formHandler()
-    unblockAccount(form: {user_id: string}): Promise<"SUCCESS: The user has been unblocked."> {
+    unblockAccount(form: { user_id: string }): Promise<"SUCCESS: The user has been unblocked."> {
         return unblockAccount.bind(this)(form);
     }
 
     @formHandler()
-    deleteAccount(form: {user_id: string}): Promise<"SUCCESS: Account has been deleted."> {
+    deleteAccount(form: { user_id: string }): Promise<"SUCCESS: Account has been deleted."> {
         return deleteAccount.bind(this)(form);
     }
 
@@ -590,7 +599,7 @@ export default class Skapi {
         data?: any;
         /** requests are sync when true */
         sync?: boolean;
-    }, Response = { response: any; statusCode: number; url: string; }>(params: Params[] | Form<Params>, url?:string): Promise<Response | Response[]> {
+    }, Response = { response: any; statusCode: number; url: string; }>(params: Params[] | Form<Params>, url?: string): Promise<Response | Response[]> {
         return secureRequest.bind(this)(params, url);
     }
     @formHandler()

@@ -4,7 +4,7 @@ import {
     CognitoUser,
     AuthenticationDetails,
     CognitoUserSession,
-    CognitoUserPool
+    // CognitoUserPool
 } from 'amazon-cognito-identity-js';
 import {
     Form,
@@ -20,11 +20,11 @@ import { MD5, fromBase62 } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
 
-export let userPool: CognitoUserPool | null = null;
+// export let userPool: CognitoUserPool | null = null;
 
-export function setUserPool(params: { UserPoolId: string; ClientId: string; }) {
-    userPool = new CognitoUserPool(params);
-}
+// export function setUserPool(params: { UserPoolId: string; ClientId: string; }) {
+//     this.userPool = new CognitoUserPool(params);
+// }
 
 function map_ticket_obj(t) {
     let mapper = {
@@ -176,48 +176,67 @@ export async function unregisterTicket(
 }
 
 export function authentication() {
-    if (!userPool) throw new SkapiError('User pool is missing', { code: 'INVALID_REQUEST' });
+    if (!this.userPool) throw new SkapiError('User pool is missing', { code: 'INVALID_REQUEST' });
 
-    const normalizeUserAttributes = (attr: any) => {
-        let user: any = {};
-        console.log({attributesToNormalize: attr});
-
-        if (Array.isArray(attr)) {
-            // parse attribute structure: [ { Name, Value }, ... ]
-            let normalized_user_attribute_keys = {};
-            for (let i of (attr as CognitoUserAttribute[])) {
-                normalized_user_attribute_keys[i.Name] = i.Value;
-
-                if (i.Name === 'custom:service' && normalized_user_attribute_keys[i.Name] !== this.service) {
-                    throw new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' });
-                }
-            }
-
-            attr = normalized_user_attribute_keys;
+    const getUserProfile = (): UserProfile => {
+        // get users updated attribute
+        if (!this.session) {
+            this.session = null;
+            return null;
+        }
+        if (cognitoUser === null) {
+            this.session = null;
+            throw new SkapiError('Invalid session', { code: 'INVALID_REQUEST' });
         }
 
-        for (let k in attr) {
-            if (k.includes('custom:')) {
-                if (k === 'custom:service' && attr[k] !== this.service) {
+        let attr = cognitoUser?.getSignInUserSession()?.getIdToken()?.payload || null;
+        if (!attr) {
+            this.session = null;
+            return null;
+        }
+
+        let user: any = {};
+        this.log('attributes to normalize:', attr);
+
+        // parse attribute structure: [ { Name, Value }, ... ]
+        for (let name in attr) {
+            let value = attr[name];
+
+            let excludes = ['aud', 'cognito:username', 'event_id', 'exp', 'iat', 'iss', 'jti', 'origin_jti', 'secret_key', 'token_use'];
+            let converts = {
+                auth_time: 'log',
+                sub: 'user_id'
+            }
+
+            if (excludes.includes(name)) continue;
+
+            if (converts[name]) name = converts[name];
+
+            else if (name.includes('custom:')) {
+                if (name === 'custom:service' && value !== this.service) {
                     throw new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' });
                 }
-                user[k.replace('custom:', '')] = attr[k];
+                user[name.replace('custom:', '')] = value;
             }
-            else {
-                if (k === 'address') {
-                    let addr_main = attr[k];
-                    if (addr_main && typeof addr_main === 'object' && Object.keys(addr_main).length) {
-                        if (addr_main?.formatted) {
-                            try {
-                                attr[k] = JSON.parse(addr_main.formatted);
-                            }
-                            catch (err) {
-                                attr[k] = addr_main.formatted;
-                            }
+
+            else if (name === 'address') {
+                let addr_main: any = value;
+                if (addr_main && typeof addr_main === 'object' && Object.keys(addr_main).length) {
+                    if (addr_main?.formatted) {
+                        try {
+                            user[name] = JSON.parse(addr_main.formatted);
+                        }
+                        catch (err) {
+                            user[name] = addr_main.formatted;
                         }
                     }
                 }
-                user[k] = attr[k];
+                else {
+                    user[name] = addr_main;
+                }
+            }
+            else {
+                user[name] = value;
             }
         }
 
@@ -225,7 +244,6 @@ export function authentication() {
             'address_public',
             'birthdate_public',
             'email_public',
-            // 'email_subscription',
             'gender_public',
             'phone_number_public',
             'access_group'
@@ -234,7 +252,6 @@ export function authentication() {
                 if (user.hasOwnProperty(k.split('_')[0])) user[k] = user.hasOwnProperty(k) ? !!Number(user[k]) : false;
                 else delete user[k];
             }
-            // else if (k === 'email_subscription') user[k] = user.hasOwnProperty(k) ? !!Number(user[k]) : false;
             else user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
         }
 
@@ -243,94 +260,60 @@ export function authentication() {
             'phone_number'
         ]) {
             if (user.hasOwnProperty(k)) {
-                if (user[k + '_verified'] === true || user[k + '_verified'] === 'true') {
-                    user[k + '_verified'] = true;
-                }
-                else {
-                    user[k + '_verified'] = false;
-                }
+                user[k + '_verified'] = user[k + '_verified'] === true;
             }
             else {
                 delete user[k + '_verified'];
             }
         }
 
-        for (let k of [
-            'aud',
-            { from: 'auth_time', to: 'log' },
-            'cognito:username',
-            'event_id',
-            'exp',
-            'iat',
-            'iss',
-            'jti',
-            'origin_jti',
-            'secret_key',
-            { from: 'sub', to: 'user_id' },
-            'token_use'
-        ]) {
-            if (typeof k === 'string') {
-                delete user[k];
-            }
-            else {
-                user[k.to] = user[k.from];
-                delete user[k.from];
-            }
-        };
-
         this.__user = user;
         return user;
     };
 
-    const getUser = (): Promise<UserProfile | null> => {
-        // get users updated attribute
-
-        return new Promise((res, rej) => {
-            if (!this.session) { res(null); }
-            if (cognitoUser === null) { rej(new SkapiError('Invalid session', { code: 'INVALID_REQUEST' })); }
-            else {
-                cognitoUser.getUserAttributes((attrErr, attributes) => {
-                    if (attrErr) rej(attrErr);
-                    else {
-                        normalizeUserAttributes(attributes);
-                        res(this.user);
-                    }
-                });
-            }
-        });
-    };
 
     const getSession = async (option?: { refreshToken?: boolean; }): Promise<CognitoUserSession> => {
         // fetch session, updates user attributes
         let { refreshToken = false } = option || {};
 
         return new Promise((res, rej) => {
-            cognitoUser = userPool?.getCurrentUser() || null;
+            cognitoUser = this.userPool?.getCurrentUser() || null;
 
             if (cognitoUser === null) {
+                this.log('getSession:cognitoUser:', cognitoUser);
+                this.session = null;
                 // no user session
                 rej(null);
                 return;
             }
 
             cognitoUser.getSession((err: any, session: CognitoUserSession) => {
-                console.log({getSession: {err, session}});
+                this.log('getSession:getSessionCallback:', { err, session });
 
                 if (err) {
+                    this.session = null;
+                    if(typeof this.loginState === 'function') {
+                        this.loginState(null);
+                    }
                     rej(err);
                     return;
                 }
 
                 if (!session) {
+                    this.session = null;
+                    if(typeof this.loginState === 'function') {
+                        this.loginState(null);
+                    }
                     rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
                     return;
                 }
 
                 let respond = (session) => {
                     let usrAtt = session.getIdToken().payload;
-                    console.log({usrAttInRespond: usrAtt});
+                    this.log('getSession:respond:usrAtt:', usrAtt);
 
                     if (usrAtt['custom:service'] !== this.service) {
+                        this.log('getSession:respond', 'signing out');
                         cognitoUser.signOut();
                         this.session = null;
                         rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
@@ -338,21 +321,17 @@ export function authentication() {
                     }
 
                     this.session = session;
-                    // cognitoUser.getUserAttributes(function (err, attributes) {
-                    //     if (err) {
-                    //         // Handle error
-                    //     } else {
-                    //         console.log({attributes});
-                    //     }
-                    // });
-                    // console.log({idToken});
-                    normalizeUserAttributes(usrAtt);
-                    res(session);
+                    getUserProfile();
+                    if(typeof this.loginState === 'function') {
+                        this.loginState(this.user);
+                    }
+
+                    res(this.session);
                 }
                 // try refresh when invalid token
                 if (refreshToken || !session.isValid()) {
                     cognitoUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
-                        console.log({refreshErr, refreshedSession});
+                        this.log('getSession:refreshSessionCallback:', { err, session });
 
                         if (refreshErr) {
                             rej(refreshErr);
@@ -382,7 +361,7 @@ export function authentication() {
         return {
             cognitoUser: new CognitoUser({
                 Username: username,
-                Pool: userPool
+                Pool: this.userPool
             }),
             cognitoUsername: username
         };
@@ -423,7 +402,7 @@ export function authentication() {
                 },
                 onSuccess: _ => getSession().then(_ => {
                     this.__disabledAccount = null;
-                    res(this.__user);
+                    res(this.user);
                 }),
                 onFailure: (err: any) => {
                     let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
@@ -476,7 +455,7 @@ export function authentication() {
 
     const signup = (username: string, password: string, attributes: CognitoUserAttribute[]) => {
         return new Promise((res, rej) => {
-            userPool.signUp(username, password, attributes, null, (err, result) => {
+            this.userPool.signUp(username, password, attributes, null, (err, result) => {
                 if (err) {
                     rej(err);
                     return;
@@ -491,7 +470,7 @@ export function authentication() {
         getSession,
         authenticateUser,
         createCognitoUser,
-        getUser,
+        getUserProfile,
         signup
     };
 }
