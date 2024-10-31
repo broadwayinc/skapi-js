@@ -15,10 +15,6 @@ import {
     UserProfilePublicSettings
 } from '../Types';
 import {
-    // CognitoUserAttribute,
-    // CognitoUser,
-    // AuthenticationDetails,
-    // CognitoUserSession,
     CognitoUserPool
 } from 'amazon-cognito-identity-js';
 import SkapiError from './error';
@@ -84,8 +80,6 @@ import {
     changePassword,
     updateProfile,
     getUsers,
-    // setUserPool,
-    // userPool,
     lastVerifiedEmail,
     requestUsernameChange,
     consumeTicket,

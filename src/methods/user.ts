@@ -3,8 +3,7 @@ import {
     CognitoUserAttribute,
     CognitoUser,
     AuthenticationDetails,
-    CognitoUserSession,
-    // CognitoUserPool
+    CognitoUserSession
 } from 'amazon-cognito-identity-js';
 import {
     Form,
@@ -19,12 +18,6 @@ import { request } from '../utils/network';
 import { MD5, fromBase62 } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
-
-// export let userPool: CognitoUserPool | null = null;
-
-// export function setUserPool(params: { UserPoolId: string; ClientId: string; }) {
-//     this.userPool = new CognitoUserPool(params);
-// }
 
 function map_ticket_obj(t) {
     let mapper = {
@@ -292,7 +285,7 @@ export function authentication() {
 
                 if (err) {
                     this.session = null;
-                    if(typeof this.loginHandle === 'function') {
+                    if (typeof this.loginHandle === 'function') {
                         this.loginHandle(null);
                     }
                     rej(err);
@@ -301,7 +294,7 @@ export function authentication() {
 
                 if (!session) {
                     this.session = null;
-                    if(typeof this.loginHandle === 'function') {
+                    if (typeof this.loginHandle === 'function') {
                         this.loginHandle(null);
                     }
                     rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
@@ -321,7 +314,7 @@ export function authentication() {
 
                     this.session = session;
                     getUserProfile();
-                    if(typeof this.loginHandle === 'function') {
+                    if (typeof this.loginHandle === 'function') {
                         this.loginHandle(this.user);
                     }
 
@@ -499,13 +492,11 @@ export async function checkAdmin() {
 
 export async function logout(): Promise<'SUCCESS: The user has been logged out.'> {
     await this.__connection;
-    
-    cognitoUser = this.userPool?.getCurrentUser() || null;
 
     if (cognitoUser) {
         cognitoUser.signOut();
     }
-    
+
     let to_be_erased = {
         'session': null,
         '__startKeyHistory': {},
@@ -517,7 +508,7 @@ export async function logout(): Promise<'SUCCESS: The user has been logged out.'
         this[k] = to_be_erased[k];
     }
 
-    if(typeof this.loginHandle === 'function') {
+    if (typeof this.loginHandle === 'function') {
         this.loginHandle(null);
     }
 
