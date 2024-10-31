@@ -106,7 +106,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.157';
+    private __version = '1.0.158';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -159,7 +159,7 @@ export default class Skapi {
         // setting user is bypassed
     }
 
-    loginHandle: Function = (user: UserProfile): void => { };
+    loginListener: Function = (user: UserProfile): void => { };
 
     admin_endpoint: Promise<Record<string, any>>;
     record_endpoint: Promise<Record<string, any>>;
