@@ -285,8 +285,8 @@ export function authentication() {
 
                 if (err) {
                     this.session = null;
-                    if (typeof this.loginHandle === 'function') {
-                        this.loginHandle(null);
+                    if (typeof this.loginListener === 'function') {
+                        this.loginListener(null);
                     }
                     rej(err);
                     return;
@@ -294,8 +294,8 @@ export function authentication() {
 
                 if (!session) {
                     this.session = null;
-                    if (typeof this.loginHandle === 'function') {
-                        this.loginHandle(null);
+                    if (typeof this.loginListener === 'function') {
+                        this.loginListener(null);
                     }
                     rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
                     return;
@@ -314,8 +314,8 @@ export function authentication() {
 
                     this.session = session;
                     getUserProfile();
-                    if (typeof this.loginHandle === 'function') {
-                        this.loginHandle(this.user);
+                    if (typeof this.loginListener === 'function') {
+                        this.loginListener(this.user);
                     }
 
                     res(this.session);
@@ -508,8 +508,8 @@ export async function logout(): Promise<'SUCCESS: The user has been logged out.'
         this[k] = to_be_erased[k];
     }
 
-    if (typeof this.loginHandle === 'function') {
-        this.loginHandle(null);
+    if (typeof this.loginListener === 'function') {
+        this.loginListener(null);
     }
 
     return 'SUCCESS: The user has been logged out.';
