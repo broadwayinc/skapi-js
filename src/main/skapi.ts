@@ -112,7 +112,7 @@ export default class Skapi {
     session: Record<string, any> | null = null;
     connection: Connection | null = null;
     userPool: CognitoUserPool | null = null;
-    
+
     private host = 'skapi';
 
     private hostDomain = 'skapi.com';
@@ -159,7 +159,7 @@ export default class Skapi {
         // setting user is bypassed
     }
 
-    loginHandle:Function = (user:UserProfile):void => {};
+    loginHandle: Function = (user: UserProfile): void => { };
 
     admin_endpoint: Promise<Record<string, any>>;
     record_endpoint: Promise<Record<string, any>>;
@@ -313,11 +313,8 @@ export default class Skapi {
                     await authentication.bind(this)().getSession({ refreshToken: !restore?.connection });
                 }
                 catch (err) {
-                    this.__user = null;
+                    await logout.bind(this)();
                 }
-            }
-            else {
-                await logout.bind(this)();
             }
         })()
 
@@ -413,7 +410,7 @@ export default class Skapi {
         return this.__version;
     }
 
-    log(n:string, v: any) {
+    log(n: string, v: any) {
         if (this.__network_logs) {
             try {
                 console.log(n, JSON.parse(JSON.stringify(v)));
