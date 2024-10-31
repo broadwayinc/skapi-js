@@ -1,7 +1,7 @@
 # Skapi
 
-Skapi is a backend API Library for HTML Frontend.
-Now you can build fullstack web applications directly from your HTML frontend without the need for a backend server deployment.
+Serverless backend API Library for HTML Frontend.
+Build fullstack web applications directly from your HTML without backend engineering.
 
 ### Compatible with both vanilla HTML and SPA projects
 
@@ -65,9 +65,8 @@ Then, import the library into your main JavaScript file.
 import { Skapi } from 'skapi-js';
 const skapi = new Skapi('service_id', 'owner_id');
 
+// Export the skapi instance, so you can use it in other components
 export { skapi }
-
-// Now you can import skapi from anywhere in your project.
 ```
 
 ### 3. Test your connection
