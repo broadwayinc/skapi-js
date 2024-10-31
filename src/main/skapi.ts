@@ -165,7 +165,7 @@ export default class Skapi {
         // setting user is bypassed
     }
 
-    loginState:Function = (user:UserProfile):void => {};
+    loginHandle:Function = (user:UserProfile):void => {};
 
     admin_endpoint: Promise<Record<string, any>>;
     record_endpoint: Promise<Record<string, any>>;
@@ -313,10 +313,6 @@ export default class Skapi {
                 UserPoolId: admin_endpoint.userpool_id,
                 ClientId: admin_endpoint.userpool_client
             });
-            // setUserPool.bind(this)({
-            //     UserPoolId: admin_endpoint.userpool_id,
-            //     ClientId: admin_endpoint.userpool_client
-            // });
 
             if (restore?.connection || autoLogin) {
                 try {
@@ -327,10 +323,7 @@ export default class Skapi {
                 }
             }
             else {
-                let currentUser = this.userPool.getCurrentUser();
-                if (currentUser) {
-                    currentUser.signOut();
-                }
+                await logout.bind(this)();
             }
         })()
 
@@ -374,8 +367,8 @@ export default class Skapi {
 
             // attach event to save session on close
             window.addEventListener('beforeunload', () => {
-                storeClassProperties();
                 this.closeRealtime();
+                storeClassProperties();
             });
             // for mobile
             window.addEventListener("visibilitychange", () => {
@@ -388,7 +381,7 @@ export default class Skapi {
         })();
 
         this.__connection.then(conn => {
-            if ((conn?.group || 0) < 3) {
+            if ((conn?.group || 0) < 3 || this.__network_logs) {
                 this.version();
             }
         });

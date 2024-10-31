@@ -292,8 +292,8 @@ export function authentication() {
 
                 if (err) {
                     this.session = null;
-                    if(typeof this.loginState === 'function') {
-                        this.loginState(null);
+                    if(typeof this.loginHandle === 'function') {
+                        this.loginHandle(null);
                     }
                     rej(err);
                     return;
@@ -301,29 +301,28 @@ export function authentication() {
 
                 if (!session) {
                     this.session = null;
-                    if(typeof this.loginState === 'function') {
-                        this.loginState(null);
+                    if(typeof this.loginHandle === 'function') {
+                        this.loginHandle(null);
                     }
                     rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
                     return;
                 }
 
                 let respond = (session) => {
-                    let usrAtt = session.getIdToken().payload;
-                    this.log('getSession:respond:usrAtt:', usrAtt);
+                    let sessionAttribute = session.getIdToken().payload;
+                    this.log('getSession:respond:sessionAttribute', sessionAttribute);
 
-                    if (usrAtt['custom:service'] !== this.service) {
-                        this.log('getSession:respond', 'signing out');
-                        cognitoUser.signOut();
-                        this.session = null;
+                    if (sessionAttribute['custom:service'] !== this.service) {
+                        this.log('getSession:respond', 'invalid service, signing out');
+                        logout.bind(this)();
                         rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
                         return;
                     }
 
                     this.session = session;
                     getUserProfile();
-                    if(typeof this.loginState === 'function') {
-                        this.loginState(this.user);
+                    if(typeof this.loginHandle === 'function') {
+                        this.loginHandle(this.user);
                     }
 
                     res(this.session);
@@ -500,11 +499,13 @@ export async function checkAdmin() {
 
 export async function logout(): Promise<'SUCCESS: The user has been logged out.'> {
     await this.__connection;
+    
+    cognitoUser = this.userPool?.getCurrentUser() || null;
 
     if (cognitoUser) {
         cognitoUser.signOut();
     }
-
+    
     let to_be_erased = {
         'session': null,
         '__startKeyHistory': {},
@@ -514,6 +515,10 @@ export async function logout(): Promise<'SUCCESS: The user has been logged out.'
 
     for (let k in to_be_erased) {
         this[k] = to_be_erased[k];
+    }
+
+    if(typeof this.loginHandle === 'function') {
+        this.loginHandle(null);
     }
 
     return 'SUCCESS: The user has been logged out.';
@@ -598,7 +603,6 @@ export async function login(
         /** Password for signin. Should be at least 6 characters. */
         password: string;
     }>): Promise<UserProfile> {
-    await this.logout();
     let params = validator.Params(form, {
         username: 'string',
         email: 'string',
@@ -676,7 +680,7 @@ export async function signup(
     let params = validator.Params(form || {}, paramRestrictions, ['email', 'password']);
 
     // always logout before creating an account (for users)
-    await this.logout();
+    await logout.bind(this)();
 
     option = validator.Params(option || {}, {
         email_subscription: (v: boolean) => {

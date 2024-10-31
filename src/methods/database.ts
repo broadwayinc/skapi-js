@@ -358,17 +358,22 @@ export async function getFile(
             throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
         }
         else {
-            let currTime = Date.now() / 1000;
+            
+            let currTime = Math.floor(Date.now() / 1000);
+            
             if (this.session.idToken.payload.exp < currTime) {
+                this.log('request:New token', null);
                 try {
                     await authentication.bind(this)().getSession({ refreshToken: true });
-                    token = this.session?.idToken?.jwtToken;
                 }
                 catch (err) {
-                    this.logout();
+                    this.log('request:New token error', err);
+                    await this.logout();
                     throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
                 }
             }
+
+            token = this.session?.idToken?.jwtToken;
         }
 
         if (access_group === '**') {

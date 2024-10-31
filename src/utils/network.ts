@@ -130,7 +130,7 @@ export async function request(
                 }
                 catch (err) {
                     this.log('request:New token error', err);
-                    this.logout();
+                    await this.logout();
                     throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
                 }
             }
@@ -140,7 +140,7 @@ export async function request(
         }
         else {
             this.log('request:No session', null);
-            this.logout();
+            await this.logout();
             throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
         }
     }
