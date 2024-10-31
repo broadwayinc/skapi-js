@@ -364,11 +364,10 @@ export async function getFile(
             if (this.session.idToken.payload.exp < currTime) {
                 this.log('request:New token', null);
                 try {
-                    await authentication.bind(this)().getSession({ refreshToken: true });
+                    await authentication.bind(this)().getSession();
                 }
                 catch (err) {
                     this.log('request:New token error', err);
-                    await this.logout();
                     throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
                 }
             }
