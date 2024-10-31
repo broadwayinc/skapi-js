@@ -1,17 +1,14 @@
 {
   "name": "skapi-js",
-  "version": "1.0.157-beta.2",
+  "version": "1.0.157-beta.0",
   "description": "Skapi: Backend API for HTML frontend.",
   "main": "dist/skapi.module.js",
   "types": "js/Main.d.ts",
   "files": [
     "js",
     "dist"
-    "js",
-    "dist"
   ],
   "scripts": {
-    "build": "npx tsc --project tsconfig.json; npx webpack --config webpack.config.js;"
     "build": "npx tsc --project tsconfig.json; npx webpack --config webpack.config.js;"
   },
   "repository": {
@@ -29,9 +26,6 @@
     "amazon-cognito-identity-js": "^6.3.12",
     "ts-loader": "^9.5.1",
     "typescript": "^5.3.3",
-    "amazon-cognito-identity-js": "^6.3.12",
-    "ts-loader": "^9.5.1",
-    "typescript": "^5.3.3",
     "webpack": "^5.74.0",
     "webpack-cli": "^4.10.0"
   },
@@ -39,10 +33,6 @@
     "backend",
     "skapi",
     "api",
-    "daas",
-    "serverless",
-    "database"
-  ]
     "daas",
     "serverless",
     "database"
