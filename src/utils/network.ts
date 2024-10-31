@@ -3,6 +3,7 @@ import SkapiError from '../main/error';
 import { Form, FetchOptions, DatabaseResponse, ProgressCallback } from '../Types';
 import validator from './validator';
 import { MD5, generateRandom, extractFormData } from './utils';
+import { authentication } from '../methods/user';
 
 async function getEndpoint(dest: string, auth: boolean) {
     const endpoints = await Promise.all([
@@ -83,9 +84,8 @@ export async function request(
         ignoreService: boolean;
     }
 ): Promise<any> {
-    if (this.__network_logs) {
-        console.log(JSON.parse(JSON.stringify({ url, data, options })));
-    }
+    this.log('request:', { url, data, options, _etc: _etc || {} });
+
     options = options || {};
 
     let {
@@ -111,20 +111,35 @@ export async function request(
 
     if (auth) {
         if (this.session) {
-            let currTime = Date.now() / 1000;
+            this.log('request:session', this.session);
+
+            let currTime = Math.floor(Date.now() / 1000);
+
+            this.log('request:tokens:', {
+                exp: this.session.idToken.payload.exp,
+                currTime,
+                expiresIn: this.session.idToken.payload.exp - currTime,
+                token: this.session.accessToken.jwtToken,
+                refreshToken: this.session.refreshToken.token
+            });
+
             if (this.session.idToken.payload.exp < currTime) {
+                this.log('request:New token', null);
                 try {
-                    await this.authentication().getSession({ refreshToken: true });
+                    await authentication.bind(this)().getSession({ refreshToken: true });
                 }
                 catch (err) {
+                    this.log('request:New token error', err);
                     this.logout();
                     throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
                 }
             }
 
             token = this.session?.idToken?.jwtToken;
+            this.log('request:token to use', token);
         }
         else {
+            this.log('request:No session', null);
             this.logout();
             throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
         }
@@ -224,7 +239,7 @@ export async function request(
         headers.Authorization = token;
     }
 
-    if(headers['Content-Type'] !== 'application/json') {
+    if (headers['Content-Type'] !== 'application/json') {
         // add service and owner to headers
         headers['Content-Meta'] = JSON.stringify({ service, owner });
     }
@@ -283,7 +298,9 @@ export async function request(
         if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
             delete __pendingRequest[requestKey as string];
         }
-        
+
+        this.log('request:end', result);
+
         return result;
     }
     catch (err) {
@@ -291,7 +308,7 @@ export async function request(
         if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
             delete __pendingRequest[requestKey as string];
         }
-        
+        this.log('request:err', err);
         throw err;
     }
 }

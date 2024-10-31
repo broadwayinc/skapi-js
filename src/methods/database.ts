@@ -14,6 +14,7 @@ import { extractFormData, fromBase62 } from '../utils/utils';
 import validator from '../utils/validator';
 import { request, uploadFiles } from '../utils/network';
 import { checkAdmin } from './user';
+import { authentication } from './user';
 
 const __index_number_range = 4503599627370496; // +/-
 
@@ -360,7 +361,7 @@ export async function getFile(
             let currTime = Date.now() / 1000;
             if (this.session.idToken.payload.exp < currTime) {
                 try {
-                    await this.authentication().getSession({ refreshToken: true });
+                    await authentication.bind(this)().getSession({ refreshToken: true });
                     token = this.session?.idToken?.jwtToken;
                 }
                 catch (err) {
