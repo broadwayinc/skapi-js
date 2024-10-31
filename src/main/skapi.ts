@@ -310,11 +310,9 @@ export default class Skapi {
 
             if (restore?.connection || autoLogin) {
                 try {
-                    await authentication.bind(this)().getSession({ refreshToken: !restore?.connection });
+                    await authentication.bind(this)().getSession();
                 }
-                catch (err) {
-                    await logout.bind(this)();
-                }
+                catch (err) { }
             }
         })()
 
