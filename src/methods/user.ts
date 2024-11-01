@@ -189,7 +189,9 @@ export function authentication() {
 
             if (excludes.includes(name)) continue;
 
-            if (converts[name]) name = converts[name];
+            if (converts[name]) {
+                user[converts[name]] = value;
+            }
 
             else if (name.includes('custom:')) {
                 if (name === 'custom:service' && value !== this.service) {
