@@ -808,10 +808,10 @@ export async function postRecord(
             if (Array.isArray(v)) {
                 for (let i of v) {
                     if (typeof i === 'string') {
-                        arr.push(i);
+                        arr.push(i.split('?')[0]);
                     }
                     else if (i.url && i.size && i.filename) {
-                        arr.push(i.url);
+                        arr.push(i.url.split('?')[0]);
                     }
                     else {
                         throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[]>`, { code: 'INVALID_PARAMETER' });
