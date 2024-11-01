@@ -624,8 +624,8 @@ export async function signup(
             return undefined;
         },
         gender: 'string',
-        birthdate: (v: string) => validator.Birthdate(v),
-        phone_number: (v: string) => validator.PhoneNumber(v),
+        birthdate: (v: string) => v ? validator.Birthdate(v) : "",
+        phone_number: (v: string) => v ? validator.PhoneNumber(v) : "",
 
         email_public: ['boolean', () => false],
         address_public: ['boolean', () => false],
@@ -635,13 +635,13 @@ export async function signup(
         access_group: 'number', // v=>{if(v > 0 && v < 100) return v else throw SkapiError(...)}
         misc: 'string',
 
-        picture: (v: string) => { if (v) return validator.Url(v); else return undefined },
-        profile: (v: string) => { if (v) return validator.Url(v); else return undefined },
+        picture: (v: string) => { if (v) return validator.Url(v); else return "" },
+        profile: (v: string) => { if (v) return validator.Url(v); else return "" },
         family_name: 'string',
         given_name: 'string',
         middle_name: 'string',
         nickname: 'string',
-        website: (v: string) => { if (v) return validator.Url(v); else return undefined },
+        website: (v: string) => { if (v) return validator.Url(v); else return "" },
     };
 
     let params = validator.Params(form || {}, paramRestrictions, ['email', 'password']);
@@ -1005,8 +1005,8 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
         },
         name: 'string',
         gender: 'string',
-        birthdate: (v: string) => validator.Birthdate(v),
-        phone_number: (v: string) => validator.PhoneNumber(v),
+        birthdate: (v: string) => v ? validator.Birthdate(v) : "",
+        phone_number: (v: string) => v ? validator.PhoneNumber(v) : "",
         email_public: 'boolean',
         phone_number_public: 'boolean',
         address_public: 'boolean',
@@ -1014,13 +1014,13 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
         birthdate_public: 'boolean',
         misc: 'string',
 
-        picture: (v: string) => validator.Url(v),
-        profile: (v: string) => validator.Url(v),
+        picture: (v: string) => v ? validator.Url(v) : "",
+        profile: (v: string) => v ? validator.Url(v) : "",
         family_name: 'string',
         given_name: 'string',
         middle_name: 'string',
         nickname: 'string',
-        website: (v: string) => validator.Url(v),
+        website: (v: string) => v ? validator.Url(v) : "",
     });
 
     if (params && typeof params === 'object' && !Object.keys(params).length) {
