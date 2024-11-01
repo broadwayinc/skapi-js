@@ -285,7 +285,7 @@ export async function getFile(
         throw new SkapiError('"url" should be type: string.', { code: 'INVALID_PARAMETER' });
     }
 
-    validator.Url(url);
+    url = validator.Url(url.split('?')[0]);
     let isValidEndpoint = false;
     let splitUrl = url.split('/');
     let host = splitUrl[2];
