@@ -106,7 +106,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.162';
+    private __version = '1.0.163';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -322,7 +322,7 @@ export default class Skapi {
 
             if (!restore?.connection) {
                 // await for first connection
-                connection = this.updateConnection();
+                connection = this._updateConnection();
             }
 
             const storeClassProperties = () => {
@@ -376,7 +376,22 @@ export default class Skapi {
         });
     }
 
-    async updateConnection(): Promise<Connection> {
+    async getConnectionInfo(): Promise<{
+        user_ip: string;
+        user_agent: string;
+        user_location: string;
+    }> {
+        let conn = await this.__connection;
+        // get browser user-agent info
+        let ua = navigator.userAgent;
+        return {
+            user_ip: conn.ip,
+            user_agent: ua,
+            user_location: conn.locale
+        };
+    }
+
+    private async _updateConnection(): Promise<Connection> {
         try {
             this.connection = await request.bind(this)('service', {
                 service: this.service,
