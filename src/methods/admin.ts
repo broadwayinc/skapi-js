@@ -223,9 +223,9 @@ export async function createAccount (
         },
         birthdate: (v: string) => validator.Birthdate(v),
         phone_number: (v: string) => validator.PhoneNumber(v),
-        picture: (v: string) => { if (v) return validator.Url(v); else return undefined },
-        profile: (v: string) => { if (v) return validator.Url(v); else return undefined },
-        website: (v: string) => { if (v) return validator.Url(v); else return undefined },
+        picture: (v: string) => { if (v) return validator.Url(v); else return "" },
+        profile: (v: string) => { if (v) return validator.Url(v); else return "" },
+        website: (v: string) => { if (v) return validator.Url(v); else return "" },
         nickname: 'string',
         misc: 'string',
 
