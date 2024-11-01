@@ -159,7 +159,26 @@ export default class Skapi {
         // setting user is bypassed
     }
 
-    onLogin: Function = (user: UserProfile): void => { };
+    private _onLoginListeners: Function[] = [];
+
+    get onLogin(): Function[] {
+        return this._onLoginListeners;
+    }
+
+    set onLogin(listener: (user: UserProfile) => { }) {
+        // setting onLogin is bypassed
+        if(typeof listener === 'function') {
+            this._onLoginListeners.push(listener);
+        }
+    }
+
+    private _runOnLoginListeners(user: UserProfile) {
+        for (let listener of this._onLoginListeners) {
+            if(typeof listener === 'function') {
+                listener(user);
+            }
+        }
+    }
 
     admin_endpoint: Promise<Record<string, any>>;
     record_endpoint: Promise<Record<string, any>>;

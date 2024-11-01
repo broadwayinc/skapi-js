@@ -295,10 +295,7 @@ export function authentication() {
 
                     this.session = s;
                     getUserProfile();
-                    if (typeof this.onLogin === 'function') {
-                        this.onLogin(this.user);
-                    }
-
+                    this._runOnLoginListeners(this.user);
                     res(this.session);
                 }
 
@@ -485,9 +482,7 @@ function _out() {
         this[k] = to_be_erased[k];
     }
 
-    if (typeof this.onLogin === 'function') {
-        this.onLogin(null);
-    }
+    this._runOnLoginListeners(null);
 }
 
 export async function logout(): Promise<'SUCCESS: The user has been logged out.'> {
