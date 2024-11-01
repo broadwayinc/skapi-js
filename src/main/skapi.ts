@@ -106,7 +106,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.161';
+    private __version = '1.0.162';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
