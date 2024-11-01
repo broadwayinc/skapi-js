@@ -855,7 +855,7 @@ export async function postRecord(
         Object.assign(options, { fetchOptions });
     }
 
-    postData.schema_pass = await checkSchema.bind(this)(_config);
+    // postData.schema_pass = await checkSchema.bind(this)(_config);
 
     let rec = await request.bind(this)('post-record', postData, options);
     if (to_bin) {
