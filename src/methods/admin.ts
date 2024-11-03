@@ -141,6 +141,15 @@ export async function inviteUser(
         birthdate_public: ['boolean', () => false],
         phone_number_public: ['boolean', () => false],
         access_group: (v: number) => {
+            // if string try to convert to number and if it's not a number, throw error
+            try {
+                if (typeof v === 'string') {
+                    v = parseInt(v);
+                }
+            }
+            catch (e) {
+                throw new SkapiError('"access_group" is invalid. Should be type <number>.', { code: 'INVALID_PARAMETER' });
+            }
             if (typeof v !== 'number' || v < 1 || v > 100) {
                 throw new SkapiError('"access_group" is invalid. Should be type <number> of range 1~99', { code: 'INVALID_PARAMETER' });
             }
@@ -241,6 +250,15 @@ export async function createAccount(
         birthdate_public: ['boolean', () => false],
         phone_number_public: ['boolean', () => false],
         access_group: (v: number) => {
+            // if string try to convert to number and if it's not a number, throw error
+            try {
+                if (typeof v === 'string') {
+                    v = parseInt(v);
+                }
+            }
+            catch (e) {
+                throw new SkapiError('"access_group" is invalid. Should be type <number>.', { code: 'INVALID_PARAMETER' });
+            }
             if (typeof v !== 'number' || v < 1 || v > 100) {
                 throw new SkapiError('"access_group" is invalid. Should be type <number> of range 1~99', { code: 'INVALID_PARAMETER' });
             }
@@ -287,10 +305,19 @@ export async function grantAccess(params: Form<{
             return validator.UserId(v, '"user_id"');
         },
         access_group: (v: number) => {
-            if (v > 0 && v < 100) {
+            // if string try to convert to number and if it's not a number, throw error
+            try {
+                if (typeof v === 'string') {
+                    v = parseInt(v);
+                }
+            }
+            catch (e) {
+                throw new SkapiError('"access_group" is invalid. Should be type <number>.', { code: 'INVALID_PARAMETER' });
+            }
+            if (typeof v === 'number' && v > 0 && v < 100) {
                 return v;
             } else {
-                throw new SkapiError('"access_group" is invalid.', { code: 'INVALID_PARAMETER' });
+                throw new SkapiError('"access_group" is invalid. Should be type <number> of range 1~99', { code: 'INVALID_PARAMETER' });
             }
         }
     }, ['user_id', 'access_group']);
