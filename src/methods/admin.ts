@@ -4,7 +4,7 @@ import { checkAdmin } from './user';
 import { Form, UserAttributes, UserProfilePublicSettings, UserProfile, PublicUser } from '../Types';
 import SkapiError from '../main/error';
 
-export async function blockAccount (form: Form<{
+export async function blockAccount(form: Form<{
     user_id: string;
     owner?: string;
     service?: string;
@@ -36,7 +36,7 @@ export async function blockAccount (form: Form<{
     return await request.bind(this)('block-account', params, { auth: true });
 }
 
-export async function unblockAccount (form: Form<{
+export async function unblockAccount(form: Form<{
     user_id: string;
     owner?: string;
     service?: string;
@@ -68,7 +68,7 @@ export async function unblockAccount (form: Form<{
     return await request.bind(this)('block-account', params, { auth: true });
 }
 
-export async function deleteAccount (form: Form<{
+export async function deleteAccount(form: Form<{
     user_id: string;
     owner?: string;
     service?: string;
@@ -100,8 +100,8 @@ export async function deleteAccount (form: Form<{
     return await request.bind(this)('remove-account', params, { auth: true });
 }
 
-export async function inviteUser (
-    form: Form<UserAttributes & UserProfilePublicSettings & { email: string; owner?: string; service?: string;}>, 
+export async function inviteUser(
+    form: Form<UserAttributes & UserProfilePublicSettings & { email: string; owner?: string; service?: string; }>,
     options?: {
         confirmation_url?: string; // url 없으면 무조건 true
         email_subscription?: boolean;
@@ -110,21 +110,21 @@ export async function inviteUser (
     let paramRestrictions = {
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v),
-        
+
         name: 'string',
         username: 'string',
         gender: 'string',
         address: (v: any) => {
             if (!v) return '';
-            
+
             if (typeof v === 'string') {
                 return v;
             }
-            
+
             if (typeof v === 'object') {
                 return JSON.stringify(v);
             }
-            
+
             return undefined;
         },
         birthdate: (v: string) => validator.Birthdate(v),
@@ -140,6 +140,12 @@ export async function inviteUser (
         address_public: ['boolean', () => false],
         birthdate_public: ['boolean', () => false],
         phone_number_public: ['boolean', () => false],
+        access_group: (v: number) => {
+            if (typeof v !== 'number' || v < 1 || v > 100) {
+                throw new SkapiError('"access_group" is invalid. Should be type <number> of range 1~99', { code: 'INVALID_PARAMETER' });
+            }
+            return v;
+        }
     };
 
     let params = validator.Params(form, paramRestrictions, ['email']);
@@ -188,13 +194,13 @@ export async function inviteUser (
         }
     }
 
-    return await request.bind(this)('admin-signup', Object.assign({access_group: 1}, params), { auth: true });
+    return await request.bind(this)('admin-signup', Object.assign({ access_group: 1 }, params), { auth: true });
 }
 
-export async function createAccount (
+export async function createAccount(
     form: Form<
-        UserAttributes & UserProfilePublicSettings & 
-        { email: string; password: string; } & 
+        UserAttributes & UserProfilePublicSettings &
+        { email: string; password: string; } &
         { service?: string; owner?: string; }
     >,
     options?: {
@@ -204,21 +210,21 @@ export async function createAccount (
     let paramRestrictions = {
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v),
-        
+
         name: 'string',
         username: 'string',
         gender: 'string',
         address: (v: any) => {
             if (!v) return '';
-            
+
             if (typeof v === 'string') {
                 return v;
             }
-            
+
             if (typeof v === 'object') {
                 return JSON.stringify(v);
             }
-            
+
             return undefined;
         },
         birthdate: (v: string) => validator.Birthdate(v),
@@ -234,6 +240,12 @@ export async function createAccount (
         address_public: ['boolean', () => false],
         birthdate_public: ['boolean', () => false],
         phone_number_public: ['boolean', () => false],
+        access_group: (v: number) => {
+            if (typeof v !== 'number' || v < 1 || v > 100) {
+                throw new SkapiError('"access_group" is invalid. Should be type <number> of range 1~99', { code: 'INVALID_PARAMETER' });
+            }
+            return v;
+        },
     };
 
     let params = validator.Params(form, paramRestrictions, ['email', 'password']);
@@ -261,10 +273,10 @@ export async function createAccount (
         }
     }
 
-    return await request.bind(this)('admin-signup', Object.assign({access_group: 1}, params), { auth: true });
+    return await request.bind(this)('admin-signup', Object.assign({ access_group: 1 }, params), { auth: true });
 }
 
-export async function grantAccess (params: Form<{
+export async function grantAccess(params: Form<{
     user_id: string;
     access_group: number;
     service?: string;
