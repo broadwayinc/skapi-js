@@ -203,7 +203,7 @@ export async function inviteUser(
         }
     }
 
-    return await request.bind(this)('admin-signup', Object.assign({ access_group: 1 }, params), { auth: true });
+    return await request.bind(this)('admin-signup', params, { auth: true });
 }
 
 export async function createAccount(
@@ -291,7 +291,7 @@ export async function createAccount(
         }
     }
 
-    return await request.bind(this)('admin-signup', Object.assign({ access_group: 1 }, params), { auth: true });
+    return await request.bind(this)('admin-signup', params, { auth: true });
 }
 
 export async function grantAccess(params: Form<{
