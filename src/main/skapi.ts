@@ -106,7 +106,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.174';
+    private __version = '1.0.175';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -165,16 +165,16 @@ export default class Skapi {
         return this._onLoginListeners;
     }
 
-    set onLogin(listener: (user: UserProfile) => { }) {
+    set onLogin(listener: (user: UserProfile) => {}) {
         // setting onLogin is bypassed
-        if(typeof listener === 'function') {
+        if (typeof listener === 'function') {
             this._onLoginListeners.push(listener);
         }
     }
 
     private _runOnLoginListeners(user: UserProfile) {
         for (let listener of this._onLoginListeners) {
-            if(typeof listener === 'function') {
+            if (typeof listener === 'function') {
                 listener(user);
             }
         }
@@ -326,19 +326,21 @@ export default class Skapi {
                 UserPoolId: admin_endpoint.userpool_id,
                 ClientId: admin_endpoint.userpool_client
             });
-            
-            let cognitoUser = this.userPool.getCurrentUser();
 
-            if (restore?.connection || autoLogin) {
-                try {
-                    await authentication.bind(this)().getSession();
+            try {
+                await authentication.bind(this)().getSession();
+
+                let cognitoUser = this.userPool.getCurrentUser();
+                if (cognitoUser) {
+                    if (!restore?.connection && !autoLogin) {
+                        cognitoUser.signOut();
+                    }
                 }
-                catch (err) { 
+            } catch (err) {
+                let cognitoUser = this.userPool.getCurrentUser();
+                if (cognitoUser) {
                     cognitoUser.signOut();
                 }
-            }
-            else {
-                cognitoUser.signOut();
             }
         })()
 
