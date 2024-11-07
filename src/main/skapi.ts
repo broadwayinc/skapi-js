@@ -106,7 +106,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.172';
+    private __version = '1.0.173';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -331,7 +331,12 @@ export default class Skapi {
                 try {
                     await authentication.bind(this)().getSession();
                 }
-                catch (err) { }
+                catch (err) { 
+                    await this.logout();
+                }
+            }
+            else {
+                await this.logout();
             }
         })()
 
