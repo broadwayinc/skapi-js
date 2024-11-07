@@ -326,17 +326,19 @@ export default class Skapi {
                 UserPoolId: admin_endpoint.userpool_id,
                 ClientId: admin_endpoint.userpool_client
             });
+            
+            let cognitoUser = this.userPool.getCurrentUser();
 
             if (restore?.connection || autoLogin) {
                 try {
                     await authentication.bind(this)().getSession();
                 }
                 catch (err) { 
-                    await this.logout();
+                    cognitoUser.signOut();
                 }
             }
             else {
-                await this.logout();
+                cognitoUser.signOut();
             }
         })()
 
