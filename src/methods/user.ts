@@ -576,6 +576,8 @@ export async function login(
         password: 'string'
     }, ['password']);
 
+    await this.__authConnection;
+
     if (params.email) {
         // incase user uses email instead of username
         try {
@@ -604,6 +606,8 @@ export async function signup(
         login?: boolean;
     }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
 
+    await this.__authConnection;
+    
     let paramRestrictions = {
         username: 'string',
         password: (v: string) => validator.Password(v),
