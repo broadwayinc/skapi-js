@@ -388,9 +388,9 @@ function parseUserAttributes(attr:{ [key: string]: any }) {
         }
 
         else if (name.includes('custom:')) {
-            if (name === 'custom:service' && value !== this.service) {
-                throw new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' });
-            }
+            // if (name === 'custom:service' && value !== this.service) {
+            //     throw new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' });
+            // }
             user[name.replace('custom:', '')] = value;
         }
 
