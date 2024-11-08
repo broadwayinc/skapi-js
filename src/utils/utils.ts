@@ -370,7 +370,6 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
 function parseUserAttributes(attr:{ [key: string]: any }) {
 
     let user: any = {};
-    this.log('attributes to normalize:', attr);
 
     // parse attribute structure: [ { Name, Value }, ... ]
     for (let name in attr) {
