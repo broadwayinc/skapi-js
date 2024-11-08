@@ -1,8 +1,9 @@
 import validator from '../utils/validator';
 import { request } from '../utils/network';
 import { checkAdmin } from './user';
-import { Form, UserAttributes, UserProfilePublicSettings, UserProfile, PublicUser } from '../Types';
+import { Form, UserAttributes, UserProfilePublicSettings, UserProfile, PublicUser, DatabaseResponse, FetchOptions } from '../Types';
 import SkapiError from '../main/error';
+import { parseUserAttributes } from '../utils/utils';
 
 export async function blockAccount(form: Form<{
     user_id: string;
@@ -335,4 +336,84 @@ export async function grantAccess(params: Form<{
     }
 
     return await request.bind(this)('grant-access', params, { auth: true })
+}
+
+export async function getInvitations(params: Form<{
+    service?: string;
+    owner?: string;
+    email?: string;
+    username?: string;
+}>, fetchOptions?: FetchOptions): Promise<DatabaseResponse<UserProfile>> {
+    params = validator.Params(params, {
+        email: 'string',
+        username: 'string',
+    });
+
+    let isAdmin = await checkAdmin.bind(this)();
+
+    if (!isAdmin) {
+        if (!this.__user) {
+            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
+        }
+
+        if (this.__user.access_group !== 99) {
+            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
+        }
+    }
+
+    let resp = await request.bind(this)('invitation-list', Object.assign({ mode: 'search' }, params), { fetchOptions, auth: true });
+    resp.list = resp.list.map((v: any) => parseUserAttributes(v));
+    return resp;
+}
+
+export async function cancelInvitation(params: Form<{
+    service?: string;
+    owner?: string;
+    email?: string;
+    username?: string;
+}>): Promise<"SUCCESS: Invitation has been canceled."> {
+    params = validator.Params(params, {
+        email: 'string',
+        username: 'string',
+    });
+
+    let isAdmin = await checkAdmin.bind(this)();
+
+    if (!isAdmin) {
+        if (!this.__user) {
+            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
+        }
+
+        if (this.__user.access_group !== 99) {
+            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
+        }
+    }
+
+    return await request.bind(this)('invitation-list', Object.assign({ mode: 'cancel' }, params), { auth: true });
+}
+
+export async function resendInvitation(params: Form<{
+    service?: string;
+    owner?: string;
+    email?: string;
+    username?: string;
+}>): Promise<"SUCCESS: Invitation has been re-sent. (User ID: xxx...)"> {
+    params = validator.Params(params, {
+        email: 'string',
+        username: 'string',
+    });
+
+    let isAdmin = await checkAdmin.bind(this)();
+
+    if (!isAdmin) {
+        if (!this.__user) {
+            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
+        }
+
+        if (this.__user.access_group !== 99) {
+            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
+        }
+    }
+
+    return await request.bind(this)('invitation-list', Object.assign({ mode: 'resend' }, params), { auth: true });
 }

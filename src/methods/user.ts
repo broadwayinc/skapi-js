@@ -15,7 +15,7 @@ import {
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
-import { MD5, fromBase62 } from '../utils/utils';
+import { MD5, fromBase62, parseUserAttributes } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
 
@@ -174,80 +174,10 @@ export function authentication() {
     const getUserProfile = (): UserProfile => {
         // get users updated attribute
         let attr = cognitoUser.getSignInUserSession().getIdToken().payload || null;
-        let user: any = {};
         this.log('attributes to normalize:', attr);
 
         // parse attribute structure: [ { Name, Value }, ... ]
-        for (let name in attr) {
-            let value = attr[name];
-
-            let excludes = ['aud', 'cognito:username', 'event_id', 'exp', 'iat', 'iss', 'jti', 'origin_jti', 'secret_key', 'token_use'];
-            let converts = {
-                auth_time: 'log',
-                sub: 'user_id'
-            }
-
-            if (excludes.includes(name)) continue;
-
-            if (converts[name]) {
-                user[converts[name]] = value;
-            }
-
-            else if (name.includes('custom:')) {
-                if (name === 'custom:service' && value !== this.service) {
-                    throw new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' });
-                }
-                user[name.replace('custom:', '')] = value;
-            }
-
-            else if (name === 'address') {
-                let addr_main: any = value;
-                if (addr_main && typeof addr_main === 'object' && Object.keys(addr_main).length) {
-                    if (addr_main?.formatted) {
-                        try {
-                            user[name] = JSON.parse(addr_main.formatted);
-                        }
-                        catch (err) {
-                            user[name] = addr_main.formatted;
-                        }
-                    }
-                }
-                else {
-                    user[name] = addr_main;
-                }
-            }
-            else {
-                user[name] = value;
-            }
-        }
-
-        for (let k of [
-            'address_public',
-            'birthdate_public',
-            'email_public',
-            'gender_public',
-            'phone_number_public',
-            'access_group'
-        ]) {
-            if (k.includes('_public')) {
-                if (user.hasOwnProperty(k.split('_')[0])) user[k] = user.hasOwnProperty(k) ? !!Number(user[k]) : false;
-                else delete user[k];
-            }
-            else user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
-        }
-
-        for (let k of [
-            'email',
-            'phone_number'
-        ]) {
-            if (user.hasOwnProperty(k)) {
-                user[k + '_verified'] = user[k + '_verified'] === true;
-            }
-            else {
-                delete user[k + '_verified'];
-            }
-        }
-
+        let user = parseUserAttributes(attr);
         this.__user = user;
         return user;
     };
