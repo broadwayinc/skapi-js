@@ -158,7 +158,7 @@ class MD5 {
     }
 }
 
-function toBase62(num: number):string {
+function toBase62(num: number): string {
     const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     if (num === 0) return base62Chars[0];
     let result = '';
@@ -169,13 +169,13 @@ function toBase62(num: number):string {
     return result;
 }
 
-function fromBase62(chars: string):number {
+function fromBase62(chars: string): number {
     let charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
     return chars.split('').reverse().reduce((prev, curr, i) =>
         prev + (charset.indexOf(curr) * (62 ** i)), 0);
 }
 
-function generateRandom(length:number = 6):string {
+function generateRandom(length: number = 6): string {
     let result = '';
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     const charactersLength = characters.length;
@@ -190,7 +190,7 @@ function generateRandom(length:number = 6):string {
 function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key: string]: any } | number | string | boolean | null, options?: {
     nullIfEmpty?: boolean,
     ignoreEmpty?: boolean,
-}, callback?: (name:string, value:any)=>any): { data: any, files: { name: string, file: File }[] } {
+}, callback?: (name: string, value: any) => any): { data: any, files: { name: string, file: File }[] } {
     let data = {};
     let files = [];
 
@@ -212,9 +212,9 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
         if (options?.nullIfEmpty && val === '') {
             val = null;
         }
-        if(typeof callback === 'function') {
+        if (typeof callback === 'function') {
             let v = callback(key, val);
-            if(v !== undefined) {
+            if (v !== undefined) {
                 val = v;
             }
         }
@@ -360,11 +360,90 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
         }
         return { data, files };
     }
-    
+
     if (sizeof(form) > 2 * 1024 * 1024) {
         throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
     }
     return { data: form, files };
+}
+
+function parseUserAttributes(attr:{ [key: string]: any }) {
+
+    let user: any = {};
+    this.log('attributes to normalize:', attr);
+
+    // parse attribute structure: [ { Name, Value }, ... ]
+    for (let name in attr) {
+        let value = attr[name];
+
+        let excludes = ['aud', 'cognito:username', 'event_id', 'exp', 'iat', 'iss', 'jti', 'origin_jti', 'secret_key', 'token_use'];
+        let converts = {
+            auth_time: 'log',
+            sub: 'user_id'
+        }
+
+        if (excludes.includes(name)) continue;
+
+        if (converts[name]) {
+            user[converts[name]] = value;
+        }
+
+        else if (name.includes('custom:')) {
+            if (name === 'custom:service' && value !== this.service) {
+                throw new SkapiError('The user is not registered to the service.', { code: 'INVALID_REQUEST' });
+            }
+            user[name.replace('custom:', '')] = value;
+        }
+
+        else if (name === 'address') {
+            let addr_main: any = value;
+            if (addr_main && typeof addr_main === 'object' && Object.keys(addr_main).length) {
+                if (addr_main?.formatted) {
+                    try {
+                        user[name] = JSON.parse(addr_main.formatted);
+                    }
+                    catch (err) {
+                        user[name] = addr_main.formatted;
+                    }
+                }
+            }
+            else {
+                user[name] = addr_main;
+            }
+        }
+        else {
+            user[name] = value;
+        }
+    }
+
+    for (let k of [
+        'address_public',
+        'birthdate_public',
+        'email_public',
+        'gender_public',
+        'phone_number_public',
+        'access_group'
+    ]) {
+        if (k.includes('_public')) {
+            if (user.hasOwnProperty(k.split('_')[0])) user[k] = user.hasOwnProperty(k) ? !!Number(user[k]) : false;
+            else delete user[k];
+        }
+        else user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;
+    }
+
+    for (let k of [
+        'email',
+        'phone_number'
+    ]) {
+        if (user.hasOwnProperty(k)) {
+            user[k + '_verified'] = user[k + '_verified'] === true;
+        }
+        else {
+            delete user[k + '_verified'];
+        }
+    }
+
+    return user;
 }
 
 export {
@@ -372,5 +451,6 @@ export {
     toBase62,
     extractFormData,
     MD5,
-    generateRandom
+    generateRandom,
+    parseUserAttributes
 };

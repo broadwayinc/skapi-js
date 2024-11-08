@@ -102,11 +102,14 @@ import {
     deleteAccount,
     inviteUser,
     createAccount,
-    grantAccess
+    grantAccess,
+    getInvitations,
+    cancelInvitation,
+    resendInvitation
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.175';
+    private __version = '1.0.176';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -478,6 +481,30 @@ export default class Skapi {
         nonce?: string;
     }): Promise<UserProfile> {
         return jwtLogin.bind(this)(params);
+    }
+
+    @formHandler()
+    resendInvitation(params: Form<{
+        email?: string;
+        username?: string;
+    }>): Promise<"SUCCESS: Invitation has been re-sent. (User ID: xxx...)"> {
+        return resendInvitation.bind(this)(params);
+    }
+
+    @formHandler()
+    cancelInvitation(params: Form<{
+        email?: string;
+        username?: string;
+    }>): Promise<"SUCCESS: Invitation has been canceled."> {
+        return cancelInvitation.bind(this)(params);
+    }
+
+    @formHandler()
+    getInvitations(params: Form<{
+        email?: string;
+        username?: string;
+    }>, fetchOptions: FetchOptions): Promise<DatabaseResponse<UserProfile>> {
+        return getInvitations.bind(this)(params, fetchOptions);
     }
 
     @formHandler()
