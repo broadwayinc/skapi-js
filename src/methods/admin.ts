@@ -360,7 +360,7 @@ export async function getInvitations(params: Form<{
     }
 
     let resp = await request.bind(this)('invitation-list', Object.assign({ mode: 'search' }, params), { fetchOptions, auth: true });
-    resp.list = resp.list.map((v: any) => parseUserAttributes(v));
+    resp.list = resp.list.map((v: any) => parseUserAttributes(v.user));
     return resp;
 }
 
