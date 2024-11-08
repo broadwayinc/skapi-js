@@ -350,39 +350,61 @@ export async function getFile(
     }
 
     else if (needAuth) {
+
+        let currTime = Math.floor(Date.now() / 1000);
+
+        this.log('request:tokens:', {
+            exp: this.session.idToken.payload.exp,
+            currTime,
+            expiresIn: this.session.idToken.payload.exp - currTime,
+            token: this.session.accessToken.jwtToken,
+            refreshToken: this.session.refreshToken.token
+        });
+
+        if (this.session.idToken.payload.exp < currTime) {
+            this.log('request:New token', null);
+            try {
+                await authentication.bind(this)().getSession({ refreshToken: true });
+            }
+            catch (err) {
+                this.log('request:New token error', err);
+                throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+            }
+        }
+
         let token = this.session?.idToken?.jwtToken; // idToken
 
-        let access_group = target_key[6] === '**' ? '**' : parseInt(target_key[6]);
+        // let access_group = target_key[6] === '**' ? '**' : parseInt(target_key[6]);
 
-        if (!token) {
-            throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
-        }
-        else {
+        // if (!token) {
+        //     throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+        // }
+        // else {
             
-            let currTime = Math.floor(Date.now() / 1000);
+        //     let currTime = Math.floor(Date.now() / 1000);
             
-            if (this.session.idToken.payload.exp < currTime) {
-                this.log('request:New token', null);
-                try {
-                    await authentication.bind(this)().getSession();
-                }
-                catch (err) {
-                    this.log('request:New token error', err);
-                    throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
-                }
-            }
+        //     if (this.session.idToken.payload.exp < currTime) {
+        //         this.log('request:New token', null);
+        //         try {
+        //             await authentication.bind(this)().getSession();
+        //         }
+        //         catch (err) {
+        //             this.log('request:New token error', err);
+        //             throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+        //         }
+        //     }
 
-            token = this.session?.idToken?.jwtToken;
-        }
+        //     token = this.session?.idToken?.jwtToken;
+        // }
 
-        if (access_group === '**') {
-            if (this.__user.user_id !== target_key[3]) {
-                throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
-            }
-        }
-        else if (this.__user.access_group < access_group) {
-            throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
-        }
+        // if (access_group === '**') {
+        //     if (this.__user.user_id !== target_key[3]) {
+        //         throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
+        //     }
+        // }
+        // else if (this.__user.access_group < access_group) {
+        //     throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
+        // }
 
         url += `?t=${token}`;
     }
