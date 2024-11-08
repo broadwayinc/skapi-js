@@ -117,7 +117,6 @@ export default class Skapi {
     userPool: CognitoUserPool | null = null;
 
     private host = 'skapi';
-
     private hostDomain = 'skapi.com';
     private target_cdn = 'd3e9syvbtso631';
 
@@ -485,16 +484,14 @@ export default class Skapi {
 
     @formHandler()
     resendInvitation(params: Form<{
-        email?: string;
-        username?: string;
+        email: string;
     }>): Promise<"SUCCESS: Invitation has been re-sent. (User ID: xxx...)"> {
         return resendInvitation.bind(this)(params);
     }
 
     @formHandler()
     cancelInvitation(params: Form<{
-        email?: string;
-        username?: string;
+        email: string;
     }>): Promise<"SUCCESS: Invitation has been canceled."> {
         return cancelInvitation.bind(this)(params);
     }
@@ -502,7 +499,6 @@ export default class Skapi {
     @formHandler()
     getInvitations(params: Form<{
         email?: string;
-        username?: string;
     }>, fetchOptions: FetchOptions): Promise<DatabaseResponse<UserProfile>> {
         return getInvitations.bind(this)(params, fetchOptions);
     }

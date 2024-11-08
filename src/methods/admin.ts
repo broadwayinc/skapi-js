@@ -342,11 +342,9 @@ export async function getInvitations(params: Form<{
     service?: string;
     owner?: string;
     email?: string;
-    username?: string;
 }>, fetchOptions?: FetchOptions): Promise<DatabaseResponse<UserProfile>> {
     params = validator.Params(params, {
         email: 'string',
-        username: 'string',
     });
 
     let isAdmin = await checkAdmin.bind(this)();
@@ -369,13 +367,11 @@ export async function getInvitations(params: Form<{
 export async function cancelInvitation(params: Form<{
     service?: string;
     owner?: string;
-    email?: string;
-    username?: string;
+    email: string;
 }>): Promise<"SUCCESS: Invitation has been canceled."> {
     params = validator.Params(params, {
-        email: 'string',
-        username: 'string',
-    });
+        email: v=>validator.Email(v),
+    }, ['email']);
 
     let isAdmin = await checkAdmin.bind(this)();
 
@@ -395,13 +391,11 @@ export async function cancelInvitation(params: Form<{
 export async function resendInvitation(params: Form<{
     service?: string;
     owner?: string;
-    email?: string;
-    username?: string;
+    email: string;
 }>): Promise<"SUCCESS: Invitation has been re-sent. (User ID: xxx...)"> {
     params = validator.Params(params, {
-        email: 'string',
-        username: 'string',
-    });
+        email: v=>validator.Email(v),
+    }, ['email']);
 
     let isAdmin = await checkAdmin.bind(this)();
 
