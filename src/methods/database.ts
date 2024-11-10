@@ -150,12 +150,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
 
                     let url_endpoint = url;
                     if (access_group !== 'public') {
-                        if(access_group === 'private' && this.__user?.user_id !== splitPath[3]) {
-                            url_endpoint = url;
-                        }
-                        else {
-                            url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint' }) as string);
-                        }
+                        url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint' }) as string);
                     }
 
                     let obj = {
@@ -350,7 +345,6 @@ export async function getFile(
     }
 
     else if (needAuth) {
-
         let currTime = Math.floor(Date.now() / 1000);
 
         this.log('request:tokens:', {
@@ -374,39 +368,16 @@ export async function getFile(
 
         let token = this.session?.idToken?.jwtToken; // idToken
 
-        // let access_group = target_key[6] === '**' ? '**' : parseInt(target_key[6]);
-
-        // if (!token) {
-        //     throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
-        // }
-        // else {
-            
-        //     let currTime = Math.floor(Date.now() / 1000);
-            
-        //     if (this.session.idToken.payload.exp < currTime) {
-        //         this.log('request:New token', null);
-        //         try {
-        //             await authentication.bind(this)().getSession();
-        //         }
-        //         catch (err) {
-        //             this.log('request:New token error', err);
-        //             throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
-        //         }
-        //     }
-
-        //     token = this.session?.idToken?.jwtToken;
-        // }
-
-        // if (access_group === '**') {
-        //     if (this.__user.user_id !== target_key[3]) {
-        //         throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
-        //     }
-        // }
-        // else if (this.__user.access_group < access_group) {
-        //     throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
-        // }
-
         url += `?t=${token}`;
+
+        let access_group = target_key[6] === '**' ? '**' : parseInt(target_key[6]);
+
+        if(this.user.user_id !== target_key[3] && (access_group === '**' || this.user?.access_group < access_group)) {
+            let record_id = target_key[5];
+            if (this.__private_access_key[record_id]) {
+                url += '&p=' + this.__private_access_key[record_id];
+            }
+        }
     }
 
     if (config?.dataType === 'endpoint') {
@@ -1262,12 +1233,40 @@ export async function listPrivateRecordAccess(params: {
     return list;
 }
 
-export function requestPrivateRecordAccessKey(record_id: string) {
-    return request.bind(this)(
+export function requestPrivateRecordAccessKey(params: {record_id: string | string[]}): Promise<{[record_id:string]:string}> {
+    let record_id:string | string[] = params.record_id;
+    if (!record_id) {
+        throw new SkapiError(`Record ID is required.`, { code: 'INVALID_PARAMETER' });
+    }
+    
+    if(typeof record_id === 'string') {
+        record_id = [record_id];
+    }
+
+    if(typeof record_id !== 'string') {
+        if(Array.isArray(record_id)) {
+            record_id.forEach((id) => {
+                if(typeof id !== 'string') {
+                    throw new SkapiError(`Record ID should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
+                }
+            });
+        }
+        else {
+            throw new SkapiError(`Record ID should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
+        }
+    }
+
+    let res = request.bind(this)(
         'request-private-access-key',
         { record_id },
         { auth: true }
     );
+
+    for(let i in res) {
+        this.__private_access_key[i] = res[i];
+    }
+
+    return res;
 }
 
 function recordAccess(params: {
