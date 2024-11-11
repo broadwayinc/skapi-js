@@ -362,4 +362,5 @@ export type FileInfo = {
     record_id: string,
     uploader: string,
     uploaded: number,
+    fileKey: string
 }
