@@ -360,5 +360,6 @@ export type FileInfo = {
     access_group: number | 'private' | 'public' | 'authorized',
     filesize: number,
     record_id: string,
-    uploader: string
+    uploader: string,
+    uploaded: number,
 }
