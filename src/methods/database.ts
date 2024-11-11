@@ -748,6 +748,7 @@ export async function postRecord(
                 throw new SkapiError(`"reference_limit" should be type: <number | null>`, { code: 'INVALID_PARAMETER' });
             },
             allow_multiple_reference: 'boolean',
+            can_remove_reference: 'boolean'
         },
         index: {
             name: ['$uploaded', '$updated', '$referenced_count', '$user_id', v => {
