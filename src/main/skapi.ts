@@ -12,7 +12,8 @@ import {
     Form,
     PostRecordConfig,
     PublicUser,
-    UserProfilePublicSettings
+    UserProfilePublicSettings,
+    FileInfo
 } from '../Types';
 import {
     CognitoUserPool
@@ -109,7 +110,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.177';
+    private __version = '1.0.178';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -632,11 +633,11 @@ export default class Skapi {
     getFile(
         url: string, // cdn endpoint url https://xxxx.cloudfront.net/path/file
         config?: {
-            dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text'; // default 'download'
+            dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info'; // default 'download'
             expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
             progress?: ProgressCallback;
         }
-    ): Promise<Blob | string | void> {
+    ): Promise<Blob | string | void | FileInfo> {
         return getFile.bind(this)(url, config);
     }
     @formHandler()
