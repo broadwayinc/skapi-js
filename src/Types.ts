@@ -103,6 +103,7 @@ export type RecordData = {
         reference_limit: number;
         allow_multiple_reference: boolean;
         referenced_count: number;
+        can_remove_reference: boolean;
     },
     index?: {
         name: string;
