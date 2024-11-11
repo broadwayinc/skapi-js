@@ -7,7 +7,8 @@ import {
     Condition,
     PostRecordConfig,
     ProgressCallback,
-    BinaryFile
+    BinaryFile,
+    FileInfo
 } from '../Types';
 import SkapiError from '../main/error';
 import { extractFormData, fromBase62 } from '../utils/utils';
@@ -160,7 +161,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                         path,
                         size: fromBase62(size),
                         uploaded: fromBase62(uploaded),
-                        getFile: (dataType: 'base64' | 'endpoint' | 'blob' | 'download', progress?: ProgressCallback) => {
+                        getFile: (dataType: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info', progress?: ProgressCallback) => {
                             let config = {
                                 dataType: dataType || 'download',
                                 progress
@@ -271,11 +272,11 @@ export async function deleteFiles(params: {
 export async function getFile(
     url: string, // cdn endpoint url https://xxxx.cloudfront.net/path/file
     config?: {
-        dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text'; // default 'download'
+        dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info'; // default 'download'
         expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
         progress?: ProgressCallback;
     }
-): Promise<Blob | string | void> {
+): Promise<Blob | string | void | FileInfo> {
     if (typeof url !== 'string') {
         throw new SkapiError('"url" should be type: string.', { code: 'INVALID_PARAMETER' });
     }
@@ -312,9 +313,22 @@ export async function getFile(
 
     config = validator.Params(config, {
         expires: ['number', () => 0],
-        dataType: ['base64', 'blob', 'endpoint', 'text', () => 'download'],
+        dataType: ['base64', 'blob', 'endpoint', 'text', 'info', () => 'download'],
         progress: 'function'
     });
+
+
+    if(config?.dataType === 'info') {
+        // auth(publ)/service-id/owner-id/user-id/records/rec-id/**/file(bin)/sizetag/filename
+        return {
+            url,
+            filename: target_key[9],
+            access_group: target_key[6] === '**' ? 'private' : target_key[6] === '01' ? 'authorized' : target_key[6] === '00' ? 'public' : parseInt(target_key[6]),
+            uploader: target_key[3],
+            record_id: target_key[4] === 'records' ? target_key[5] : 'N/A',
+            filesize: fromBase62(target_key[7]),
+        }
+    }
 
     let filename = url.split('/').slice(-1)[0];
     let expires = config.expires;
@@ -808,12 +822,12 @@ export async function postRecord(
                         arr.push(i.url.split('?')[0]);
                     }
                     else {
-                        throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[]>`, { code: 'INVALID_PARAMETER' });
+                        throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[] | null>`, { code: 'INVALID_PARAMETER' });
                     }
                 }
             }
             else {
-                throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[]>`, { code: 'INVALID_PARAMETER' });
+                throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[] | null>`, { code: 'INVALID_PARAMETER' });
             }
 
             return arr;
