@@ -59,6 +59,7 @@ export type PostRecordConfig = {
         record_id?: string; // null removes reference
         reference_limit?: number | null; // Default: null (Infinite)
         allow_multiple_reference?: boolean; // Default: true
+        can_remove_reference?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
     } | string;
 
     /** null removes index */
@@ -352,3 +353,12 @@ export type Service = {
     /** Number of users in the service. */
     users: number;
 };
+
+export type FileInfo = {
+    url: string,
+    filename: string,
+    access_group: number | 'private' | 'public' | 'authorized',
+    filesize: number,
+    record_id: string,
+    uploader: string
+}
