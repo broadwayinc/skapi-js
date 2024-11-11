@@ -322,11 +322,12 @@ export async function getFile(
         // auth(publ)/service-id/owner-id/user-id/records/rec-id/**/file(bin)/sizetag/filename
         return {
             url,
-            filename: target_key[9],
+            filename: target_key[target_key.length - 1],
             access_group: target_key[6] === '**' ? 'private' : target_key[6] === '01' ? 'authorized' : target_key[6] === '00' ? 'public' : parseInt(target_key[6]),
             uploader: target_key[3],
             record_id: target_key[4] === 'records' ? target_key[5] : 'N/A',
-            filesize: fromBase62(target_key[7]),
+            filesize: fromBase62(target_key[9]),
+            uploaded: fromBase62(target_key[8])
         }
     }
 
