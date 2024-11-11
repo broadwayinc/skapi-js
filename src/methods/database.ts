@@ -32,7 +32,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         reference: {
             reference_limit: null,
             allow_multiple_reference: true,
-            referenced_count: 0
+            referenced_count: 0,
+            can_remove_reference: false
         },
         ip: '',
         bin: {}
@@ -178,6 +179,11 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                 }
             }
             output.bin = binObj;
+        },
+        'prv_acs': (r: {[key: string]: string}) => {
+            if(r?.can_remove_reference) {
+                output.reference.can_remove_reference = r.can_remove_reference;
+            }
         },
         'data': (r: any) => {
             let data = r;
