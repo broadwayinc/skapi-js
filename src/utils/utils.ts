@@ -280,94 +280,108 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
         }
     }
 
-    if (form instanceof FormData) {
-        for (let pair of form.entries()) {
-            let name = pair[0];
-            let v = pair[1];
-            if ((v instanceof File) || ((v as any) instanceof FileList)) {
-                handleFile(files, name, v);
+    let handleInput = (i:HTMLInputElement) => {
+        if (i.name) {
+            if (i.type === 'number') {
+                if (i.value) {
+                    appendData(data, i.name, Number(i.value));
+                }
+            }
+            else if (i.type === 'checkbox' || i.type === 'radio') {
+                if (i.checked) {
+                    if (i.value === '' && i.type === 'checkbox' || i.value === 'on' || i.value === 'true') {
+                        appendData(data, i.name, true);
+                    }
+                    else if (i.value === 'false') {
+                        appendData(data, i.name, false);
+                    }
+                    else if (i.value) {
+                        appendData(data, i.name, i.value);
+                    }
+                }
+                else if (i.type === 'checkbox') {
+                    if (i.value === '' || i.value === 'on' || i.value === 'true') {
+                        appendData(data, i.name, false);
+                    }
+                    else if (i.value === 'false') {
+                        appendData(data, i.name, true);
+                    }
+                }
+            }
+            else if (i.type === 'file') {
+                if (i.files && i.files.length > 0) {
+                    handleFile(files, i.name, i.files);
+                }
             }
             else {
-                appendData(data, name, v);
+                appendData(data, i.name, i.value);
             }
         }
+    }
+
+    if (form instanceof HTMLInputElement || form instanceof HTMLSelectElement || form instanceof HTMLTextAreaElement) {
+        handleInput(form as HTMLInputElement);
         if (sizeof(data) > 2 * 1024 * 1024) {
             throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
         }
         return { data, files };
     }
-    if (form instanceof SubmitEvent) {
-        form = form.target;
-    }
-    if (form instanceof HTMLFormElement) {
-        let inputs = form.querySelectorAll('input');
-        let selects = form.querySelectorAll('select');
-        let textarea = form.querySelectorAll('textarea');
-        for (let idx = 0; idx < selects.length; idx++) {
-            let i = selects[idx];
-            if (i.name) {
-                appendData(data, i.name, i.value);
-            }
-        }
-        for (let idx = 0; idx < textarea.length; idx++) {
-            let i = textarea[idx];
-            if (i.name) {
-                appendData(data, i.name, i.value);
-            }
-        }
-        for (let idx = 0; idx < inputs.length; idx++) {
-            let i = inputs[idx];
-            if (i.name) {
-                if (i.type === 'number') {
-                    if (i.value) {
-                        appendData(data, i.name, Number(i.value));
-                    }
-                }
-                else if (i.type === 'checkbox' || i.type === 'radio') {
-                    if (i.checked) {
-                        if (i.value === '' && i.type === 'checkbox' || i.value === 'on' || i.value === 'true') {
-                            appendData(data, i.name, true);
-                        }
-                        else if (i.value === 'false') {
-                            appendData(data, i.name, false);
-                        }
-                        else if (i.value) {
-                            appendData(data, i.name, i.value);
-                        }
-                    }
-                    else if (i.type === 'checkbox') {
-                        if (i.value === '' || i.value === 'on' || i.value === 'true') {
-                            appendData(data, i.name, false);
-                        }
-                        else if (i.value === 'false') {
-                            appendData(data, i.name, true);
-                        }
-                    }
-                }
-                else if (i.type === 'file') {
-                    if (i.files && i.files.length > 0) {
-                        handleFile(files, i.name, i.files);
-                    }
+
+    else {
+        if (form instanceof FormData) {
+            for (let pair of form.entries()) {
+                let name = pair[0];
+                let v = pair[1];
+                if ((v instanceof File) || ((v as any) instanceof FileList)) {
+                    handleFile(files, name, v);
                 }
                 else {
+                    appendData(data, name, v);
+                }
+            }
+            if (sizeof(data) > 2 * 1024 * 1024) {
+                throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
+            }
+            return { data, files };
+        }
+        if (form instanceof SubmitEvent) {
+            form = form.target;
+        }
+        if (form instanceof HTMLFormElement) {
+            let inputs = form.querySelectorAll('input');
+            let selects = form.querySelectorAll('select');
+            let textarea = form.querySelectorAll('textarea');
+            for (let idx = 0; idx < selects.length; idx++) {
+                let i = selects[idx];
+                if (i.name) {
                     appendData(data, i.name, i.value);
                 }
             }
-        }
+            for (let idx = 0; idx < textarea.length; idx++) {
+                let i = textarea[idx];
+                if (i.name) {
+                    appendData(data, i.name, i.value);
+                }
+            }
+            for (let idx = 0; idx < inputs.length; idx++) {
+                handleInput(inputs[idx]);
+            }
 
-        if (sizeof(data) > 2 * 1024 * 1024) {
-            throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
+            if (sizeof(data) > 2 * 1024 * 1024) {
+                throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
+            }
+            return { data, files };
         }
-        return { data, files };
     }
-
+    
     if (sizeof(form) > 2 * 1024 * 1024) {
         throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
     }
+    
     return { data: form, files };
 }
 
-function parseUserAttributes(attr:{ [key: string]: any }) {
+function parseUserAttributes(attr: { [key: string]: any }) {
 
     let user: any = {};
 
