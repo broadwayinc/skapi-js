@@ -488,9 +488,10 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                     }
 
                     if (typeof v === 'number') {
-                        if ((this.__user?.access_group || 0) < v) {
-                            throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
+                        if (v > 99 || v < 0) {
+                            throw new SkapiError('"table.access_group" value should be within a range of 0 ~ 99.', { code: 'INVALID_REQUEST' });
                         }
+                        return v;
                     }
                     else if (typeof v === 'string') {
                         v = {
