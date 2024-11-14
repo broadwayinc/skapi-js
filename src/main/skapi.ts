@@ -13,7 +13,8 @@ import {
     PostRecordConfig,
     PublicUser,
     UserProfilePublicSettings,
-    FileInfo
+    FileInfo,
+    DelRecordQuery
 } from '../Types';
 import {
     CognitoUserPool
@@ -721,18 +722,7 @@ export default class Skapi {
         number_of_records: string; // Number records tagged
     }>> { return getTags.bind(this)(query, fetchOptions); }
     @formHandler()
-    deleteRecords(params: {
-        /** Record ID(s) to delete. Table parameter is not needed when record_id is given. */
-        record_id?: string | string[];
-        table?: {/**
-            /** Table name. */
-            name: string;
-            /** Access group number. */
-            access_group?: number | 'private' | 'public' | 'authorized';
-            // subscription_group?: number;
-            subscription: boolean;
-        };
-    }): Promise<string> { return deleteRecords.bind(this)(params); }
+    deleteRecords(params: DelRecordQuery & { private_key?: string; }): Promise<string> { return deleteRecords.bind(this)(params); }
     @formHandler()
     resendSignupConfirmation(
         /** Redirect url on confirmation success. */
