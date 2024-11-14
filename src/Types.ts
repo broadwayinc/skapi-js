@@ -37,6 +37,37 @@ export type GetRecordQuery = {
     };
     tag?: string;
 }
+export type DelRecordQuery = {
+    record_id?: string | string[];
+
+    /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
+    table?: {
+        /** Not allowed: Special characters. Allowed: White space. periods.*/
+        name: string;
+        /** Number range: 0 ~ 99. Default: 'public' */
+        access_group?: number | 'private' | 'public' | 'authorized';
+        // subscription?: {
+        //     user_id: string;
+        //     /** Number range: 0 ~ 99 */
+        //     group: number;
+        // };
+        /** User ID of subscription */
+        subscription?: string;
+    } | string;
+
+    reference?: string; // Referenced record ID. If user ID is given, it will fetch records that are uploaded by the user.
+
+    /** Index condition and range cannot be used simultaneously.*/
+    index?: {
+        /** Not allowed: White space, special characters. Allowed: Periods. */
+        name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
+        /** Not allowed: Periods, special characters. Allowed: White space. */
+        value: string | number | boolean;
+        condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+        range?: string | number | boolean;
+    };
+    tag?: string;
+}
 
 export type PostRecordConfig = {
     record_id?: string; // when record_id is given, it will update the record with the given record_id. If record_id is not given, it will create a new record.
