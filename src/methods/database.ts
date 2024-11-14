@@ -8,7 +8,8 @@ import {
     PostRecordConfig,
     ProgressCallback,
     BinaryFile,
-    FileInfo
+    FileInfo,
+    DelRecordQuery
 } from '../Types';
 import SkapiError from '../main/error';
 import { extractFormData, fromBase62 } from '../utils/utils';
@@ -1093,30 +1094,15 @@ export async function getTags(
     return res;
 }
 
-export async function deleteRecords(params: {
-    /** @ignore */
-    service?: string;
-    /** Record ID(s) to delete. Table parameter is not needed when record_id is given. */
-    record_id?: string | string[];
-    table?: {
-        /** Table name. */
-        name: string;
-        /** Access group number. */
-        access_group?: number | 'private' | 'public' | 'authorized';
-        subscription?: boolean;
-        // /** @ignore */
-        // subscription?: string;
-        // subscription_group?: number;
-    };
-}): Promise<string> {
+export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }): Promise<string> {
     let isAdmin = await checkAdmin.bind(this)();
-    if (isAdmin && !params?.service) {
-        throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
-    }
+    let service = (query as any)?.service || this.service;
+    let ref_user = '';
+    let is_reference_fetch = '';
 
-    if (params?.record_id) {
+    if (query?.record_id) {
         return await request.bind(this)('del-records', {
-            service: params.service || this.service,
+            service: service,
             record_id: (id => {
                 if (typeof id === 'string') {
                     return [id];
@@ -1126,77 +1112,196 @@ export async function deleteRecords(params: {
                     throw new SkapiError('"record_id" should be type: <string | string[]>', { code: 'INVALID_PARAMETER' });
                 }
 
-                if (id.length > 100) {
+                if ((id as string[]).length > 100) {
                     throw new SkapiError('"record_id" should not exceed 100 items.', { code: 'INVALID_PARAMETER' });
                 }
 
                 return validator.specialChars(id, 'record_id', false, false);
 
-            })(params.record_id)
+            })(query.record_id)
         }, { auth: true });
     }
 
     else {
-        if (!params?.table) {
-            throw new SkapiError('Either "table" or "record_id" is required.', { code: 'INVALID_PARAMETER' });
-        }
-
-        let struct = {
-            access_group: (v: number | 'private' | 'public' | 'authorized') => {
-                if (typeof v === 'string' && ['private', 'public', 'authorized'].includes(v)) {
-                    switch (v) {
-                        case 'private':
-                            return v;
-
-                        case 'public':
-                            return 0;
-
-                        case 'authorized':
+        const struct = {
+            table: {
+                name: [v => {
+                    if (!v) {
+                        throw new SkapiError('"table.name" cannot be empty string.', { code: 'INVALID_PARAMETER' });
+                    }
+                    return validator.specialChars(v, 'table name', true, true)
+                }],
+                access_group: [v => {
+                    if (v === undefined) {
+                        // access_group defaults to 1 if subscription value is present, else 0
+                        if (!this.__user && query.table.hasOwnProperty('subscription')) {
                             return 1;
+                        }
+                        else {
+                            return 0;
+                        }
+                    }
+
+                    if (typeof v === 'number') {
+                        if (v > 99 || v < 0) {
+                            throw new SkapiError('"table.access_group" value should be within a range of 0 ~ 99.', { code: 'INVALID_REQUEST' });
+                        }
+                        return v;
+                    }
+                    else if (typeof v === 'string') {
+                        v = {
+                            private: 'private',
+                            public: 0,
+                            authorized: 1
+                        }[v]
+
+                        if (v === 'private' && !this.__user) {
+                            throw new SkapiError('Unsigned users have no access to private records.', { code: 'INVALID_REQUEST' });
+                        }
+
+                        if (v === undefined) {
+                            throw new SkapiError('"table.access_group" is invalid.', { code: 'INVALID_PARAMETER' });
+                        }
+                    }
+                    else {
+                        throw new SkapiError('"table.access_group" should be type: <number | string>.', { code: 'INVALID_PARAMETER' });
+                    }
+
+                    return v;
+                }],
+                subscription: (v: string) => {
+                    if (v === null || v === undefined) {
+                        return v;
+                    }
+                    validator.UserId(v, 'User ID in "subscription"')
+                    if (!this.__user) {
+                        throw new SkapiError('Unsigned users have no access to subscription records.', { code: 'INVALID_REQUEST' });
+                    }
+                    return {
+                        user_id: v,
+                        group: 1
                     }
                 }
+            },
+            reference: v => {
+                if (v === null || v === undefined) {
+                    return v;
+                }
+                if (typeof v === 'string') {
+                    try {
+                        ref_user = validator.UserId(v);
+                    }
+                    catch (err) {
+                        // reference is record id
+                        validator.specialChars(v, 'reference', false, false);
+                        is_reference_fetch = v;
+                        if (this.__private_access_key[is_reference_fetch]) {
+                            query.private_key = this.__private_access_key[is_reference_fetch];
+                        }
+                    }
 
-                else if (typeof v === 'number' && v >= 0 && v < 100) {
-                    // if (!isAdmin && this.user.access_group < v) {
-                    //     throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
-                    // }
+                    is_reference_fetch = v;
+                    return v;
+                }
+                else {
+                    throw new SkapiError('"reference" should be type: string.', { code: 'INVALID_PARAMETER' });
+                }
+            },
+            index: {
+                name: ['$updated', '$uploaded', '$referenced_count', '$user_id', (v: string) => {
+                    if (v === undefined) {
+                        throw new SkapiError('"index.name" is required.', { code: 'INVALID_PARAMETER' });
+                    }
+                    if (typeof v !== 'string') {
+                        throw new SkapiError('"index.name" should be type: string.', { code: 'INVALID_PARAMETER' });
+                    }
+
+                    return validator.specialChars(v, 'index.name', true, false);
+                }],
+                value: (v: number | boolean | string) => {
+                    const indexTypes = {
+                        '$updated': 'number',
+                        '$uploaded': 'number',
+                        '$referenced_count': 'number',
+                        '$user_id': validator.UserId
+                    };
+
+                    if (indexTypes.hasOwnProperty(query.index.name)) {
+                        let tp = indexTypes[query.index.name];
+
+                        if (typeof tp === 'function') {
+                            return tp(v);
+                        }
+
+                        if (tp !== typeof v) {
+                            throw new SkapiError(`"index.value" should be type: ${tp}.`, { code: 'INVALID_PARAMETER' });
+                        }
+
+                        return v;
+                    }
+
+                    else if (typeof v === 'number') {
+                        if (v > __index_number_range || v < -__index_number_range) {
+                            throw new SkapiError(`Number value should be within range -${__index_number_range} ~ +${__index_number_range}`, { code: 'INVALID_PARAMETER' });
+                        }
+                        return v;
+                    }
+
+                    else if (typeof v === 'boolean') {
+                        return v;
+                    }
+
+                    else if (typeof v === 'string') {
+                        return v;
+                    }
+
+                    else {
+                        throw new SkapiError(`"index.value" should be type: <number | boolean | string>.`, { code: 'INVALID_PARAMETER' });
+                    }
+                },
+                condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne'],
+                range: (v: number | boolean | string) => {
+                    if (!query.index || !('value' in query.index)) {
+                        throw new SkapiError('"index.value" is required.', { code: 'INVALID_PARAMETER' });
+                    }
+
+                    if (query.index.name === '$record_id') {
+                        throw new SkapiError(`Cannot do "index.range" on ${query.index.name}`, { code: 'INVALID_PARAMETER' });
+                    }
+
+                    if (typeof query.index.value !== typeof v) {
+                        throw new SkapiError('"index.range" type should match the type of "index.value".', { code: 'INVALID_PARAMETER' });
+                    }
+
+                    if (typeof v === 'string') {
+                        return validator.specialChars(v, 'index.range', false, true);
+                    }
 
                     return v;
                 }
-
-                throw new SkapiError('Invalid "table.access_group". Access group should be type <number (0~99) | "private" | "public" | "authorized">.', { code: 'INVALID_PARAMETER' });
             },
-            name: 'string',
-            subscription: (v: string | boolean) => {
-                if (typeof v === 'boolean') {
-                    if (v) {
-                        v = this.__user.user_id;
-                        return v;
-                    }
+            tag: (v: string) => {
+                if (v === null || v === undefined) {
+                    return v;
                 }
-
-                if (!params.table.hasOwnProperty('access_group')) {
-                    throw new SkapiError('"table.access_group" is required for subscription records.', { code: 'INVALID_PARAMETER' });
+                if (typeof v === 'string') {
+                    return validator.specialChars(v, 'tag', false, true)
                 }
-                else if (params.table.access_group === 0) {
-                    throw new SkapiError('Public tables does not hold subscription records.', { code: 'INVALID_REQUEST' });
+                else {
+                    throw new SkapiError('"tag" should be type: string.', { code: 'INVALID_PARAMETER' });
                 }
-
-                if (isAdmin && typeof v === 'string') {
-                    // admin targets user id
-                    return validator.UserId((v as string), 'User ID in "table.subscription"');
-                }
-
-                throw new SkapiError('"table.subscription" is an invalid parameter key.', { code: 'INVALID_PARAMETER' });
-            }
+            },
+            private_key: 'string'
         };
 
-        let table = validator.Params(params.table || {}, struct, isAdmin ? [] : ['name']);
-        if (table.subscription) {
-            table.subscription_group = 1;
+        query = validator.Params(query || {}, struct, ref_user || isAdmin ? [] : ['table']);
+        
+        let result = await request.bind(this)('del-records', query, { auth: true });
+        if (is_reference_fetch && result?.reference_private_key) {
+            this.__private_access_key[is_reference_fetch] = result.reference_private_key;
         }
-        let toDelete = Object.assign({}, params, { table });
-        return await request.bind(this)('del-records', toDelete, { auth: true });
+
+        return result?.message || result;
     }
 }
 
