@@ -151,19 +151,23 @@ export type Connection = {
     /** User's locale */
     locale: string;
     /** Service owner's ID */
-    owner: string;
+    // owner: string;
     /** E-Mail address of the service owner */
-    email: string;
+    // email: string;
     /** Service ID */
-    service: string;
+    // service: string;
     /** Service region */
-    region: string;
+    // region: string;
     /** 13 digits timestamp of the service creation */
-    timestamp: number;
+    // timestamp: number;
+    /** User agent info */
+    user_agent: string;
     /** Connected user's IP address */
     ip: string;
     /** Service level */
     group: number;
+    /** Service name */
+    service_name: string;
     /** Service options */
     opt: {
         freeze_database:boolean;
