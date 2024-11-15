@@ -1173,10 +1173,19 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
                     if (v === null || v === undefined) {
                         return v;
                     }
-                    validator.UserId(v, 'User ID in "subscription"')
                     if (!this.__user) {
                         throw new SkapiError('Unsigned users have no access to subscription records.', { code: 'INVALID_REQUEST' });
                     }
+                    if(typeof v === 'boolean') {
+                        v = this.__user.user_id;
+                    }
+                    else {
+                        if(!isAdmin) {
+                            throw new SkapiError('Only admin can delete other subscription records.', { code: 'INVALID_REQUEST' });
+                        }
+                        validator.UserId(v, 'User ID in "subscription"')
+                    }
+                    
                     return {
                         user_id: v,
                         group: 1

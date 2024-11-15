@@ -1,11 +1,5 @@
 export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
 
-export type SubscriptionGroup<T> = {
-    user_id: string;
-    /** Number range: 0 ~ 99. '*' means all groups. */
-    group?: T;
-};
-
 export type GetRecordQuery = {
     record_id?: string;
 
@@ -46,13 +40,7 @@ export type DelRecordQuery = {
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized';
-        // subscription?: {
-        //     user_id: string;
-        //     /** Number range: 0 ~ 99 */
-        //     group: number;
-        // };
-        /** User ID of subscription */
-        subscription?: string;
+        subscription?: boolean;
     } | string;
 
     reference?: string; // Referenced record ID. If user ID is given, it will fetch records that are uploaded by the user.

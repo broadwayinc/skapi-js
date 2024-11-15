@@ -949,8 +949,6 @@ export default class Skapi {
             subscriber?: string;
             /** User ID of the subscription. User id that subscriber has subscribed to. */
             subscription?: string;
-            // /** subscription group. if omitted, will fetch all groups. */
-            // group?: number;
             /** Fetch blocked subscription when True */
             blocked?: boolean;
         },
