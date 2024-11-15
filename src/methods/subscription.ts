@@ -2,16 +2,15 @@ import {
     DatabaseResponse,
     FetchOptions,
     Form,
-    Newsletters,
-    SubscriptionGroup
+    Newsletters
 } from '../Types';
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
 import { checkAdmin } from './user';
 
-function subscriptionIdCheck(option: SubscriptionGroup<number | '*'>) {
-    return validator.Params(option, {
+function subscriptionIdCheck(params: {user_id: string}) {
+    return validator.Params(params, {
         user_id: (v: string) => {
             if (!this.__user) {
                 throw new SkapiError('User should be logged in.', { code: 'INVALID_REQUEST' });
@@ -30,8 +29,6 @@ export async function getSubscriptions(
         subscriber?: string;
         /** User ID of the subscription. User id that subscriber has subscribed to. */
         subscription?: string;
-        // /** subscription group. if omitted, will fetch all groups. */
-        // group?: number;
         /** Fetch blocked subscription when True */
         blocked?: boolean;
     },
@@ -46,7 +43,7 @@ export async function getSubscriptions(
 }>> {
     params = validator.Params(params, {
         subscriber: (v: string) => validator.UserId(v, 'User ID in "subscriber"'),
-        // group: 'number',
+        group: ['number', ()=>1],
         subscription: (v: string) => validator.UserId(v, 'User ID in "subscription"'),
         blocked: 'boolean'
     });
@@ -54,8 +51,6 @@ export async function getSubscriptions(
     if (!params.subscriber && !params.subscription) {
         throw new SkapiError('At least either "subscriber" or "subscription" should have a value.', { code: 'INVALID_PARAMETER' });
     }
-
-    Object.assign(params, { group: 1 });
 
     let response = await request.bind(this)('get-subscription', params, Object.assign({ auth: true }, { fetchOptions }));
 
@@ -74,23 +69,9 @@ export async function getSubscriptions(
     return response;
 }
 
-/**
- * Subscribes user's account to another account or updates email_subscription state.<br>
- * User cannot subscribe to email if they did not verify their email.<br>
- * This can be used for user following, content restrictions when building social media services.<br>
- * Refer: <a href='www.google.com'>How to use subscription systems</a><br>
- * 
- * ```
- * // user subscribes as group 1 to another user.
- * await skapi.subscribe({
- *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
- *     group: 1
- * })
- * ```
- */
-export async function subscribe(option: SubscriptionGroup<number>): Promise<'SUCCESS: the user has subscribed.'> {
+export async function subscribe(params: {user_id: string}): Promise<'SUCCESS: the user has subscribed.'> {
     await this.__connection;
-    let { user_id } = subscriptionIdCheck.bind(this)(option);
+    let { user_id } = subscriptionIdCheck.bind(this)(params);
 
     return await request.bind(this)('subscription', {
         subscribe: user_id,
@@ -98,19 +79,9 @@ export async function subscribe(option: SubscriptionGroup<number>): Promise<'SUC
     }, { auth: true });
 }
 
-/**
- * Unsubscribes user's account from another account.
- * ```
- * // user unsubscribes from group 2 of another user.
- * await skapi.unsubscribe({
- *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
- *     group: 2
- * })
- * ```
- */
-export async function unsubscribe(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: the user has unsubscribed.'> {
+export async function unsubscribe(params: {user_id: string}): Promise<'SUCCESS: the user has unsubscribed.'> {
     await this.__connection;
-    let { user_id } = subscriptionIdCheck.bind(this)(option);
+    let { user_id } = subscriptionIdCheck.bind(this)(params);
 
     return await request.bind(this)('subscription', {
         unsubscribe: user_id,
@@ -118,44 +89,15 @@ export async function unsubscribe(option: SubscriptionGroup<number | '*'>): Prom
     }, { auth: true });
 }
 
-/**
- * Account owner can block user from their account subscription.
- * ```
- * // account owner blocks user from group 2
- * await skapi.blockSubscriber({
- *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
- *     group: 2
- * })
- * // account owner blocks user from all group
- * await skapi.blockSubscriber({
- *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
- * })
- * ```
- */
-export async function blockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: blocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
+export async function blockSubscriber(params: {user_id: string}): Promise<'SUCCESS: blocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
     await this.__connection;
-    let { user_id } = subscriptionIdCheck.bind(this)(option);
+    let { user_id } = subscriptionIdCheck.bind(this)(params);
     return await request.bind(this)('subscription', { block: user_id, group: 1 }, { auth: true });
 }
 
-/**
- * Account owner can unblock user from their account subscription.
- * ```
- * // account owner unblocks user from group 2
- * await skapi.unblockSubscriber({
- *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
- *     group: 2
- * })
- * 
- * // account owner unblocks user from all group
- * await skapi.unblockSubscriber({
- *     user_id: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
- * })
- * ```
- */
-export async function unblockSubscriber(option: SubscriptionGroup<number | '*'>): Promise<'SUCCESS: unblocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
+export async function unblockSubscriber(params: {user_id: string}): Promise<'SUCCESS: unblocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
     await this.__connection;
-    let { user_id } = subscriptionIdCheck.bind(this)(option);
+    let { user_id } = subscriptionIdCheck.bind(this)(params);
     return await request.bind(this)('subscription', { unblock: user_id, group: 1 }, { auth: true });
 }
 
@@ -220,6 +162,7 @@ export async function getNewsletterSubscription(params: {
 
     return result;
 }
+
 /**
  * Anyone who submits their E-Mail address will receive newsletters from you.<br>
  * The newsletters you send out will have unsubscribe link at the bottom.<br>
