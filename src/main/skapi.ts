@@ -419,14 +419,18 @@ export default class Skapi {
         user_ip: string;
         user_agent: string;
         user_location: string;
+        service_name: string;
+        version: string;
     }> {
         let conn = await this.__connection;
         // get browser user-agent info
-        let ua = navigator.userAgent;
+        let ua = conn?.user_agent || navigator.userAgent;
         return {
             user_ip: conn.ip,
             user_agent: ua,
-            user_location: conn.locale
+            user_location: conn.locale,
+            service_name: conn.service_name,
+            version: this.__version
         };
     }
 
