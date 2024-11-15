@@ -387,12 +387,12 @@ export type Service = {
 };
 
 export type FileInfo = {
-    url: string,
-    filename: string,
-    access_group: number | 'private' | 'public' | 'authorized',
-    filesize: number,
-    record_id: string,
-    uploader: string,
-    uploaded: number,
-    fileKey: string
+    url: string;
+    filename: string;
+    access_group: number | 'private' | 'public' | 'authorized';
+    filesize: number;
+    record_id: string;
+    uploader: string;
+    uploaded: number;
+    fileKey: string;
 }
