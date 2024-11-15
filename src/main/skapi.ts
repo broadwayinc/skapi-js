@@ -111,7 +111,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.181';
+    private __version = '1.0.182';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -257,6 +257,13 @@ export default class Skapi {
     private __network_logs = false;
 
     constructor(service: string, owner: string, options?: { autoLogin: boolean; }, __etc?: any) {
+        sessionStorage.setItem('__skapi_kiss','kiss');
+        if (sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
+            throw new SkapiError('Session storage is disabled. Please enable session storage.', { code: 'SESSION_STORAGE_DISABLED' });
+        }
+
+        sessionStorage.removeItem('__skapi_kiss');
+
         if (typeof service !== 'string' || typeof owner !== 'string') {
             throw new SkapiError('"service" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
