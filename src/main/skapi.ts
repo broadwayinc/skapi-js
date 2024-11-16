@@ -860,7 +860,6 @@ export default class Skapi {
         options?: {
             auth?: boolean;
             method?: string;
-            bypassAwaitConnection?: boolean;
             responseType?: 'blob' | 'json' | 'text' | 'arrayBuffer' | 'formData' | 'document';
             contentType?: string;
             progress?: ProgressCallback;

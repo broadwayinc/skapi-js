@@ -156,19 +156,17 @@ export async function secureRequest<RequestParams = {
     return request.bind(this)('post-secure', params, { auth: true });
 };
 
-export async function mock(data: Form<{ [key: string]: any } & {
-    raise?: 'ERR_INVALID_REQUEST' | 'ERR_INVALID_PARAMETER' | 'SOMETHING_WENT_WRONG' | 'ERR_EXISTS' | 'ERR_NOT_EXISTS';
-}>,
+export async function mock(
+    data: Form<{ [key: string]: any } & { raise?: 'ERR_INVALID_REQUEST' | 'ERR_INVALID_PARAMETER' | 'SOMETHING_WENT_WRONG' | 'ERR_EXISTS' | 'ERR_NOT_EXISTS'; }>,
     options?: {
         auth?: boolean;
         method?: string;
         responseType?: 'blob' | 'json' | 'text' | 'arrayBuffer' | 'formData' | 'document';
         contentType?: string;
         progress?: ProgressCallback;
-        bypassAwaitConnection?: boolean;
-    }): Promise<{ mockResponse: Record<string, any>; }> {
+    }): Promise<{ [key:string]:any; }> {
     await this.__connection;
-    let { auth = false, method = 'POST', bypassAwaitConnection = false, responseType, contentType, progress } = options || {};
+    let { auth = false, method = 'POST', bypassAwaitConnection = false, responseType, contentType, progress } = (options as any) || {};
 
     options = Object.assign(
         { auth, method, bypassAwaitConnection, responseType, contentType },
