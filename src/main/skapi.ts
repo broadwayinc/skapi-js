@@ -90,6 +90,7 @@ import {
     registerTicket,
     unregisterTicket,
     jwtLogin,
+    _out,
 } from '../methods/user';
 import {
     extractFormData,
@@ -344,13 +345,13 @@ export default class Skapi {
                 let cognitoUser = this.userPool.getCurrentUser();
                 if (cognitoUser) {
                     if (!restore?.connection && !autoLogin) {
-                        cognitoUser.signOut();
+                        _out.bind(this)();
                     }
                 }
             } catch (err) {
                 let cognitoUser = this.userPool.getCurrentUser();
                 if (cognitoUser) {
-                    cognitoUser.signOut();
+                    _out.bind(this)();
                 }
             }
         })()
