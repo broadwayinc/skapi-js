@@ -145,7 +145,7 @@ export async function inviteUser(
             // if string try to convert to number and if it's not a number, throw error
             try {
                 if (typeof v === 'string') {
-                    v = parseInt(v);
+                    v = v === 'admin' ? 99 : parseInt(v);
                 }
             }
             catch (e) {
@@ -213,9 +213,6 @@ export async function createAccount(
         { email: string; password: string; } &
         { service?: string; owner?: string; }
     >,
-    options?: {
-        email_subscription?: boolean;
-    }
 ): Promise<UserProfile & PublicUser & { email_admin: string; approved: string; log: number; username: string; }> {
     let paramRestrictions = {
         email: (v: string) => validator.Email(v),
@@ -268,17 +265,6 @@ export async function createAccount(
     };
 
     let params = validator.Params(form, paramRestrictions, ['email', 'password']);
-
-    options = validator.Params(options, {
-        email_subscription: (v: boolean) => {
-            if (typeof v !== 'boolean') {
-                throw new SkapiError('"options.email_subscription" should be type: <boolean>.', { code: 'INVALID_PARAMETER' });
-            }
-            return v;
-        },
-    });
-
-    params.email_subscription = options?.email_subscription || false;
 
     let isAdmin = await checkAdmin.bind(this)();
 
