@@ -183,7 +183,7 @@ export function authentication() {
     };
 
 
-    const getSession = async (option?: { refreshToken?: boolean; }): Promise<CognitoUserSession> => {
+    const getSession = async (option?: { refreshToken?: boolean; _holdLogin?: boolean }): Promise<CognitoUserSession | Function> => {
         // fetch session, updates user attributes
         let { refreshToken = false } = option || {};
 
@@ -224,6 +224,16 @@ export function authentication() {
                         return;
                     }
 
+                    if (option?._holdLogin) {
+                        // hold login
+                        res(()=>{
+                            this.session = s;
+                            getUserProfile();
+                            this._runOnLoginListeners(this.user);
+                            return this.session;
+                        });
+                        return;
+                    }
                     this.session = s;
                     getUserProfile();
                     this._runOnLoginListeners(this.user);
