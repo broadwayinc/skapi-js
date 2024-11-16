@@ -193,6 +193,7 @@ export function authentication() {
             if (!cognitoUser) {
                 this.log('getSession:cognitoUser', cognitoUser);
                 // no user session. wasn't logged in.
+                _out.bind(this)();
                 rej(null);
                 return;
             }
