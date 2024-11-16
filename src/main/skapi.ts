@@ -41,7 +41,8 @@ import {
     postRealtime,
     closeRealtime,
     getRealtimeUsers,
-    getRealtimeGroups
+    getRealtimeGroups,
+    callStunServer
 } from '../methods/realtime';
 import {
     secureRequest,
@@ -170,7 +171,7 @@ export default class Skapi {
         return this._onLoginListeners;
     }
 
-    set onLogin(listener: (user: UserProfile) => {}) {
+    set onLogin(listener: (user: UserProfile) => void) {
         // setting onLogin is bypassed
         if (typeof listener === 'function') {
             this._onLoginListeners.push(listener);
@@ -252,13 +253,20 @@ export default class Skapi {
     }
 
     private __connection: Promise<Connection>;
-    private __authConnection: Promise<boolean | null>;
+    private __authConnection: Promise<void>;
     private __socket: WebSocket;
     private __socket_room: string;
     private __network_logs = false;
+    private __sdpoffer: RTCSessionDescriptionInit;
+    private peerConnection: RTCPeerConnection;
 
-    constructor(service: string, owner: string, options?: { autoLogin: boolean; }, __etc?: any) {
-        sessionStorage.setItem('__skapi_kiss','kiss');
+    constructor(service: string, owner: string, options?: { 
+        autoLogin: boolean;
+        eventListener?: {
+            onLogin: (user: UserProfile) => void;
+        }
+    }, __etc?: any) {
+        sessionStorage.setItem('__skapi_kiss', 'kiss');
         if (sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
             throw new SkapiError('Session storage is disabled. Please enable session storage.', { code: 'SESSION_STORAGE_DISABLED' });
         }
@@ -286,6 +294,10 @@ export default class Skapi {
             if (typeof options.autoLogin === 'boolean') {
                 autoLogin = options.autoLogin;
             }
+        }
+
+        if (options?.eventListener?.onLogin) {
+            this.onLogin = options.eventListener.onLogin;
         }
 
         // get endpoints
@@ -332,7 +344,7 @@ export default class Skapi {
             }
         }
 
-        this.__authConnection = (async (): Promise<boolean | null> => {
+        this.__authConnection = (async (): Promise<void> => {
             const admin_endpoint = await this.admin_endpoint;
             this.userPool = new CognitoUserPool({
                 UserPoolId: admin_endpoint.userpool_id,
@@ -340,22 +352,25 @@ export default class Skapi {
             });
 
             try {
-                await authentication.bind(this)().getSession();
+                let fireWhenAutoLogin = await authentication.bind(this)().getSession({
+                    _holdLogin: true
+                });
 
                 let cognitoUser = this.userPool.getCurrentUser();
                 if (cognitoUser) {
                     if (!restore?.connection && !autoLogin) {
-                        return null;
+                        _out.bind(this)();
+                    }
+                    else {
+                        (fireWhenAutoLogin as Function)();
                     }
                 }
-            } catch (err) {
-                let cognitoUser = this.userPool.getCurrentUser();
-                if (cognitoUser) {
-                    return null;
+                else {
+                    _out.bind(this)();
                 }
+            } catch (err) {
+                _out.bind(this)();
             }
-
-            return true;
         })()
 
         // connects to server
@@ -415,11 +430,6 @@ export default class Skapi {
             if ((conn?.group || 0) < 3 || this.__network_logs) {
                 this.version();
             }
-            this.__authConnection.then(auth => {
-                if(!auth) {
-                    _out.bind(this)();
-                }
-            })
         });
     }
 
@@ -482,6 +492,14 @@ export default class Skapi {
                 console.log(n, v);
             }
         }
+    }
+
+    @formHandler()
+    callStunServer(params: {
+        url: string;
+        onicecandidate: (event: RTCPeerConnectionIceEvent) => void;
+    }): Promise<void> {
+        return callStunServer.bind(this)(params);
     }
 
     connectRealtime(cb: (rt: {
@@ -842,7 +860,7 @@ export default class Skapi {
         user_id: string | string[];
     }): Promise<DatabaseResponse<{ record_id: string; user_id: string; }>> { return listPrivateRecordAccess.bind(this)(params); }
     @formHandler()
-    requestPrivateRecordAccessKey(params: {record_id: string | string[]}): Promise<{[record_id:string]: string}> {
+    requestPrivateRecordAccessKey(params: { record_id: string | string[] }): Promise<{ [record_id: string]: string }> {
         return requestPrivateRecordAccessKey.bind(this)(params);
     }
     @formHandler()
@@ -868,7 +886,7 @@ export default class Skapi {
             responseType?: 'blob' | 'json' | 'text' | 'arrayBuffer' | 'formData' | 'document';
             contentType?: string;
             progress?: ProgressCallback;
-        }): Promise<{ [key:string]: any }> { return mock.bind(this)(data, options); }
+        }): Promise<{ [key: string]: any }> { return mock.bind(this)(data, options); }
     @formHandler({ preventMultipleCalls: true })
     login(
         form: Form<{
