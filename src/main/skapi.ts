@@ -252,7 +252,7 @@ export default class Skapi {
     }
 
     private __connection: Promise<Connection>;
-    private __authConnection: Promise<void>;
+    private __authConnection: Promise<boolean | null>;
     private __socket: WebSocket;
     private __socket_room: string;
     private __network_logs = false;
@@ -332,7 +332,7 @@ export default class Skapi {
             }
         }
 
-        this.__authConnection = (async () => {
+        this.__authConnection = (async (): Promise<boolean | null> => {
             const admin_endpoint = await this.admin_endpoint;
             this.userPool = new CognitoUserPool({
                 UserPoolId: admin_endpoint.userpool_id,
@@ -345,15 +345,17 @@ export default class Skapi {
                 let cognitoUser = this.userPool.getCurrentUser();
                 if (cognitoUser) {
                     if (!restore?.connection && !autoLogin) {
-                        _out.bind(this)();
+                        return null;
                     }
                 }
             } catch (err) {
                 let cognitoUser = this.userPool.getCurrentUser();
                 if (cognitoUser) {
-                    _out.bind(this)();
+                    return null;
                 }
             }
+
+            return true;
         })()
 
         // connects to server
@@ -413,6 +415,11 @@ export default class Skapi {
             if ((conn?.group || 0) < 3 || this.__network_logs) {
                 this.version();
             }
+            this.__authConnection.then(auth => {
+                if(!auth) {
+                    _out.bind(this)();
+                }
+            })
         });
     }
 
