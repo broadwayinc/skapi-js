@@ -860,7 +860,7 @@ export default class Skapi {
             responseType?: 'blob' | 'json' | 'text' | 'arrayBuffer' | 'formData' | 'document';
             contentType?: string;
             progress?: ProgressCallback;
-        }): Promise<{ mockResponse: Record<string, any>; }> { return mock.bind(this)(data, options); }
+        }): Promise<{ [key:string]: any }> { return mock.bind(this)(data, options); }
     @formHandler({ preventMultipleCalls: true })
     login(
         form: Form<{
