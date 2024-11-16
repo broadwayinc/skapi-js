@@ -591,11 +591,8 @@ export default class Skapi {
     @formHandler()
     createAccount(
         form: UserAttributes & UserProfilePublicSettings & { email: string; password: string; },
-        options: {
-            email_subscription?: boolean;
-        }
     ): Promise<UserProfile & PublicUser & { email_admin: string; approved: string; log: number; username: string; }> {
-        return createAccount.bind(this)(form, options);
+        return createAccount.bind(this)(form);
     }
 
     @formHandler()
