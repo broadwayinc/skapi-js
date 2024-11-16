@@ -101,39 +101,39 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                         msg.sender_cid = data['#scid'];
                     }
 
-                    if(type === 'notice') {
-                        if(this.__socket_room && (msg.message.includes('has left the message group.') || msg.message.includes('has been disconnected.'))) {
-                            if(__roomPending[this.__socket_room]) {
+                    if (type === 'notice') {
+                        if (this.__socket_room && (msg.message.includes('has left the message group.') || msg.message.includes('has been disconnected.'))) {
+                            if (__roomPending[this.__socket_room]) {
                                 await __roomPending[this.__socket_room];
                             }
 
                             let user_id = msg.sender;
-                            if(__roomList?.[this.__socket_room]?.[user_id]) {
-                                __roomList[this.__socket_room][user_id] = __roomList[this.__socket_room][user_id].filter(v=>v!==msg.sender_cid);
+                            if (__roomList?.[this.__socket_room]?.[user_id]) {
+                                __roomList[this.__socket_room][user_id] = __roomList[this.__socket_room][user_id].filter(v => v !== msg.sender_cid);
                             }
 
-                            if(__roomList?.[this.__socket_room]?.[user_id] && __roomList[this.__socket_room][user_id].length === 0) {
+                            if (__roomList?.[this.__socket_room]?.[user_id] && __roomList[this.__socket_room][user_id].length === 0) {
                                 delete __roomList[this.__socket_room][user_id];
                             }
 
-                            if(__roomList?.[this.__socket_room]?.[user_id]) {
+                            if (__roomList?.[this.__socket_room]?.[user_id]) {
                                 return
                             }
                         }
-                        else if(this.__socket_room && msg.message.includes('has joined the message group.')) {
-                            if(__roomPending[this.__socket_room]) {
+                        else if (this.__socket_room && msg.message.includes('has joined the message group.')) {
+                            if (__roomPending[this.__socket_room]) {
                                 await __roomPending[this.__socket_room];
                             }
-                            
+
                             let user_id = msg.sender;
-                            if(!__roomList?.[this.__socket_room]) {
+                            if (!__roomList?.[this.__socket_room]) {
                                 __roomList[this.__socket_room] = {};
                             }
-                            if(!__roomList[this.__socket_room][user_id]) {
+                            if (!__roomList[this.__socket_room][user_id]) {
                                 __roomList[this.__socket_room][user_id] = [msg.sender_cid];
                             }
                             else {
-                                if(!__roomList[this.__socket_room][user_id].includes(msg.sender_cid)) {
+                                if (!__roomList[this.__socket_room][user_id].includes(msg.sender_cid)) {
                                     __roomList[this.__socket_room][user_id].push(msg.sender_cid);
                                 }
                                 return;
@@ -267,7 +267,7 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
     return { type: 'success', message: group ? `Joined realtime message group: "${group}".` : 'Left realtime message group.' }
 }
 
-export async function getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{user_id: string;connection_id:string}[]>> {
+export async function getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{ user_id: string; connection_id: string }[]>> {
     await this.__connection;
 
     params = validator.Params(
@@ -283,8 +283,8 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
         throw new SkapiError(`"group" is required.`, { code: 'INVALID_PARAMETER' });
     }
 
-    if(!params.user_id) {
-        if(__roomPending[params.group]) {
+    if (!params.user_id) {
+        if (__roomPending[params.group]) {
             return __roomPending[params.group];
         }
     }
@@ -297,18 +297,18 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
             auth: true,
             method: 'post'
         }
-    ).then(res=>{
+    ).then(res => {
         res.list = res.list.map((v: any) => {
             let user_id = v.uid.split('#')[1];
 
-            if(!params.user_id) {
-                if(!__roomList[params.group]) {
+            if (!params.user_id) {
+                if (!__roomList[params.group]) {
                     __roomList[params.group] = {};
                 }
-                if(!__roomList[params.group][user_id]) {
+                if (!__roomList[params.group][user_id]) {
                     __roomList[params.group][user_id] = [v.cid];
                 }
-                else if(!__roomList[params.group][user_id].includes(v.cid)) {
+                else if (!__roomList[params.group][user_id].includes(v.cid)) {
                     __roomList[params.group][user_id].push(v.cid);
                 }
             }
@@ -318,18 +318,18 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
                 connection_id: v.cid
             }
         });
-        
+
         return res;
-    }).finally(()=>{
+    }).finally(() => {
         delete __roomPending[params.group];
     });
 
-    if(!params.user_id) {
-        if(!__roomPending[params.group]) {
+    if (!params.user_id) {
+        if (!__roomPending[params.group]) {
             __roomPending[params.group] = req;
         }
     }
-    
+
     return req;
 }
 
@@ -409,4 +409,67 @@ export async function getRealtimeGroups(
     });
 
     return res;
+}
+export async function callStunServer(params: {
+    url: string;
+    onicecandidate: (event: RTCPeerConnectionIceEvent) => void;
+}): Promise<void> {
+    // Call STUN server to get IP address
+    const configuration = {
+        iceServers: [
+            { urls: params?.url || "stun:stun.skapi.com:3468" }
+        ]
+    };
+
+    this.peerConnection = new RTCPeerConnection(configuration);
+
+    // Collect ICE candidates and send them to the remote peer
+    this.peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+            // Send the candidate to the remote peer through your signaling server
+            if (typeof params?.onicecandidate === 'function') {
+                params.onicecandidate(event);
+            }
+            this.log('candidate', event.candidate);
+        } else {
+            // All ICE candidates have been sent
+            this.log('candidate-end', 'All ICE candidates have been sent');
+        }
+    };
+
+    // Create a data channel
+    this.peerConnection.createDataChannel(Math.random().toString(36).substring(2, 15), {
+        ordered: true, // Ensure messages are received in order
+        maxRetransmits: 10 // Maximum number of retransmissions
+    });
+
+    // Listen for negotiationneeded event
+    this.peerConnection.onnegotiationneeded = async () => {
+        try {
+            const offer = await this.peerConnection.createOffer();
+            await this.peerConnection.setLocalDescription(offer);
+
+            this.__sdpoffer = this.peerConnection.localDescription;
+            this.log('sdpoffer', this.__sdpoffer);
+
+            // Send the new offer to the remote peer
+            sendOfferToRemotePeer.bind(this)(this.__sdpoffer);
+
+        } catch (error) {
+            this.log('Error during renegotiation:', error);
+            this.peerConnection.close();
+            throw error;
+        }
+    };
+}
+
+// Example functions to send SDP and ICE candidates to the remote peer
+function sendOfferToRemotePeer(offer: RTCSessionDescriptionInit) {
+    // Implement your signaling server logic here to send the offer to the remote peer
+    this.log('Sending offer to remote peer:', offer);
+}
+
+function sendCandidateToRemotePeer(candidate: RTCIceCandidate) {
+    // Implement your signaling server logic here to send the candidate to the remote peer
+    this.log('Sending candidate to remote peer:', candidate);
 }
