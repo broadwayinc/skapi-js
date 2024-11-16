@@ -397,7 +397,7 @@ export async function checkAdmin() {
     return false;
 }
 
-function _out() {
+export function _out() {
     if (cognitoUser) {
         cognitoUser.signOut();
     }
