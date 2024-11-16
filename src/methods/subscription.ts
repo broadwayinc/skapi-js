@@ -33,7 +33,6 @@ export async function getSubscriptions(
         blocked?: boolean;
     },
     fetchOptions?: FetchOptions,
-    _mapper?: Function
 ): Promise<DatabaseResponse<{
     subscriber: string; // Subscriber ID
     subscription: string; // Subscription ID
@@ -54,7 +53,7 @@ export async function getSubscriptions(
 
     let response = await request.bind(this)('get-subscription', params, Object.assign({ auth: true }, { fetchOptions }));
 
-    response.list = response.list.map(_mapper || ((s: Record<string, any>) => {
+    response.list = response.list.map(((s: Record<string, any>) => {
         let subscription: Record<string, any> = {};
         let subSplit = s.sub.split('#');
         subscription.subscriber = subSplit[2];
