@@ -239,7 +239,7 @@ export async function request(
     }
 
     if (headers['Content-Type'] !== 'application/json') {
-        // add service and owner to headers
+        // add service and owner to headers if content type is not json
         headers['Content-Meta'] = JSON.stringify({ service, owner });
     }
 
