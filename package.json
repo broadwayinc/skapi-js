@@ -1,18 +1,23 @@
 {
   "name": "skapi-js",
-  "version": "1.0.184-beta.0",
+  "version": "1.0.184",
   "description": "Skapi: Backend API for HTML frontend.",
-  
-  "main": "dist/skapi.cjs.js",
-  "module": "dist/skapi.esm.js",
+  "main": "dist/skapi.mjs",
   "browser": "dist/skapi.js",
   "types": "js/Main.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/skapi.cjs",
+      "import": "./dist/skapi.mjs",
+      "types": "./js/Main.d.ts"
+    }
+  },
   "files": [
     "js",
     "dist"
   ],
   "scripts": {
-    "build": "npx tsc --project tsconfig.json; npx webpack --config webpack.config.js; cp dist/skapi.js sandbox/skapi.js",
+    "build": "npx webpack --config webpack.config.js; cp dist/skapi.js sandbox/skapi.js",
     "dev": "cd sandbox; npx bns 3300"
   },
   "repository": {
