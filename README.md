@@ -73,7 +73,7 @@ export { skapi }
 
 After you initialized the Skapi library, you can test your connection by pinging your request with the `mock()` method.
 
-Below is an example of how you can use the `mock()` method in both HTML forms and JavaScript code.
+Below is an example of how you can use the `mock()` method in HTML forms.
 
 ```html
 <!-- index.html -->
