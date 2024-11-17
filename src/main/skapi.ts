@@ -266,13 +266,16 @@ export default class Skapi {
             onLogin: (user: UserProfile) => void;
         }
     }, __etc?: any) {
-        sessionStorage.setItem('__skapi_kiss', 'kiss');
-        if (sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
+        if(!window) {
+            throw new SkapiError('This library is for browser only.', { code: 'NOT_SUPPORTED' });
+        }
+        window.sessionStorage.setItem('__skapi_kiss', 'kiss');
+        if (window.sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
             window.alert('Session storage is disabled. Please enable session storage.');
             throw new SkapiError('Session storage is disabled. Please enable session storage.', { code: 'SESSION_STORAGE_DISABLED' });
         }
 
-        sessionStorage.removeItem('__skapi_kiss');
+        window.sessionStorage.removeItem('__skapi_kiss');
 
         if (typeof service !== 'string' || typeof owner !== 'string') {
             window.alert("Service ID or Owner ID is invalid.");
@@ -484,9 +487,7 @@ export default class Skapi {
         }
         catch (err: any) {
             this.log('Connection fail', err);
-            if (window) {
-                window.alert('Service is not available: ' + (err.message || err.toString()));
-            }
+            window.alert('Service is not available: ' + (err.message || err.toString()));
 
             this.connection = null;
             throw err;
