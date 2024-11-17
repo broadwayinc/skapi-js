@@ -260,7 +260,7 @@ export default class Skapi {
     private __sdpoffer: RTCSessionDescriptionInit;
     private peerConnection: RTCPeerConnection;
 
-    constructor(service: string, owner: string, options?: { 
+    constructor(service: string, owner: string, options?: {
         autoLogin: boolean;
         eventListener?: {
             onLogin: (user: UserProfile) => void;
@@ -268,21 +268,29 @@ export default class Skapi {
     }, __etc?: any) {
         sessionStorage.setItem('__skapi_kiss', 'kiss');
         if (sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
+            window.alert('Session storage is disabled. Please enable session storage.');
             throw new SkapiError('Session storage is disabled. Please enable session storage.', { code: 'SESSION_STORAGE_DISABLED' });
         }
 
         sessionStorage.removeItem('__skapi_kiss');
 
         if (typeof service !== 'string' || typeof owner !== 'string') {
+            window.alert("Service ID or Owner ID is invalid.");
             throw new SkapiError('"service" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
 
         if (!service || !owner) {
+            window.alert("Service ID or Owner ID is invalid.");
             throw new SkapiError('"service" and "owner" is required', { code: 'INVALID_PARAMETER' });
         }
 
         if (owner !== this.host) {
-            validator.UserId(owner, '"owner"');
+            try {
+                validator.UserId(owner, '"owner"');
+            } catch (err: any) {
+                window.alert("Service ID or Owner ID is invalid.");
+                throw err;
+            }
         }
 
         this.service = service;
@@ -317,7 +325,14 @@ export default class Skapi {
                 reader.onerror = reject;
                 reader.readAsDataURL(blob);
             }))
-            .then(data => typeof data === 'string' ? JSON.parse(window.atob(data.split(',')[1])) : null);
+            .then(data => {
+                try {
+                    return typeof data === 'string' ? JSON.parse(window.atob(data.split(',')[1])) : null
+                }
+                catch (err) {
+                    throw new SkapiError('Service does not exist. Create your service from skapi.com', { code: 'NOT_EXISTS' });
+                }
+            });
 
         this.record_endpoint = fetch(`${cdn_domain}/${sreg}/record.json`)
             .then(response => response.blob())
@@ -327,10 +342,18 @@ export default class Skapi {
                 reader.onerror = reject;
                 reader.readAsDataURL(blob);
             }))
-            .then(data => typeof data === 'string' ? JSON.parse(window.atob(data.split(',')[1])) : null);
+            .then(data => {
+                try {
+                    return typeof data === 'string' ? JSON.parse(window.atob(data.split(',')[1])) : null
+                }
+                catch (err) {
+                    throw new SkapiError('Service does not exist. Create your service from skapi.com', { code: 'NOT_EXISTS' });
+                }
+            });
 
         if (!window.sessionStorage) {
-            throw new Error(`This browser does not support skapi.`);
+            window.alert('This browser is not supported.');
+            throw new Error(`This browser is not supported.`);
         }
 
         const restore = JSON.parse(window.sessionStorage.getItem(`${service}#${owner}`) || 'null');
@@ -366,10 +389,10 @@ export default class Skapi {
                     }
                 }
                 else {
-                    _out.bind(this)();
+                    // _out.bind(this)();
                 }
             } catch (err) {
-                _out.bind(this)();
+                // _out.bind(this)();
             }
         })()
 
@@ -460,6 +483,7 @@ export default class Skapi {
             }, { bypassAwaitConnection: true, method: 'get' });
         }
         catch (err: any) {
+            this.log('Connection fail', err);
             if (window) {
                 window.alert('Service is not available: ' + (err.message || err.toString()));
             }
