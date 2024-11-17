@@ -1,8 +1,11 @@
 {
   "name": "skapi-js",
-  "version": "1.0.183",
+  "version": "1.0.184-beta.0",
   "description": "Skapi: Backend API for HTML frontend.",
-  "main": "dist/skapi.module.js",
+  
+  "main": "dist/skapi.cjs.js",
+  "module": "dist/skapi.esm.js",
+  "browser": "dist/skapi.js",
   "types": "js/Main.d.ts",
   "files": [
     "js",
@@ -10,7 +13,7 @@
   ],
   "scripts": {
     "build": "npx tsc --project tsconfig.json; npx webpack --config webpack.config.js; cp dist/skapi.js sandbox/skapi.js",
-    "sandbox": "cd sandbox; npx bns 3300"
+    "dev": "cd sandbox; npx bns 3300"
   },
   "repository": {
     "type": "git",
@@ -37,7 +40,9 @@
     "skapi",
     "api",
     "daas",
+    "baas",
     "serverless",
+    "server",
     "database"
   ]
 }
