@@ -226,7 +226,7 @@ export function authentication() {
 
                     if (option?._holdLogin) {
                         // hold login
-                        res(()=>{
+                        res(() => {
                             this.session = s;
                             getUserProfile();
                             this._runOnLoginListeners(this.user);
@@ -548,7 +548,7 @@ export async function signup(
     }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
 
     await this.__authConnection;
-    
+
     let paramRestrictions = {
         username: 'string',
         password: (v: string) => validator.Password(v),
@@ -1059,7 +1059,7 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
 export async function getUsers(
     params?: {
         searchFor: string;
-        value: string | number | boolean;
+        value: string | number | boolean | string[];
         condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
         range?: string | number | boolean;
     },
@@ -1082,7 +1082,15 @@ export async function getUsers(
     await this.__connection;
 
     const searchForTypes = {
-        'user_id': (v: string) => validator.UserId(v),
+        'user_id': (v: string) => {
+            if (Array.isArray(v)) {
+                for (let id of v) {
+                    validator.UserId(id);
+                }
+                return v;
+            }
+            return validator.UserId(v)
+        },
         'email': (v: string) => validator.Email(v),
         'phone_number': (v: string) => validator.PhoneNumber(v),
         'locale': (v: string) => {
