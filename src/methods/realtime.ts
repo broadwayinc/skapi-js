@@ -75,14 +75,21 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                 };
 
                 socket.onmessage = async (event) => {
-                    let data = JSON.parse(decodeURI(event.data));
+                    let data = ''
+                    try {
+                        data = JSON.parse(decodeURI(event.data));
+                        this.log('onmessage', data);
+                    }
+                    catch (e) {
+                        return;
+                    }
                     let type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'sdpOffer' | 'sdpBroadcast' = 'message';
                     let sdp = '';
                     if (data?.['#message']) {
                         type = 'message';
                     }
 
-                    if (data?.['#private']) {
+                    else if (data?.['#private']) {
                         type = 'private';
                     }
 
