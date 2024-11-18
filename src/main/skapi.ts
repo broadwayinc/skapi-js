@@ -535,7 +535,7 @@ export default class Skapi {
     }
 
     connectRealtime(cb: (rt: {
-        type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'sdpOffer';
+        type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'sdpOffer' | 'sdpBroadcast';
         message: any;
         sender?: string; // user_id of the sender
         sender_cid?: string; // connection id of the sender
