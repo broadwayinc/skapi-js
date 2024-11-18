@@ -42,7 +42,7 @@ import {
     closeRealtime,
     getRealtimeUsers,
     getRealtimeGroups,
-    callStunServer
+    connectRTC
 } from '../methods/realtime';
 import {
     secureRequest,
@@ -113,7 +113,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.184';
+    private __version = '1.0.185';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -520,15 +520,22 @@ export default class Skapi {
     }
 
     @formHandler()
-    callStunServer(params: {
-        url: string;
-        onicecandidate: (event: RTCPeerConnectionIceEvent) => void;
-    }): Promise<void> {
-        return callStunServer.bind(this)(params);
+    connectRTC(
+        params: {
+            recipient: string;
+            ice?: string;
+            callback?: {
+                onicecandidate?: (e:any)=>void;
+                onnegotiationneeded?: (e:any)=>void;
+                onerror?: (e:any)=>void;
+            }
+        }
+    ): Promise<any> {
+        return connectRTC.bind(this)(params);
     }
 
     connectRealtime(cb: (rt: {
-        type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private';
+        type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'sdpOffer';
         message: any;
         sender?: string; // user_id of the sender
         sender_cid?: string; // connection id of the sender
