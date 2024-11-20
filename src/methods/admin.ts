@@ -378,7 +378,6 @@ export async function resendInvitation(params: Form<{
     service?: string;
     owner?: string;
     email: string;
-    confirmation_url?: string;
 }>): Promise<"SUCCESS: Invitation has been re-sent. (User ID: xxx...)"> {
     params = validator.Params(params, {
         email: v=>validator.Email(v),
