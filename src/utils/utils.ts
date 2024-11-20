@@ -335,6 +335,18 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
                 if ((v instanceof File) || ((v as any) instanceof FileList)) {
                     handleFile(files, name, v);
                 }
+                else if ((v as any) instanceof Blob) {
+                    let j = v as any;
+                    if(j.type === 'application/json') {
+                        try {
+                            let json = JSON.parse(j.text());
+                            appendData(data, name, json);
+                        }
+                        catch (err) {
+                            appendData(data, name, j);
+                        }
+                    }
+                }
                 else {
                     appendData(data, name, v);
                 }

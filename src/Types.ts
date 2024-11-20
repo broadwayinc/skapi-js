@@ -1,5 +1,22 @@
 export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
 
+export type RTCCallback = (e: {
+    type: string;
+    message?: string;
+    [key: string]: any;
+}) => void
+
+export type RTCreceiver = (params: { ice: string; reject?: boolean; }, cb: RTCCallback) => Promise<{[key:string]: RTCDataChannel}>; // pick up the callback and return the data channel
+
+export type RealtimeCallback = (rt: {
+    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' | 'reconnect';
+    message: any;
+    sender?: string; // user_id of the sender
+    sender_cid?: string; // scid of the sender
+    receiveRTC?: RTCreceiver;
+    sender_rid?: string; // group of the sender
+}) => void;
+
 export type GetRecordQuery = {
     record_id?: string;
 
