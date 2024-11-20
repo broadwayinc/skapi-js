@@ -256,6 +256,18 @@ function iceCandidateHandler(key, peer: RTCPeerConnection, cb: (event: any) => v
                 closeRTC({ recipient: key });
             }
         };
+
+    if(!skip?.includes('ontrack'))
+        peer.ontrack = (event) => {
+            cb({
+                type: 'track',
+                target: peer,
+                timeStamp: event.timeStamp,
+                streams: event.streams,
+                track: event.track,
+            });
+        }
+
 }
 
 export function closeRTC(params: { recipient?: string; }): void {
@@ -293,8 +305,12 @@ export function closeRTC(params: { recipient?: string; }): void {
 function receiveRTC(msg, rtc): RTCreceiver {
     return async (
         params: {
-            ice: string;
+            ice?: string;
             reject?: boolean;
+            mediaStream?: {
+                video: boolean;
+                audio: boolean;
+            }
         },
         cb: RTCCallback): Promise<RTCReturn> => {
         cb = cb || ((e) => { });
@@ -343,6 +359,24 @@ function receiveRTC(msg, rtc): RTCreceiver {
         delete __rtcSdpOffer[msg.sender];
         delete __rtcCandidates[msg.sender];
 
+        let mediaStream = null;
+        if(params.mediaStream.video || params.mediaStream.audio) {
+            // check if it is localhost or https
+            if (window.location.hostname === 'localhost' || window.location.protocol === 'https:') {
+                closeRTC({ recipient: msg.sender });
+                throw new SkapiError(`getUserMedia() is not supported on localhost or http. Use https instead.`, { code: 'INVALID_REQUEST' });
+            }
+
+            mediaStream = await window.navigator.mediaDevices.getUserMedia({
+                video: params.mediaStream.video,
+                audio: params.mediaStream.audio
+            });
+
+            mediaStream.getTracks().forEach(track => {
+                __peerConnection[msg.sender].addTrack(track, mediaStream);
+            });
+        }
+
         iceCandidateHandler(msg.sender, __peerConnection[msg.sender], cb);
 
         let dataChannels = {};
@@ -372,7 +406,8 @@ function receiveRTC(msg, rtc): RTCreceiver {
                             {
                                 RTCPeerConnection: __peerConnection[msg.sender],
                                 close: () => closeRTC({ recipient: msg.sender })
-                            }
+                            },
+                            mediaStream
                         });
                     }
                 }
@@ -405,6 +440,10 @@ export async function connectRTC(
     params: {
         recipient: string;
         ice?: string;
+        mediaStream?: {
+            video: boolean;
+            audio: boolean;
+        },
         dataChannelOptions?: {
             ordered?: boolean;
             maxPacketLifeTime?: number;
@@ -417,6 +456,7 @@ export async function connectRTC(
     callback?: RTCCallback
 ): Promise<RTCReturn> {
     callback = callback || ((e) => { });
+    console.log({params})
     let socket: WebSocket = __socket ? await __socket : __socket;
 
     if (!socket) {
@@ -426,6 +466,10 @@ export async function connectRTC(
     params = validator.Params(params, {
         recipient: 'string',
         ice: ['string', () => 'stun:stun.skapi.com:3468'],
+        mediaStream: {
+            video: 'boolean',
+            audio: 'boolean'
+        },
         dataChannelOptions: [{
             ordered: 'boolean',
             maxPacketLifeTime: 'number',
@@ -448,6 +492,18 @@ export async function connectRTC(
 
         if (!__peerConnection?.[recipient]) {
             __peerConnection[recipient] = new RTCPeerConnection(configuration);
+        }
+
+        let mediaStream = null;
+        if(params.mediaStream.video || params.mediaStream.audio) {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+                video: params.mediaStream.video,
+                audio: params.mediaStream.audio
+            });
+
+            mediaStream.getTracks().forEach(track => {
+                __peerConnection[recipient].addTrack(track, mediaStream);
+            });
         }
 
         let dataChannels = {};
@@ -588,10 +644,12 @@ export async function connectRTC(
 
         await Promise.all(allDataChannelPromises);
         return {
-            dataChannel: __dataChannel[recipient], connection: {
+            dataChannel: __dataChannel[recipient],
+            connection: {
                 RTCPeerConnection: __peerConnection[recipient],
                 close: () => closeRTC({ recipient })
-            }
+            },
+            mediaStream
         };
     }
 }
