@@ -2,11 +2,12 @@ export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' |
 
 export type RTCCallback = (e: {
     type: string;
-    message?: string;
     [key: string]: any;
 }) => void
 
-export type RTCreceiver = (params: { ice: string; reject?: boolean; }, cb: RTCCallback) => Promise<{[key:string]: RTCDataChannel}>; // pick up the callback and return the data channel
+export type RTCreceiver = (params: { ice: string; reject?: boolean; }, cb: RTCCallback) => Promise<RTCReturn>; // pick up the callback and return the data channel
+
+export type RTCReturn = { connection: {RTCPeerConnection: RTCPeerConnection; close: ()=>void}; dataChannel: { [key: string]: RTCDataChannel }; };
 
 export type RealtimeCallback = (rt: {
     type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' | 'reconnect';
@@ -175,9 +176,9 @@ export type Connection = {
     service_name: string;
     /** Service options */
     opt: {
-        freeze_database:boolean;
-        prevent_inquiry:boolean;
-        prevent_signup:boolean;
+        freeze_database: boolean;
+        prevent_inquiry: boolean;
+        prevent_signup: boolean;
     }
 };
 
