@@ -7,7 +7,7 @@ export type RTCCallback = (e: {
 
 export type RTCreceiver = (params: { ice?: string; reject?: boolean; mediaStream?: { audio: boolean; video: boolean; } | MediaStream; }, cb: RTCCallback) => Promise<RTCReturn>; // pick up the callback and return the data channel
 
-export type RTCReturn = { mediaStream: MediaStream; connection: RTCPeerConnection; dataChannel: { [key: string]: RTCDataChannel }; };
+export type RTCReturn = { mediaStream?: MediaStream; connection: { RTCPeerConnection: RTCPeerConnection; close: () => void }; dataChannel: { [key: string]: RTCDataChannel }; };
 
 export type RealtimeCallback = (rt: {
     type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' | 'reconnect';
