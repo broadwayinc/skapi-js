@@ -314,7 +314,12 @@ function receiveRTC(msg, rtc): RTCreceiver {
         },
         cb: RTCCallback): Promise<RTCReturn> => {
         cb = cb || ((e) => { });
-
+        if(params?.mediaStream?.video || params?.mediaStream?.audio) {
+            // check if it is localhost or https
+            if (window.location.hostname !== 'localhost' || window.location.protocol !== 'https:') {
+                throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
+            }
+        }
         let socket: WebSocket = __socket ? await __socket : __socket;
         if (!socket) {
             throw new SkapiError(`No realtime connection. Execute connectRealtime() before this method.`, { code: 'INVALID_REQUEST' });
@@ -360,16 +365,10 @@ function receiveRTC(msg, rtc): RTCreceiver {
         delete __rtcCandidates[msg.sender];
 
         let mediaStream = null;
-        if(params.mediaStream.video || params.mediaStream.audio) {
-            // check if it is localhost or https
-            if (window.location.hostname !== 'localhost' || window.location.protocol !== 'https:') {
-                closeRTC({ recipient: msg.sender });
-                throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
-            }
-
+        if(params?.mediaStream?.video || params?.mediaStream?.audio) {
             mediaStream = await window.navigator.mediaDevices.getUserMedia({
-                video: params.mediaStream.video,
-                audio: params.mediaStream.audio
+                video: params?.mediaStream?.video,
+                audio: params?.mediaStream?.audio
             });
 
             mediaStream.getTracks().forEach(track => {
@@ -456,7 +455,12 @@ export async function connectRTC(
     callback?: RTCCallback
 ): Promise<RTCReturn> {
     callback = callback || ((e) => { });
-    console.log({params})
+    if(params?.mediaStream?.video || params?.mediaStream?.audio) {
+        // check if it is localhost or https
+        if (window.location.hostname !== 'localhost' || window.location.protocol !== 'https:') {
+            throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
+        }
+    }
     let socket: WebSocket = __socket ? await __socket : __socket;
 
     if (!socket) {
@@ -495,15 +499,10 @@ export async function connectRTC(
         }
 
         let mediaStream = null;
-        if(params.mediaStream.video || params.mediaStream.audio) {
-            // check if it is localhost or https
-            if (window.location.hostname !== 'localhost' || window.location.protocol !== 'https:') {
-                closeRTC({ recipient });
-                throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
-            }
+        if(params?.mediaStream?.video || params?.mediaStream?.audio) {
             mediaStream = await navigator.mediaDevices.getUserMedia({
-                video: params.mediaStream.video,
-                audio: params.mediaStream.audio
+                video: params?.mediaStream?.video,
+                audio: params?.mediaStream?.audio
             });
 
             mediaStream.getTracks().forEach(track => {
