@@ -456,13 +456,6 @@ export async function connectRTC(
     callback?: RTCCallback
 ): Promise<RTCReturn> {
     callback = callback || ((e) => { });
-    if(params?.mediaStream?.video || params?.mediaStream?.audio) {
-        console.log(window.location.hostname, window.location.protocol);
-        // check if it is localhost or https
-        if (window.location.hostname !== 'localhost' && window.location.protocol !== 'https:') {
-            throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
-        }
-    }
     let socket: WebSocket = __socket ? await __socket : __socket;
 
     if (!socket) {
@@ -487,6 +480,14 @@ export async function connectRTC(
     }, ['recipient']);
 
     let { recipient, ice } = params;
+    
+    if(params?.mediaStream?.video || params?.mediaStream?.audio) {
+        console.log(window.location.hostname, window.location.protocol);
+        // check if it is localhost or https
+        if (window.location.hostname !== 'localhost' && window.location.protocol !== 'https:') {
+            throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
+        }
+    }
 
     if (socket.readyState === 1) {
         // Call STUN server to get IP address
