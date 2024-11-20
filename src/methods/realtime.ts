@@ -362,7 +362,7 @@ function receiveRTC(msg, rtc): RTCreceiver {
         let mediaStream = null;
         if(params.mediaStream.video || params.mediaStream.audio) {
             // check if it is localhost or https
-            if (window.location.hostname === 'localhost' || window.location.protocol === 'https:') {
+            if (window.location.hostname !== 'localhost' || window.location.protocol !== 'https:') {
                 closeRTC({ recipient: msg.sender });
                 throw new SkapiError(`getUserMedia() is not supported on localhost or http. Use https instead.`, { code: 'INVALID_REQUEST' });
             }
