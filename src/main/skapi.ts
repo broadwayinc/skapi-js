@@ -532,6 +532,16 @@ export default class Skapi {
         params: {
             recipient: string;
             ice?: string;
+            mediaStream?: {
+                audio: boolean;
+                video: boolean;
+            };
+            dataChannelOptions?: {
+                ordered?: boolean;
+                maxPacketLifeTime?: number;
+                maxRetransmits?: number;
+                protocol: string;
+            }[];
         },
         callback?: RTCCallback
     ): Promise<RTCReturn> {
