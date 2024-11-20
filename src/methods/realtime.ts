@@ -31,7 +31,7 @@ let __socket: any; // WebSocket | Promise<WebSocket>
 let __socket_room: string;
 let __peerConnection: { [sender: string]: RTCPeerConnection } = {};
 let __dataChannel: { [sender: string]: { [key: string]: RTCDataChannel } } = {};
-
+let __mediaStream = null;
 async function sdpanswer(msg, sdpoffer) {
     let peerConnection = __peerConnection[msg.sender];
     let socket: WebSocket = __socket ? await __socket : __socket;
@@ -165,7 +165,7 @@ async function sendOffer(recipient) {
         socket.send(JSON.stringify({
             action: 'rtc',
             uid: recipient,
-            content: { sdpoffer, dataChannels: Object.keys(__dataChannel[recipient]) },
+            content: { sdpoffer },
             token: this.session.accessToken.jwtToken
         }));
 
@@ -177,7 +177,7 @@ async function sendOffer(recipient) {
         socket.send(JSON.stringify({
             action: 'rtcBroadcast',
             rid: recipient,
-            content: { sdpoffer, dataChannels: Object.keys(__dataChannel[recipient]) },
+            content: { sdpoffer },
             token: this.session.accessToken.jwtToken
         }));
     }
@@ -436,52 +436,36 @@ function receiveRTC(msg, rtc): RTCreceiver {
             });
         }
 
-        let mediaStream = null;
         if (params?.mediaStream) {
             if (params?.mediaStream instanceof MediaStream) {
-                mediaStream = params.mediaStream;
+                __mediaStream = params.mediaStream;
             }
             else {
                 if (params?.mediaStream?.video || params?.mediaStream?.audio)
-                    mediaStream = await window.navigator.mediaDevices.getUserMedia({
+                    __mediaStream = await window.navigator.mediaDevices.getUserMedia({
                         video: params?.mediaStream?.video,
                         audio: params?.mediaStream?.audio
                     });
             }
-            if (mediaStream)
-                mediaStream.getTracks().forEach(track => {
-                    __peerConnection[msg.sender].addTrack(track, mediaStream);
+            if (__mediaStream)
+                __mediaStream.getTracks().forEach(track => {
+                    __peerConnection[msg.sender].addTrack(track, __mediaStream);
                 });
         }
 
         peerCallbacks[msg.sender] = cb;
-
-        let channelList = rtc.dataChannels;
-        this.log('dataChannelList', channelList);
-
-        iceCandidateHandler.bind(this)(msg.sender, __peerConnection[msg.sender], peerCallbacks[msg.sender], ['onnegotiationneeded']);
+        if (!__dataChannel[msg.sender]) {
+            __dataChannel[msg.sender] = {};
+        }
 
         __peerConnection[msg.sender].ondatachannel = (event) => {
             this.log('dataChannel', `Received data channel "${event.channel.label}".`);
             const dataChannel = event.channel;
-
-            if (!__dataChannel[msg.sender]) {
-                __dataChannel[msg.sender] = {};
-            }
-
             __dataChannel[msg.sender][dataChannel.label] = dataChannel;
             handleDataChannel.bind(this)(msg.sender, dataChannel, peerCallbacks[msg.sender]);
-
-            if (Object.keys(__dataChannel[msg.sender]).length >= channelList.length) {
-                peerCallbacks[msg.sender]({
-                    type: 'pickup',
-                    target: __peerConnection[msg.sender],
-                    dataChannel: __dataChannel[msg.sender],
-                    hangup: () => closeRTC.bind(this)({ recipient: msg.sender }),
-                    mediaStream
-                });
-            }
         }
+
+        iceCandidateHandler.bind(this)(msg.sender, __peerConnection[msg.sender], peerCallbacks[msg.sender], ['onnegotiationneeded']);
 
         let allPromises = [];
         this.log('rtcSdpOffer', __rtcSdpOffer[msg.sender]);
@@ -491,17 +475,21 @@ function receiveRTC(msg, rtc): RTCreceiver {
             }
             await Promise.all(allPromises);
             delete __rtcSdpOffer[msg.sender];
-        }
-        
-        allPromises = [];
-        this.log('rtcCandidates', __rtcCandidates[msg.sender]);
-        if (__rtcCandidates[msg.sender] && __rtcCandidates[msg.sender].length > 0) {
-            for (let candidate of __rtcCandidates[msg.sender]) {
-                allPromises.push(addIceCandidate.bind(this)(msg, candidate));
-            }
 
-            await Promise.all(allPromises);
-            delete __rtcCandidates[msg.sender];
+            allPromises = [];
+            this.log('rtcCandidates', __rtcCandidates[msg.sender]);
+            if (__rtcCandidates[msg.sender] && __rtcCandidates[msg.sender].length > 0) {
+                for (let candidate of __rtcCandidates[msg.sender]) {
+                    allPromises.push(addIceCandidate.bind(this)(msg, candidate));
+                }
+
+                await Promise.all(allPromises);
+                delete __rtcCandidates[msg.sender];
+            }
+        }
+
+        if(rtc.sdpoffer) {
+            await sdpanswer.bind(this)(msg, rtc.sdpoffer);
         }
 
         socket.send(JSON.stringify({
@@ -510,12 +498,19 @@ function receiveRTC(msg, rtc): RTCreceiver {
             content: { pickup: true },
             token: this.session.accessToken.jwtToken
         }));
+        
+        peerCallbacks[msg.sender]({
+            type: 'pickup',
+            target: __peerConnection[msg.sender],
+            dataChannel: __dataChannel[msg.sender],
+            hangup: () => closeRTC.bind(this)({ recipient: msg.sender }),
+            mediaStream: __mediaStream
+        });
 
         delete __receiver_ringing[msg.sender];
         return null;
     }
 }
-
 export async function connectRTC(
     params: {
         recipient: string;
@@ -597,22 +592,21 @@ export async function connectRTC(
         }
 
         // add media stream
-        let mediaStream = null;
         if (params?.mediaStream) {
             if (params?.mediaStream instanceof MediaStream) {
-                mediaStream = params.mediaStream;
+                __mediaStream = params.mediaStream;
             }
             else {
                 if (params?.mediaStream?.video || params?.mediaStream?.audio) {
-                    mediaStream = await navigator.mediaDevices.getUserMedia({
+                    __mediaStream = await navigator.mediaDevices.getUserMedia({
                         video: params?.mediaStream?.video,
                         audio: params?.mediaStream?.audio
                     });
                 }
             }
-            if (mediaStream)
-                mediaStream.getTracks().forEach(track => {
-                    __peerConnection[recipient].addTrack(track, mediaStream);
+            if (__mediaStream)
+                __mediaStream.getTracks().forEach(track => {
+                    __peerConnection[recipient].addTrack(track, __mediaStream);
                 });
         }
 
@@ -633,50 +627,37 @@ export async function connectRTC(
             __dataChannel[recipient][protocol] = dataChannel;
         }
 
-        // Listen for negotiationneeded event
-
         for (let key in __dataChannel[recipient]) {
             let dataChannel = __dataChannel[recipient][key];
-            handleDataChannel.bind(this)(recipient, dataChannel, peerCallbacks[recipient], ['onopen']);
-            dataChannel.onopen = (event) => {
-                this.log('dataChannel', `Data channel "${dataChannel.label}" is open and ready to send messages.`);
-                let msg = {
-                    type: event.type,
-                    target: dataChannel,
-                    timeStamp: event.timeStamp,
-                    readyState: dataChannel.readyState, // Will be "open"
-                    label: dataChannel.label,
-                    id: dataChannel.id,
-                    ordered: dataChannel.ordered,
-                    maxRetransmits: dataChannel.maxRetransmits,
-                    protocol: dataChannel.protocol
-                }
-                peerCallbacks[recipient](msg);
-            }
+            handleDataChannel.bind(this)(recipient, dataChannel, peerCallbacks[recipient]);
         }
-        iceCandidateHandler.bind(this)(recipient, __peerConnection[recipient], peerCallbacks[recipient], ['onnegotiationneeded']);
-        sendOffer.bind(this)(recipient);
 
-        __caller_ringing[recipient] = (reci) => {
-            console.log('Caller picked up the call.');
+        iceCandidateHandler.bind(this)(recipient, __peerConnection[recipient], peerCallbacks[recipient], ['onnegotiationneeded']);
+        await sendOffer.bind(this)(recipient);
+
+        __caller_ringing[recipient] = (recipient, mediaStream) => {
+            console.log('picked up the call.');
+            console.log({ recipient, mediaStream });
             // proceed
-            __peerConnection[reci].onnegotiationneeded = () => {
-                sendOffer.bind(this)(reci);
-                peerCallbacks[reci]({
+
+            __peerConnection[recipient].onnegotiationneeded = () => {
+                sendOffer.bind(this)(recipient);
+                peerCallbacks[recipient]({
                     type: 'negotiationneeded',
-                    target: __peerConnection[reci],
+                    target: __peerConnection[recipient],
                     timestamp: new Date().toISOString(),
-                    signalingState: __peerConnection[reci].signalingState,
-                    connectionState: __peerConnection[reci].iceConnectionState,
-                    gatheringState: __peerConnection[reci].iceGatheringState
+                    signalingState: __peerConnection[recipient].signalingState,
+                    connectionState: __peerConnection[recipient].iceConnectionState,
+                    gatheringState: __peerConnection[recipient].iceGatheringState
                 });
             };
+            console.log(callback);
 
-            peerCallbacks[reci]({
+            callback({
                 type: 'pickup',
-                target: __peerConnection[reci],
-                dataChannel: __dataChannel[reci],
-                hangup: () => closeRTC.bind(this)({ recipient: reci }),
+                target: __peerConnection[recipient],
+                dataChannel: __dataChannel[recipient],
+                hangup: () => closeRTC.bind(this)({ recipient }),
                 mediaStream
             })
         }
@@ -739,7 +720,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                         return;
                     }
                     let type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' = 'message';
-                    let rtc = null;
+
                     if (data?.['#message']) {
                         type = 'message';
                     }
@@ -846,19 +827,23 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                                     if (!__rtcSdpOffer[msg.sender]) {
                                         __rtcSdpOffer[msg.sender] = [];
                                     }
-
+                                    if(rtc.dataChannels) {
+                                        __receivedDataChannelList = rtc.dataChannels;
+                                    }
+                                    
                                     if (!__receiver_ringing[msg.sender]) {
                                         msg.receiveRTC = receiveRTC.bind(this)(msg, rtc);
                                         __receiver_ringing[msg.sender] = true;
                                     }
                                     __rtcSdpOffer[msg.sender].push(rtc.sdpoffer);
+
                                 }
                             }
                             if (rtc.pickup) {
                                 console.log('Receiver picked up the call.', __caller_ringing);
                                 // receiver has picked up the call
                                 if (__caller_ringing[msg.sender]) {
-                                    __caller_ringing[msg.sender](msg.sender);
+                                    __caller_ringing[msg.sender].bind(this)(msg.sender, __mediaStream);
                                     delete __caller_ringing[msg.sender];
                                 }
                             }
