@@ -43,14 +43,15 @@ async function sdpanswer(msg, sdpoffer) {
     }
 
     await peerConnection.setRemoteDescription(new RTCSessionDescription(sdpoffer));
-    const sdpanswer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(sdpanswer);
+    const sdpa = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(sdpa);
     socket.send(JSON.stringify({
         action: 'rtc',
         uid: msg.sender,
-        content: JSON.stringify({ sdpanswer }),
+        content: { sdpanswer: sdpa },
         token: this.session.accessToken.jwtToken
     }));
+    this.log('rtcSdpAnswer', sdpa);
 }
 
 async function addIceCandidate(msg, candidate) {
@@ -60,6 +61,7 @@ async function addIceCandidate(msg, candidate) {
     }
 
     await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    this.log('ICE candidate added:', candidate);
 }
 
 let peerCallbacks = {};
@@ -112,7 +114,7 @@ function handleDataChannel(key, dataChannel, cb, skip?: string[]) {
             if (__dataChannel[key]) {
                 delete __dataChannel[key][dataChannel.label];
                 if (__dataChannel[key] && Object.keys(__dataChannel[key]).length === 0) {
-                    closeRTC({ recipient: key });
+                    closeRTC.bind(this)({ recipient: key });
                 }
             }
         }
@@ -151,10 +153,99 @@ function handleDataChannel(key, dataChannel, cb, skip?: string[]) {
         }
 }
 
+async function sendOffer(recipient) {
+    let socket: WebSocket = __socket ? await __socket : __socket;
+    const offer = await __peerConnection[recipient].createOffer();
+    await __peerConnection[recipient].setLocalDescription(offer);
+
+    let sdpoffer = __peerConnection[recipient].localDescription;
+
+    try {
+        validator.UserId(recipient);
+        socket.send(JSON.stringify({
+            action: 'rtc',
+            uid: recipient,
+            content: { sdpoffer, dataChannels: Object.keys(__dataChannel[recipient]) },
+            token: this.session.accessToken.jwtToken
+        }));
+
+    } catch (err) {
+        if (__socket_room !== recipient) {
+            throw new SkapiError(`User has not joined to the recipient group. Run joinRealtime({ group: "${recipient}" })`, { code: 'INVALID_REQUEST' });
+        }
+
+        socket.send(JSON.stringify({
+            action: 'rtcBroadcast',
+            rid: recipient,
+            content: { sdpoffer, dataChannels: Object.keys(__dataChannel[recipient]) },
+            token: this.session.accessToken.jwtToken
+        }));
+    }
+    this.log('rtcSdpOffer', sdpoffer);
+}
+
+async function onicecandidate(event, recipient) {
+    let socket: WebSocket = __socket ? await __socket : __socket;
+    if (!event.candidate) {
+        this.log('candidate-end', 'All ICE candidates have been sent');
+        return;
+    }
+    let callback = peerCallbacks[recipient] || (() => { });
+    // Collect ICE candidates and send them to the remote peer
+    let candidate = event.candidate;
+    this.log('ICE gathering state set to:', __peerConnection[recipient].iceGatheringState);
+    callback({
+        type: 'icecandidate',
+        target: __peerConnection[recipient],
+        timestamp: new Date().toISOString(),
+        candidate: event.candidate.candidate,
+        sdpMid: event.candidate.sdpMid,
+        sdpMLineIndex: event.candidate.sdpMLineIndex,
+        usernameFragment: event.candidate.usernameFragment,
+        protocol: event.candidate.protocol,
+        gatheringState: __peerConnection[recipient].iceGatheringState,
+        connectionState: __peerConnection[recipient].iceConnectionState
+    });
+
+    try {
+        validator.UserId(recipient);
+        socket.send(JSON.stringify({
+            action: 'rtc',
+            uid: recipient,
+            content: { candidate },
+            token: this.session.accessToken.jwtToken
+        }));
+
+    } catch (err) {
+        if (__socket_room !== recipient) {
+            throw new SkapiError(`User has not joined to the recipient group. Run joinRealtime({ group: "${recipient}" })`, { code: 'INVALID_REQUEST' });
+        }
+
+        socket.send(JSON.stringify({
+            action: 'rtcBroadcast',
+            rid: recipient,
+            content: { candidate },
+            token: this.session.accessToken.jwtToken
+        }));
+    }
+}
+
 function iceCandidateHandler(key, peer: RTCPeerConnection, cb: (event: any) => void, skip?: string[]) {
     // ICE Candidate events
+    if (!skip?.includes('ontrack'))
+        peer.ontrack = (event) => {
+            cb({
+                type: 'track',
+                target: peer,
+                timeStamp: event.timeStamp,
+                streams: event.streams,
+                track: event.track,
+            });
+        }
+
     if (!skip?.includes('onicecandidate'))
         peer.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
+            onicecandidate.bind(this)(event, key);
             if (event.candidate) {
                 cb({
                     type: 'icecandidate',
@@ -228,6 +319,7 @@ function iceCandidateHandler(key, peer: RTCPeerConnection, cb: (event: any) => v
     // Negotiation and connection events
     if (!skip?.includes('onnegotiationneeded'))
         peer.onnegotiationneeded = () => {
+            sendOffer.bind(this)(key);
             cb({
                 type: 'negotiationneeded',
                 target: peer,
@@ -253,25 +345,16 @@ function iceCandidateHandler(key, peer: RTCPeerConnection, cb: (event: any) => v
             // Clean up on disconnection
             if (state === 'disconnected' || state === 'failed' || state === 'closed') {
                 // Close all associated data channels
-                closeRTC({ recipient: key });
+                closeRTC.bind(this)({ recipient: key });
             }
         };
-
-    if (!skip?.includes('ontrack'))
-        peer.ontrack = (event) => {
-            cb({
-                type: 'track',
-                target: peer,
-                timeStamp: event.timeStamp,
-                streams: event.streams,
-                track: event.track,
-            });
-        }
-
 }
 
 export function closeRTC(params: { recipient?: string; }): void {
     let { recipient } = params || {};
+
+    delete __rtcSdpOffer[recipient];
+    delete __rtcCandidates[recipient];
 
     if (!recipient) {
         throw new SkapiError(`"recipient" is required.`, { code: 'INVALID_PARAMETER' });
@@ -287,7 +370,9 @@ export function closeRTC(params: { recipient?: string; }): void {
     delete __dataChannel[recipient];
 
     if (__peerConnection?.[recipient]) {
-        __peerConnection[recipient].close();
+        if (__peerConnection[recipient].connectionState !== 'closed')
+            __peerConnection[recipient].close();
+
         peerCallbacks[recipient]({
             type: 'connectionstatechange',
             target: __peerConnection[recipient],
@@ -299,7 +384,11 @@ export function closeRTC(params: { recipient?: string; }): void {
     }
 
     delete __peerConnection[recipient];
+    this.log('rtcConnection', `Connection to "${recipient}" closed.`);
 }
+
+let __caller_ringing = {};
+let __receiver_ringing = {};
 
 function receiveRTC(msg, rtc): RTCreceiver {
     return async (
@@ -311,7 +400,7 @@ function receiveRTC(msg, rtc): RTCreceiver {
                 audio: boolean;
             } | MediaStream;
         },
-        cb: RTCCallback): Promise<RTCReturn> => {
+        cb: RTCCallback): Promise<null> => {
         cb = cb || ((e) => { });
         if (!(params?.mediaStream instanceof MediaStream)) {
             if (params?.mediaStream?.video || params?.mediaStream?.audio) {
@@ -330,9 +419,10 @@ function receiveRTC(msg, rtc): RTCreceiver {
             socket.send(JSON.stringify({
                 action: 'rtc',
                 uid: msg.sender,
-                content: JSON.stringify({ reject: true }),
+                content: { reject: true },
                 token: this.session.accessToken.jwtToken
             }));
+
             return null;
         }
 
@@ -345,30 +435,6 @@ function receiveRTC(msg, rtc): RTCreceiver {
                 ]
             });
         }
-
-        peerCallbacks[msg.sender] = cb;
-
-        let allPromises = [];
-        this.log('rtcSdpOffer', __rtcSdpOffer[msg.sender]);
-        if (__rtcSdpOffer[msg.sender] && __rtcSdpOffer[msg.sender].length > 0) {
-            for (let sdpoffer of __rtcSdpOffer[msg.sender]) {
-                allPromises.push(sdpanswer.bind(this)(msg, sdpoffer));
-            }
-            await Promise.all(allPromises);
-        }
-
-        allPromises = [];
-        this.log('rtcCandidates', __rtcCandidates[msg.sender]);
-        if (__rtcCandidates[msg.sender] && __rtcCandidates[msg.sender].length > 0) {
-            for (let candidate of __rtcCandidates[msg.sender]) {
-                allPromises.push(addIceCandidate(msg, candidate));
-            }
-
-            await Promise.all(allPromises);
-        }
-
-        delete __rtcSdpOffer[msg.sender];
-        delete __rtcCandidates[msg.sender];
 
         let mediaStream = null;
         if (params?.mediaStream) {
@@ -388,64 +454,65 @@ function receiveRTC(msg, rtc): RTCreceiver {
                 });
         }
 
-        iceCandidateHandler(msg.sender, __peerConnection[msg.sender], cb);
+        peerCallbacks[msg.sender] = cb;
 
-        let dataChannels = {};
         let channelList = rtc.dataChannels;
         this.log('dataChannelList', channelList);
 
-        return new Promise((resolve, reject) => {
-            __peerConnection[msg.sender].ondatachannel = (event) => {
-                this.log('dataChannel', `Received data channel "${event.channel.label}".`);
-                const dataChannel = event.channel;
+        iceCandidateHandler.bind(this)(msg.sender, __peerConnection[msg.sender], peerCallbacks[msg.sender], ['onnegotiationneeded']);
 
-                dataChannels[dataChannel.label] = dataChannel;
+        __peerConnection[msg.sender].ondatachannel = (event) => {
+            this.log('dataChannel', `Received data channel "${event.channel.label}".`);
+            const dataChannel = event.channel;
 
-                this.log('dataChannels', dataChannels);
-                function checkDataChannel() {
-                    let notyet = false;
-                    for (let dtc of channelList) {
-                        if (dataChannels?.[dtc]?.readyState === 'open') {
-                            continue;
-                        }
-                        else {
-                            notyet = true;
-                            break;
-                        }
-                    }
-                    if (!notyet) {
-                        __dataChannel[msg.sender] = dataChannels;
-                        resolve({
-                            dataChannel: dataChannels, connection: {
-                                RTCPeerConnection: __peerConnection[msg.sender],
-                                close: () => closeRTC({ recipient: msg.sender })
-                            },
-                            mediaStream
-                        });
-                    }
-                }
+            if (!__dataChannel[msg.sender]) {
+                __dataChannel[msg.sender] = {};
+            }
 
-                handleDataChannel.bind(this)(msg.sender, dataChannel, cb, ['onopen']);
+            __dataChannel[msg.sender][dataChannel.label] = dataChannel;
+            handleDataChannel.bind(this)(msg.sender, dataChannel, peerCallbacks[msg.sender]);
 
-                dataChannel.onopen = (event) => {
-                    this.log('dataChannel', `Data channel: "${dataChannel.label}" is open and ready to send messages.`);
-                    let msg = {
-                        type: event.type,
-                        target: dataChannel,
-                        timeStamp: event.timeStamp,
-                        readyState: dataChannel.readyState, // Will be "open"
-                        label: dataChannel.label,
-                        id: dataChannel.id,
-                        ordered: dataChannel.ordered,
-                        maxRetransmits: dataChannel.maxRetransmits,
-                        protocol: dataChannel.protocol
-                    }
-                    cb(msg);
-                    this.log('dataChannel', `Received data channel "${dataChannel.label}" is open and ready to send messages.`);
-                    checkDataChannel();
-                }
-            };
-        })
+            if (Object.keys(__dataChannel[msg.sender]).length >= channelList.length) {
+                peerCallbacks[msg.sender]({
+                    type: 'pickup',
+                    target: __peerConnection[msg.sender],
+                    dataChannel: __dataChannel[msg.sender],
+                    hangup: () => closeRTC.bind(this)({ recipient: msg.sender }),
+                    mediaStream
+                });
+            }
+        }
+
+        let allPromises = [];
+        this.log('rtcSdpOffer', __rtcSdpOffer[msg.sender]);
+        if (__rtcSdpOffer[msg.sender] && __rtcSdpOffer[msg.sender].length > 0) {
+            for (let sdpoffer of __rtcSdpOffer[msg.sender]) {
+                allPromises.push(sdpanswer.bind(this)(msg, sdpoffer));
+            }
+            await Promise.all(allPromises);
+            delete __rtcSdpOffer[msg.sender];
+        }
+        
+        allPromises = [];
+        this.log('rtcCandidates', __rtcCandidates[msg.sender]);
+        if (__rtcCandidates[msg.sender] && __rtcCandidates[msg.sender].length > 0) {
+            for (let candidate of __rtcCandidates[msg.sender]) {
+                allPromises.push(addIceCandidate.bind(this)(msg, candidate));
+            }
+
+            await Promise.all(allPromises);
+            delete __rtcCandidates[msg.sender];
+        }
+
+        socket.send(JSON.stringify({
+            action: 'rtc',
+            uid: msg.sender,
+            content: { pickup: true },
+            token: this.session.accessToken.jwtToken
+        }));
+
+        delete __receiver_ringing[msg.sender];
+        return null;
     }
 }
 
@@ -458,6 +525,23 @@ export async function connectRTC(
             audio: boolean;
         } | MediaStream,
         dataChannelOptions?: {
+            // ordered?: boolean;          // Messages arrive in order (default: true)
+            // maxPacketLifeTime?: number; // Max time (ms) to retransmit (can't be used with maxRetransmits)
+            // maxRetransmits?: number;    // Max number of retries (can't be used with maxPacketLifeTime)
+
+            // // Protocol Options
+            // protocol?: string;         // Sub-protocol string
+            // negotiated?: boolean;      // If channel is negotiated out-of-band (default: false)
+            // id?: number;              // Channel ID (only used if negotiated is true)
+
+            // Reliable messaging: { ordered: true }
+            // Real-time gaming: { ordered: false, maxRetransmits: 0 }
+            // File transfer: { ordered: true, maxRetransmits: 30 }
+
+            // maxPacketLifeTime: 1000, // Discard after 1 second
+            // Gaming: Low values (50-100ms)
+            // Voice chat: Medium values (250-500ms)
+            // Status updates: Higher values (1000-2000ms)
             ordered?: boolean;
             maxPacketLifeTime?: number;
             maxRetransmits?: number;
@@ -467,7 +551,7 @@ export async function connectRTC(
         }[]
     },
     callback?: RTCCallback
-): Promise<RTCReturn> {
+): Promise<null> {
     callback = callback || ((e) => { });
     let socket: WebSocket = __socket ? await __socket : __socket;
 
@@ -512,6 +596,7 @@ export async function connectRTC(
             __peerConnection[recipient] = new RTCPeerConnection(configuration);
         }
 
+        // add media stream
         let mediaStream = null;
         if (params?.mediaStream) {
             if (params?.mediaStream instanceof MediaStream) {
@@ -525,19 +610,10 @@ export async function connectRTC(
                     });
                 }
             }
-
             if (mediaStream)
                 mediaStream.getTracks().forEach(track => {
                     __peerConnection[recipient].addTrack(track, mediaStream);
                 });
-        }
-
-        let dataChannels = {};
-
-        for (let i = 0; i < params.dataChannelOptions.length; i++) {
-            let options = params.dataChannelOptions[i];
-            let dataChannel = __peerConnection[recipient].createDataChannel(options.protocol, options);
-            dataChannels[options.protocol] = dataChannel;
         }
 
         peerCallbacks[recipient] = callback;
@@ -545,111 +621,28 @@ export async function connectRTC(
         if (!__dataChannel[recipient]) {
             __dataChannel[recipient] = {};
         }
-        __dataChannel[recipient] = dataChannels;
 
-        // ordered?: boolean;          // Messages arrive in order (default: true)
-        // maxPacketLifeTime?: number; // Max time (ms) to retransmit (can't be used with maxRetransmits)
-        // maxRetransmits?: number;    // Max number of retries (can't be used with maxPacketLifeTime)
-
-        // // Protocol Options
-        // protocol?: string;         // Sub-protocol string
-        // negotiated?: boolean;      // If channel is negotiated out-of-band (default: false)
-        // id?: number;              // Channel ID (only used if negotiated is true)
-
-        // Reliable messaging: { ordered: true }
-        // Real-time gaming: { ordered: false, maxRetransmits: 0 }
-        // File transfer: { ordered: true, maxRetransmits: 30 }
-
-        // maxPacketLifeTime: 1000, // Discard after 1 second
-        // Gaming: Low values (50-100ms)
-        // Voice chat: Medium values (250-500ms)
-        // Status updates: Higher values (1000-2000ms)
-
-        // Listen for negotiationneeded event
-        __peerConnection[recipient].onnegotiationneeded = async () => {
-
-            const offer = await __peerConnection[recipient].createOffer();
-            await __peerConnection[recipient].setLocalDescription(offer);
-
-            let sdpoffer = __peerConnection[recipient].localDescription;
-
-            try {
-                validator.UserId(recipient);
-                socket.send(JSON.stringify({
-                    action: 'rtc',
-                    uid: recipient,
-                    content: JSON.stringify({ sdpoffer, dataChannels: Object.keys(__dataChannel[recipient]) }),
-                    token: this.session.accessToken.jwtToken
-                }));
-
-            } catch (err) {
-                if (__socket_room !== recipient) {
-                    throw new SkapiError(`User has not joined to the recipient group. Run joinRealtime({ group: "${recipient}" })`, { code: 'INVALID_REQUEST' });
-                }
-
-                socket.send(JSON.stringify({
-                    action: 'rtcBroadcast',
-                    rid: recipient,
-                    content: JSON.stringify({ sdpoffer, dataChannels: Object.keys(__dataChannel[recipient]) }),
-                    token: this.session.accessToken.jwtToken
-                }));
-            }
-        };
-
-        __peerConnection[recipient].onicecandidate = (event) => {
-            if (!event.candidate) {
-                this.log('candidate-end', 'All ICE candidates have been sent');
-                return;
+        for (let i = 0; i < params.dataChannelOptions.length; i++) {
+            let protocol = params.dataChannelOptions[i].protocol || 'default';
+            if (Object.keys(__dataChannel[recipient]).includes(protocol)) {
+                throw new SkapiError(`Data channel with the protocol "${protocol}" already exists.`, { code: 'INVALID_REQUEST' });
             }
 
-            // Collect ICE candidates and send them to the remote peer
-            let candidate = event.candidate;
-            this.log('ICE gathering state set to:', __peerConnection[recipient].iceGatheringState);
-            callback({
-                type: 'icecandidate',
-                target: __peerConnection[recipient],
-                timestamp: new Date().toISOString(),
-                candidate: event.candidate.candidate,
-                sdpMid: event.candidate.sdpMid,
-                sdpMLineIndex: event.candidate.sdpMLineIndex,
-                usernameFragment: event.candidate.usernameFragment,
-                protocol: event.candidate.protocol,
-                gatheringState: __peerConnection[recipient].iceGatheringState,
-                connectionState: __peerConnection[recipient].iceConnectionState
-            });
-
-            try {
-                validator.UserId(recipient);
-                socket.send(JSON.stringify({
-                    action: 'rtc',
-                    uid: recipient,
-                    content: JSON.stringify({ candidate }),
-                    token: this.session.accessToken.jwtToken
-                }));
-
-            } catch (err) {
-                if (__socket_room !== recipient) {
-                    throw new SkapiError(`User has not joined to the recipient group. Run joinRealtime({ group: "${recipient}" })`, { code: 'INVALID_REQUEST' });
-                }
-
-                socket.send(JSON.stringify({
-                    action: 'rtcBroadcast',
-                    rid: recipient,
-                    content: JSON.stringify({ candidate }),
-                    token: this.session.accessToken.jwtToken
-                }));
-            }
+            let options = params.dataChannelOptions[i];
+            let dataChannel = __peerConnection[recipient].createDataChannel(protocol, options);
+            __dataChannel[recipient][protocol] = dataChannel;
         }
 
-        iceCandidateHandler(recipient, __peerConnection[recipient], callback, ['onicecandidate', 'onnegotiationneeded']);
+        // Listen for negotiationneeded event
 
-        let registerOpen = (dataChannel) => new Promise((resolve) => {
-            handleDataChannel.bind(this)(recipient, dataChannel, callback, ['onopen']);
+        for (let key in __dataChannel[recipient]) {
+            let dataChannel = __dataChannel[recipient][key];
+            handleDataChannel.bind(this)(recipient, dataChannel, peerCallbacks[recipient], ['onopen']);
             dataChannel.onopen = (event) => {
-                this.log('dataChannel', `Data channel: "${dataChannel.label}" is open and ready to send messages.`);
+                this.log('dataChannel', `Data channel "${dataChannel.label}" is open and ready to send messages.`);
                 let msg = {
+                    type: event.type,
                     target: dataChannel,
-                    type: event.type,          // "open"
                     timeStamp: event.timeStamp,
                     readyState: dataChannel.readyState, // Will be "open"
                     label: dataChannel.label,
@@ -658,25 +651,37 @@ export async function connectRTC(
                     maxRetransmits: dataChannel.maxRetransmits,
                     protocol: dataChannel.protocol
                 }
-                callback(msg);
-                resolve(dataChannel);
-            };
-        });
+                peerCallbacks[recipient](msg);
+            }
+        }
+        iceCandidateHandler.bind(this)(recipient, __peerConnection[recipient], peerCallbacks[recipient], ['onnegotiationneeded']);
+        sendOffer.bind(this)(recipient);
 
-        let allDataChannelPromises = [];
-        for (let dt in dataChannels) {
-            allDataChannelPromises.push(registerOpen(dataChannels[dt]));
+        __caller_ringing[recipient] = (reci) => {
+            console.log('Caller picked up the call.');
+            // proceed
+            __peerConnection[reci].onnegotiationneeded = () => {
+                sendOffer.bind(this)(reci);
+                peerCallbacks[reci]({
+                    type: 'negotiationneeded',
+                    target: __peerConnection[reci],
+                    timestamp: new Date().toISOString(),
+                    signalingState: __peerConnection[reci].signalingState,
+                    connectionState: __peerConnection[reci].iceConnectionState,
+                    gatheringState: __peerConnection[reci].iceGatheringState
+                });
+            };
+
+            peerCallbacks[reci]({
+                type: 'pickup',
+                target: __peerConnection[reci],
+                dataChannel: __dataChannel[reci],
+                hangup: () => closeRTC.bind(this)({ recipient: reci }),
+                mediaStream
+            })
         }
 
-        await Promise.all(allDataChannelPromises);
-        return {
-            dataChannel: __dataChannel[recipient],
-            connection: {
-                RTCPeerConnection: __peerConnection[recipient],
-                close: () => closeRTC({ recipient })
-            },
-            mediaStream
-        };
+        return null;
     }
 }
 
@@ -749,13 +754,6 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 
                     else if (data?.['#rtc']) {
                         type = 'rtc';
-                        rtc = data['#rtc'];
-                        try {
-                            rtc = JSON.parse(rtc);
-                        }
-                        catch (e) {
-                            return;
-                        }
                     }
 
                     let msg: {
@@ -765,7 +763,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                         sender_cid?: string;
                         receiveRTC?: RTCreceiver; // pick up the call
                         sender_rid?: string;
-                    } = { type, message: type === 'rtc' ? rtc : (data?.['#message'] || data?.['#private'] || data?.['#notice']) || null };
+                    } = { type, message: data?.['#rtc'] || data?.['#message'] || data?.['#private'] || data?.['#notice'] || null };
 
                     if (data?.['#user_id']) {
                         msg.sender = data['#user_id'];
@@ -819,17 +817,18 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                         }
                     }
 
-                    if (rtc) {
+                    if (type === 'rtc') {
                         if (msg.sender !== user.user_id) {
+                            let rtc = msg.message;
                             if (rtc.reject) {
                                 if (__peerConnection?.[msg.sender]) {
-                                    closeRTC({ recipient: msg.sender });
+                                    closeRTC.bind(this)({ recipient: msg.sender });
                                 }
                                 return;
                             }
                             if (rtc.candidate) {
                                 if (__peerConnection?.[msg.sender]) {
-                                    addIceCandidate(msg, rtc.candidate);
+                                    addIceCandidate.bind(this)(msg, rtc.candidate);
                                 }
                                 else {
                                     if (!__rtcCandidates[msg.sender]) {
@@ -839,7 +838,6 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                                     __rtcCandidates[msg.sender].push(rtc.candidate);
                                 }
                             }
-
                             if (rtc.sdpoffer) {
                                 if (__peerConnection?.[msg.sender]) {
                                     sdpanswer.bind(this)(msg, rtc.sdpoffer);
@@ -849,12 +847,23 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                                         __rtcSdpOffer[msg.sender] = [];
                                     }
 
+                                    if (!__receiver_ringing[msg.sender]) {
+                                        msg.receiveRTC = receiveRTC.bind(this)(msg, rtc);
+                                        __receiver_ringing[msg.sender] = true;
+                                    }
                                     __rtcSdpOffer[msg.sender].push(rtc.sdpoffer);
-                                    msg.receiveRTC = receiveRTC.bind(this)(msg, rtc);
                                 }
                             }
-
+                            if (rtc.pickup) {
+                                console.log('Receiver picked up the call.', __caller_ringing);
+                                // receiver has picked up the call
+                                if (__caller_ringing[msg.sender]) {
+                                    __caller_ringing[msg.sender](msg.sender);
+                                    delete __caller_ringing[msg.sender];
+                                }
+                            }
                             if (rtc.sdpanswer) {
+                                // answer from the receiver
                                 await __peerConnection[msg.sender].setRemoteDescription(new RTCSessionDescription(rtc.sdpanswer));
                             }
                         }
