@@ -3,7 +3,7 @@ import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { extractFormData } from '../utils/utils';
 import { request } from '../utils/network';
-import { DatabaseResponse, FetchOptions } from '../Types';
+import { DatabaseResponse, FetchOptions, RTCCallback, RTCreceiver, RealtimeCallback } from '../Types';
 
 async function prepareWebsocket() {
     // Connect to the WebSocket server
@@ -20,25 +20,407 @@ async function prepareWebsocket() {
     );
 }
 
-type RealtimeCallback = (rt: {
-    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'sdpOffer' | 'sdpBroadcast';
-    message: any;
-    sender?: string; // user_id of the sender
-    sender_cid?: string; // scid of the sender
-}) => void;
-
 let reconnectAttempts = 0;
 
 let __roomList = {}; // { group: { user_id: [connection_id, ...] } }
 let __roomPending = {}; // { group: Promise }
 let __keepAliveInterval = null;
+let __rtcCandidates = {};
+let __rtcSdpOffer = {};
+let __socket: any; // WebSocket | Promise<WebSocket>
+let __socket_room: string;
+let __peerConnection: { [sender: string]: RTCPeerConnection } = {};
+let __dataChannel: { [sender: string]: { [key: string]: RTCDataChannel } } = {};
+
+async function sdpanswer(msg, sdpoffer) {
+    let peerConnection = __peerConnection[msg.sender];
+    let socket: WebSocket = __socket ? await __socket : __socket;
+    if (!socket) {
+        throw new SkapiError(`No realtime connection. Execute connectRealtime() before this method.`, { code: 'INVALID_REQUEST' });
+    }
+    if (!peerConnection) {
+        throw new SkapiError(`No peer connection.`, { code: 'INVALID_REQUEST' });
+    }
+
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(sdpoffer));
+    const sdpanswer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(sdpanswer);
+    socket.send(JSON.stringify({
+        action: 'rtc',
+        uid: msg.sender,
+        content: JSON.stringify({ sdpanswer }),
+        token: this.session.accessToken.jwtToken
+    }));
+}
+
+async function addIceCandidate(msg, candidate) {
+    let peerConnection = __peerConnection[msg.sender];
+    if (!peerConnection) {
+        throw new SkapiError(`No peer connection.`, { code: 'INVALID_REQUEST' });
+    }
+
+    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+}
+
+function iceCandidateHandler(peer: RTCPeerConnection, cb: (event: any) => void, skip?: string[]) {
+    // ICE Candidate events
+    if (!skip?.includes('onicecandidate'))
+        peer.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
+            if (event.candidate) {
+                cb({
+                    type: 'icecandidate',
+                    timestamp: new Date().toISOString(),
+                    candidate: event.candidate.candidate,
+                    sdpMid: event.candidate.sdpMid,
+                    sdpMLineIndex: event.candidate.sdpMLineIndex,
+                    usernameFragment: event.candidate.usernameFragment,
+                    protocol: event.candidate.protocol,
+                    gatheringState: peer.iceGatheringState,
+                    connectionState: peer.iceConnectionState
+                });
+            } else {
+                cb({ type: 'icecandidateend', timestamp: new Date().toISOString() });
+            }
+        };
+
+    if (!skip?.includes('onicecandidateerror'))
+        peer.onicecandidateerror = (event: any) => {
+            cb({
+                type: 'icecandidateerror',
+                timestamp: new Date().toISOString(),
+                errorCode: event.errorCode,
+                errorText: event.errorText,
+                url: event.url,
+                hostCandidate: event.hostCandidate,
+                gatheringState: peer.iceGatheringState,
+                connectionState: peer.iceConnectionState
+            });
+        };
+
+    // Connection state changes
+    if (!skip?.includes('oniceconnectionstatechange'))
+        peer.oniceconnectionstatechange = () => {
+            cb({
+                type: 'iceconnectionstatechange',
+                timestamp: new Date().toISOString(),
+                state: peer.iceConnectionState,
+                gatheringState: peer.iceGatheringState,
+                signalingState: peer.signalingState
+            });
+        };
+
+    if (!skip?.includes('onicegatheringstatechange'))
+        peer.onicegatheringstatechange = () => {
+            cb({
+                type: 'icegatheringstatechange',
+                timestamp: new Date().toISOString(),
+                state: peer.iceGatheringState,
+                connectionState: peer.iceConnectionState,
+                signalingState: peer.signalingState
+            });
+        };
+
+    if (!skip?.includes('onsignalingstatechange'))
+        peer.onsignalingstatechange = () => {
+            cb({
+                type: 'signalingstatechange',
+                timestamp: new Date().toISOString(),
+                state: peer.signalingState,
+                connectionState: peer.iceConnectionState,
+                gatheringState: peer.iceGatheringState
+            });
+        };
+
+    // Negotiation and connection events
+    if (!skip?.includes('onnegotiationneeded'))
+        peer.onnegotiationneeded = () => {
+            cb({
+                type: 'negotiationneeded',
+                timestamp: new Date().toISOString(),
+                signalingState: peer.signalingState,
+                connectionState: peer.iceConnectionState,
+                gatheringState: peer.iceGatheringState
+            });
+        };
+
+    if (!skip?.includes('onconnectionstatechange'))
+        peer.onconnectionstatechange = () => {
+            cb({
+                type: 'connectionstatechange',
+                timestamp: new Date().toISOString(),
+                state: peer.connectionState,
+                iceState: peer.iceConnectionState,
+                signalingState: peer.signalingState
+            });
+        };
+}
+
+function receiveRTC(msg, rtc): RTCreceiver {
+    return async (
+        params: {
+            ice: string;
+            reject?: boolean;
+        },
+        cb: RTCCallback): Promise<{[key:string]: RTCDataChannel}> => {
+        cb = cb || ((e) => { });
+        
+        let socket: WebSocket = __socket ? await __socket : __socket;
+        if (!socket) {
+            throw new SkapiError(`No realtime connection. Execute connectRealtime() before this method.`, { code: 'INVALID_REQUEST' });
+        }
+
+        if(params?.reject) {
+            socket.send(JSON.stringify({
+                action: 'rtc',
+                uid: msg.sender,
+                content: JSON.stringify({ sdpanswer }),
+                token: this.session.accessToken.jwtToken
+            }));
+        }
+
+        let { ice = 'stun:stun.skapi.com:3468' } = params || {};
+
+        if (!__peerConnection?.[msg.sender]) {
+            __peerConnection[msg.sender] = new RTCPeerConnection({
+                iceServers: [
+                    { urls: ice }
+                ]
+            });
+        }
+
+        let allPromises = [];
+        this.log('rtcSdpOffer', __rtcSdpOffer[msg.sender]);
+        for (let sdpoffer of __rtcSdpOffer[msg.sender]) {
+            allPromises.push(sdpanswer.bind(this)(msg, sdpoffer));
+        }
+        await Promise.all(allPromises);
+
+        allPromises = [];
+        this.log('rtcCandidates', __rtcCandidates[msg.sender]);
+        for (let candidate of __rtcCandidates[msg.sender]) {
+            allPromises.push(addIceCandidate(msg, candidate));
+        }
+
+        await Promise.all(allPromises);
+        delete __rtcSdpOffer[msg.sender];
+        delete __rtcCandidates[msg.sender];
+
+        iceCandidateHandler(__peerConnection[msg.sender], cb);
+
+        let dataChannels = {};
+        let channelList = rtc.dataChannels;
+
+        return new Promise((resolve, reject) => {
+            __peerConnection[msg.sender].ondatachannel = (event) => {
+                const dataChannel = event.channel;
+
+                dataChannels[dataChannel.label] = dataChannel;
+
+                function checkDataChannel() {
+                    let notyet = false;
+                    for (let dtc of channelList) {
+                        if (dataChannels?.[dtc].readyState === 'open') {
+                            continue;
+                        }
+                        else {
+                            notyet = true;
+                            break;
+                        }
+                    }
+                    if (!notyet) {
+                        __dataChannel[msg.sender] = dataChannels;
+                        resolve(dataChannels);
+                    }
+                }
+
+                dataChannel.onopen = () => {
+                    this.log('dataChannel', `Received data channel "${dataChannel.label}" is open and ready to send messages.`);
+                    checkDataChannel();
+                }
+            };
+        })
+    }
+}
+
+export async function connectRTC(
+    params: {
+        recipient: string;
+        ice?: string;
+        dataChannelOptions?: {
+            ordered?: boolean;
+            maxPacketLifeTime?: number;
+            maxRetransmits?: number;
+            protocol: string;
+            // negotiated?: boolean;
+            // id?: number;
+        }[]
+    },
+    callback?: RTCCallback
+): Promise<{ [key: string]: RTCDataChannel }> {
+    callback = callback || ((e) => { });
+    let socket: WebSocket = __socket ? await __socket : __socket;
+
+    if (!socket) {
+        throw new SkapiError(`No realtime connection. Execute connectRealtime() before this method.`, { code: 'INVALID_REQUEST' });
+    }
+
+    params = validator.Params(params, {
+        recipient: 'string',
+        ice: ['string', () => 'stun:stun.skapi.com:3468'],
+        dataChannelOptions: [{
+            ordered: 'boolean',
+            maxPacketLifeTime: 'number',
+            maxRetransmits: 'number',
+            protocol: 'string'
+        }, () => {
+            return [{ ordered: true, maxRetransmits: 10, protocol: 'default' }]
+        }]
+    }, ['recipient']);
+
+    let { recipient, ice } = params;
+
+    if (socket.readyState === 1) {
+        // Call STUN server to get IP address
+        const configuration = {
+            iceServers: [
+                { urls: ice }
+            ]
+        };
+
+        if (!__peerConnection?.[recipient]) {
+            __peerConnection[recipient] = new RTCPeerConnection(configuration);
+        }
+
+        let dataChannels = {};
+
+        for (let i = 0; i < params.dataChannelOptions.length; i++) {
+            let options = params.dataChannelOptions[i];
+            let dataChannel = __peerConnection[recipient].createDataChannel(options.protocol, options);
+            dataChannels[options.protocol] = dataChannel;
+        }
+
+        if (!__dataChannel[recipient]) {
+            __dataChannel[recipient] = {};
+        }
+        __dataChannel[recipient] = dataChannels;
+
+        // ordered?: boolean;          // Messages arrive in order (default: true)
+        // maxPacketLifeTime?: number; // Max time (ms) to retransmit (can't be used with maxRetransmits)
+        // maxRetransmits?: number;    // Max number of retries (can't be used with maxPacketLifeTime)
+
+        // // Protocol Options
+        // protocol?: string;         // Sub-protocol string
+        // negotiated?: boolean;      // If channel is negotiated out-of-band (default: false)
+        // id?: number;              // Channel ID (only used if negotiated is true)
+
+        // Reliable messaging: { ordered: true }
+        // Real-time gaming: { ordered: false, maxRetransmits: 0 }
+        // File transfer: { ordered: true, maxRetransmits: 30 }
+
+        // maxPacketLifeTime: 1000, // Discard after 1 second
+        // Gaming: Low values (50-100ms)
+        // Voice chat: Medium values (250-500ms)
+        // Status updates: Higher values (1000-2000ms)
+
+        // Listen for negotiationneeded event
+        __peerConnection[recipient].onnegotiationneeded = async () => {
+            const offer = await __peerConnection[recipient].createOffer();
+            await __peerConnection[recipient].setLocalDescription(offer);
+
+            let sdpoffer = __peerConnection[recipient].localDescription;
+
+            try {
+                validator.UserId(recipient);
+                socket.send(JSON.stringify({
+                    action: 'rtc',
+                    uid: recipient,
+                    content: JSON.stringify({ sdpoffer, dataChannels: Object.keys(__dataChannel[recipient]) }),
+                    token: this.session.accessToken.jwtToken
+                }));
+
+            } catch (err) {
+                if (__socket_room !== recipient) {
+                    throw new SkapiError(`User has not joined to the recipient group. Run joinRealtime({ group: "${recipient}" })`, { code: 'INVALID_REQUEST' });
+                }
+
+                socket.send(JSON.stringify({
+                    action: 'rtcBroadcast',
+                    rid: recipient,
+                    content: JSON.stringify({ sdpoffer, dataChannels: Object.keys(__dataChannel[recipient]) }),
+                    token: this.session.accessToken.jwtToken
+                }));
+            }
+        };
+
+        __peerConnection[recipient].onicecandidate = (event) => {
+            if (!event.candidate) {
+                this.log('candidate-end', 'All ICE candidates have been sent');
+                return;
+            }
+
+            // Collect ICE candidates and send them to the remote peer
+            let candidate = event.candidate;
+            this.log('ICE gathering state set to:', __peerConnection[recipient].iceGatheringState);
+            callback({
+                type: 'icecandidate',
+                timestamp: new Date().toISOString(),
+                candidate: event.candidate.candidate,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex,
+                usernameFragment: event.candidate.usernameFragment,
+                protocol: event.candidate.protocol,
+                gatheringState: __peerConnection[recipient].iceGatheringState,
+                connectionState: __peerConnection[recipient].iceConnectionState
+            });
+            try {
+                validator.UserId(recipient);
+                socket.send(JSON.stringify({
+                    action: 'rtc',
+                    uid: recipient,
+                    content: JSON.stringify({ candidate }),
+                    token: this.session.accessToken.jwtToken
+                }));
+
+            } catch (err) {
+                if (__socket_room !== recipient) {
+                    throw new SkapiError(`User has not joined to the recipient group. Run joinRealtime({ group: "${recipient}" })`, { code: 'INVALID_REQUEST' });
+                }
+
+                socket.send(JSON.stringify({
+                    action: 'rtcBroadcast',
+                    rid: recipient,
+                    content: JSON.stringify({ candidate }),
+                    token: this.session.accessToken.jwtToken
+                }));
+            }
+        }
+
+        iceCandidateHandler(__peerConnection[recipient], callback, ['onicecandidate', 'onnegotiationneeded']);
+
+        let registerOpen = (dt) => new Promise((resolve) => {
+            dt.onopen = () => {
+                this.log('dataChannel', `Data channel: "${dt.label}" is open and ready to send messages.`);
+                resolve(dt);
+            };
+        });
+
+        let allDataChannelPromises = [];
+        for (let dt in dataChannels) {
+            allDataChannelPromises.push(registerOpen(dataChannels[dt]));
+        }
+
+        await Promise.all(allDataChannelPromises);
+        return __dataChannel[recipient];
+    }
+}
+
 export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSocket> {
     if (typeof cb !== 'function') {
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
     }
 
-    if (reconnectAttempts || !(this.__socket instanceof Promise)) {
-        this.__socket = new Promise(async resolve => {
+    if (reconnectAttempts || !(__socket instanceof Promise)) {
+        __socket = new Promise(async resolve => {
             setTimeout(async () => {
                 await this.__connection;
 
@@ -51,12 +433,13 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 
                 socket.onopen = () => {
                     reconnectAttempts = 0;
+                    this.log('realtime onopen', 'Connected to WebSocket server.');
                     cb({ type: 'success', message: 'Connected to WebSocket server.' });
 
-                    if (this.__socket_room) {
+                    if (__socket_room) {
                         socket.send(JSON.stringify({
                             action: 'joinRoom',
-                            rid: this.__socket_room,
+                            rid: __socket_room,
                             token: this.session.accessToken.jwtToken
                         }));
                     }
@@ -78,13 +461,13 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                     let data = ''
                     try {
                         data = JSON.parse(decodeURI(event.data));
-                        this.log('onmessage', data);
+                        this.log('realtime onmessage', data);
                     }
                     catch (e) {
                         return;
                     }
-                    let type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'sdpOffer' | 'sdpBroadcast' = 'message';
-                    let sdp = '';
+                    let type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' = 'message';
+                    let rtc = null;
                     if (data?.['#message']) {
                         type = 'message';
                     }
@@ -97,32 +480,25 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                         type = 'notice';
                     }
 
-                    else if (data?.['#sdpOffer']) {
-                        type = 'sdpOffer';
-                        sdp = data['#sdpOffer'];
+                    else if (data?.['#rtc']) {
+                        type = 'rtc';
+                        rtc = data['#rtc'];
                         try {
-                            sdp = JSON.parse(sdp);
+                            rtc = JSON.parse(rtc);
                         }
                         catch (e) {
-                        }
-                    }
-
-                    else if (data?.['#sdpBroadcast']) {
-                        type = 'sdpBroadcast';
-                        sdp = data['#sdpBroadcast'];
-                        try {
-                            sdp = JSON.parse(sdp);
-                        }
-                        catch (e) {
+                            return;
                         }
                     }
 
                     let msg: {
-                        type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'sdpOffer' | 'sdpBroadcast';
+                        type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc';
                         message: any;
                         sender?: string;
                         sender_cid?: string;
-                    } = { type, message: type === 'sdpOffer' || type === 'sdpBroadcast' ? sdp : (data?.['#message'] || data?.['#private'] || data?.['#notice']) || null };
+                        receiveRTC?: RTCreceiver; // pick up the call
+                        sender_rid?: string;
+                    } = { type, message: type === 'rtc' ? rtc : (data?.['#message'] || data?.['#private'] || data?.['#notice']) || null };
 
                     if (data?.['#user_id']) {
                         msg.sender = data['#user_id'];
@@ -132,46 +508,84 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                         msg.sender_cid = 'scid:' + data['#scid'];
                     }
 
+                    if (data?.['#srid']) {
+                        msg.sender_rid = data['#srid'];
+                    }
+
                     if (type === 'notice') {
-                        if (this.__socket_room && (msg.message.includes('has left the message group.') || msg.message.includes('has been disconnected.'))) {
-                            if (__roomPending[this.__socket_room]) {
-                                await __roomPending[this.__socket_room];
+                        if (__socket_room && (msg.message.includes('has left the message group.') || msg.message.includes('has been disconnected.'))) {
+                            if (__roomPending[__socket_room]) {
+                                await __roomPending[__socket_room];
                             }
 
                             let user_id = msg.sender;
-                            if (__roomList?.[this.__socket_room]?.[user_id]) {
-                                __roomList[this.__socket_room][user_id] = __roomList[this.__socket_room][user_id].filter(v => v !== msg.sender_cid);
+                            if (__roomList?.[__socket_room]?.[user_id]) {
+                                __roomList[__socket_room][user_id] = __roomList[__socket_room][user_id].filter(v => v !== msg.sender_cid);
                             }
 
-                            if (__roomList?.[this.__socket_room]?.[user_id] && __roomList[this.__socket_room][user_id].length === 0) {
-                                delete __roomList[this.__socket_room][user_id];
+                            if (__roomList?.[__socket_room]?.[user_id] && __roomList[__socket_room][user_id].length === 0) {
+                                delete __roomList[__socket_room][user_id];
                             }
 
-                            if (__roomList?.[this.__socket_room]?.[user_id]) {
+                            if (__roomList?.[__socket_room]?.[user_id]) {
                                 return
                             }
                         }
-                        else if (this.__socket_room && msg.message.includes('has joined the message group.')) {
-                            if (__roomPending[this.__socket_room]) {
-                                await __roomPending[this.__socket_room];
+                        else if (__socket_room && msg.message.includes('has joined the message group.')) {
+                            if (__roomPending[__socket_room]) {
+                                await __roomPending[__socket_room];
                             }
 
                             let user_id = msg.sender;
-                            if (!__roomList?.[this.__socket_room]) {
-                                __roomList[this.__socket_room] = {};
+                            if (!__roomList?.[__socket_room]) {
+                                __roomList[__socket_room] = {};
                             }
-                            if (!__roomList[this.__socket_room][user_id]) {
-                                __roomList[this.__socket_room][user_id] = [msg.sender_cid];
+                            if (!__roomList[__socket_room][user_id]) {
+                                __roomList[__socket_room][user_id] = [msg.sender_cid];
                             }
                             else {
-                                if (!__roomList[this.__socket_room][user_id].includes(msg.sender_cid)) {
-                                    __roomList[this.__socket_room][user_id].push(msg.sender_cid);
+                                if (!__roomList[__socket_room][user_id].includes(msg.sender_cid)) {
+                                    __roomList[__socket_room][user_id].push(msg.sender_cid);
                                 }
                                 return;
                             }
                         }
                     }
 
+                    if (rtc) {
+                        if (msg.sender !== user.user_id) {
+                            if (rtc.candidate) {
+                                if (__peerConnection?.[msg.sender]) {
+                                    addIceCandidate(msg, rtc.candidate);
+                                }
+                                else {
+                                    if (!__rtcCandidates[msg.sender]) {
+                                        __rtcCandidates[msg.sender] = [];
+                                    }
+
+                                    __rtcCandidates[msg.sender].push(rtc.candidate);
+                                }
+                            }
+
+                            if (rtc.sdpoffer) {
+                                if (__peerConnection?.[msg.sender]) {
+                                    sdpanswer.bind(this)(msg, rtc.sdpoffer);
+                                }
+                                else {
+                                    if (!__rtcSdpOffer[msg.sender]) {
+                                        __rtcSdpOffer[msg.sender] = [];
+                                    }
+
+                                    __rtcSdpOffer[msg.sender].push(rtc.sdpoffer);
+                                    msg.receiveRTC = receiveRTC.bind(this)(msg, rtc);
+                                }
+                            }
+
+                            if (rtc.sdpanswer) {
+                                await __peerConnection[msg.sender].setRemoteDescription(new RTCSessionDescription(rtc.sdpanswer));
+                            }
+                        }
+                    }
                     cb(msg);
                 };
 
@@ -180,10 +594,10 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                         // remove keep alive
                         clearInterval(__keepAliveInterval);
                         __keepAliveInterval = null;
-
+                        this.log('realtime onclose', 'WebSocket connection closed.');
                         cb({ type: 'close', message: 'WebSocket connection closed.' });
-                        this.__socket = null;
-                        this.__socket_room = null;
+                        __socket = null;
+                        __socket_room = null;
                     }
                     else {
                         // close event was unexpected
@@ -192,42 +606,44 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 
                         if (reconnectAttempts < maxAttempts) {
                             let delay = Math.min(1000 * (2 ** reconnectAttempts), 30000); // max delay is 30 seconds
-                            cb({ type: 'error', message: `Skapi: WebSocket connection error. Reconnecting in ${delay / 1000} seconds...` });
+                            this.log('realtime onclose', `WebSocket connection closed. Reconnecting in ${delay / 1000} seconds...`);
+                            cb({ type: 'reconnect', message: `Skapi: WebSocket connection error. Reconnecting in ${delay / 1000} seconds...` });
                             connectRealtime.bind(this)(cb, delay);
                         } else {
                             // Handle max reconnection attempts reached
+                            this.log('realtime onclose', 'WebSocket connection error. Max reconnection attempts reached.');
                             cb({ type: 'error', message: 'Skapi: WebSocket connection error. Max reconnection attempts reached.' });
-                            this.__socket = null;
+                            __socket = null;
                         }
                     }
                 };
 
                 socket.onerror = () => {
+                    this.log('realtime onerror', 'WebSocket connection error.');
                     cb({ type: 'error', message: 'Skapi: WebSocket connection error.' });
-                    throw new SkapiError(`Skapi: WebSocket connection error.`, { code: 'ERROR' });
                 };
             }, delay);
         });
     }
 
-    return this.__socket;
+    return __socket;
 }
 
 export async function closeRealtime(): Promise<void> {
-    let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
+    let socket: WebSocket = __socket ? await __socket : __socket;
 
     if (socket) {
         socket.close();
     }
 
-    this.__socket = null;
-    this.__socket_room = null;
+    __socket = null;
+    __socket_room = null;
 
     return null;
 }
 
 export async function postRealtime(message: any, recipient: string): Promise<{ type: 'success', message: 'Message sent.' }> {
-    let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
+    let socket: WebSocket = __socket ? await __socket : __socket;
 
     if (!socket) {
         throw new SkapiError(`No realtime connection. Execute connectRealtime() before this method.`, { code: 'INVALID_REQUEST' });
@@ -250,7 +666,7 @@ export async function postRealtime(message: any, recipient: string): Promise<{ t
             }));
 
         } catch (err) {
-            if (this.__socket_room !== recipient) {
+            if (__socket_room !== recipient) {
                 throw new SkapiError(`User has not joined to the recipient group. Run joinRealtime({ group: "${recipient}" })`, { code: 'INVALID_REQUEST' });
             }
 
@@ -268,120 +684,8 @@ export async function postRealtime(message: any, recipient: string): Promise<{ t
     throw new SkapiError('Realtime connection is not open. Try reconnecting with connectRealtime().', { code: 'INVALID_REQUEST' });
 }
 
-export async function connectRTC(
-    params: {
-        recipient: string;
-        ice?: string;
-        callback?: {
-            onicecandidate?: (e: any) => void;
-            onnegotiationneeded?: (e: any) => void;
-            onerror?: (e: any) => void;
-        }
-    }
-): Promise<any> {
-    let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
-
-    if (!socket) {
-        throw new SkapiError(`No realtime connection. Execute connectRealtime() before this method.`, { code: 'INVALID_REQUEST' });
-    }
-
-    let { recipient, ice = "stun:stun.skapi.com:3468", callback = {} } = extractFormData(params).data;
-
-    if (!recipient) {
-        throw new SkapiError(`No recipient.`, { code: 'INVALID_REQUEST' });
-    }
-
-    if (socket.readyState === 1) {
-        // Call STUN server to get IP address
-        const configuration = {
-            iceServers: [
-                { urls: ice }
-            ]
-        };
-
-        if (this.peerConnection) {
-            throw new SkapiError(`P2P connection is already in use.`, { code: 'INVALID_REQUEST' });
-        }
-
-        this.peerConnection = new RTCPeerConnection(configuration);
-
-        // Collect ICE candidates and send them to the remote peer
-        this.peerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                // Send the candidate to the remote peer through your signaling server
-                if (typeof callback?.onicecandidate === 'function') {
-                    callback.onicecandidate(event);
-                }
-                this.log('candidate', event.candidate);
-            } else {
-                // All ICE candidates have been sent
-                this.log('candidate-end', 'All ICE candidates have been sent');
-            }
-        };
-
-        // Create a data channel
-        const dataChannel = this.peerConnection.createDataChannel(Math.random().toString(36).substring(2, 15), {
-            ordered: true, // Ensure messages are received in order
-            maxRetransmits: 10 // Maximum number of retransmissions
-        });
-
-        // Listen for negotiationneeded event
-        this.peerConnection.onnegotiationneeded = async () => {
-            try {
-                const offer = await this.peerConnection.createOffer();
-                await this.peerConnection.setLocalDescription(offer);
-
-                this.__sdpoffer = this.peerConnection.localDescription;
-                this.log('sdpoffer', this.__sdpoffer);
-
-                try {
-                    validator.UserId(recipient);
-                    socket.send(JSON.stringify({
-                        action: 'sdpOffer',
-                        uid: recipient,
-                        content: JSON.stringify(this.__sdpoffer),
-                        token: this.session.accessToken.jwtToken
-                    }));
-
-                } catch (err) {
-                    if (this.__socket_room !== recipient) {
-                        throw new SkapiError(`User has not joined to the recipient group. Run joinRealtime({ group: "${recipient}" })`, { code: 'INVALID_REQUEST' });
-                    }
-
-                    socket.send(JSON.stringify({
-                        action: 'sdpBroadcast',
-                        rid: recipient,
-                        content: JSON.stringify(this.__sdpoffer),
-                        token: this.session.accessToken.jwtToken
-                    }));
-                }
-
-                if (typeof callback?.onnegotiationneeded === 'function') {
-                    callback.onnegotiationneeded(this.__sdpoffer);
-                }
-            } catch (error) {
-                this.log('Error during renegotiation:', error);
-
-                if (typeof callback?.onerror === 'function') {
-                    callback.onerror(error);
-                }
-                else {
-                    throw error;
-                }
-            }
-        };
-
-        return new Promise(res => {
-            dataChannel.onopen = () => {
-                this.log('Data channel is open');
-                res(dataChannel);
-            }
-        });
-    }
-};
-
 export async function joinRealtime(params: { group?: string | null }): Promise<{ type: 'success', message: string }> {
-    let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
+    let socket: WebSocket = __socket ? await __socket : __socket;
 
     if (!socket) {
         throw new SkapiError(`No realtime connection. Execute connectRealtime() before this method.`, { code: 'INVALID_REQUEST' });
@@ -391,7 +695,7 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
 
     let { group = null } = params;
 
-    if (!group && !this.__socket_room) {
+    if (!group && !__socket_room) {
         return { type: 'success', message: 'Left realtime message group.' }
     }
 
@@ -405,7 +709,7 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
         token: this.session.accessToken.jwtToken
     }));
 
-    this.__socket_room = group;
+    __socket_room = group;
 
     return { type: 'success', message: group ? `Joined realtime message group: "${group}".` : 'Left realtime message group.' }
 }
