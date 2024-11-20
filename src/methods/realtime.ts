@@ -296,10 +296,9 @@ export function closeRTC(params: { recipient?: string; }): void {
             iceState: __peerConnection[recipient].iceConnectionState,
             signalingState: __peerConnection[recipient].signalingState
         });
-        delete __peerConnection[recipient];
     }
-
-    delete __dataChannel[recipient];
+    
+    delete __peerConnection[recipient];
 }
 
 function receiveRTC(msg, rtc): RTCreceiver {
@@ -351,18 +350,23 @@ function receiveRTC(msg, rtc): RTCreceiver {
 
         let allPromises = [];
         this.log('rtcSdpOffer', __rtcSdpOffer[msg.sender]);
-        for (let sdpoffer of __rtcSdpOffer[msg.sender]) {
-            allPromises.push(sdpanswer.bind(this)(msg, sdpoffer));
+        if (__rtcSdpOffer[msg.sender] && __rtcSdpOffer[msg.sender].length > 0) {
+            for (let sdpoffer of __rtcSdpOffer[msg.sender]) {
+                allPromises.push(sdpanswer.bind(this)(msg, sdpoffer));
+            }
+            await Promise.all(allPromises);
         }
-        await Promise.all(allPromises);
 
         allPromises = [];
         this.log('rtcCandidates', __rtcCandidates[msg.sender]);
-        for (let candidate of __rtcCandidates[msg.sender]) {
-            allPromises.push(addIceCandidate(msg, candidate));
+        if (__rtcCandidates[msg.sender] && __rtcCandidates[msg.sender].length > 0) {
+            for (let candidate of __rtcCandidates[msg.sender]) {
+                allPromises.push(addIceCandidate(msg, candidate));
+            }
+
+            await Promise.all(allPromises);
         }
 
-        await Promise.all(allPromises);
         delete __rtcSdpOffer[msg.sender];
         delete __rtcCandidates[msg.sender];
 
