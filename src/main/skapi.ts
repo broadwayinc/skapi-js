@@ -535,7 +535,7 @@ export default class Skapi {
             mediaStream?: {
                 audio: boolean;
                 video: boolean;
-            };
+            } | MediaStream;
             dataChannelOptions?: {
                 ordered?: boolean;
                 maxPacketLifeTime?: number;

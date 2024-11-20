@@ -63,7 +63,7 @@ async function addIceCandidate(msg, candidate) {
 }
 
 let peerCallbacks = {};
-function handleDataChannel(key, dataChannel, cb, skip?:string[]) {
+function handleDataChannel(key, dataChannel, cb, skip?: string[]) {
     if (!skip?.includes('onmessage'))
         dataChannel.onmessage = (event) => {
             let msg = {
@@ -109,9 +109,9 @@ function handleDataChannel(key, dataChannel, cb, skip?:string[]) {
             cb(closed);
 
             // Remove closed data channel from list
-            if(__dataChannel[key]) {
+            if (__dataChannel[key]) {
                 delete __dataChannel[key][dataChannel.label];
-                if(__dataChannel[key] && Object.keys(__dataChannel[key]).length === 0) {
+                if (__dataChannel[key] && Object.keys(__dataChannel[key]).length === 0) {
                     closeRTC({ recipient: key });
                 }
             }
@@ -257,7 +257,7 @@ function iceCandidateHandler(key, peer: RTCPeerConnection, cb: (event: any) => v
             }
         };
 
-    if(!skip?.includes('ontrack'))
+    if (!skip?.includes('ontrack'))
         peer.ontrack = (event) => {
             cb({
                 type: 'track',
@@ -310,14 +310,16 @@ function receiveRTC(msg, rtc): RTCreceiver {
             mediaStream?: {
                 video: boolean;
                 audio: boolean;
-            }
+            } | MediaStream;
         },
         cb: RTCCallback): Promise<RTCReturn> => {
         cb = cb || ((e) => { });
-        if(params?.mediaStream?.video || params?.mediaStream?.audio) {
-            // check if it is localhost or https
-            if (window.location.hostname !== 'localhost' && window.location.protocol !== 'https:') {
-                throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
+        if (!(params?.mediaStream instanceof MediaStream)) {
+            if (params?.mediaStream?.video || params?.mediaStream?.audio) {
+                // check if it is localhost or https
+                if (window.location.hostname !== 'localhost' && window.location.protocol !== 'https:') {
+                    throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
+                }
             }
         }
         let socket: WebSocket = __socket ? await __socket : __socket;
@@ -365,15 +367,21 @@ function receiveRTC(msg, rtc): RTCreceiver {
         delete __rtcCandidates[msg.sender];
 
         let mediaStream = null;
-        if(params?.mediaStream?.video || params?.mediaStream?.audio) {
-            mediaStream = await window.navigator.mediaDevices.getUserMedia({
-                video: params?.mediaStream?.video,
-                audio: params?.mediaStream?.audio
-            });
-
-            mediaStream.getTracks().forEach(track => {
-                __peerConnection[msg.sender].addTrack(track, mediaStream);
-            });
+        if (params?.mediaStream) {
+            if (params?.mediaStream instanceof MediaStream) {
+                mediaStream = params.mediaStream;
+            }
+            else {
+                if (params?.mediaStream?.video || params?.mediaStream?.audio)
+                    mediaStream = await window.navigator.mediaDevices.getUserMedia({
+                        video: params?.mediaStream?.video,
+                        audio: params?.mediaStream?.audio
+                    });
+            }
+            if (mediaStream)
+                mediaStream.getTracks().forEach(track => {
+                    __peerConnection[msg.sender].addTrack(track, mediaStream);
+                });
         }
 
         iceCandidateHandler(msg.sender, __peerConnection[msg.sender], cb);
@@ -442,7 +450,7 @@ export async function connectRTC(
         mediaStream?: {
             video: boolean;
             audio: boolean;
-        },
+        } | MediaStream,
         dataChannelOptions?: {
             ordered?: boolean;
             maxPacketLifeTime?: number;
@@ -464,10 +472,7 @@ export async function connectRTC(
     params = validator.Params(params, {
         recipient: 'string',
         ice: ['string', () => 'stun:stun.skapi.com:3468'],
-        mediaStream: {
-            video: 'boolean',
-            audio: 'boolean'
-        },
+        mediaStream: v => v,
         dataChannelOptions: [{
             ordered: 'boolean',
             maxPacketLifeTime: 'number',
@@ -479,11 +484,13 @@ export async function connectRTC(
     }, ['recipient']);
 
     let { recipient, ice } = params;
-    
-    if(params?.mediaStream?.video || params?.mediaStream?.audio) {
-        // check if it is localhost or https
-        if (window.location.hostname !== 'localhost' && window.location.protocol !== 'https:') {
-            throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
+
+    if (!(params?.mediaStream instanceof MediaStream)) {
+        if (params?.mediaStream?.video || params?.mediaStream?.audio) {
+            // check if it is localhost or https
+            if (window.location.hostname !== 'localhost' && window.location.protocol !== 'https:') {
+                throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
+            }
         }
     }
 
@@ -500,15 +507,23 @@ export async function connectRTC(
         }
 
         let mediaStream = null;
-        if(params?.mediaStream?.video || params?.mediaStream?.audio) {
-            mediaStream = await navigator.mediaDevices.getUserMedia({
-                video: params?.mediaStream?.video,
-                audio: params?.mediaStream?.audio
-            });
+        if (params?.mediaStream) {
+            if (params?.mediaStream instanceof MediaStream) {
+                mediaStream = params.mediaStream;
+            }
+            else {
+                if (params?.mediaStream?.video || params?.mediaStream?.audio) {
+                    mediaStream = await navigator.mediaDevices.getUserMedia({
+                        video: params?.mediaStream?.video,
+                        audio: params?.mediaStream?.audio
+                    });
+                }
+            }
 
-            mediaStream.getTracks().forEach(track => {
-                __peerConnection[recipient].addTrack(track, mediaStream);
-            });
+            if (mediaStream)
+                mediaStream.getTracks().forEach(track => {
+                    __peerConnection[recipient].addTrack(track, mediaStream);
+                });
         }
 
         let dataChannels = {};
@@ -546,7 +561,7 @@ export async function connectRTC(
 
         // Listen for negotiationneeded event
         __peerConnection[recipient].onnegotiationneeded = async () => {
-            
+
             const offer = await __peerConnection[recipient].createOffer();
             await __peerConnection[recipient].setLocalDescription(offer);
 
