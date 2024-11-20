@@ -317,7 +317,7 @@ function receiveRTC(msg, rtc): RTCreceiver {
         if(params?.mediaStream?.video || params?.mediaStream?.audio) {
             console.log(window.location.hostname, window.location.protocol);
             // check if it is localhost or https
-            if (window.location.hostname !== 'localhost' || window.location.protocol !== 'https:') {
+            if (window.location.hostname !== 'localhost' && window.location.protocol !== 'https:') {
                 throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
             }
         }
@@ -459,7 +459,7 @@ export async function connectRTC(
     if(params?.mediaStream?.video || params?.mediaStream?.audio) {
         console.log(window.location.hostname, window.location.protocol);
         // check if it is localhost or https
-        if (window.location.hostname !== 'localhost' || window.location.protocol !== 'https:') {
+        if (window.location.hostname !== 'localhost' && window.location.protocol !== 'https:') {
             throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
         }
     }
