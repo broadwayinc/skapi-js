@@ -297,7 +297,7 @@ export function closeRTC(params: { recipient?: string; }): void {
             signalingState: __peerConnection[recipient].signalingState
         });
     }
-    
+
     delete __peerConnection[recipient];
 }
 
@@ -392,17 +392,20 @@ function receiveRTC(msg, rtc): RTCreceiver {
 
         let dataChannels = {};
         let channelList = rtc.dataChannels;
+        this.log('dataChannelList', channelList);
 
         return new Promise((resolve, reject) => {
             __peerConnection[msg.sender].ondatachannel = (event) => {
+                this.log('dataChannel', `Received data channel "${event.channel.label}".`);
                 const dataChannel = event.channel;
 
                 dataChannels[dataChannel.label] = dataChannel;
 
+                this.log('dataChannels', dataChannels);
                 function checkDataChannel() {
                     let notyet = false;
                     for (let dtc of channelList) {
-                        if (dataChannels?.[dtc].readyState === 'open') {
+                        if (dataChannels?.[dtc]?.readyState === 'open') {
                             continue;
                         }
                         else {
