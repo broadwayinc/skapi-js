@@ -16,7 +16,8 @@ import {
     FileInfo,
     DelRecordQuery,
     RTCCallback,
-    RealtimeCallback
+    RealtimeCallback,
+    RTCReturn
 } from '../Types';
 import {
     CognitoUserPool
@@ -44,7 +45,8 @@ import {
     closeRealtime,
     getRealtimeUsers,
     getRealtimeGroups,
-    connectRTC
+    connectRTC,
+    closeRTC
 } from '../methods/realtime';
 import {
     secureRequest,
@@ -231,6 +233,9 @@ export default class Skapi {
             } catch (err) {
                 return false;
             }
+        },
+        params(val: any, schema: Record<string, any>, required?: string[]) {
+            return validator.Params(val, schema, required);
         }
     };
 
@@ -240,7 +245,6 @@ export default class Skapi {
         toBase62,
         fromBase62,
         extractFormData,
-        checkParams: validator.checkParams,
         request: (
             url: string,
             data?: Form<any>,
@@ -519,13 +523,18 @@ export default class Skapi {
     }
 
     @formHandler()
+    closeRTC(params: { recipient: string }) {
+        return closeRTC.bind(this)(params);
+    }
+
+    @formHandler()
     connectRTC(
         params: {
             recipient: string;
             ice?: string;
         },
         callback?: RTCCallback
-    ): Promise<{[key:string]: RTCDataChannel}> {
+    ): Promise<RTCReturn> {
         return connectRTC.bind(this)(params, callback);
     }
 
