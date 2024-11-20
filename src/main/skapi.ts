@@ -14,7 +14,9 @@ import {
     PublicUser,
     UserProfilePublicSettings,
     FileInfo,
-    DelRecordQuery
+    DelRecordQuery,
+    RTCCallback,
+    RealtimeCallback
 } from '../Types';
 import {
     CognitoUserPool
@@ -238,6 +240,7 @@ export default class Skapi {
         toBase62,
         fromBase62,
         extractFormData,
+        checkParams: validator.checkParams,
         request: (
             url: string,
             data?: Form<any>,
@@ -254,11 +257,7 @@ export default class Skapi {
 
     private __connection: Promise<Connection>;
     private __authConnection: Promise<void>;
-    private __socket: WebSocket;
-    private __socket_room: string;
     private __network_logs = false;
-    private __sdpoffer: RTCSessionDescriptionInit;
-    private peerConnection: RTCPeerConnection;
 
     constructor(service: string, owner: string, options?: {
         autoLogin: boolean;
@@ -266,7 +265,7 @@ export default class Skapi {
             onLogin: (user: UserProfile) => void;
         }
     }, __etc?: any) {
-        if(!window) {
+        if (!window) {
             throw new SkapiError('This library is for browser only.', { code: 'NOT_SUPPORTED' });
         }
         window.sessionStorage.setItem('__skapi_kiss', 'kiss');
@@ -524,23 +523,14 @@ export default class Skapi {
         params: {
             recipient: string;
             ice?: string;
-            callback?: {
-                onicecandidate?: (e:any)=>void;
-                onnegotiationneeded?: (e:any)=>void;
-                onerror?: (e:any)=>void;
-            }
-        }
-    ): Promise<any> {
-        return connectRTC.bind(this)(params);
+        },
+        callback?: RTCCallback
+    ): Promise<{[key:string]: RTCDataChannel}> {
+        return connectRTC.bind(this)(params, callback);
     }
 
-    connectRealtime(cb: (rt: {
-        type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'sdpOffer' | 'sdpBroadcast';
-        message: any;
-        sender?: string; // user_id of the sender
-        sender_cid?: string; // connection id of the sender
-    }) => Promise<WebSocket>) {
-        return connectRealtime.bind(this)(cb);
+    connectRealtime(callback: RealtimeCallback): Promise<WebSocket> {
+        return connectRealtime.bind(this)(callback);
     }
 
     jwtLogin(params: {
@@ -556,6 +546,7 @@ export default class Skapi {
     @formHandler()
     resendInvitation(params: Form<{
         email: string;
+        confirmation_url?: string;
     }>): Promise<"SUCCESS: Invitation has been re-sent. (User ID: xxx...)"> {
         return resendInvitation.bind(this)(params);
     }

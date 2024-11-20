@@ -349,5 +349,6 @@ export default {
     Email,
     Url,
     specialChars,
-    Params
+    Params,
+    checkParams
 };
