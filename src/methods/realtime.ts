@@ -409,11 +409,7 @@ function receiveRTC(msg, rtc): RTCreceiver {
                     if (!notyet) {
                         __dataChannel[msg.sender] = dataChannels;
                         resolve({
-                            dataChannel: dataChannels, connection:
-                            {
-                                RTCPeerConnection: __peerConnection[msg.sender],
-                                close: () => closeRTC({ recipient: msg.sender })
-                            },
+                            dataChannel: dataChannels, connection: __peerConnection[msg.sender],
                             mediaStream
                         });
                     }
@@ -665,10 +661,7 @@ export async function connectRTC(
         await Promise.all(allDataChannelPromises);
         return {
             dataChannel: __dataChannel[recipient],
-            connection: {
-                RTCPeerConnection: __peerConnection[recipient],
-                close: () => closeRTC({ recipient })
-            },
+            connection: __peerConnection[recipient],
             mediaStream
         };
     }
@@ -887,7 +880,6 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                 socket.onerror = () => {
                     this.log('realtime onerror', 'WebSocket connection error.');
                     cb({ type: 'error', message: 'Skapi: WebSocket connection error.' });
-                    closeRealtime.bind(this)();
                 };
             }, delay);
         });
