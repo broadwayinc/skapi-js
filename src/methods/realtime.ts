@@ -858,15 +858,14 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 
                 socket.onclose = event => {
                     if (event.wasClean) {
-                        // remove keep alive
-                        clearInterval(__keepAliveInterval);
-                        __keepAliveInterval = null;
                         this.log('realtime onclose', 'WebSocket connection closed.');
                         cb({ type: 'close', message: 'WebSocket connection closed.' });
-                        __socket = null;
-                        __socket_room = null;
+                        // __socket = null;
+                        // __socket_room = null;
+                        closeRealtime.bind(this)();
                     }
                     else {
+                        closeRealtime.bind(this)();
                         // close event was unexpected
                         const maxAttempts = 10;
                         reconnectAttempts++;
@@ -880,7 +879,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                             // Handle max reconnection attempts reached
                             this.log('realtime onclose', 'WebSocket connection error. Max reconnection attempts reached.');
                             cb({ type: 'error', message: 'Skapi: WebSocket connection error. Max reconnection attempts reached.' });
-                            __socket = null;
+                            closeRealtime.bind(this)();
                         }
                     }
                 };
@@ -888,6 +887,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                 socket.onerror = () => {
                     this.log('realtime onerror', 'WebSocket connection error.');
                     cb({ type: 'error', message: 'Skapi: WebSocket connection error.' });
+                    closeRealtime.bind(this)();
                 };
             }, delay);
         });
@@ -899,10 +899,16 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
 export async function closeRealtime(): Promise<void> {
     let socket: WebSocket = __socket ? await __socket : __socket;
 
-    if (socket) {
-        socket.close();
+    if (__keepAliveInterval) {
+        clearInterval(__keepAliveInterval);
+        __keepAliveInterval = null;
     }
 
+    try {
+        if (socket) {
+            socket.close();
+        }
+    } catch (e) { }
     __socket = null;
     __socket_room = null;
 
