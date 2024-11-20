@@ -409,7 +409,10 @@ function receiveRTC(msg, rtc): RTCreceiver {
                     if (!notyet) {
                         __dataChannel[msg.sender] = dataChannels;
                         resolve({
-                            dataChannel: dataChannels, connection: __peerConnection[msg.sender],
+                            dataChannel: dataChannels, connection: {
+                                RTCPeerConnection: __peerConnection[msg.sender],
+                                close: () => closeRTC({ recipient: msg.sender })
+                            },
                             mediaStream
                         });
                     }
@@ -661,7 +664,10 @@ export async function connectRTC(
         await Promise.all(allDataChannelPromises);
         return {
             dataChannel: __dataChannel[recipient],
-            connection: __peerConnection[recipient],
+            connection: {
+                RTCPeerConnection: __peerConnection[recipient],
+                close: () => closeRTC({ recipient })
+            },
             mediaStream
         };
     }
