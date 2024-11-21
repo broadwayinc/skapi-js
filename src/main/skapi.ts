@@ -17,7 +17,8 @@ import {
     DelRecordQuery,
     RTCCallback,
     RealtimeCallback,
-    RTCReturn
+    RTCConnectorParams,
+    RTCResolved,
 } from '../Types';
 import {
     CognitoUserPool
@@ -45,9 +46,11 @@ import {
     closeRealtime,
     getRealtimeUsers,
     getRealtimeGroups,
-    connectRTC,
-    closeRTC
 } from '../methods/realtime';
+import {
+    closeRTC,
+    connectRTC
+} from '../methods/webrtc';
 import {
     secureRequest,
     mock,
@@ -117,12 +120,14 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.186-beta.41'
+    private __version = '1.0.187-beta.1'
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
     connection: Connection | null = null;
     userPool: CognitoUserPool | null = null;
+    __socket: Promise<WebSocket> | null = null;
+    __mediaStream: MediaStream = null;
 
     private host = 'skapi';
     private hostDomain = 'skapi.com';
@@ -394,11 +399,8 @@ export default class Skapi {
                         (fireWhenAutoLogin as Function)();
                     }
                 }
-                else {
-                    // _out.bind(this)();
-                }
-            } catch (err) {
-                // _out.bind(this)();
+            }
+            catch (err) {
             }
         })()
 
@@ -523,28 +525,15 @@ export default class Skapi {
     }
 
     @formHandler()
-    closeRTC(params: { recipient: string }) {
+    closeRTC(params: { recipient?: string; closeAll?: boolean; }): Promise<void> {
         return closeRTC.bind(this)(params);
     }
 
     @formHandler()
     connectRTC(
-        params: {
-            recipient: string;
-            ice?: string;
-            mediaStream?: {
-                audio: boolean;
-                video: boolean;
-            } | MediaStream;
-            dataChannelOptions?: {
-                ordered?: boolean;
-                maxPacketLifeTime?: number;
-                maxRetransmits?: number;
-                protocol: string;
-            }[];
-        },
+        params: RTCConnectorParams,
         callback?: RTCCallback
-    ): Promise<RTCReturn> {
+    ): Promise<RTCResolved> {
         return connectRTC.bind(this)(params, callback);
     }
 
