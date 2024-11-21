@@ -120,14 +120,14 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.187-beta.3'
+    private __version = '1.0.187-beta.4'
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
     connection: Connection | null = null;
-    userPool: CognitoUserPool | null = null;
-    __socket: Promise<WebSocket> | null = null;
-    __mediaStream: MediaStream = null;
+    private userPool: CognitoUserPool | null = null;
+    private __socket: Promise<WebSocket> | null = null;
+    private __mediaStream: MediaStream = null;
 
     private host = 'skapi';
     private hostDomain = 'skapi.com';
@@ -195,8 +195,8 @@ export default class Skapi {
         }
     }
 
-    admin_endpoint: Promise<Record<string, any>>;
-    record_endpoint: Promise<Record<string, any>>;
+    private admin_endpoint: Promise<Record<string, any>>;
+    private record_endpoint: Promise<Record<string, any>>;
 
     validate = {
         userId(val: string) {
@@ -277,21 +277,21 @@ export default class Skapi {
         if (!window) {
             throw new SkapiError('This library is for browser only.', { code: 'NOT_SUPPORTED' });
         }
-        window.sessionStorage.setItem('__skapi_kiss', 'kiss');
-        if (window.sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
-            window.alert('Session storage is disabled. Please enable session storage.');
+        sessionStorage.setItem('__skapi_kiss', 'kiss');
+        if (sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
+            alert('Session storage is disabled. Please enable session storage.');
             throw new SkapiError('Session storage is disabled. Please enable session storage.', { code: 'SESSION_STORAGE_DISABLED' });
         }
 
-        window.sessionStorage.removeItem('__skapi_kiss');
+        sessionStorage.removeItem('__skapi_kiss');
 
         if (typeof service !== 'string' || typeof owner !== 'string') {
-            window.alert("Service ID or Owner ID is invalid.");
+            alert("Service ID or Owner ID is invalid.");
             throw new SkapiError('"service" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
 
         if (!service || !owner) {
-            window.alert("Service ID or Owner ID is invalid.");
+            alert("Service ID or Owner ID is invalid.");
             throw new SkapiError('"service" and "owner" is required', { code: 'INVALID_PARAMETER' });
         }
 
@@ -299,7 +299,7 @@ export default class Skapi {
             try {
                 validator.UserId(owner, '"owner"');
             } catch (err: any) {
-                window.alert("Service ID or Owner ID is invalid.");
+                alert("Service ID or Owner ID is invalid.");
                 throw err;
             }
         }
@@ -338,7 +338,7 @@ export default class Skapi {
             }))
             .then(data => {
                 try {
-                    return typeof data === 'string' ? JSON.parse(window.atob(data.split(',')[1])) : null
+                    return typeof data === 'string' ? JSON.parse(atob(data.split(',')[1])) : null
                 }
                 catch (err) {
                     throw new SkapiError('Service does not exist. Create your service from skapi.com', { code: 'NOT_EXISTS' });
@@ -355,19 +355,19 @@ export default class Skapi {
             }))
             .then(data => {
                 try {
-                    return typeof data === 'string' ? JSON.parse(window.atob(data.split(',')[1])) : null
+                    return typeof data === 'string' ? JSON.parse(atob(data.split(',')[1])) : null
                 }
                 catch (err) {
                     throw new SkapiError('Service does not exist. Create your service from skapi.com', { code: 'NOT_EXISTS' });
                 }
             });
 
-        if (!window.sessionStorage) {
-            window.alert('This browser is not supported.');
+        if (!sessionStorage) {
+            alert('This browser is not supported.');
             throw new Error(`This browser is not supported.`);
         }
 
-        const restore = JSON.parse(window.sessionStorage.getItem(`${service}#${owner}`) || 'null');
+        const restore = JSON.parse(sessionStorage.getItem(`${service}#${owner}`) || 'null');
 
         this.log('constructor:restore', restore);
 
@@ -434,7 +434,7 @@ export default class Skapi {
                             data[k] = this[k];
                         }
 
-                        window.sessionStorage.setItem(`${service}#${owner}`, JSON.stringify(data));
+                        sessionStorage.setItem(`${service}#${owner}`, JSON.stringify(data));
                         this.__class_properties_has_been_cached = true;
                     }
                 };
@@ -443,12 +443,12 @@ export default class Skapi {
             };
 
             // attach event to save session on close
-            window.addEventListener('beforeunload', () => {
+            addEventListener('beforeunload', () => {
                 this.closeRealtime();
                 storeClassProperties();
             });
             // for mobile
-            window.addEventListener("visibilitychange", () => {
+            addEventListener("visibilitychange", () => {
                 storeClassProperties();
             });
 
@@ -492,7 +492,7 @@ export default class Skapi {
         }
         catch (err: any) {
             this.log('Connection fail', err);
-            window.alert('Service is not available: ' + (err.message || err.toString()));
+            alert('Service is not available: ' + (err.message || err.toString()));
 
             this.connection = null;
             throw err;
@@ -514,7 +514,7 @@ export default class Skapi {
         return this.__version;
     }
 
-    log(n: string, v: any) {
+    private log(n: string, v: any) {
         if (this.__network_logs) {
             try {
                 console.log(n, JSON.parse(JSON.stringify(v)));
@@ -541,7 +541,7 @@ export default class Skapi {
         return connectRealtime.bind(this)(callback);
     }
 
-    jwtLogin(params: {
+    private jwtLogin(params: {
         idToken: string;
         keyUrl: string;
         clientId: string;
