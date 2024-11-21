@@ -743,7 +743,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             if (form instanceof SubmitEvent) {
                 form.preventDefault();
 
-                let currentUrl = window.location.href;
+                let currentUrl = location.href;
                 formEl = form.target as HTMLFormElement;
                 let href = new URL(formEl.action);
                 actionDestination = href.href;
@@ -809,12 +809,12 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
 
                 if (formEl) {
                     if (storeResponseKey) {
-                        window.sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
+                        sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
                         if (refreshPage) {
-                            window.location.replace(actionDestination);
+                            location.replace(actionDestination);
                         }
                         else {
-                            window.location.href = actionDestination;
+                            location.href = actionDestination;
                         }
                     }
                 }
@@ -869,8 +869,8 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
 
 export async function getFormResponse(): Promise<any> {
     await this.__connection;
-    let responseKey = `${this.service}:${MD5.hash(window.location.href.split('?')[0])}`;
-    let stored = window.sessionStorage.getItem(responseKey);
+    let responseKey = `${this.service}:${MD5.hash(location.href.split('?')[0])}`;
+    let stored = sessionStorage.getItem(responseKey);
     if (stored !== null) {
         try {
             stored = JSON.parse(stored);
