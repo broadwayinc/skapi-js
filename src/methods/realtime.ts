@@ -4,6 +4,7 @@ import validator from '../utils/validator';
 import { extractFormData } from '../utils/utils';
 import { request } from '../utils/network';
 import { DatabaseResponse, FetchOptions, RTCCallback, RTCReturn, RTCreceiver, RealtimeCallback } from '../Types';
+import { setBuffer, processBuffer, answerSdpOffer, receiveIceCandidate } from './realtime-logics';
 
 async function prepareWebsocket() {
     // Connect to the WebSocket server
@@ -32,6 +33,7 @@ let __socket_room: string;
 let __peerConnection: { [sender: string]: RTCPeerConnection } = {};
 let __dataChannel: { [sender: string]: { [key: string]: RTCDataChannel } } = {};
 let __mediaStream = null;
+
 async function sdpanswer(msg, sdpoffer) {
     let peerConnection = __peerConnection[msg.sender];
     let socket: WebSocket = __socket ? await __socket : __socket;
@@ -488,7 +490,7 @@ function receiveRTC(msg, rtc): RTCreceiver {
             }
         }
 
-        if(rtc.sdpoffer) {
+        if (rtc.sdpoffer) {
             await sdpanswer.bind(this)(msg, rtc.sdpoffer);
         }
 
@@ -498,7 +500,7 @@ function receiveRTC(msg, rtc): RTCreceiver {
             content: { pickup: true },
             token: this.session.accessToken.jwtToken
         }));
-        
+
         peerCallbacks[msg.sender]({
             type: 'pickup',
             target: __peerConnection[msg.sender],
@@ -827,10 +829,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 0): Promise<WebSoc
                                     if (!__rtcSdpOffer[msg.sender]) {
                                         __rtcSdpOffer[msg.sender] = [];
                                     }
-                                    if(rtc.dataChannels) {
-                                        __receivedDataChannelList = rtc.dataChannels;
-                                    }
-                                    
+
                                     if (!__receiver_ringing[msg.sender]) {
                                         msg.receiveRTC = receiveRTC.bind(this)(msg, rtc);
                                         __receiver_ringing[msg.sender] = true;
