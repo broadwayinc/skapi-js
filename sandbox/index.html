@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+
+<head>
+    <title>Skapi Sandbox</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/style-blank@latest/blank.css">
+    <script src="./skapi.js"></script>
+    <script src="srvc.js"></script>
+    <script>
+        const skapi = new Skapi(
+            service,
+            owner,
+            {
+                autoLogin: true,
+                eventListener: {
+                    onLogin: (res) => {
+                        console.log('onLogin', res);
+                        frm_login.hidden = !!res;
+                        bt_logout.hidden = !res;
+                        pre_userProfile.innerText = res ? JSON.stringify(res, null, 2) : '';
+
+                        if (res) {
+                            connectRealTime();
+                        }
+                    }
+                }
+            },
+            _bleedingEdge
+        );
+    </script>
+</head>
+<script>
+    let dataChannels = {};
+    let rtcConnection = null;
+
+    function RTCCallback(e) {
+        switch (e.type) {
+            // Data Channel Events
+            case 'close':
+                rtclog.innerText = `Data Channel:${dataChannel.label}:${e.type}\n` + JSON.stringify(e, null, 2) + '\n-\n' + rtclog.innerText;
+                break;
+            case 'message':
+                rtclog.innerText = `Data Channel:${dataChannel.label}:${e.type}\n` + JSON.stringify(e.data, null, 2) + '\n-\n' + rtclog.innerText;
+                break;
+            case 'open':
+            case 'bufferedamountlow':
+            case 'error':
+                let dataChannel = e.target;
+                rtclog.innerText = `Data Channel:${dataChannel.label}:${e.type}\n` + JSON.stringify(e, null, 2) + '\n-\n' + rtclog.innerText;
+                break;
+            
+            // RTC Events
+            case 'track':
+                rtclog.innerText = `Incomming Media Stream...\n` + rtclog.innerText;
+                document.getElementById('remote').srcObject = e.streams[0];
+                break;
+            case 'connectionstatechange':
+                rtclog.innerText = `RTC Connection:${e.type}:${state}\n` + JSON.stringify(e, null, 2) + '\n-\n' + rtclog.innerText;
+                if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+                    disableForm(document.getElementById('rtcmsg'), true);
+                    disableForm(document.getElementById('rtctarget'), false);
+                }
+                break;
+        }
+    }
+</script>
+
+<body>
+    <h1>Sandbox <button id='bt_logout' style='vertical-align: bottom;' onclick="skapi.logout()" hidden>Logout</button>
+    </h1>
+
+    <form id='frm_login' onsubmit="skapi.login(event)" hidden>
+        <input type="text" placeholder='login@email.com' name="email">
+        <input type="password" placeholder='password' name="password">
+        <button type="submit">Login</button>
+    </form>
+
+    <br>
+
+    <hr>
+
+    <h1>Connection Info</h1>
+    <pre id="pre_connectionInfo"></pre>
+
+    <br>
+
+    <hr>
+
+    <h1>User Profile</h1>
+    <pre id="pre_userProfile"></pre>
+
+    <br>
+
+    <hr>
+
+    <h1>Connect P2P</h1>
+
+    <form onsubmit="connectRTC(event)" id="rtctarget">
+        <input type="text" placeholder='User ID' name="recipient">
+        <input type="submit" value="Connect">
+
+        <!-- <br><br>
+
+        <label>
+            Audio
+            <input type="checkbox" name="mediaStream[audio]" checked>
+        </label>
+
+        <br>
+
+        <label>
+            Video
+            <input type="checkbox" name="mediaStream[video]" checked>
+        </label> -->
+    </form>
+
+    <br>
+
+    <form id='rtcmsg' onsubmit="event.preventDefault(); dataChannels.default.send(rtcmsg_inp.value)">
+        <input type="text" id='rtcmsg_inp' placeholder='RTC Message' name="message" disabled>
+        <input type="submit" value="Send" disabled>
+    </form>
+
+    <br>
+
+    <button onclick="disconnectRTC()">Disconnect</button>
+
+    <br>
+    <br>
+
+    <video id="local" autoplay muted></video>
+    <br>
+    <style>
+        video {
+            width: 320px;
+            height: 240px;
+            border: 1px solid black;
+        }
+    </style>
+
+    <video id="remote" autoplay></video>
+
+    <br>
+
+    <h2>RTC log</h2>
+
+    <pre id="rtclog"></pre>
+
+    <hr>
+
+    <h1>Get Users</h1>
+    <button onclick="skapi.getUsers().then(u=>usr.innerText=JSON.stringify(u.list, null, 2))">Get Users</button>
+    <pre id="usr"></pre>
+
+    <br>
+</body>`
+
+<script>
+    function disableForm(form, disable) {
+        form.querySelectorAll('input').forEach(i => {
+            i.disabled = disable;
+        });
+    }
+
+    skapi.getConnectionInfo().then(res => {
+        pre_connectionInfo.innerText = JSON.stringify(res, null, 2);
+    });
+
+    function connectRealTime() {
+        let RealtimeCallback = (rt) => {
+            // Callback executed when there is data transfer between the users.
+            /**
+            rt = {
+                type: 'message' | 'private' | 'error' | 'success' | 'close' | 'notice' | ...
+                message: '...',
+                ...
+            }
+            */
+            let log = rt;
+            console.log({ log });
+            try {
+                log = JSON.stringify(log, null, 2);
+            }
+            catch (err) {
+            }
+            rtclog.innerText = rt.type + ':\n' + log + '\n-\n' + rtclog.innerText;
+
+            if (rt.type === 'rtc' && rt.receiveRTC) {
+                skapi.getUsers({
+                    searchFor: 'user_id',
+                    value: rt.sender
+                }).then(async u => {
+                    if (u.list?.[0]) {
+                        let user = u.list[0];
+                        if (window.confirm('Accept call from ' + (user.name || user.email || user.user_id) + '?')) {
+                            let received = await rt.receiveRTC({
+                                mediaStream: {
+                                    audio: true,
+                                    video: true
+                                }
+                            }, RTCCallback);
+                            setupRTC(received);
+                            if (received.mediaStream) {
+                                document.getElementById('call').srcObject = received.mediaStream;
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        skapi.connectRealtime(RealtimeCallback);
+        skapi.joinRealtime({ group: 'sandbox' });
+    }
+
+    async function connectRTC(e) {
+        let conn = await skapi.connectRTC(e, RTCCallback);
+        setupRTC(conn);
+        if (conn.mediaStream) {
+            document.getElementById('call').srcObject = conn.mediaStream;
+        }
+    }
+
+    let a = navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: true
+    }).then(stream => {
+        document.getElementById('call').srcObject = stream;
+        return stream;
+    });
+
+    function setupRTC(rtc) {
+        console.log({ rtc });
+        rtcConnection = rtc.connection;
+        dataChannels = rtc.dataChannel;
+        disableForm(document.getElementById('rtcmsg'), false);
+        disableForm(document.getElementById('rtctarget'), true);
+    }
+
+    function disconnectRTC() {
+        rtcConnection.close();
+        disableForm(document.getElementById('rtcmsg'), true);
+        disableForm(document.getElementById('rtctarget'), false);
+    }
+</script>

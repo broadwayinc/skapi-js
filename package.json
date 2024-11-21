@@ -2,13 +2,13 @@
   "name": "skapi-js",
   "version": "1.0.187-beta.1",
   "description": "Skapi: Backend API for HTML frontend.",
-  "main": "dist/skapi.mjs",
+  "main": "js/Main.js",
   "browser": "dist/skapi.js",
   "types": "js/Main.d.ts",
   "exports": {
     ".": {
       "require": "./dist/skapi.cjs",
-      "import": "./dist/skapi.mjs",
+      "import": "./js/Main.js",
       "types": "./js/Main.d.ts"
     }
   },
@@ -17,7 +17,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "npx webpack --config webpack.config.js; cp dist/skapi.js sandbox/skapi.js",
+    "build": "npx tsc --project tsconfig.json; npx webpack --config webpack.config.js; cp dist/skapi.js sandbox/skapi.js",
     "dev": "cd sandbox; npx bns 3300"
   },
   "repository": {
@@ -31,9 +31,11 @@
     "url": "https://github.com/broadwayinc/skapi-js/issues"
   },
   "homepage": "https://www.skapi.com",
-  "devDependencies": {
+  "dependencies": {
     "amazon-cognito-identity-js": "^6.3.12",
-    "basic-node-server": "^1.0.11",
+    "basic-node-server": "^1.0.11"
+  },
+  "devDependencies": {
     "ts-loader": "^9.5.1",
     "typescript": "^5.3.3",
     "webpack": "^5.74.0",
