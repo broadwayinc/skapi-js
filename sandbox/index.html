@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+
+<head>
+    <title>Skapi Sandbox</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/style-blank@latest/blank.css">
+    <script src="./skapi.js"></script>
+    <script src="./srvc.js"></script>
+</head>
+
+<body>
+    <dialog id="el_dl_calling">
+    </dialog>
+    <dialog id="el_dl_incoming">
+    </dialog>
+
+    <h1>Sandbox <button id='el_bt_logout' style='vertical-align: bottom;' onclick="skapi.logout()"
+            hidden>Logout</button></h1>
+
+    <form id='el_form_login' onsubmit="skapi.login(event)" hidden>
+        <p>Login:</p>
+        <input type="text" placeholder='login@email.com' name="email">
+        <input type="password" placeholder='password' name="password">
+        <button type="submit">Login</button>
+    </form>
+
+    <br>
+
+    <hr>
+
+    <h1>Connection Info</h1>
+    <pre id="pre_connectionInfo"></pre>
+
+    <br>
+
+    <hr>
+
+    <h1>User Profile</h1>
+    <pre id="el_pre_userProfile"></pre>
+
+    <br>
+
+    <button onclick="
+        skapi.getUsers()
+            .then(u=>el_pre_userList.innerText=JSON.stringify(u.list, null, 2))
+            .catch(err=>alert(err.message));
+        ">Get User List</button>
+
+    <button onclick="el_pre_userList.innerHTML = ''">Clear</button>
+
+    <pre id="el_pre_userList"></pre>
+
+    <br>
+
+    <hr>
+
+    <h1>Connect P2P</h1>
+
+    <form onsubmit="callRTC(event)" id="el_form_rtcSettings">
+        <input type="text" placeholder='User ID' name="recipient" id="el_input_rtcTarget">
+        <input type="submit" value="Connect">
+        <button type="button" id="el_bt_disconnect" onclick="rtcConnection ? rtcConnection.hangup() : null"
+            disabled>Disconnect</button>
+        <br><br>
+        <label>
+            Audio
+            <input type="checkbox" name="mediaStream[audio]">
+        </label><br>
+        <label>
+            Video
+            <input type="checkbox" name="mediaStream[video]">
+        </label>
+        <br><br>
+        Data Channel Settings:
+        <br><br>
+        <label>
+            - Ordered
+            <input type="checkbox" name="dataChannelSettings[0][ordered]" checked>
+        </label>
+        <br>
+        <label>
+            - MaxPacketLifeTime&nbsp;
+            <input type="number" name="dataChannelSettings[0][maxPacketLifeTime]" value="10">
+        </label>
+    </form>
+
+    <br>
+
+    <form id='el_form_sendRTCMessage'
+        onsubmit="event.preventDefault(); rtcConnection.dataChannels.default.send(el_input_rtcMessage.value)">
+        <input type="text" id='el_input_rtcMessage' placeholder='Send RTC Message' name="message" disabled>
+        <input type="submit" value="Send" disabled>
+    </form>
+
+    <br>
+    <br>
+
+    <style>
+        video {
+            width: 320px;
+            height: 240px;
+            border: 1px solid black;
+        }
+    </style>
+
+    <video id="local" autoplay muted></video>
+    <video id="remote" autoplay></video>
+
+    <br>
+
+    <pre id="el_pre_rtcLog"></pre>
+
+</body>
+
+<script>
+    let rtcConnection = null;
+    let receiver = null;
+    let RealtimeCallback = (rt) => {
+        console.log(rt);
+
+        let log = rt;
+        try {
+            log = JSON.stringify(log, null, 2);
+        }
+        catch (err) {
+        }
+        el_pre_rtcLog.innerText = rt.type + ':\n' + log + '\n-\n' + el_pre_rtcLog.innerText;
+
+        if (rt.type === 'rtc:incoming') {
+            receiver = rt;
+
+            async function answerRTC() {
+                let params = {
+                    mediaStream: {
+                        audio: document.querySelector('input[name="mediaStream[audio]"]').checked,
+                        video: document.querySelector('input[name="mediaStream[video]"]').checked
+                    }
+                }
+
+                rtcConnection = await receiver.connectRTC(params, RTCCallback);
+                console.log(rtcConnection);
+                if (rtcConnection.mediaStream) {
+                    document.getElementById('local').srcObject = rtcConnection.mediaStream;
+                }
+            }
+            
+            el_dl_incoming.innerHTML = /*html*/`
+                    <p>Incoming call</p>
+                    <button onclick='
+                        receiver.connectRTC(el_form_rtcSettings, RTCCallback)
+                            .then(rtc => {
+                                console.log(rtc);
+                                rtcConnection = rtc;
+                                if(rtc.mediaStream) {
+                                    document.getElementById("local").srcObject = rtc.mediaStream;
+                                }})
+                    '>Accept</button>
+                    <button onclick="receiver.hangup();connected(false)">Reject</button>
+                `;
+
+            el_dl_incoming.showModal();
+        }
+        else if (rt.type === 'rtc:closed') {
+            connected(false);
+        }
+    }
+    function RTCCallback(e) {
+        console.log(e);
+
+        switch (e.type) {
+            // RTC Events
+            case 'track':
+                el_pre_rtcLog.innerText = `Incoming Media Stream...\n` + el_pre_rtcLog.innerText;
+                document.getElementById('remote').srcObject = e.streams[0];
+                break;
+            case 'connectionstatechange':
+                let state = e.state;
+                el_pre_rtcLog.innerText = `RTC Connection:${e.type}:${state}\n` + JSON.stringify(e, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
+                if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+                    connected(false);
+                }
+                else if (state === 'connecting') {
+                    connected(true);
+                }
+                break;
+
+            // Data Channel Events
+            case 'close':
+                el_pre_rtcLog.innerText = `Data Channel:${e.target.label}:${e.type}\n` + JSON.stringify(e, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
+                break;
+            case 'message':
+                el_pre_rtcLog.innerText = `Data Channel:${e.target.label}:${e.type}\n` + JSON.stringify(e.data, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
+                break;
+            case 'open':
+            case 'bufferedamountlow':
+            case 'error':
+                el_pre_rtcLog.innerText = `Data Channel:${e.target.label}:${e.type}\n` + JSON.stringify(e, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
+                break;
+        }
+    }
+
+    function connected(connected) {
+        function disableForm(form, disable) {
+            form.querySelectorAll('input').forEach(i => {
+                i.disabled = disable;
+            });
+        }
+        el_dl_calling.close();
+        el_dl_incoming.close();
+        if (connected) {
+            // Callback executed when the user is connected to the server.
+            el_pre_rtcLog.innerText = 'Connected\n' + el_pre_rtcLog.innerText;
+            disableForm(el_form_sendRTCMessage, false);
+            disableForm(el_form_rtcSettings, true);
+            document.getElementById('el_bt_disconnect').disable = false;
+        }
+        else {
+            disableForm(el_form_sendRTCMessage, true);
+            disableForm(el_form_rtcSettings, false);
+            document.getElementById('el_bt_disconnect').disable = true;
+        }
+    }
+
+    let call = null;
+    async function callRTC(event) {
+        call = await skapi.connectRTC(event, RTCCallback);
+
+        el_dl_calling.innerHTML = /*html*/`
+                <p>Calling</p>
+                <button onclick="call.hangup()">Hangup</button>
+            `;
+
+        el_dl_calling.showModal();
+        rtcConnection = await call.connection;
+        console.log(rtcConnection);
+        if (!rtcConnection) {
+            alert('Call rejected.');
+        }
+        if (rtcConnection.mediaStream) {
+            document.getElementById('local').srcObject = rtcConnection.mediaStream;
+        }
+    }
+
+    // connect to skapi, replace with your service id and owner id
+    const skapi = new Skapi(
+        your_service_id,
+        your_owner_id,
+        {
+            autoLogin: true,
+            eventListener: {
+                onLogin: (res) => {
+                    console.log('onLogin', res);
+                    el_form_login.hidden = !!res;
+                    el_bt_logout.hidden = !res;
+                    el_pre_userProfile.innerText = res ? JSON.stringify(res, null, 2) : 'Please Login';
+
+                    if (res) {
+                        skapi.connectRealtime(RealtimeCallback);
+                        skapi.joinRealtime({ group: 'sandbox' });
+                    }
+                }
+            }
+        },
+        _bleedingEdge
+    );
+
+    skapi.getConnectionInfo().then(res => {
+        pre_connectionInfo.innerText = JSON.stringify(res, null, 2);
+    });
+</script>
