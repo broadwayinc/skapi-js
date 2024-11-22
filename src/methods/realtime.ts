@@ -151,6 +151,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                             if (__peerConnection?.[msg.sender]) {
                                 closeRTC.bind(this)({ recipient: rtc.hungup });
                             }
+                            msg.type = 'rtc:closed';
                             cb(msg);
                             return;
                         }
@@ -162,6 +163,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                             if (!__receiver_ringing[msg.sender]) {
                                 __receiver_ringing[msg.sender] = msg.sender;
                                 msg.respondRTC = respondRTC.bind(this)(msg);
+                                msg.type = 'rtc:incoming';
                                 cb(msg);
                             }
                         }

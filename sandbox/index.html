@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/style-blank@latest/blank.css">
     <script src="./skapi.js"></script>
+    <sciprt src="rtc.js"></sciprt>
     <script src="srvc.js"></script>
     <script>
         // connect to skapi, replace with your service id and owner id
@@ -30,58 +31,15 @@
         );
     </script>
 </head>
-<script>
-    let dataChannels = {};
-    let rtcConnection = null;
-
-    function RTCCallback(e) {
-        console.log(e);
-        switch (e.type) {
-            // RTC Events
-            case 'track':
-                el_pre_rtcLog.innerText = `Incomming Media Stream...\n` + el_pre_rtcLog.innerText;
-                document.getElementById('remote').srcObject = e.streams[0];
-                break;
-            case 'connectionstatechange':
-                let state = e.state;
-                el_pre_rtcLog.innerText = `RTC Connection:${e.type}:${state}\n` + JSON.stringify(e, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
-                if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-                    disableForm(document.getElementById('el_form_sendRTCMessage'), true);
-                    disableForm(document.getElementById('el_form_rtcTargetUser'), false);
-                    disableForm(document.getElementById('el_bt_disconnect'), false);
-                }
-                break;
-
-            // Data Channel Events
-            case 'close':
-                el_pre_rtcLog.innerText = `Data Channel:${e.target.label}:${e.type}\n` + JSON.stringify(e, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
-                break;
-            case 'message':
-                el_pre_rtcLog.innerText = `Data Channel:${e.target.label}:${e.type}\n` + JSON.stringify(e.data, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
-                break;
-            case 'open':
-                // Data Channel is ready and can send messages
-                disableForm(document.getElementById('el_form_sendRTCMessage'), false);
-                disableForm(document.getElementById('el_form_rtcTargetUser'), true);
-                disableForm(document.getElementById('el_bt_disconnect'), true);
-
-            case 'bufferedamountlow':
-            case 'error':
-                el_pre_rtcLog.innerText = `Data Channel:${e.target.label}:${e.type}\n` + JSON.stringify(e, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
-                break;
-
-
-        }
-    }
-</script>
 
 <body>
     <dialog id="el_dl_calling">
-        <p>Calling Peer...</p>
     </dialog>
+    <dialog id="el_dl_incoming">
+    </dialog>
+
     <h1>Sandbox <button id='el_bt_logout' style='vertical-align: bottom;' onclick="skapi.logout()"
-            hidden>Logout</button>
-    </h1>
+            hidden>Logout</button></h1>
 
     <form id='el_form_login' onsubmit="skapi.login(event)" hidden>
         <p>Login:</p>
@@ -111,6 +69,7 @@
             .then(u=>el_pre_userList.innerText=JSON.stringify(u.list, null, 2))
             .catch(err=>alert(err.message));
         ">Get User List</button>
+
     <button onclick="el_pre_userList.innerHTML = ''">Clear</button>
 
     <pre id="el_pre_userList"></pre>
@@ -121,23 +80,8 @@
 
     <h1>Connect P2P</h1>
 
-    <form
-        onsubmit="
-            el_dl_calling.showModal();
-            skapi.connectRTC(event, RTCCallback)
-                .then(rtc => {
-                    el_dl_calling.close();
-                    if(rtc) {
-                        rtcConnection = rtc;
-                        if(rtcConnection.mediaStream) {
-                            document.getElementById('local').srcObject = rtcConnection.mediaStream;
-                        }
-                    }
-                    else
-                        alert('Call rejected');
-                })"
-        id="el_form_rtcTargetUser">
-        <input type="text" placeholder='User ID' name="recipient">
+    <form onsubmit="callRTC(event)" id="el_form_rtcTargetUser">
+        <input type="text" placeholder='User ID' name="recipient" id="el_input_rtcTarget">
         <input type="submit" value="Connect">
         <button type="button" id="el_bt_disconnect" onclick="rtcConnection ? rtcConnection.hangup() : null"
             disabled>Disconnect</button>
@@ -193,69 +137,9 @@
 </body>`
 
 <script>
-    function disableForm(form, disable) {
-        form.querySelectorAll('input').forEach(i => {
-            i.disabled = disable;
-        });
-    }
-
     skapi.getConnectionInfo().then(res => {
         pre_connectionInfo.innerText = JSON.stringify(res, null, 2);
     });
-
-    let RealtimeCallback = (rt) => {
-        // Callback executed when there is data transfer between the users.
-        /**
-        rt = {
-            type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' | 'reconnect';
-            message: '...',
-            respondRTC: (params: RTCReceiverParams, callback: RTCCallback) => Promise<RTCResolved>; // When remote peer is trying to connect, this callback should be called.
-            ...
-        }
-        */
-        console.log(rt);
-        let log = rt;
-        try {
-            log = JSON.stringify(log, null, 2);
-        }
-        catch (err) {
-        }
-        el_pre_rtcLog.innerText = rt.type + ':\n' + log + '\n-\n' + el_pre_rtcLog.innerText;
-
-        if (rt.type === 'rtc' && rt.respondRTC) {
-            skapi.getUsers({
-                searchFor: 'user_id',
-                value: rt.sender
-            })
-                .then(async u => {
-                    if (u.list?.[0]) {
-                        let user = u.list[0];
-                        if (window.confirm('Accept call from ' + (user.name || user.email || user.user_id) + '?')) {
-                            let params = {
-                                mediaStream: {
-                                    audio: document.querySelector('input[name="mediaStream[audio]"]').checked,
-                                    video: document.querySelector('input[name="mediaStream[video]"]').checked
-                                }
-                            }
-                            rtcConnection = await rt.respondRTC(params, RTCCallback);
-                            if(!rtcConnection) {
-                                alert('Call rejected');
-                            }
-                            else {
-                                if (rtcConnection.mediaStream) {
-                                    document.getElementById('local').srcObject = rtcConnection.mediaStream;
-                                }
-                            }
-                        }
-                        else {
-                            rt.respondRTC({
-                                hangup: true
-                            });
-                        }
-                    }
-                });
-        }
-    }
 
     function connectRealTime() {
         skapi.connectRealtime(RealtimeCallback);
