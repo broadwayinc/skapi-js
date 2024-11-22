@@ -222,8 +222,8 @@ export async function connectRTC(
 
     // add media stream
     if (params?.mediaStream) {
-        if (params?.mediaStream instanceof MediaStream) {
-            this.__mediaStream = params.mediaStream;
+        if (params?.mediaStream instanceof MediaStream || this.__mediaStream) {
+            this.__mediaStream = this.__mediaStream || params.mediaStream;
         }
         else {
             if (params?.mediaStream?.video || params?.mediaStream?.audio) {
