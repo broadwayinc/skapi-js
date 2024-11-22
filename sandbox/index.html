@@ -228,7 +228,13 @@
                     if (u.list?.[0]) {
                         let user = u.list[0];
                         if (window.confirm('Accept call from ' + (user.name || user.email || user.user_id) + '?')) {
-                            rtcConnection = await rt.respondRTC(null, RTCCallback);
+                            let params = {
+                                mediaStream: {
+                                    audio: document.querySelector('input[name="mediaStream[audio]"]').checked,
+                                    video: document.querySelector('input[name="mediaStream[video]"]').checked
+                                }
+                            }
+                            rtcConnection = await rt.respondRTC(params, RTCCallback);
                             if(!rtcConnection) {
                                 alert('Call rejected');
                             }
