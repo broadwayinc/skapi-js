@@ -15,7 +15,6 @@ function setBuffer(buffer: { [recipient: string]: any[] }, recipient: string, it
     if (!buffer[recipient]) {
         buffer[recipient] = [];
     }
-    console.log('Buffering item:', item);
     buffer[recipient].push(item);
 }
 
