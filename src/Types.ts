@@ -7,7 +7,6 @@ export type RTCCallback = (e: {
 
 export type RTCReceiverParams = {
     ice?: string;
-    hangup?: boolean;
     mediaStream?: {
         video: boolean;
         audio: boolean;
