@@ -48,6 +48,7 @@
                 disableForm(document.getElementById('el_form_sendRTCMessage'), false);
                 disableForm(document.getElementById('el_form_rtcTargetUser'), true);
                 disableForm(document.getElementById('el_bt_disconnect'), true);
+
             case 'bufferedamountlow':
             case 'error':
                 el_pre_rtcLog.innerText = `Data Channel:${e.target.label}:${e.type}\n` + JSON.stringify(e, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
@@ -72,6 +73,9 @@
 </script>
 
 <body>
+    <dialog id="el_dl_calling">
+        <p>Calling Peer...</p>
+    </dialog>
     <h1>Sandbox <button id='el_bt_logout' style='vertical-align: bottom;' onclick="skapi.logout()"
             hidden>Logout</button>
     </h1>
@@ -115,7 +119,20 @@
     <h1>Connect P2P</h1>
 
     <form
-        onsubmit="skapi.connectRTC(event, RTCCallback).then(rtc => rtc ? rtcConnection = rtc : alert('Call rejected'))"
+        onsubmit="
+            el_dl_calling.showModal();
+            skapi.connectRTC(event, RTCCallback)
+                .then(rtc => {
+                    el_dl_calling.close();
+                    if(rtc) {
+                        rtcConnection = rtc;
+                        if(rtcConnection.mediaStream) {
+                            document.getElementById('local').srcObject = rtcConnection.mediaStream;
+                        }
+                    }
+                    else
+                        alert('Call rejected');
+                })"
         id="el_form_rtcTargetUser">
         <input type="text" placeholder='User ID' name="recipient">
         <input type="submit" value="Connect">
@@ -212,6 +229,14 @@
                         let user = u.list[0];
                         if (window.confirm('Accept call from ' + (user.name || user.email || user.user_id) + '?')) {
                             rtcConnection = await rt.respondRTC(null, RTCCallback);
+                            if(!rtcConnection) {
+                                alert('Call rejected');
+                            }
+                            else {
+                                if (rtcConnection.mediaStream) {
+                                    document.getElementById('remote').srcObject = rtcConnection.mediaStream;
+                                }
+                            }
                         }
                         else {
                             rt.respondRTC({
