@@ -88,13 +88,13 @@ function connected(connected) {
     if (connected) {
         // Callback executed when the user is connected to the server.
         el_pre_rtcLog.innerText = 'Connected\n' + el_pre_rtcLog.innerText;
-        disableForm(document.getElementById('el_form_sendRTCMessage'), false);
-        disableForm(document.getElementById('el_form_rtcTargetUser'), true);
+        disableForm(el_form_sendRTCMessage, false);
+        disableForm(el_form_rtcTargetUser, true);
         document.getElementById('el_bt_disconnect').disable = false;
     }
     else {
-        disableForm(document.getElementById('el_form_sendRTCMessage'), true);
-        disableForm(document.getElementById('el_form_rtcTargetUser'), false);
+        disableForm(el_form_sendRTCMessage, true);
+        disableForm(el_form_rtcTargetUser, false);
         document.getElementById('el_bt_disconnect').disable = true;
     }
 }
