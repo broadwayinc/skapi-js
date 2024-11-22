@@ -128,24 +128,26 @@
 
         if (rt.type === 'rtc:incoming') {
             receiver = rt;
+
             el_dl_incoming.innerHTML = /*html*/`
                     <p>Incoming call</p>
-                    <button onclick="receiver.receiveRTC(null, RTCCallback)">Accept</button>
-                    <button onclick="receiver.hangup()">Reject</button>
+                    <button onclick="receiver.connectRTC(null, RTCCallback)">Accept</button>
+                    <button onclick="receiver.hangup();el_dl_incoming.close()">Reject</button>
                 `;
 
             el_dl_incoming.showModal();
         }
-        else if (rt.type === 'rtc:hangup') {
+        else if (rt.type === 'rtc:closed') {
             connected(false);
         }
     }
     function RTCCallback(e) {
         console.log(e);
+        
         switch (e.type) {
             // RTC Events
             case 'track':
-                el_pre_rtcLog.innerText = `Incomming Media Stream...\n` + el_pre_rtcLog.innerText;
+                el_pre_rtcLog.innerText = `Incoming Media Stream...\n` + el_pre_rtcLog.innerText;
                 document.getElementById('remote').srcObject = e.streams[0];
                 break;
             case 'connectionstatechange':
@@ -207,8 +209,8 @@
             `;
 
         el_dl_calling.showModal();
-
         rtcConnection = await call.connection;
+
         if (!rtcConnection) {
             alert('Call rejected.');
         }
@@ -223,6 +225,7 @@
         }
 
         rtcConnection = await receiver.respondRTC(params, RTCCallback);
+
         if (!rtcConnection) {
             alert('Call rejected.');
         }

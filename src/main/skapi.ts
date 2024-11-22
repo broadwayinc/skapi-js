@@ -533,7 +533,7 @@ export default class Skapi {
     connectRTC(
         params: RTCConnectorParams,
         callback?: RTCCallback
-    ): RTCConnector {
+    ): Promise<RTCConnector> {
         return connectRTC.bind(this)(params, callback);
     }
 
