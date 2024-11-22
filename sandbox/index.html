@@ -56,7 +56,7 @@
 
     <h1>Connect P2P</h1>
 
-    <form onsubmit="callRTC(event)" id="el_form_rtcTargetUser">
+    <form onsubmit="callRTC(event)" id="el_form_rtcSettings">
         <input type="text" placeholder='User ID' name="recipient" id="el_input_rtcTarget">
         <input type="submit" value="Connect">
         <button type="button" id="el_bt_disconnect" onclick="rtcConnection ? rtcConnection.hangup() : null"
@@ -129,10 +129,33 @@
         if (rt.type === 'rtc:incoming') {
             receiver = rt;
 
+            async function answerRTC() {
+                let params = {
+                    mediaStream: {
+                        audio: document.querySelector('input[name="mediaStream[audio]"]').checked,
+                        video: document.querySelector('input[name="mediaStream[video]"]').checked
+                    }
+                }
+
+                rtcConnection = await receiver.connectRTC(params, RTCCallback);
+                console.log(rtcConnection);
+                if (rtcConnection.mediaStream) {
+                    document.getElementById('local').srcObject = rtcConnection.mediaStream;
+                }
+            }
+            
             el_dl_incoming.innerHTML = /*html*/`
                     <p>Incoming call</p>
-                    <button onclick="receiver.connectRTC(null, RTCCallback)">Accept</button>
-                    <button onclick="receiver.hangup();el_dl_incoming.close()">Reject</button>
+                    <button onclick='
+                        receiver.connectRTC(el_form_rtcSettings, RTCCallback)
+                            .then(rtc => {
+                                console.log(rtc);
+                                rtcConnection = rtc;
+                                if(rtc.mediaStream) {
+                                    document.getElementById("local").srcObject = rtc.mediaStream;
+                                }})
+                    '>Accept</button>
+                    <button onclick="receiver.hangup();connected(false)">Reject</button>
                 `;
 
             el_dl_incoming.showModal();
@@ -143,7 +166,7 @@
     }
     function RTCCallback(e) {
         console.log(e);
-        
+
         switch (e.type) {
             // RTC Events
             case 'track':
@@ -156,7 +179,7 @@
                 if (state === 'disconnected' || state === 'failed' || state === 'closed') {
                     connected(false);
                 }
-                else if (state === 'connected') {
+                else if (state === 'connecting') {
                     connected(true);
                 }
                 break;
@@ -176,25 +199,24 @@
         }
     }
 
-    function disableForm(form, disable) {
-        form.querySelectorAll('input').forEach(i => {
-            i.disabled = disable;
-        });
-    }
-
     function connected(connected) {
+        function disableForm(form, disable) {
+            form.querySelectorAll('input').forEach(i => {
+                i.disabled = disable;
+            });
+        }
         el_dl_calling.close();
         el_dl_incoming.close();
         if (connected) {
             // Callback executed when the user is connected to the server.
             el_pre_rtcLog.innerText = 'Connected\n' + el_pre_rtcLog.innerText;
             disableForm(el_form_sendRTCMessage, false);
-            disableForm(el_form_rtcTargetUser, true);
+            disableForm(el_form_rtcSettings, true);
             document.getElementById('el_bt_disconnect').disable = false;
         }
         else {
             disableForm(el_form_sendRTCMessage, true);
-            disableForm(el_form_rtcTargetUser, false);
+            disableForm(el_form_rtcSettings, false);
             document.getElementById('el_bt_disconnect').disable = true;
         }
     }
@@ -210,22 +232,7 @@
 
         el_dl_calling.showModal();
         rtcConnection = await call.connection;
-
-        if (!rtcConnection) {
-            alert('Call rejected.');
-        }
-    }
-
-    async function receiveRTC(receiver) {
-        let params = {
-            mediaStream: {
-                audio: document.querySelector('input[name="mediaStream[audio]"]').checked,
-                video: document.querySelector('input[name="mediaStream[video]"]').checked
-            }
-        }
-
-        rtcConnection = await receiver.respondRTC(params, RTCCallback);
-
+        console.log(rtcConnection);
         if (!rtcConnection) {
             alert('Call rejected.');
         }
@@ -233,6 +240,7 @@
             document.getElementById('local').srcObject = rtcConnection.mediaStream;
         }
     }
+
     // connect to skapi, replace with your service id and owner id
     const skapi = new Skapi(
         your_service_id,
