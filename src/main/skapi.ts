@@ -120,7 +120,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.187-beta.6'
+    private __version = '1.0.187-beta.7'
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -274,8 +274,8 @@ export default class Skapi {
             onLogin: (user: UserProfile) => void;
         }
     }, __etc?: any) {
-        if (!window) {
-            throw new SkapiError('This library is for browser only.', { code: 'NOT_SUPPORTED' });
+        if (!sessionStorage) {
+            throw new SkapiError('Web browser API is not available.', { code: 'NOT_SUPPORTED' });
         }
         sessionStorage.setItem('__skapi_kiss', 'kiss');
         if (sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
