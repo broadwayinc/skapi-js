@@ -333,17 +333,6 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
             return null;
         }
 
-        if (params?.hangup) {
-            socket.send(JSON.stringify({
-                action: 'rtc',
-                uid: sender,
-                content: { hungup: this.user.user_id },
-                token: this.session.accessToken.jwtToken
-            }));
-
-            return null;
-        }
-
         if (typeof callback !== 'function') {
             throw new SkapiError(`Callback is required.`, { code: 'INVALID_PARAMETER' });
         }
