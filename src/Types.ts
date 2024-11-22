@@ -5,18 +5,50 @@ export type RTCCallback = (e: {
     [key: string]: any;
 }) => void
 
-export type RTCreceiver = (params: { ice?: string; reject?: boolean; mediaStream?: { audio: boolean; video: boolean; } | MediaStream; }, cb: RTCCallback) => Promise<RTCReturn>; // pick up the callback and return the data channel
+export type RTCReceiverParams = {
+    ice?: string;
+    hangup?: boolean;
+    mediaStream?: {
+        video: boolean;
+        audio: boolean;
+    } | MediaStream;
+}
 
-export type RTCReturn = { mediaStream?: MediaStream; connection: { RTCPeerConnection: RTCPeerConnection; close: () => void }; dataChannel: { [key: string]: RTCDataChannel }; };
+export type RTCConnectorParams = {
+    recipient: string;
+    ice: string;
+    mediaStream?: {
+        video: boolean;
+        audio: boolean;
+    } | MediaStream;
+    dataChannelSettings?: Array<RTCDataChannelInit | 'text-chat' | 'file-transfer' | 'video-chat' | 'voice-chat' | 'gaming'>;
+}
 
-export type RealtimeCallback = (rt: {
-    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' | 'reconnect';
-    message: any;
+export type RTCConnector = {
+    hangup: () => void;
+    connection: Promise<RTCResolved>;
+}
+
+export type RTCResolved = {
+    target: RTCPeerConnection;
+    dataChannels: {
+        [protocol: string]: RTCDataChannel
+    };
+    hangup: () => void;
+    mediaStream: MediaStream;
+}
+
+export type WebSocketMessage = {
+    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' | 'reconnect' | 'rtc:incoming' | 'rtc:closed';
+    message?: any;
+    connectRTC?: (params: RTCReceiverParams, callback: RTCCallback) => Promise<RTCResolved>;
+    hangup?: () => void; // Reject incoming RTC connection.
     sender?: string; // user_id of the sender
     sender_cid?: string; // scid of the sender
-    receiveRTC?: RTCreceiver;
     sender_rid?: string; // group of the sender
-}) => void;
+}
+
+export type RealtimeCallback = (rt: WebSocketMessage) => void;
 
 export type GetRecordQuery = {
     record_id?: string;
@@ -49,6 +81,7 @@ export type GetRecordQuery = {
     };
     tag?: string;
 }
+
 export type DelRecordQuery = {
     record_id?: string | string[];
 
