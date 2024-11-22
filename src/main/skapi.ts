@@ -517,9 +517,9 @@ export default class Skapi {
     private log(n: string, v: any) {
         if (this.__network_logs) {
             try {
-                console.log(n, JSON.parse(JSON.stringify(v)));
+                console.log(`%c${n}`, 'color: blue;', JSON.parse(JSON.stringify(v)));
             } catch (err) {
-                console.log(n, v);
+                console.log(`%c${n}`, 'color: blue;', v);
             }
         }
     }
