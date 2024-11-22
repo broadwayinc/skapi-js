@@ -1,5 +1,6 @@
 import { SkapiError } from "../Main";
 import { RTCResolved, RTCCallback, RTCConnectorParams, RTCReceiverParams, WebSocketMessage, RTCConnector } from "../Types";
+import { extractFormData } from "../utils/utils";
 import validator from "../utils/validator";
 
 export const __peerConnection: { [sender: string]: RTCPeerConnection } = {};
@@ -326,6 +327,8 @@ export async function connectRTC(
 export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, callback: RTCCallback) => Promise<RTCResolved> {
     return async (params: RTCReceiverParams, callback: RTCCallback): Promise<RTCResolved> => {
         params = params || {};
+        params = extractFormData(params).data;
+
         let sender = msg.sender;
         let socket: WebSocket = await this.__socket;
 
@@ -357,8 +360,8 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
         }
 
         if (params?.mediaStream) {
-            if (params?.mediaStream instanceof MediaStream) {
-                this.__mediaStream = params.mediaStream;
+            if (params?.mediaStream instanceof MediaStream || this.__mediaStream) {
+                this.__mediaStream = this.__mediaStream || params.mediaStream;
             }
             else {
                 if (params?.mediaStream?.video || params?.mediaStream?.audio)
