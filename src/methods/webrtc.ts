@@ -236,7 +236,6 @@ export async function connectRTC(
                 });
         }
 
-        peerConnectionHandler.bind(this)(recipient, ['onnegotiationneeded']);
         __rtcCallbacks[recipient] = callback;
 
         if (!__dataChannel[recipient]) {
@@ -283,6 +282,7 @@ export async function connectRTC(
             handleDataChannel.bind(this)(recipient, dataChannel);
         }
 
+        peerConnectionHandler.bind(this)(recipient, ['onnegotiationneeded']);
         await sendOffer.bind(this)(recipient);
 
         return new Promise((resolve, reject) => {
