@@ -325,7 +325,6 @@ export async function connectRTC(
 export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, callback: RTCCallback) => Promise<RTCResolved> {
     return async (params: RTCReceiverParams, callback: RTCCallback): Promise<RTCResolved> => {
         params = params || {};
-        let rtc = msg.message;
         let sender = msg.sender;
         let socket: WebSocket = await this.__socket;
 
