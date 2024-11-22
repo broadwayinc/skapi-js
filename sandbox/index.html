@@ -35,7 +35,23 @@
     let rtcConnection = null;
 
     function RTCCallback(e) {
+        console.log(e);
         switch (e.type) {
+            // RTC Events
+            case 'track':
+                el_pre_rtcLog.innerText = `Incomming Media Stream...\n` + el_pre_rtcLog.innerText;
+                document.getElementById('remote').srcObject = e.streams[0];
+                break;
+            case 'connectionstatechange':
+                let state = e.state;
+                el_pre_rtcLog.innerText = `RTC Connection:${e.type}:${state}\n` + JSON.stringify(e, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
+                if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+                    disableForm(document.getElementById('el_form_sendRTCMessage'), true);
+                    disableForm(document.getElementById('el_form_rtcTargetUser'), false);
+                    disableForm(document.getElementById('el_bt_disconnect'), false);
+                }
+                break;
+
             // Data Channel Events
             case 'close':
                 el_pre_rtcLog.innerText = `Data Channel:${e.target.label}:${e.type}\n` + JSON.stringify(e, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
@@ -54,20 +70,7 @@
                 el_pre_rtcLog.innerText = `Data Channel:${e.target.label}:${e.type}\n` + JSON.stringify(e, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
                 break;
 
-            // RTC Events
-            case 'track':
-                el_pre_rtcLog.innerText = `Incomming Media Stream...\n` + el_pre_rtcLog.innerText;
-                document.getElementById('remote').srcObject = e.streams[0];
-                break;
-            case 'connectionstatechange':
-                let state = e.state;
-                el_pre_rtcLog.innerText = `RTC Connection:${e.type}:${state}\n` + JSON.stringify(e, null, 2) + '\n-\n' + el_pre_rtcLog.innerText;
-                if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-                    disableForm(document.getElementById('el_form_sendRTCMessage'), true);
-                    disableForm(document.getElementById('el_form_rtcTargetUser'), false);
-                    disableForm(document.getElementById('el_bt_disconnect'), false);
-                }
-                break;
+
         }
     }
 </script>
