@@ -135,8 +135,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                     }
                     cb(msg);
                 }
-
-                if (type === 'rtc') {
+                else if (type === 'rtc') {
                     // rtc signaling
                     if (msg.sender !== this.user.user_id) {
                         let rtc = msg.message;
@@ -146,7 +145,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                                 __caller_ringing[rtc.hungup](false);
                                 delete __caller_ringing[rtc.hungup];
                             }
-                            if(__receiver_ringing[rtc.hungup]) {
+                            if (__receiver_ringing[rtc.hungup]) {
                                 delete __receiver_ringing[rtc.hungup];
                             }
                             if (__peerConnection?.[msg.sender]) {
@@ -162,6 +161,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                             if (!__receiver_ringing[msg.sender]) {
                                 __receiver_ringing[msg.sender] = msg.sender;
                                 msg.respondRTC = respondRTC.bind(this)(msg);
+                                cb(msg);
                             }
                         }
                         if (rtc.pickup) {
@@ -172,10 +172,20 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                             }
                         }
                         if (rtc.sdpanswer) {
-                            // receive answer from the receiver
-                            await __peerConnection[msg.sender].setRemoteDescription(new RTCSessionDescription(rtc.sdpanswer));
+                            if (__peerConnection[msg.sender]) {
+                                // receive answer from the receiver
+                                if(__peerConnection[msg.sender].signalingState === 'have-local-offer') {
+                                    await __peerConnection[msg.sender].setRemoteDescription(new RTCSessionDescription(rtc.sdpanswer));
+                                }
+                                else {
+                                    throw new SkapiError(`Invalid signaling state.`, { code: 'INVALID_REQUEST' });
+                                }
+                            }
                         }
                     }
+                }
+                else {
+                    cb(msg);
                 }
             };
 
