@@ -40,10 +40,10 @@ export type RTCResolved = {
 
 export type WebSocketMessage = {
     type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' | 'reconnect' | 'rtc:incoming' | 'rtc:closed';
-    message: any;
+    message: any | ((params: RTCReceiverParams, callback: RTCCallback) => Promise<RTCResolved>);
     sender?: string; // user_id of the sender
     sender_cid?: string; // scid of the sender
-    respondRTC?: (params: RTCReceiverParams, callback: RTCCallback) => Promise<RTCResolved>; // When remote peer is trying to connect, this callback should be called.
+    hangup?: () => void; // Reject incoming RTC connection.
     sender_rid?: string; // group of the sender
 }
 
