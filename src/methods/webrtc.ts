@@ -215,7 +215,6 @@ export async function connectRTC(
 
         if (!__peerConnection?.[recipient]) {
             __peerConnection[recipient] = new RTCPeerConnection(configuration);
-            peerConnectionHandler.bind(this)(recipient, ['onnegotiationneeded']);
         }
 
         // add media stream
@@ -237,6 +236,7 @@ export async function connectRTC(
                 });
         }
 
+        peerConnectionHandler.bind(this)(recipient, ['onnegotiationneeded']);
         __rtcCallbacks[recipient] = callback;
 
         if (!__dataChannel[recipient]) {
@@ -364,8 +364,6 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
                     { urls: ice }
                 ]
             });
-            
-            peerConnectionHandler.bind(this)(sender, ['onnegotiationneeded']);
         }
 
         if (params?.mediaStream) {
@@ -400,6 +398,7 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
             handleDataChannel.bind(this)(sender, dataChannel);
         }
 
+        peerConnectionHandler.bind(this)(sender, ['onnegotiationneeded']);
         await answerSdpOffer.bind(this)(null, sender);
         await receiveIceCandidate.bind(this)(null, sender);
 
