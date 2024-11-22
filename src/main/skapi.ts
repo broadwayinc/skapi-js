@@ -18,7 +18,7 @@ import {
     RTCCallback,
     RealtimeCallback,
     RTCConnectorParams,
-    RTCResolved,
+    RTCConnector,
 } from '../Types';
 import {
     CognitoUserPool
@@ -533,7 +533,7 @@ export default class Skapi {
     connectRTC(
         params: RTCConnectorParams,
         callback?: RTCCallback
-    ): Promise<RTCResolved> {
+    ): RTCConnector {
         return connectRTC.bind(this)(params, callback);
     }
 
