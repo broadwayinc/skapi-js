@@ -24,6 +24,11 @@ export type RTCConnectorParams = {
     dataChannelSettings?: Array<RTCDataChannelInit | 'text-chat' | 'file-transfer' | 'video-chat' | 'voice-chat' | 'gaming'>;
 }
 
+export type RTCConnector = {
+    hangup: () => void;
+    connection: Promise<RTCResolved>;
+}
+
 export type RTCResolved = {
     target: RTCPeerConnection;
     dataChannels: {
@@ -34,7 +39,7 @@ export type RTCResolved = {
 }
 
 export type WebSocketMessage = {
-    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' | 'reconnect';
+    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' | 'reconnect' | 'rtc:incoming' | 'rtc:closed';
     message: any;
     sender?: string; // user_id of the sender
     sender_cid?: string; // scid of the sender
