@@ -21,12 +21,12 @@ export type RTCConnectorParams = {
         video: boolean;
         audio: boolean;
     } | MediaStream;
-    dataChannelSettings?: RTCDataChannelInit[];
+    dataChannelSettings?: Array<RTCDataChannelInit | 'text-chat' | 'file-transfer' | 'video-chat' | 'voice-chat' | 'gaming'>;
 }
 
 export type RTCResolved = {
     target: RTCPeerConnection;
-    dataChannel: {
+    dataChannels: {
         [protocol: string]: RTCDataChannel
     };
     hangup: () => void;
