@@ -162,8 +162,19 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                             answerSdpOffer.bind(this)(rtc.sdpoffer, msg.sender);
                             if (!__receiver_ringing[msg.sender]) {
                                 __receiver_ringing[msg.sender] = msg.sender;
-                                msg.respondRTC = respondRTC.bind(this)(msg);
+                                msg.message = respondRTC.bind(this)(msg);
                                 msg.type = 'rtc:incoming';
+                                msg.hangup = () => {
+                                    socket.send(JSON.stringify({
+                                        action: 'rtc',
+                                        uid: msg.sender,
+                                        content: { hungup: this.user.user_id },
+                                        token: this.session.accessToken.jwtToken
+                                    }));
+                                    
+                                    delete __receiver_ringing[msg.sender];
+                                }
+
                                 cb(msg);
                             }
                         }
@@ -177,7 +188,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                         if (rtc.sdpanswer) {
                             if (__peerConnection[msg.sender]) {
                                 // receive answer from the receiver
-                                if(__peerConnection[msg.sender].signalingState === 'have-local-offer') {
+                                if (__peerConnection[msg.sender].signalingState === 'have-local-offer') {
                                     await __peerConnection[msg.sender].setRemoteDescription(new RTCSessionDescription(rtc.sdpanswer));
                                 }
                                 else {
