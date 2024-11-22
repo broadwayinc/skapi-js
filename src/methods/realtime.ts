@@ -151,6 +151,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                             if (__peerConnection?.[msg.sender]) {
                                 closeRTC.bind(this)({ recipient: rtc.hungup });
                             }
+                            cb(msg);
                             return;
                         }
                         if (rtc.candidate) {
