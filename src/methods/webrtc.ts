@@ -159,10 +159,10 @@ export async function closeRTC(params: { recipient?: string; closeAll?: boolean 
     }
 }
 
-export function connectRTC(
+export async function connectRTC(
     params: RTCConnectorParams,
     callback: RTCCallback
-): RTCConnector {
+): Promise<RTCConnector> {
     if (typeof callback !== 'function') {
         throw new SkapiError(`Callback is required.`, { code: 'INVALID_PARAMETER' });
     }
@@ -198,104 +198,104 @@ export function connectRTC(
         }
     }
 
+    let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
+
+    if (!socket) {
+        throw new SkapiError(`No realtime connection. Execute connectRealtime() before this method.`, { code: 'INVALID_REQUEST' });
+    }
+
+    if (socket.readyState !== 1) {
+        throw new SkapiError('Realtime connection is not ready.', { code: 'INVALID_REQUEST' });
+    }
+
+    // Call STUN server to get IP address
+    const configuration = {
+        iceServers: [
+            { urls: ice }
+        ]
+    };
+
+    if (!__peerConnection?.[recipient]) {
+        __peerConnection[recipient] = new RTCPeerConnection(configuration);
+    }
+
+    // add media stream
+    if (params?.mediaStream) {
+        if (params?.mediaStream instanceof MediaStream) {
+            this.__mediaStream = params.mediaStream;
+        }
+        else {
+            if (params?.mediaStream?.video || params?.mediaStream?.audio) {
+                this.__mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: params?.mediaStream?.video,
+                    audio: params?.mediaStream?.audio
+                });
+            }
+        }
+        if (this.__mediaStream)
+            this.__mediaStream.getTracks().forEach(track => {
+                __peerConnection[recipient].addTrack(track, this.__mediaStream);
+            });
+    }
+
+    __rtcCallbacks[recipient] = callback;
+
+    if (!__dataChannel[recipient]) {
+        __dataChannel[recipient] = {};
+    }
+
+    for (let i = 0; i < params.dataChannelSettings.length; i++) {
+        let options = params.dataChannelSettings[i];
+
+        if (typeof options === 'string') {
+            switch (options) {
+                case 'text-chat':
+                    options = { ordered: true, maxRetransmits: 10, protocol: 'text-chat' };
+                    break;
+                case 'file-transfer':
+                    options = { ordered: false, maxPacketLifeTime: 3000, protocol: 'file-transfer' };
+                    break;
+                case 'video-chat':
+                    options = { ordered: true, maxRetransmits: 10, protocol: 'video-chat' };
+                    break;
+                case 'voice-chat':
+                    options = { ordered: true, maxRetransmits: 10, protocol: 'voice-chat' };
+                    break;
+                case 'gaming':
+                    options = { ordered: false, maxPacketLifeTime: 100, protocol: 'gaming' };
+                    break;
+                default:
+                    options = { ordered: true, maxRetransmits: 10, protocol: 'default' };
+                    break;
+            }
+        }
+
+        let protocol = options.protocol || 'default';
+        if (Object.keys(__dataChannel[recipient]).includes(protocol)) {
+            throw new SkapiError(`Data channel with the protocol "${protocol}" already exists.`, { code: 'INVALID_REQUEST' });
+        }
+
+        let dataChannel = __peerConnection[recipient].createDataChannel(protocol, options);
+        __dataChannel[recipient][protocol] = dataChannel;
+    }
+
+    for (let key in __dataChannel[recipient]) {
+        let dataChannel = __dataChannel[recipient][key];
+        handleDataChannel.bind(this)(recipient, dataChannel);
+    }
+
+    peerConnectionHandler.bind(this)(recipient, ['onnegotiationneeded']);
+    await sendOffer.bind(this)(recipient);
+
     return {
         hangup: () => __caller_ringing[recipient] && __caller_ringing[recipient](false),
-        connection: new Promise(async resolve => {
-            let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
-
-            if (!socket) {
-                throw new SkapiError(`No realtime connection. Execute connectRealtime() before this method.`, { code: 'INVALID_REQUEST' });
-            }
-
-            if (socket.readyState !== 1) {
-                throw new SkapiError('Realtime connection is not ready.', { code: 'INVALID_REQUEST' });
-            }
-
-            // Call STUN server to get IP address
-            const configuration = {
-                iceServers: [
-                    { urls: ice }
-                ]
-            };
-
-            if (!__peerConnection?.[recipient]) {
-                __peerConnection[recipient] = new RTCPeerConnection(configuration);
-            }
-
-            // add media stream
-            if (params?.mediaStream) {
-                if (params?.mediaStream instanceof MediaStream) {
-                    this.__mediaStream = params.mediaStream;
-                }
-                else {
-                    if (params?.mediaStream?.video || params?.mediaStream?.audio) {
-                        this.__mediaStream = await navigator.mediaDevices.getUserMedia({
-                            video: params?.mediaStream?.video,
-                            audio: params?.mediaStream?.audio
-                        });
-                    }
-                }
-                if (this.__mediaStream)
-                    this.__mediaStream.getTracks().forEach(track => {
-                        __peerConnection[recipient].addTrack(track, this.__mediaStream);
-                    });
-            }
-
-            __rtcCallbacks[recipient] = callback;
-
-            if (!__dataChannel[recipient]) {
-                __dataChannel[recipient] = {};
-            }
-
-            for (let i = 0; i < params.dataChannelSettings.length; i++) {
-                let options = params.dataChannelSettings[i];
-
-                if (typeof options === 'string') {
-                    switch (options) {
-                        case 'text-chat':
-                            options = { ordered: true, maxRetransmits: 10, protocol: 'text-chat' };
-                            break;
-                        case 'file-transfer':
-                            options = { ordered: false, maxPacketLifeTime: 3000, protocol: 'file-transfer' };
-                            break;
-                        case 'video-chat':
-                            options = { ordered: true, maxRetransmits: 10, protocol: 'video-chat' };
-                            break;
-                        case 'voice-chat':
-                            options = { ordered: true, maxRetransmits: 10, protocol: 'voice-chat' };
-                            break;
-                        case 'gaming':
-                            options = { ordered: false, maxPacketLifeTime: 100, protocol: 'gaming' };
-                            break;
-                        default:
-                            options = { ordered: true, maxRetransmits: 10, protocol: 'default' };
-                            break;
-                    }
-                }
-
-                let protocol = options.protocol || 'default';
-                if (Object.keys(__dataChannel[recipient]).includes(protocol)) {
-                    throw new SkapiError(`Data channel with the protocol "${protocol}" already exists.`, { code: 'INVALID_REQUEST' });
-                }
-
-                let dataChannel = __peerConnection[recipient].createDataChannel(protocol, options);
-                __dataChannel[recipient][protocol] = dataChannel;
-            }
-
-            for (let key in __dataChannel[recipient]) {
-                let dataChannel = __dataChannel[recipient][key];
-                handleDataChannel.bind(this)(recipient, dataChannel);
-            }
-
-            peerConnectionHandler.bind(this)(recipient, ['onnegotiationneeded']);
-            await sendOffer.bind(this)(recipient);
-
+        connection: new Promise(resolve => {
             __caller_ringing[recipient] = ((proceed: boolean) => {
                 this.log('receiver picked up the call', recipient);
                 // proceed
                 if (!proceed) {
-                    resolve(null);
-                    return;
+                    closeRTC.bind(this)({ recipient });
+                    return null;
                 }
 
                 __peerConnection[recipient].onnegotiationneeded = () => {

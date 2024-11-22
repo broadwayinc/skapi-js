@@ -93,11 +93,14 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                     case !!data?.['#rtc']:
                         type = 'rtc';
                         break;
+                    case !!data?.['#error']:
+                        type = 'error';
+                        break;
                 }
 
                 let msg: WebSocketMessage = {
                     type,
-                    message: data?.['#rtc'] || data?.['#message'] || data?.['#private'] || data?.['#notice'] || null,
+                    message: data?.['#rtc'] || data?.['#message'] || data?.['#private'] || data?.['#notice'] || data?.['#error'] || null,
                     sender: !!data['#user_id'] ? data['#user_id'] : null,
                     sender_cid: !!data?.['#scid'] ? 'scid:' + data['#scid'] : null,
                     sender_rid: !!data?.['#srid'] ? data['#srid'] : null
@@ -162,18 +165,24 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                             answerSdpOffer.bind(this)(rtc.sdpoffer, msg.sender);
                             if (!__receiver_ringing[msg.sender]) {
                                 __receiver_ringing[msg.sender] = msg.sender;
-                                msg.message = respondRTC.bind(this)(msg);
+                                delete msg.message;
+
+                                msg.connectRTC = respondRTC.bind(this)(msg);
                                 msg.type = 'rtc:incoming';
-                                msg.hangup = () => {
-                                    socket.send(JSON.stringify({
-                                        action: 'rtc',
-                                        uid: msg.sender,
-                                        content: { hungup: this.user.user_id },
-                                        token: this.session.accessToken.jwtToken
-                                    }));
-                                    
-                                    delete __receiver_ringing[msg.sender];
-                                }
+                                msg.hangup = (() => {
+                                    if (__peerConnection[msg.sender]) {
+                                        closeRTC.bind(this)({ recipient: msg.sender });
+                                    }
+                                    else if (__receiver_ringing[msg.sender]) {
+                                        delete __receiver_ringing[msg.sender];
+                                        socket.send(JSON.stringify({
+                                            action: 'rtc',
+                                            uid: msg.sender,
+                                            content: { hungup: this.user.user_id },
+                                            token: this.session.accessToken.jwtToken
+                                        }));
+                                    }
+                                }).bind(this);
 
                                 cb(msg);
                             }
