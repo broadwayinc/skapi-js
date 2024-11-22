@@ -40,10 +40,11 @@ export type RTCResolved = {
 
 export type WebSocketMessage = {
     type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' | 'reconnect' | 'rtc:incoming' | 'rtc:closed';
-    message: any | ((params: RTCReceiverParams, callback: RTCCallback) => Promise<RTCResolved>);
+    message?: any;
+    connectRTC?: (params: RTCReceiverParams, callback: RTCCallback) => Promise<RTCResolved>;
+    hangup?: () => void; // Reject incoming RTC connection.
     sender?: string; // user_id of the sender
     sender_cid?: string; // scid of the sender
-    hangup?: () => void; // Reject incoming RTC connection.
     sender_rid?: string; // group of the sender
 }
 
