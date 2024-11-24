@@ -460,10 +460,21 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
 
     let is_reference_fetch = '';
     let ref_user = '';
-
-    if (query?.record_id) {
+    if (query?.unique_id) {
+        let outputObj: Record<string, string> = { unique_id: query.unique_id };
+        is_reference_fetch = query.unique_id;
+        if ((query as any)?.service) {
+            outputObj.service = (query as any).service;
+        }
+        query = outputObj;
+        if (this.__private_access_key[query.unique_id]) {
+            query.private_key = this.__private_access_key[query.unique_id];
+        }
+    }
+    else if (query?.record_id) {
         validator.specialChars(query.record_id, 'record_id', false, false);
         let outputObj: Record<string, string> = { record_id: query.record_id };
+        is_reference_fetch = query.record_id;
         if ((query as any)?.service) {
             outputObj.service = (query as any).service;
         }
@@ -472,7 +483,6 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
             query.private_key = this.__private_access_key[query.record_id];
         }
     }
-
     else {
         const struct = {
             table: {
@@ -704,6 +714,7 @@ export async function postRecord(
         }
     }
     let _config = validator.Params(config || {}, {
+        unique_id: 'string',
         record_id: ['string', () => {
             if (!config.table || !config.table.name) {
                 throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
@@ -750,6 +761,7 @@ export async function postRecord(
             }
         },
         reference: {
+            unique_id: 'string',
             record_id: v => {
                 validator.specialChars(v, '"reference.record_id"', false, false);
                 if (this.__private_access_key[v]) {

@@ -50,6 +50,7 @@ export type WebSocketMessage = {
 export type RealtimeCallback = (rt: WebSocketMessage) => void;
 
 export type GetRecordQuery = {
+    unique_id?: string; // When unique_id is given, it will update the record with the given unique_id. If unique_id is not given, it will create a new record. Unique ID overrides record_id.
     record_id?: string;
 
     /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
@@ -82,6 +83,7 @@ export type GetRecordQuery = {
 }
 
 export type DelRecordQuery = {
+    unique_id?: string | string[]; // When unique_id is given, it will update the record with the given unique_id. If unique_id is not given, it will create a new record. Unique ID overrides record_id.
     record_id?: string | string[];
 
     /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
@@ -108,8 +110,9 @@ export type DelRecordQuery = {
 }
 
 export type PostRecordConfig = {
+    unique_id?: string; // When unique_id is given, it will update the record with the given unique_id. If unique_id is not given, it will create a new record. Unique ID overrides record_id.
     record_id?: string; // when record_id is given, it will update the record with the given record_id. If record_id is not given, it will create a new record.
-
+    
     readonly?: boolean; // When true, record cannot be updated or deleted.
 
     /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
@@ -156,6 +159,7 @@ export type BinaryFile = {
 
 export type RecordData = {
     service: string;
+    unique_id?: string;
     record_id: string;
     /** Uploader's user ID. */
     user_id: string;
