@@ -15,7 +15,7 @@ export type RTCReceiverParams = {
 
 export type RTCConnectorParams = {
     cid: string;
-    ice: string;
+    ice?: string;
     media?: {
         video: boolean;
         audio: boolean;
