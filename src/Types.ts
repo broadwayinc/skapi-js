@@ -50,7 +50,7 @@ export type WebSocketMessage = {
 export type RealtimeCallback = (rt: WebSocketMessage) => void;
 
 export type GetRecordQuery = {
-    unique_id?: string; // When unique_id is given, it will update the record with the given unique_id. If unique_id is not given, it will create a new record. Unique ID overrides record_id.
+    unique_id?: string; // When unique_id is given, it will fetch the record with the given unique_id. Unique ID overrides record_id.
     record_id?: string;
 
     /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
@@ -110,9 +110,8 @@ export type DelRecordQuery = {
 }
 
 export type PostRecordConfig = {
-    unique_id?: string; // When unique_id is given, it will update the record with the given unique_id. If unique_id is not given, it will create a new record. Unique ID overrides record_id.
     record_id?: string; // when record_id is given, it will update the record with the given record_id. If record_id is not given, it will create a new record.
-    
+    unique_id?: string; // You can set unique_id to the record with the given unique_id.
     readonly?: boolean; // When true, record cannot be updated or deleted.
 
     /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
@@ -128,6 +127,7 @@ export type PostRecordConfig = {
 
     /** If record ID string is given, "reference.record_id" will be set with default parameters. */
     reference?: {
+        unique_id?: string; // null removes reference. When unique_id is given, it will override record_id.
         record_id?: string; // null removes reference
         reference_limit?: number | null; // Default: null (Infinite)
         allow_multiple_reference?: boolean; // Default: true
