@@ -525,7 +525,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    closeRTC(params: { recipient?: string; closeAll?: boolean; }): Promise<void> {
+    closeRTC(params: { cid?: string; close_all?: boolean; }): Promise<void> {
         return closeRTC.bind(this)(params);
     }
 
@@ -605,7 +605,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{ user_id: string; connection_id: string }[]>> {
+    getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{ user_id: string; cid: string }[]>> {
         return getRealtimeUsers.bind(this)(params, fetchOptions);
     }
 

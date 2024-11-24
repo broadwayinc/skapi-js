@@ -85,44 +85,52 @@ export async function receiveIceCandidate(candidate: any, recipient: string) {
     }
 }
 
-export async function closeRTC(params: { recipient?: string; closeAll?: boolean }): Promise<void> {
+export async function closeRTC(params: { cid?: string; close_all?: boolean }): Promise<void> {
     validator.Params(params, {
-        recipient: v => validator.UserId(v),
+        cid: v => {
+            if (v && typeof v !== 'string') {
+                throw new SkapiError(`"cid" should be type: <string>.`, { code: 'INVALID_PARAMETER' });
+            }
+            if (v && v.slice(0, 4) !== 'cid:') {
+                throw new SkapiError(`"cid" should be a valid connection id.`, { code: 'INVALID_PARAMETER' });
+            }
+            return v;
+        },
         close: 'boolean'
     });
     let socket: WebSocket = await this.__socket;
-    let { recipient, closeAll = false } = params || {};
+    let { cid, close_all = false } = params || {};
 
-    if (!closeAll && !recipient) {
-        throw new SkapiError(`"recipient" is required.`, { code: 'INVALID_PARAMETER' });
+    if (!close_all && !cid) {
+        throw new SkapiError(`"cid" is required.`, { code: 'INVALID_PARAMETER' });
     }
 
-    let close = (recipient: string) => {
-        if (!recipient) {
-            throw new SkapiError(`"recipient" is required.`, { code: 'INVALID_PARAMETER' });
+    let close = (cid: string) => {
+        if (!cid) {
+            throw new SkapiError(`"cid" is required.`, { code: 'INVALID_PARAMETER' });
         }
 
-        delete __rtcSdpOfferBuffer[recipient];
-        delete __rtcCandidatesBuffer[recipient];
+        delete __rtcSdpOfferBuffer[cid];
+        delete __rtcCandidatesBuffer[cid];
 
         // Close all associated data channels
-        if (__dataChannel[recipient]) {
-            Object.values(__dataChannel[recipient]).forEach(channel => {
+        if (__dataChannel[cid]) {
+            Object.values(__dataChannel[cid]).forEach(channel => {
                 if (channel.readyState !== 'closed') {
                     channel.close();
                 }
             });
         }
 
-        delete __dataChannel[recipient];
+        delete __dataChannel[cid];
 
-        if (__peerConnection?.[recipient]) {
-            if (__peerConnection[recipient].connectionState !== 'closed') {
-                __peerConnection[recipient].close();
+        if (__peerConnection?.[cid]) {
+            if (__peerConnection[cid].connectionState !== 'closed') {
+                __peerConnection[cid].close();
 
                 socket.send(JSON.stringify({
                     action: 'rtc',
-                    uid: recipient,
+                    uid: cid,
                     content: { hungup: this.user.user_id },
                     token: this.session.accessToken.jwtToken
                 }));
@@ -130,33 +138,33 @@ export async function closeRTC(params: { recipient?: string; closeAll?: boolean 
 
             let msg = {
                 type: 'connectionstatechange',
-                target: __peerConnection[recipient],
+                target: __peerConnection[cid],
                 timestamp: new Date().toISOString(),
-                state: __peerConnection[recipient].connectionState,
-                iceState: __peerConnection[recipient].iceConnectionState,
-                signalingState: __peerConnection[recipient].signalingState
+                state: __peerConnection[cid].connectionState,
+                iceState: __peerConnection[cid].iceConnectionState,
+                signalingState: __peerConnection[cid].signalingState
             }
 
-            if (__rtcCallbacks[recipient]) {
-                __rtcCallbacks[recipient](msg);
+            if (__rtcCallbacks[cid]) {
+                __rtcCallbacks[cid](msg);
             }
 
             this.log('closeRTC', msg);
         }
 
-        delete __rtcCallbacks[recipient];
-        delete __receiver_ringing[recipient];
-        delete __caller_ringing[recipient];
-        delete __peerConnection[recipient];
+        delete __rtcCallbacks[cid];
+        delete __receiver_ringing[cid];
+        delete __caller_ringing[cid];
+        delete __peerConnection[cid];
     }
 
-    if (closeAll) {
+    if (close_all) {
         for (let key in __peerConnection) {
             close(key);
         }
     }
     else {
-        close(recipient);
+        close(cid);
     }
 }
 
@@ -173,10 +181,18 @@ export async function connectRTC(
     }
 
     params = validator.Params(params, {
-        recipient: validator.UserId,
+        cid: v=>{
+            if(typeof v !== 'string'){
+                throw new SkapiError(`"cid" should be type: <string>.`, { code: 'INVALID_PARAMETER' });
+            }
+            if(v.slice(0, 4) !== 'cid:') {
+                throw new SkapiError(`"cid" should be a valid connection id.`, { code: 'INVALID_PARAMETER' });
+            }
+            return v;
+        },
         ice: ['string', () => 'stun:stun.skapi.com:3468'],
-        mediaStream: v => v,
-        dataChannelSettings: ['text-chat', 'file-transfer', 'video-chat', 'voice-chat', 'gaming', {
+        media: v => v,
+        channels: ['text-chat', 'file-transfer', 'video-chat', 'voice-chat', 'gaming', {
             // negotiated: 'boolean',
             // id: 'number',
             ordered: 'boolean',
@@ -186,12 +202,12 @@ export async function connectRTC(
         }, () => {
             return [{ ordered: true, maxPacketLifeTime: 10, protocol: 'default' }]
         }]
-    }, ['recipient']);
+    }, ['cid']);
 
-    let { recipient, ice } = params;
-
-    if (!(params?.mediaStream instanceof MediaStream)) {
-        if (params?.mediaStream?.video || params?.mediaStream?.audio) {
+    let { cid, ice } = params;
+    
+    if (!(params?.media instanceof MediaStream)) {
+        if (params?.media?.video || params?.media?.audio) {
             // check if it is localhost or https
             if (location.hostname !== 'localhost' && location.protocol !== 'https:') {
                 throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
@@ -216,37 +232,37 @@ export async function connectRTC(
         ]
     };
 
-    if (!__peerConnection?.[recipient]) {
-        __peerConnection[recipient] = new RTCPeerConnection(configuration);
+    if (!__peerConnection?.[cid]) {
+        __peerConnection[cid] = new RTCPeerConnection(configuration);
     }
 
     // add media stream
-    if (params?.mediaStream) {
-        if (params?.mediaStream instanceof MediaStream || this.__mediaStream) {
-            this.__mediaStream = this.__mediaStream || params.mediaStream;
+    if (params?.media) {
+        if (params?.media instanceof MediaStream || this.__mediaStream) {
+            this.__mediaStream = this.__mediaStream || params.media;
         }
         else {
-            if (params?.mediaStream?.video || params?.mediaStream?.audio) {
+            if (params?.media?.video || params?.media?.audio) {
                 this.__mediaStream = await navigator.mediaDevices.getUserMedia({
-                    video: params?.mediaStream?.video,
-                    audio: params?.mediaStream?.audio
+                    video: params?.media?.video,
+                    audio: params?.media?.audio
                 });
             }
         }
         if (this.__mediaStream)
             this.__mediaStream.getTracks().forEach(track => {
-                __peerConnection[recipient].addTrack(track, this.__mediaStream);
+                __peerConnection[cid].addTrack(track, this.__mediaStream);
             });
     }
 
-    __rtcCallbacks[recipient] = callback;
+    __rtcCallbacks[cid] = callback;
 
-    if (!__dataChannel[recipient]) {
-        __dataChannel[recipient] = {};
+    if (!__dataChannel[cid]) {
+        __dataChannel[cid] = {};
     }
 
-    for (let i = 0; i < params.dataChannelSettings.length; i++) {
-        let options = params.dataChannelSettings[i];
+    for (let i = 0; i < params.channels.length; i++) {
+        let options = params.channels[i];
 
         if (typeof options === 'string') {
             switch (options) {
@@ -272,52 +288,52 @@ export async function connectRTC(
         }
 
         let protocol = options.protocol || 'default';
-        if (Object.keys(__dataChannel[recipient]).includes(protocol)) {
+        if (Object.keys(__dataChannel[cid]).includes(protocol)) {
             throw new SkapiError(`Data channel with the protocol "${protocol}" already exists.`, { code: 'INVALID_REQUEST' });
         }
 
-        let dataChannel = __peerConnection[recipient].createDataChannel(protocol, options);
-        __dataChannel[recipient][protocol] = dataChannel;
+        let dataChannel = __peerConnection[cid].createDataChannel(protocol, options);
+        __dataChannel[cid][protocol] = dataChannel;
     }
 
-    for (let key in __dataChannel[recipient]) {
-        let dataChannel = __dataChannel[recipient][key];
-        handleDataChannel.bind(this)(recipient, dataChannel);
+    for (let key in __dataChannel[cid]) {
+        let dataChannel = __dataChannel[cid][key];
+        handleDataChannel.bind(this)(cid, dataChannel);
     }
 
-    peerConnectionHandler.bind(this)(recipient, ['onnegotiationneeded']);
-    await sendOffer.bind(this)(recipient);
+    peerConnectionHandler.bind(this)(cid, ['onnegotiationneeded']);
+    await sendOffer.bind(this)(cid);
 
     return {
-        hangup: () => __caller_ringing[recipient] && __caller_ringing[recipient](false),
+        hangup: () => __caller_ringing[cid] && __caller_ringing[cid](false),
         connection: new Promise(resolve => {
-            __caller_ringing[recipient] = ((proceed: boolean) => {
-                this.log('receiver picked up the call', recipient);
+            __caller_ringing[cid] = ((proceed: boolean) => {
+                this.log('receiver picked up the call', cid);
                 // proceed
                 if (!proceed) {
-                    closeRTC.bind(this)({ recipient });
+                    closeRTC.bind(this)({ cid: cid });
                     return null;
                 }
 
-                __peerConnection[recipient].onnegotiationneeded = () => {
-                    this.log('onnegotiationneeded', `Sending offer to "${recipient}".`);
-                    sendOffer.bind(this)(recipient);
-                    if (__rtcCallbacks[recipient])
-                        __rtcCallbacks[recipient]({
+                __peerConnection[cid].onnegotiationneeded = () => {
+                    this.log('onnegotiationneeded', `Sending offer to "${cid}".`);
+                    sendOffer.bind(this)(cid);
+                    if (__rtcCallbacks[cid])
+                        __rtcCallbacks[cid]({
                             type: 'negotiationneeded',
-                            target: __peerConnection[recipient],
+                            target: __peerConnection[cid],
                             timestamp: new Date().toISOString(),
-                            signalingState: __peerConnection[recipient].signalingState,
-                            connectionState: __peerConnection[recipient].iceConnectionState,
-                            gatheringState: __peerConnection[recipient].iceGatheringState
+                            signalingState: __peerConnection[cid].signalingState,
+                            connectionState: __peerConnection[cid].iceConnectionState,
+                            gatheringState: __peerConnection[cid].iceGatheringState
                         });
                 };
 
                 resolve({
-                    target: __peerConnection[recipient],
-                    dataChannels: __dataChannel[recipient],
-                    hangup: () => closeRTC.bind(this)({ recipient }),
-                    mediaStream: this.__mediaStream
+                    target: __peerConnection[cid],
+                    channels: __dataChannel[cid],
+                    hangup: () => closeRTC.bind(this)({ cid: cid }),
+                    media: this.__mediaStream
                 })
             }).bind(this);
         })
@@ -329,7 +345,7 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
         params = params || {};
         params = extractFormData(params).data;
 
-        let sender = msg.sender;
+        let sender = msg.sender_cid;
         let socket: WebSocket = await this.__socket;
 
         if (!__receiver_ringing[sender]) {
@@ -340,8 +356,8 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
             throw new SkapiError(`Callback is required.`, { code: 'INVALID_PARAMETER' });
         }
 
-        if (!(params?.mediaStream instanceof MediaStream)) {
-            if (params?.mediaStream?.video || params?.mediaStream?.audio) {
+        if (!(params?.media instanceof MediaStream)) {
+            if (params?.media?.video || params?.media?.audio) {
                 // check if it is localhost or https
                 if (location.hostname !== 'localhost' && location.protocol !== 'https:') {
                     throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
@@ -359,15 +375,15 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
             });
         }
 
-        if (params?.mediaStream) {
-            if (params?.mediaStream instanceof MediaStream || this.__mediaStream) {
-                this.__mediaStream = this.__mediaStream || params.mediaStream;
+        if (params?.media) {
+            if (params?.media instanceof MediaStream || this.__mediaStream) {
+                this.__mediaStream = this.__mediaStream || params.media;
             }
             else {
-                if (params?.mediaStream?.video || params?.mediaStream?.audio)
+                if (params?.media?.video || params?.media?.audio)
                     this.__mediaStream = await navigator.mediaDevices.getUserMedia({
-                        video: params?.mediaStream?.video,
-                        audio: params?.mediaStream?.audio
+                        video: params?.media?.video,
+                        audio: params?.media?.audio
                     });
             }
             if (this.__mediaStream)
@@ -404,9 +420,9 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
 
         return {
             target: __peerConnection[sender],
-            dataChannels: __dataChannel[sender],
-            hangup: () => closeRTC.bind(this)({ recipient: sender }),
-            mediaStream: this.__mediaStream
+            channels: __dataChannel[sender],
+            hangup: () => closeRTC.bind(this)({ cid: sender }),
+            media: this.__mediaStream
         }
     }
 }
@@ -575,7 +591,7 @@ function peerConnectionHandler(key: string, skipKey: string[]) {
             // Clean up on disconnection
             if (state === 'disconnected' || state === 'failed' || state === 'closed') {
                 // Close all associated data channels
-                closeRTC.bind(this)({ recipient: key });
+                closeRTC.bind(this)({ cid: key });
             }
         }
     };
@@ -634,7 +650,7 @@ function handleDataChannel(key: string, dataChannel: RTCDataChannel, skipKey?: s
             if (__dataChannel[key]) {
                 delete __dataChannel[key][dataChannel.label];
                 if (Object.keys(__dataChannel[key]).length === 0) {
-                    closeRTC.bind(this)({ recipient: key });
+                    closeRTC.bind(this)({ cid: key });
                 }
             }
         },

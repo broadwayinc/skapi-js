@@ -57,37 +57,37 @@
     <h1>Connect P2P</h1>
 
     <form onsubmit="callRTC(event)" id="el_form_rtcSettings">
-        <input type="text" placeholder='User ID' name="recipient" id="el_input_rtcTarget">
+        <input type="text" placeholder='User ID' name="cid" id="el_input_rtcTarget">
         <input type="submit" value="Connect">
         <button type="button" id="el_bt_disconnect" onclick="rtcConnection ? rtcConnection.hangup() : null"
             disabled>Disconnect</button>
         <br><br>
         <label>
             Audio
-            <input type="checkbox" name="mediaStream[audio]">
+            <input type="checkbox" name="media[audio]">
         </label><br>
         <label>
             Video
-            <input type="checkbox" name="mediaStream[video]">
+            <input type="checkbox" name="media[video]">
         </label>
         <br><br>
         Data Channel Settings:
         <br><br>
         <label>
             - Ordered
-            <input type="checkbox" name="dataChannelSettings[0][ordered]" checked>
+            <input type="checkbox" name="channels[0][ordered]" checked>
         </label>
         <br>
         <label>
             - MaxPacketLifeTime&nbsp;
-            <input type="number" name="dataChannelSettings[0][maxPacketLifeTime]" value="10">
+            <input type="number" name="channels[0][maxPacketLifeTime]" value="10">
         </label>
     </form>
 
     <br>
 
     <form id='el_form_sendRTCMessage'
-        onsubmit="event.preventDefault(); rtcConnection.dataChannels.default.send(el_input_rtcMessage.value)">
+        onsubmit="event.preventDefault(); rtcConnection.channels.default.send(el_input_rtcMessage.value)">
         <input type="text" id='el_input_rtcMessage' placeholder='Send RTC Message' name="message" disabled>
         <input type="submit" value="Send" disabled>
     </form>
@@ -131,16 +131,16 @@
 
             async function answerRTC() {
                 let params = {
-                    mediaStream: {
-                        audio: document.querySelector('input[name="mediaStream[audio]"]').checked,
-                        video: document.querySelector('input[name="mediaStream[video]"]').checked
+                    media: {
+                        audio: document.querySelector('input[name="media[audio]"]').checked,
+                        video: document.querySelector('input[name="media[video]"]').checked
                     }
                 }
 
                 rtcConnection = await receiver.connectRTC(params, RTCCallback);
                 console.log(rtcConnection);
-                if (rtcConnection.mediaStream) {
-                    document.getElementById('local').srcObject = rtcConnection.mediaStream;
+                if (rtcConnection.media) {
+                    document.getElementById('local').srcObject = rtcConnection.media;
                 }
             }
             
@@ -151,8 +151,8 @@
                             .then(rtc => {
                                 console.log(rtc);
                                 rtcConnection = rtc;
-                                if(rtc.mediaStream) {
-                                    document.getElementById("local").srcObject = rtc.mediaStream;
+                                if(rtc.media) {
+                                    document.getElementById("local").srcObject = rtc.media;
                                 }})
                     '>Accept</button>
                     <button onclick="receiver.hangup();connected(false)">Reject</button>
@@ -236,8 +236,8 @@
         if (!rtcConnection) {
             alert('Call rejected.');
         }
-        if (rtcConnection.mediaStream) {
-            document.getElementById('local').srcObject = rtcConnection.mediaStream;
+        if (rtcConnection.media) {
+            document.getElementById('local').srcObject = rtcConnection.media;
         }
     }
 
