@@ -102,7 +102,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                     type,
                     message: data?.['#rtc'] || data?.['#message'] || data?.['#private'] || data?.['#notice'] || data?.['#error'] || null,
                     sender: !!data['#user_id'] ? data['#user_id'] : null,
-                    sender_cid: !!data?.['#scid'] ? 'scid:' + data['#scid'] : null,
+                    sender_cid: !!data?.['#scid'] ? "cid:" + data['#scid'] : null,
                     sender_rid: !!data?.['#srid'] ? data['#srid'] : null
                 };
 
@@ -144,40 +144,40 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                         let rtc = msg.message;
                         if (rtc.hungup) {
                             // otherside has hung up the call
-                            if (__caller_ringing[rtc.hungup]) {
-                                __caller_ringing[rtc.hungup](false);
-                                delete __caller_ringing[rtc.hungup];
+                            if (__caller_ringing[msg.sender_cid]) {
+                                __caller_ringing[msg.sender_cid](false);
+                                delete __caller_ringing[msg.sender_cid];
                             }
-                            if (__receiver_ringing[rtc.hungup]) {
-                                delete __receiver_ringing[rtc.hungup];
+                            if (__receiver_ringing[msg.sender_cid]) {
+                                delete __receiver_ringing[msg.sender_cid];
                             }
-                            if (__peerConnection?.[msg.sender]) {
-                                closeRTC.bind(this)({ recipient: rtc.hungup });
+                            if (__peerConnection?.[msg.sender_cid]) {
+                                closeRTC.bind(this)({ cid: msg.sender_cid });
                             }
                             msg.type = 'rtc:closed';
                             cb(msg);
                             return;
                         }
                         if (rtc.candidate) {
-                            receiveIceCandidate.bind(this)(rtc.candidate, msg.sender);
+                            receiveIceCandidate.bind(this)(rtc.candidate, msg.sender_cid);
                         }
                         if (rtc.sdpoffer) {
-                            answerSdpOffer.bind(this)(rtc.sdpoffer, msg.sender);
-                            if (!__receiver_ringing[msg.sender]) {
-                                __receiver_ringing[msg.sender] = msg.sender;
+                            answerSdpOffer.bind(this)(rtc.sdpoffer, msg.sender_cid);
+                            if (!__receiver_ringing[msg.sender_cid]) {
+                                __receiver_ringing[msg.sender_cid] = msg.sender_cid;
                                 delete msg.message;
 
                                 msg.connectRTC = respondRTC.bind(this)(msg);
                                 msg.type = 'rtc:incoming';
                                 msg.hangup = (() => {
-                                    if (__peerConnection[msg.sender]) {
-                                        closeRTC.bind(this)({ recipient: msg.sender });
+                                    if (__peerConnection[msg.sender_cid]) {
+                                        closeRTC.bind(this)({ cid: msg.sender_cid });
                                     }
-                                    else if (__receiver_ringing[msg.sender]) {
-                                        delete __receiver_ringing[msg.sender];
+                                    else if (__receiver_ringing[msg.sender_cid]) {
+                                        delete __receiver_ringing[msg.sender_cid];
                                         socket.send(JSON.stringify({
                                             action: 'rtc',
-                                            uid: msg.sender,
+                                            uid: msg.sender_cid,
                                             content: { hungup: this.user.user_id },
                                             token: this.session.accessToken.jwtToken
                                         }));
@@ -189,16 +189,16 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
                         }
                         if (rtc.pickup) {
                             // receiver has answered the call
-                            if (__caller_ringing[rtc.pickup]) {
-                                __caller_ringing[rtc.pickup](true);
-                                delete __caller_ringing[rtc.pickup];
+                            if (__caller_ringing[msg.sender_cid]) {
+                                __caller_ringing[msg.sender_cid](true);
+                                delete __caller_ringing[msg.sender_cid];
                             }
                         }
                         if (rtc.sdpanswer) {
-                            if (__peerConnection[msg.sender]) {
+                            if (__peerConnection[msg.sender_cid]) {
                                 // receive answer from the receiver
-                                if (__peerConnection[msg.sender].signalingState === 'have-local-offer') {
-                                    await __peerConnection[msg.sender].setRemoteDescription(new RTCSessionDescription(rtc.sdpanswer));
+                                if (__peerConnection[msg.sender_cid].signalingState === 'have-local-offer') {
+                                    await __peerConnection[msg.sender_cid].setRemoteDescription(new RTCSessionDescription(rtc.sdpanswer));
                                 }
                                 else {
                                     throw new SkapiError(`Invalid signaling state.`, { code: 'INVALID_REQUEST' });
@@ -236,7 +236,7 @@ export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSo
 
 export async function closeRealtime(): Promise<void> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
-    closeRTC.bind(this)({ closeAll: true });
+    closeRTC.bind(this)({ close_all: true });
     if (__keepAliveInterval) {
         clearInterval(__keepAliveInterval);
         __keepAliveInterval = null;
@@ -327,7 +327,7 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
     return { type: 'success', message: group ? `Joined realtime message group: "${group}".` : 'Left realtime message group.' }
 }
 
-export async function getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{ user_id: string; connection_id: string }[]>> {
+export async function getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{ user_id: string; cid: string }[]>> {
     params = validator.Params(
         params,
         {
@@ -367,7 +367,7 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
 
         return {
             user_id,
-            connection_id: v.cid
+            cid: v.cid
         }
     });
 

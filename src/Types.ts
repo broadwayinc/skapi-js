@@ -7,20 +7,20 @@ export type RTCCallback = (e: {
 
 export type RTCReceiverParams = {
     ice?: string;
-    mediaStream?: {
+    media?: {
         video: boolean;
         audio: boolean;
     } | MediaStream;
 }
 
 export type RTCConnectorParams = {
-    recipient: string;
+    cid: string;
     ice: string;
-    mediaStream?: {
+    media?: {
         video: boolean;
         audio: boolean;
     } | MediaStream;
-    dataChannelSettings?: Array<RTCDataChannelInit | 'text-chat' | 'file-transfer' | 'video-chat' | 'voice-chat' | 'gaming'>;
+    channels?: Array<RTCDataChannelInit | 'text-chat' | 'file-transfer' | 'video-chat' | 'voice-chat' | 'gaming'>;
 }
 
 export type RTCConnector = {
@@ -30,11 +30,11 @@ export type RTCConnector = {
 
 export type RTCResolved = {
     target: RTCPeerConnection;
-    dataChannels: {
+    channels: {
         [protocol: string]: RTCDataChannel
     };
     hangup: () => void;
-    mediaStream: MediaStream;
+    media: MediaStream;
 }
 
 export type WebSocketMessage = {
