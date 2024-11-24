@@ -748,7 +748,7 @@ export async function postRecord(
                 }
 
                 if (typeof v === 'number') {
-                    if (!isAdmin && this.user.access_group < v) {
+                    if (!isAdmin && this.user.access_group < v && !(config.reference as any).record_id) {
                         throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
                     }
                 }
