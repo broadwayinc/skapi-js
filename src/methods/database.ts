@@ -42,14 +42,19 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
 
     const keys = {
         'ip': (r: string) => {
-            if (r.slice(-1) === 'R') {
+            let split_ip = r.split('#');
+            let ip = split_ip[0];
+            if(split_ip.length > 1) {
+                output.unique_id = split_ip[1];
+            }
+            if (ip.slice(-1) === 'R') {
                 output.readonly = true;
-                r = r.slice(0, -1);
+                ip = ip.slice(0, -1);
             }
             else {
                 output.readonly = false;
             }
-            output.ip = r;
+            output.ip = ip;
         },
         'rec': (r: string) => {
             if (!r) return;

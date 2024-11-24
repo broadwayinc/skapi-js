@@ -1164,7 +1164,7 @@ export async function getUsers(
         throw new SkapiError('Conditions does not apply on range search.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (['user_id', 'phone_number', 'email'].includes(params.searchFor) && (params.condition !== '=' || params.range)) {
+    if (params.searchFor === 'user_id' && (params.condition !== '=' || params.range)) {
         throw new SkapiError(`Conditions are not allowed on "${params.searchFor}"`, { code: 'INVALID_PARAMETER' });
     }
 
