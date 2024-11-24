@@ -116,5 +116,5 @@ deploy.py
 test.js
 test.html
 package-lock.json
-sandbox/srvc.js
+sandbox
 sandbox_deploy.py
