@@ -453,7 +453,6 @@ async function sendIceCandidate(event, recipient) {
         throw new SkapiError('Access token is required.', { code: 'INVALID_PARAMETER' });
     }
     this.log('sendIceCandidate to:', recipient);
-    validator.UserId(recipient);
 
     let socket: WebSocket = await this.__socket;
 
