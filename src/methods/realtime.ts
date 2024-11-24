@@ -14,6 +14,7 @@ let __roomList: {
 
 let __current_socket_room: string;
 let __keepAliveInterval = null;
+let __cid: {[user_id:string]:string} = {};
 
 async function prepareWebsocket() {
     // Connect to the WebSocket server
