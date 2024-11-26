@@ -68,7 +68,14 @@ export type GetRecordQuery = {
         subscription?: string;
     } | string;
 
-    reference?: string; // Referenced record ID. If user ID is given, it will fetch records that are uploaded by the user.
+    reference?: string | {
+        /** Referenced record ID. If user ID is given, it will fetch records that are uploaded by the user. */
+        record_id?: string;
+        /** Referenced record unique ID. */
+        unique_id?: string;
+        /** User id */
+        user_id?: string;
+    }; // Referenced record ID. If user ID is given, it will fetch records that are uploaded by the user.
 
     /** Index condition and range cannot be used simultaneously.*/
     index?: {
