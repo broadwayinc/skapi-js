@@ -83,7 +83,7 @@ export type GetRecordQuery = {
 }
 
 export type DelRecordQuery = {
-    unique_id?: string | string[]; // When unique_id is given, it will update the record with the given unique_id. If unique_id is not given, it will create a new record. Unique ID overrides record_id.
+    unique_id?: string | string[];
     record_id?: string | string[];
 
     /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
