@@ -152,6 +152,7 @@ export type PostRecordConfig = {
     tags?: string[];
 
     remove_bin?: BinaryFile[] | string[]; // Removes bin data from the record.
+    progress?: ProgressCallback; // Callback for database request progress. Useful when building progress bar.
 }
 
 export type BinaryFile = {
@@ -165,9 +166,8 @@ export type BinaryFile = {
 }
 
 export type RecordData = {
-    service: string;
-    unique_id?: string;
     record_id: string;
+    unique_id?: string;
     /** Uploader's user ID. */
     user_id: string;
     updated: number;
