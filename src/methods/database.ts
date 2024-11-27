@@ -460,18 +460,11 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
 
     let is_reference_fetch = '';
     let ref_user = '';
-    if (query?.unique_id) {
-        let outputObj: Record<string, string> = { unique_id: query.unique_id };
-        is_reference_fetch = query.unique_id;
-        if ((query as any)?.service) {
-            outputObj.service = (query as any).service;
+
+    if (query?.record_id) {
+        if(typeof query.record_id !== 'string') {
+            throw new SkapiError('"record_id" should be type: string.', { code: 'INVALID_PARAMETER' });
         }
-        query = outputObj;
-        if (this.__private_access_key[query.unique_id]) {
-            query.private_key = this.__private_access_key[query.unique_id];
-        }
-    }
-    else if (query?.record_id) {
         validator.specialChars(query.record_id, 'record_id', false, false);
         let outputObj: Record<string, string> = { record_id: query.record_id };
         is_reference_fetch = query.record_id;
@@ -483,15 +476,21 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
             query.private_key = this.__private_access_key[query.record_id];
         }
     }
-    else {
-        if (typeof query?.reference === 'string') {
-            try {
-                (query.reference as any) = {
-                    user_id: validator.UserId(query.reference)
-                }
-            }
-            catch (err) { }
+    else if (query?.unique_id) {
+        if(typeof query.unique_id !== 'string') {
+            throw new SkapiError('"unique_id" should be type: string.', { code: 'INVALID_PARAMETER' });
         }
+        let outputObj: Record<string, string> = { unique_id: query.unique_id };
+        is_reference_fetch = query.unique_id;
+        if ((query as any)?.service) {
+            outputObj.service = (query as any).service;
+        }
+        query = outputObj;
+        if (this.__private_access_key[query.unique_id]) {
+            query.private_key = this.__private_access_key[query.unique_id];
+        }
+    }
+    else {
         const struct = {
             table: {
                 name: [v => {
@@ -557,20 +556,18 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                     return v;
                 }
                 if (typeof v === 'string') {
-                    // try {
-                    //     ref_user = validator.UserId(v);
-                    // }
-                    // catch (err) {
-                    //     // reference is record id
-                    //     validator.specialChars(v, 'reference', false, false);
-                    //     is_reference_fetch = v;
-                    //     if (this.__private_access_key[is_reference_fetch]) {
-                    //         query.private_key = this.__private_access_key[is_reference_fetch];
-                    //     }
-                    // }
-
-                    // is_reference_fetch = v;
-                    return v;
+                    try {
+                        validator.UserId(v);
+                        return {
+                            user_id: v
+                        }
+                    }
+                    catch (err) {
+                        if (this.__private_access_key[v]) {
+                            query.private_key = this.__private_access_key[v];
+                        }
+                        return v;
+                    }
                 }
                 else if (typeof v === 'object') {
                     return validator.Params(v, {
@@ -578,13 +575,30 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                             if (v === null || v === undefined) {
                                 return v;
                             }
+                            if(typeof v !== 'string') {
+                                throw new SkapiError('"reference.record_id" should be type: string.', { code: 'INVALID_PARAMETER' });
+                            }
+
                             validator.specialChars(v, 'reference.record_id', false, false);
                             if (this.__private_access_key[v]) {
                                 query.private_key = this.__private_access_key[v];
                             }
                             return v;
                         },
-                        unique_id: 'string',
+                        unique_id: v => {
+                            if (v === null || v === undefined) {
+                                return v;
+                            }
+                            if (typeof v === 'string') {
+                                if (this.__private_access_key[v]) {
+                                    query.private_key = this.__private_access_key[v];
+                                }
+                                return v;
+                            }
+                            else {
+                                throw new SkapiError('"reference.unique_id" should be type: string.', { code: 'INVALID_PARAMETER' });
+                            }
+                        },
                         user_id: validator.UserId,
                     });
                 }
@@ -734,13 +748,16 @@ export async function postRecord(
 
     if (typeof config.reference === 'string') {
         try {
-            validator.specialChars(config.reference, '"reference"', false, false);
-            config.reference = {
-                record_id: config.reference
-            }
-        } catch (err) {
-            (config.reference as any) = {
-                unique_id: config.reference
+            validator.UserId(config.reference, '"reference"');
+            throw new SkapiError('Reference should be either record ID or unique ID.', { code: 'INVALID_PARAMETER' });
+        }
+        catch (err) {
+            try {
+                validator.specialChars(config.reference, '"reference"', false, false);
+                config.reference = {
+                    record_id: config.reference
+                }
+            } catch (err) {
             }
         }
     }
@@ -1148,9 +1165,31 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
     let ref_user = '';
     let is_reference_fetch = '';
 
-    if (query?.record_id) {
+    if (query?.record_id || query?.unique_id) {
         return await request.bind(this)('del-records', {
             service: service,
+            unique_id: (id => {
+                if (typeof id === 'string') {
+                    return [id];
+                }
+
+                if (!Array.isArray(id)) {
+                    throw new SkapiError('"unique_id" should be type: <string | string[]>', { code: 'INVALID_PARAMETER' });
+                }
+
+                if ((id as string[]).length > 100) {
+                    throw new SkapiError('"record_id" should not exceed 100 items.', { code: 'INVALID_PARAMETER' });
+                }
+
+                id.forEach(v => {
+                    if (typeof v !== 'string') {
+                        throw new SkapiError('"unique_id" should be type: <string | string[]>', { code: 'INVALID_PARAMETER' });
+                    }
+                });
+
+                return id;
+
+            })(query.record_id),
             record_id: (id => {
                 if (typeof id === 'string') {
                     return [id];
@@ -1243,19 +1282,50 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
                 }
                 if (typeof v === 'string') {
                     try {
-                        ref_user = validator.UserId(v);
-                    }
-                    catch (err) {
-                        // reference is record id
-                        validator.specialChars(v, 'reference', false, false);
-                        is_reference_fetch = v;
-                        if (this.__private_access_key[is_reference_fetch]) {
-                            query.private_key = this.__private_access_key[is_reference_fetch];
+                        validator.UserId(v);
+                        return {
+                            user_id: v
                         }
                     }
+                    catch (err) {
+                        if (this.__private_access_key[v]) {
+                            query.private_key = this.__private_access_key[v];
+                        }
+                        return v;
+                    }
+                }
+                else if (typeof v === 'object') {
+                    return validator.Params(v, {
+                        record_id: v => {
+                            if (v === null || v === undefined) {
+                                return v;
+                            }
+                            if(typeof v !== 'string') {
+                                throw new SkapiError('"reference.record_id" should be type: string.', { code: 'INVALID_PARAMETER' });
+                            }
 
-                    is_reference_fetch = v;
-                    return v;
+                            validator.specialChars(v, 'reference.record_id', false, false);
+                            if (this.__private_access_key[v]) {
+                                query.private_key = this.__private_access_key[v];
+                            }
+                            return v;
+                        },
+                        unique_id: v => {
+                            if (v === null || v === undefined) {
+                                return v;
+                            }
+                            if (typeof v === 'string') {
+                                if (this.__private_access_key[v]) {
+                                    query.private_key = this.__private_access_key[v];
+                                }
+                                return v;
+                            }
+                            else {
+                                throw new SkapiError('"reference.unique_id" should be type: string.', { code: 'INVALID_PARAMETER' });
+                            }
+                        },
+                        user_id: validator.UserId,
+                    });
                 }
                 else {
                     throw new SkapiError('"reference" should be type: string.', { code: 'INVALID_PARAMETER' });
