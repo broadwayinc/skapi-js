@@ -1286,6 +1286,9 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
                 if (typeof v === 'string') {
                     try {
                         validator.UserId(v);
+                        if(!isAdmin && v !== this.__user.user_id) {
+                            throw new SkapiError('User has no access', { code: 'INVALID_REQUEST' });
+                        }
                         return {
                             user_id: v
                         }
