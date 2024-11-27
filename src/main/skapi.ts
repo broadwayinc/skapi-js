@@ -586,7 +586,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    consumeTicket(params: { ticket_id: string; [key: string]: any; }): Promise<any> {
+    consumeTicket(params: { ticket_id: string;[key: string]: any; }): Promise<any> {
         return consumeTicket.bind(this)(params);
     }
 
@@ -636,7 +636,7 @@ export default class Skapi {
 
     @formHandler()
     inviteUser(
-        form: UserAttributes & UserProfilePublicSettings & { email: string; },
+        form: { email: string; } & UserAttributes & UserProfilePublicSettings,
         options?: {
             confirmation_url?: string;
             email_subscription?: boolean;
@@ -647,7 +647,7 @@ export default class Skapi {
 
     @formHandler()
     createAccount(
-        form: UserAttributes & UserProfilePublicSettings & { email: string; password: string; },
+        form: { email: string; password: string; } & UserAttributes & UserProfilePublicSettings
     ): Promise<UserProfile & PublicUser & { email_admin: string; approved: string; log: number; username: string; }> {
         return createAccount.bind(this)(form);
     }
@@ -930,7 +930,7 @@ export default class Skapi {
 
     @formHandler({ preventMultipleCalls: true })
     signup(
-        form: Form<UserAttributes & { email: String, password: String; username?: string; }>,
+        form: Form<{ email: String, password: String; username?: string; } & UserAttributes>,
         option?: {
             /**
              * When true, the service will send out confirmation E-Mail.
