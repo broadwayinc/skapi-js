@@ -586,7 +586,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    consumeTicket(params: { ticket_id: string; } & { [key: string]: any }): Promise<any> {
+    consumeTicket(params: { ticket_id: string; [key: string]: any; }): Promise<any> {
         return consumeTicket.bind(this)(params);
     }
 
@@ -787,13 +787,10 @@ export default class Skapi {
         number_of_records: string; // Number records tagged
     }>> { return getTags.bind(this)(query, fetchOptions); }
     @formHandler()
-    deleteRecords(params: DelRecordQuery & { private_key?: string; }): Promise<string> { return deleteRecords.bind(this)(params); }
+    deleteRecords(params: DelRecordQuery): Promise<string> { return deleteRecords.bind(this)(params); }
     @formHandler()
-    resendSignupConfirmation(
-        /** Redirect url on confirmation success. */
-        redirect: string
-    ): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
-        return resendSignupConfirmation.bind(this)(redirect);
+    resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
+        return resendSignupConfirmation.bind(this)();
     }
     @formHandler()
     recoverAccount(
@@ -952,7 +949,7 @@ export default class Skapi {
              * Automatically login to account after signup. Will not work if signup confirmation is required.
              */
             login?: boolean;
-        } & { progress?: ProgressCallback }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
+        }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
         return signup.bind(this)(form, option);
     }
 
