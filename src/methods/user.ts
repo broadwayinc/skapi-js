@@ -432,24 +432,13 @@ export async function logout(): Promise<'SUCCESS: The user has been logged out.'
     return 'SUCCESS: The user has been logged out.';
 }
 
-export async function resendSignupConfirmation(
-    /** Redirect url on confirmation success. */
-    redirect: string
-): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
+export async function resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
     if (!this.__request_signup_confirmation) {
         throw new SkapiError('Least one login attempt is required.', { code: 'INVALID_REQUEST' });
     }
 
-    if (redirect) {
-        redirect = validator.Url(redirect);
-    }
-    else {
-        redirect = undefined;
-    }
-
     let resend = await request.bind(this)("confirm-signup", {
         username: this.__request_signup_confirmation,
-        redirect
     });
 
     return resend; // 'SUCCESS: Signup confirmation E-Mail has been sent.'
