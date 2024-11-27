@@ -993,7 +993,7 @@ export default class Skapi {
     @formHandler()
     postRecord(
         form: Form<Record<string, any>> | null | undefined,
-        config: PostRecordConfig & { progress?: ProgressCallback }
+        config: PostRecordConfig
     ): Promise<RecordData> { return postRecord.bind(this)(form, config); }
     @formHandler()
     getSubscriptions(

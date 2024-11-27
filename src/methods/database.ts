@@ -711,7 +711,7 @@ async function checkSchema(params) {
 
 export async function postRecord(
     form: Form<Record<string, any>> | null | undefined,
-    config: PostRecordConfig & { progress?: ProgressCallback; reference_private_key?: string; }
+    config: PostRecordConfig & { reference_private_key?: string; }
 ): Promise<RecordData> {
     let isAdmin = await checkAdmin.bind(this)();
     if (!config) {
