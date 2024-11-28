@@ -1187,7 +1187,7 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
 
                 return id;
 
-            })(query.record_id),
+            })(query.unique_id),
             record_id: (id => {
                 if (typeof id === 'string') {
                     return [id];
@@ -1203,7 +1203,7 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
 
                 return validator.specialChars(id, 'record_id', false, false);
 
-            })(query.unique_id),
+            })(query.record_id),
             reference: (v => {
                 if (v === null || v === undefined) {
                     return v;
