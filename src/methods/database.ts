@@ -623,7 +623,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                         throw new SkapiError(`Cannot do "index.range" on ${query.index.name}`, { code: 'INVALID_PARAMETER' });
                     }
 
-                    if (typeof query.index.value !== typeof v) {
+                    if ((typeof query.index.value) !== (typeof v)) {
                         throw new SkapiError('"index.range" type should match the type of "index.value".', { code: 'INVALID_PARAMETER' });
                     }
 
@@ -797,7 +797,13 @@ export async function postRecord(
                 throw new SkapiError(`"reference_limit" should be type: <number | null>`, { code: 'INVALID_PARAMETER' });
             },
             allow_multiple_reference: 'boolean',
-            can_remove_reference: 'boolean'
+            can_remove_reference: 'boolean',
+            index_restrictions: {
+                name: v => validator.specialChars(v, '"name" in "index_restrictions"', true, false),
+                value: ['string', 'number', 'boolean'],
+                condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne', () => '='],
+                range: ['string', 'number', 'boolean']
+            }
         },
         index: {
             name: ['$uploaded', '$updated', '$referenced_count', '$user_id', v => {
@@ -886,6 +892,25 @@ export async function postRecord(
         to_bin = extractedForm.files;
     }
 
+    if(_config?.reference?.index_restrictions) {
+        if(!Array.isArray(_config.reference.index_restrictions)) {
+            _config.reference.index_restrictions = [_config.reference.index_restrictions];
+        }
+        for(let i of _config.reference.index_restrictions) {
+            if(!i.hasOwnProperty('name')) {
+                throw new SkapiError('Index restriction "name" is required.', { code: 'INVALID_PARAMETER' });
+            }
+            if(i.hasOwnProperty('range')) {
+                if(!i.hasOwnProperty('value')) {
+                    throw new SkapiError('Index restriction "value" is required.', { code: 'INVALID_PARAMETER' });
+                }
+                if((typeof i.range) !== (typeof i.value)) {
+                    throw new SkapiError('Index restriction "range" type should match the type of "value".', { code: 'INVALID_PARAMETER' });
+                }
+            }
+        }
+    }
+    
     postData = Object.assign({ data: extractedForm.data }, _config);
 
     let fetchOptions: { [key: string]: any } = {};
