@@ -465,13 +465,6 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
     let ref_user = '';
 
     if (query?.unique_id || query?.record_id) {
-        let ref;
-        if (query.reference) {
-            ref = query.reference;
-            if (typeof ref !== 'string') {
-                throw new SkapiError('"reference" should be type: string.', { code: 'INVALID_PARAMETER' });
-            }
-        }
         if (query?.record_id) {
             if (typeof query.record_id !== 'string') {
                 throw new SkapiError('"record_id" should be type: string.', { code: 'INVALID_PARAMETER' });
@@ -498,9 +491,6 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
             }
             query = outputObj;
         }
-        if (ref) {
-            query.reference = ref;
-        }
     }
     else {
         const struct = {
@@ -523,9 +513,6 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                     }
 
                     if (typeof v === 'number') {
-                        if (!isAdmin && this.user.access_group < v && !(query.reference as any).record_id && !query.reference) {
-
-                        }
                         if (v > 99 || v < 0) {
                             throw new SkapiError('"table.access_group" value should be within a range of 0 ~ 99.', { code: 'INVALID_REQUEST' });
                         }
@@ -1167,6 +1154,9 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
         return await request.bind(this)('del-records', {
             service: service,
             unique_id: (id => {
+                if(!id) {
+                    return undefined
+                }
                 if (typeof id === 'string') {
                     return [id];
                 }
@@ -1189,6 +1179,9 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
 
             })(query.unique_id),
             record_id: (id => {
+                if(!id) {
+                    return undefined;
+                }
                 if (typeof id === 'string') {
                     return [id];
                 }
