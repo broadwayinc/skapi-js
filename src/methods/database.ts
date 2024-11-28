@@ -523,6 +523,9 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
                     }
 
                     if (typeof v === 'number') {
+                        if (!isAdmin && this.user.access_group < v && !(query.reference as any).record_id && !query.reference) {
+
+                        }
                         if (v > 99 || v < 0) {
                             throw new SkapiError('"table.access_group" value should be within a range of 0 ~ 99.', { code: 'INVALID_REQUEST' });
                         }
@@ -755,7 +758,7 @@ export async function postRecord(
                 }
 
                 if (typeof v === 'number') {
-                    if (!isAdmin && this.user.access_group < v && !(config.reference as any).record_id) {
+                    if (!isAdmin && this.user.access_group < v && !(config.reference as any).record_id && !(config.reference as any)?.record_id && !(config.reference as any)?.unique_id) {
                         throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
                     }
                 }
