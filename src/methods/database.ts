@@ -200,6 +200,9 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                 data = [];
             }
             output.data = data;
+        },
+        'idx_rst': (r: string) => {
+            output.reference.index_restrictions = r;
         }
     };
 
@@ -906,6 +909,9 @@ export async function postRecord(
                 }
                 if((typeof i.range) !== (typeof i.value)) {
                     throw new SkapiError('Index restriction "range" type should match the type of "value".', { code: 'INVALID_PARAMETER' });
+                }
+                if(i.condition && (i.condition !== 'eq' || i.condition !== '=')) {
+                    throw new SkapiError('Index restriction "condition" cannot be used with "range".', { code: 'INVALID_PARAMETER' });
                 }
             }
         }
