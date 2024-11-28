@@ -132,11 +132,13 @@ export type PostRecordConfig = {
         reference_limit?: number | null; // Default: null (Infinite)
         allow_multiple_reference?: boolean; // Default: true
         can_remove_reference?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
-        index_restriction?: {
-            /** Not allowed: White space, special characters. Allowed: Periods. */
-            name: string;
-            /** Not allowed: Periods, special characters. Allowed: White space. */
-            value: string | number | boolean;
+        index_restrictions?: {
+            /** Not allowed: White space, special characters. Allowed: Alphanumeric, Periods. */
+            name: string; // Allowed index name
+            /** Not allowed: Periods, special characters. Allowed: Alphanumeric, White space. */
+            value?: string | number | boolean; // Allowed index value
+            range?: string | number | boolean; // Allowed index range
+            condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!='; // Allowed index value condition
         }[]
     } | string;
 
