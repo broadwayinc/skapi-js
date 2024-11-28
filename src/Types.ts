@@ -131,7 +131,8 @@ export type PostRecordConfig = {
         record_id?: string; // null removes reference
         reference_limit?: number | null; // Default: null (Infinite)
         allow_multiple_reference?: boolean; // Default: true
-        can_remove_reference?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
+        can_remove_referenced?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
+        exclude_from_subscription_feed?: boolean; // When true, referenced record will be excluded in the subscription feed.
         index_restrictions?: {
             /** Not allowed: White space, special characters. Allowed: Alphanumeric, Periods. */
             name: string; // Allowed index name
@@ -184,7 +185,7 @@ export type RecordData = {
         reference_limit: number;
         allow_multiple_reference: boolean;
         referenced_count: number;
-        can_remove_reference: boolean;
+        can_remove_referenced: boolean;
     },
     index?: {
         name: string;
