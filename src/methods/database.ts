@@ -34,7 +34,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             reference_limit: null,
             allow_multiple_reference: true,
             referenced_count: 0,
-            can_remove_reference: false
+            can_remove_referenced: false
         },
         ip: '',
         bin: {}
@@ -187,8 +187,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             output.bin = binObj;
         },
         'prv_acs': (r: { [key: string]: string }) => {
-            if (r?.can_remove_reference) {
-                output.reference.can_remove_reference = r.can_remove_reference;
+            if (r?.can_remove_referenced) {
+                output.reference.can_remove_referenced = r.can_remove_referenced;
             }
         },
         'data': (r: any) => {
@@ -803,7 +803,7 @@ export async function postRecord(
                 throw new SkapiError(`"reference_limit" should be type: <number | null>`, { code: 'INVALID_PARAMETER' });
             },
             allow_multiple_reference: 'boolean',
-            can_remove_reference: 'boolean',
+            can_remove_referenced: 'boolean',
             index_restrictions: {
                 name: v => validator.specialChars(v, '"name" in "index_restrictions"', true, false),
                 value: ['string', 'number', 'boolean'],
@@ -1203,7 +1203,7 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
 
                 return validator.specialChars(id, 'record_id', false, false);
 
-            })(query.record_id),
+            })(query.unique_id),
             reference: (v => {
                 if (v === null || v === undefined) {
                     return v;
