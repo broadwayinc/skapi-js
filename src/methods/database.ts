@@ -1144,7 +1144,7 @@ export async function getTags(
     return res;
 }
 
-export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }): Promise<string> {
+export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }): Promise<DatabaseResponse<string> | string> {
     let isAdmin = await checkAdmin.bind(this)();
     let service = (query as any)?.service || this.service;
     let ref_user = '';
