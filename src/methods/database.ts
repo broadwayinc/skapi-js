@@ -745,7 +745,7 @@ export async function postRecord(
                 }
 
                 if (typeof v === 'number') {
-                    if (!isAdmin && this.user.access_group < v && !(config.reference as any).record_id && !(config.reference as any)?.record_id && !(config.reference as any)?.unique_id) {
+                    if (!isAdmin && this.user.access_group < v && !(config.reference as any).record_id && !(config.reference as any)?.unique_id) {
                         throw new SkapiError("User has no access", { code: 'INVALID_REQUEST' });
                     }
                 }
@@ -791,6 +791,7 @@ export async function postRecord(
             },
             allow_multiple_reference: 'boolean',
             can_remove_referenced: 'boolean',
+            only_allow_granted: 'boolean',
             index_restrictions: {
                 name: v => validator.specialChars(v, '"name" in "index_restrictions"', true, false),
                 value: ['string', 'number', 'boolean'],
