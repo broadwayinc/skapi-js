@@ -120,7 +120,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.188-beta.9';
+    private __version = '1.0.188-beta.10';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -408,7 +408,7 @@ export default class Skapi {
         this.__connection = (async (): Promise<Connection> => {
             let connection: Promise<Connection> = null;
             await this.record_endpoint;
-            
+
             if (!restore?.connection) {
                 // await for first connection
                 connection = this._updateConnection();
