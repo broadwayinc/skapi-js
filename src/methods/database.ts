@@ -135,10 +135,12 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             output.updated = r;
         },
         'acpt_mrf': (r: boolean) => {
-            output.reference.allow_multiple_reference = r;
+            // output.reference.allow_multiple_reference = r;
+            output.reference.prevent_multiple_referencing = !r;
         },
         'ref_limt': (r: number) => {
-            output.reference.reference_limit = r;
+            // output.reference.reference_limit = r;
+            output.referenc.referencing_limit = r;
         },
         'rfd': (r: number) => {
             output.reference.referenced_count = r;
@@ -188,7 +190,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         },
         'prv_acs': (r: { [key: string]: string }) => {
             if (r?.can_remove_referenced) {
-                output.reference.can_remove_referenced = r.can_remove_referenced;
+                // output.reference.can_remove_referenced = r.can_remove_referenced;
+                output.reference.can_remove_referencing = r.can_remove_referenced;
             }
             if (r?.only_allow_granted) {
                 output.reference.only_allow_granted = r.only_allow_granted;
@@ -716,6 +719,25 @@ export async function postRecord(
             }
         }
     }
+    let reference_limit_check = (v: number) => {
+        if (v === null) {
+            return null;
+        }
+
+        else if (typeof v === 'number') {
+            if (0 > v) {
+                throw new SkapiError(`"reference_limit" should be >= 0`, { code: 'INVALID_PARAMETER' });
+            }
+
+            if (v > 4503599627370546) {
+                throw new SkapiError(`"reference_limit" should be <= 4503599627370546`, { code: 'INVALID_PARAMETER' });
+            }
+
+            return v;
+        }
+
+        throw new SkapiError(`"reference_limit" should be type: <number | null>`, { code: 'INVALID_PARAMETER' });
+    }
     let _config = validator.Params(config || {}, {
         unique_id: 'string',
         record_id: ['string', () => {
@@ -776,27 +798,12 @@ export async function postRecord(
                 }
                 return v;
             },
-            reference_limit: (v: number) => {
-                if (v === null) {
-                    return null;
-                }
-
-                else if (typeof v === 'number') {
-                    if (0 > v) {
-                        throw new SkapiError(`"reference_limit" should be >= 0`, { code: 'INVALID_PARAMETER' });
-                    }
-
-                    if (v > 4503599627370546) {
-                        throw new SkapiError(`"reference_limit" should be <= 4503599627370546`, { code: 'INVALID_PARAMETER' });
-                    }
-
-                    return v;
-                }
-
-                throw new SkapiError(`"reference_limit" should be type: <number | null>`, { code: 'INVALID_PARAMETER' });
-            },
+            reference_limit: reference_limit_check,
+            referencing_limit: v => (config.reference as any).reference_limit = reference_limit_check(v),
             allow_multiple_reference: 'boolean',
+            prevent_multiple_referencing: v => (config.reference as any).allow_multiple_reference = !v,
             can_remove_referenced: 'boolean',
+            can_remove_referencing: v => (config.reference as any).can_remove_referenced = !!v,
             only_allow_granted: 'boolean',
             exclude_from_subscription_feed: 'boolean',
             index_restrictions: {
@@ -893,28 +900,28 @@ export async function postRecord(
         to_bin = extractedForm.files;
     }
 
-    if(_config?.reference?.index_restrictions) {
-        if(!Array.isArray(_config.reference.index_restrictions)) {
+    if (_config?.reference?.index_restrictions) {
+        if (!Array.isArray(_config.reference.index_restrictions)) {
             _config.reference.index_restrictions = [_config.reference.index_restrictions];
         }
-        for(let i of _config.reference.index_restrictions) {
-            if(!i.hasOwnProperty('name')) {
+        for (let i of _config.reference.index_restrictions) {
+            if (!i.hasOwnProperty('name')) {
                 throw new SkapiError('Index restriction "name" is required.', { code: 'INVALID_PARAMETER' });
             }
-            if(i.hasOwnProperty('range')) {
-                if(!i.hasOwnProperty('value')) {
+            if (i.hasOwnProperty('range')) {
+                if (!i.hasOwnProperty('value')) {
                     throw new SkapiError('Index restriction "value" is required.', { code: 'INVALID_PARAMETER' });
                 }
-                if((typeof i.range) !== (typeof i.value)) {
+                if ((typeof i.range) !== (typeof i.value)) {
                     throw new SkapiError('Index restriction "range" type should match the type of "value".', { code: 'INVALID_PARAMETER' });
                 }
-                if(i.condition && (i.condition !== 'eq' || i.condition !== '=')) {
+                if (i.condition && (i.condition !== 'eq' || i.condition !== '=')) {
                     throw new SkapiError('Index restriction "condition" cannot be used with "range".', { code: 'INVALID_PARAMETER' });
                 }
             }
         }
     }
-    
+
     postData = Object.assign({ data: extractedForm.data }, _config);
 
     let fetchOptions: { [key: string]: any } = {};
@@ -1162,7 +1169,7 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
         return await request.bind(this)('del-records', {
             service: service,
             unique_id: (id => {
-                if(!id) {
+                if (!id) {
                     return undefined
                 }
                 if (typeof id === 'string') {
@@ -1187,7 +1194,7 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
 
             })(query.unique_id),
             record_id: (id => {
-                if(!id) {
+                if (!id) {
                     return undefined;
                 }
                 if (typeof id === 'string') {
