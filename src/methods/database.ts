@@ -31,13 +31,13 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             access_group: 0
         },
         reference: {
-            // reference_limit: null,
-            referencing_limit: null,
-            // allow_multiple_reference: true,
-            prevent_multiple_referencing: false,
+            reference_limit: null,
+            // referencing_limit: null,
+            allow_multiple_reference: true,
+            // prevent_multiple_referencing: false,
             referenced_count: 0,
-            // can_remove_referenced: false
-            can_remove_referencing: false
+            can_remove_referenced: false
+            // can_remove_referencing: false
         },
         ip: '',
         bin: {}
@@ -138,12 +138,12 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             output.updated = r;
         },
         'acpt_mrf': (r: boolean) => {
-            // output.reference.allow_multiple_reference = r;
-            output.reference.prevent_multiple_referencing = !r;
+            output.reference.allow_multiple_reference = r;
+            // output.reference.prevent_multiple_referencing = !r;
         },
         'ref_limt': (r: number) => {
-            // output.reference.reference_limit = r;
-            output.referenc.referencing_limit = r;
+            output.reference.reference_limit = r;
+            // output.referenc.referencing_limit = r;
         },
         'rfd': (r: number) => {
             output.reference.referenced_count = r;
@@ -193,8 +193,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         },
         'prv_acs': (r: { [key: string]: string }) => {
             if (r?.can_remove_referenced) {
+                output.reference.can_remove_referenced = r.can_remove_referenced;
                 // output.reference.can_remove_referenced = r.can_remove_referenced;
-                output.reference.can_remove_referencing = r.can_remove_referenced;
             }
             if (r?.only_allow_granted) {
                 output.reference.only_allow_granted = r.only_allow_granted;
@@ -802,11 +802,11 @@ export async function postRecord(
                 return v;
             },
             reference_limit: reference_limit_check, // depricated
-            referencing_limit: v => (config.reference as any).reference_limit = reference_limit_check(v),
+            // referencing_limit: v => (config.reference as any).reference_limit = reference_limit_check(v),
             allow_multiple_reference: 'boolean', // depricated
-            prevent_multiple_referencing: v => (config.reference as any).allow_multiple_reference = !v,
+            // prevent_multiple_referencing: v => (config.reference as any).allow_multiple_reference = !v,
             can_remove_referenced: 'boolean', // depricated
-            can_remove_referencing: v => (config.reference as any).can_remove_referenced = !!v,
+            // can_remove_referencing: v => (config.reference as any).can_remove_referenced = !!v,
             only_allow_granted: 'boolean',
             exclude_from_subscription_feed: 'boolean',
             index_restrictions: {
