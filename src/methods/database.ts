@@ -190,6 +190,12 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             if (r?.can_remove_referenced) {
                 output.reference.can_remove_referenced = r.can_remove_referenced;
             }
+            if (r?.only_allow_granted) {
+                output.reference.only_allow_granted = r.only_allow_granted;
+            }
+            if (r?.exclude_from_subscription_feed) {
+                output.reference.exclude_from_subscription_feed = r.exclude_from_subscription_feed;
+            }
         },
         'data': (r: any) => {
             let data = r;
@@ -792,6 +798,7 @@ export async function postRecord(
             allow_multiple_reference: 'boolean',
             can_remove_referenced: 'boolean',
             only_allow_granted: 'boolean',
+            exclude_from_subscription_feed: 'boolean',
             index_restrictions: {
                 name: v => validator.specialChars(v, '"name" in "index_restrictions"', true, false),
                 value: ['string', 'number', 'boolean'],
