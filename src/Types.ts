@@ -129,12 +129,12 @@ export type PostRecordConfig = {
     reference?: {
         unique_id?: string; // null removes reference. When unique_id is given, it will override record_id.
         record_id?: string; // null removes reference
-        // reference_limit?: number | null; // Default: null (Infinite)
-        referencing_limit?: number | null; // Default: null (Infinite)
-        // allow_multiple_reference?: boolean; // Default: true
-        prevent_multiple_referencing?: boolean; // Default: false
-        // can_remove_referenced?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
-        can_remove_referencing?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
+        reference_limit?: number | null; // Default: null (Infinite)
+        // referencing_limit?: number | null; // Default: null (Infinite)
+        allow_multiple_reference?: boolean; // Default: true
+        // prevent_multiple_referencing?: boolean; // Default: false
+        can_remove_referenced?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
+        // can_remove_referencing?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
         exclude_from_subscription_feed?: boolean; // When true, referenced record will be excluded in the subscription feed.
         only_allow_granted?: boolean; // When true, only the user who has granted access to the record can reference this record.
         index_restrictions?: {
@@ -186,13 +186,13 @@ export type RecordData = {
     },
     reference: {
         record_id?: string;
-        // reference_limit: number;
-        referencing_limit: number;
-        // allow_multiple_reference: boolean;
-        prevent_multiple_referencing: boolean;
+        reference_limit: number;
+        // referencing_limit: number;
+        allow_multiple_reference: boolean;
+        // prevent_multiple_referencing: boolean;
         referenced_count: number;
-        // can_remove_referenced?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
-        can_remove_referencing?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
+        can_remove_referenced?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
+        // can_remove_referencing?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
         exclude_from_subscription_feed?: boolean; // When true, referenced record will be excluded in the subscription feed.
         only_allow_granted?: boolean; // When true, only the user who has granted access to the record can reference this record.
     },
