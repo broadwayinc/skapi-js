@@ -133,6 +133,7 @@ export type PostRecordConfig = {
         allow_multiple_reference?: boolean; // Default: true
         can_remove_referenced?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
         exclude_from_subscription_feed?: boolean; // When true, referenced record will be excluded in the subscription feed.
+        only_allow_granted?: boolean; // When true, only the user who has granted access to the record can reference this record.
         index_restrictions?: {
             /** Not allowed: White space, special characters. Allowed: Alphanumeric, Periods. */
             name: string; // Allowed index name
@@ -185,7 +186,9 @@ export type RecordData = {
         reference_limit: number;
         allow_multiple_reference: boolean;
         referenced_count: number;
-        can_remove_referenced: boolean;
+        can_remove_referenced?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
+        exclude_from_subscription_feed?: boolean; // When true, referenced record will be excluded in the subscription feed.
+        only_allow_granted?: boolean; // When true, only the user who has granted access to the record can reference this record.
     },
     index?: {
         name: string;
