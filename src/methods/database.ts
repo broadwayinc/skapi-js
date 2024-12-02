@@ -31,10 +31,13 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             access_group: 0
         },
         reference: {
-            reference_limit: null,
-            allow_multiple_reference: true,
+            // reference_limit: null,
+            referencing_limit: null,
+            // allow_multiple_reference: true,
+            prevent_multiple_referencing: false,
             referenced_count: 0,
-            can_remove_referenced: false
+            // can_remove_referenced: false
+            can_remove_referencing: false
         },
         ip: '',
         bin: {}
@@ -798,11 +801,11 @@ export async function postRecord(
                 }
                 return v;
             },
-            reference_limit: reference_limit_check,
+            reference_limit: reference_limit_check, // depricated
             referencing_limit: v => (config.reference as any).reference_limit = reference_limit_check(v),
-            allow_multiple_reference: 'boolean',
+            allow_multiple_reference: 'boolean', // depricated
             prevent_multiple_referencing: v => (config.reference as any).allow_multiple_reference = !v,
-            can_remove_referenced: 'boolean',
+            can_remove_referenced: 'boolean', // depricated
             can_remove_referencing: v => (config.reference as any).can_remove_referenced = !!v,
             only_allow_granted: 'boolean',
             exclude_from_subscription_feed: 'boolean',
