@@ -407,7 +407,8 @@ export default class Skapi {
         // connects to server
         this.__connection = (async (): Promise<Connection> => {
             let connection: Promise<Connection> = null;
-
+            await this.record_endpoint;
+            
             if (!restore?.connection) {
                 // await for first connection
                 connection = this._updateConnection();
@@ -787,7 +788,7 @@ export default class Skapi {
         number_of_records: string; // Number records tagged
     }>> { return getTags.bind(this)(query, fetchOptions); }
     @formHandler()
-    deleteRecords(params: DelRecordQuery): Promise<string> { return deleteRecords.bind(this)(params); }
+    deleteRecords(params: DelRecordQuery): Promise<string | DatabaseResponse<string>> { return deleteRecords.bind(this)(params); }
     @formHandler()
     resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
         return resendSignupConfirmation.bind(this)();
