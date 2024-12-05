@@ -59,16 +59,19 @@ export type GetRecordQuery = {
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized';
-        // subscription?: {
-        //     user_id: string;
-        //     /** Number range: 0 ~ 99 */
-        //     group: number;
-        // };
         /** User ID of subscription */
-        subscription?: string;
+        subscription?: string | {
+            user_id: string;
+            /** Number range: 0 ~ 99 */
+            group: number;
+        };
     } | string;
 
-    reference?: string; // Referenced record ID. If user ID is given, it will fetch records that are uploaded by the user.
+    reference?: string | {
+        record_id?: string;
+        unique_id?: string;
+        user_id?: string;
+    }; // Referenced record ID. If user ID is given, it will fetch records that are uploaded by the user.
 
     /** Index condition and range cannot be used simultaneously.*/
     index?: {
@@ -80,6 +83,58 @@ export type GetRecordQuery = {
         range?: string | number | boolean;
     };
     tag?: string;
+}
+
+export type PostRecordConfig = {
+    record_id?: string; // when record_id is given, it will update the record with the given record_id. If record_id is not given, it will create a new record.
+    unique_id?: string; // You can set unique_id to the record with the given unique_id.
+    readonly?: boolean; // When true, record cannot be updated or deleted.
+
+    /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
+    table?: {
+        /** Not allowed: Special characters. Allowed: White space. periods.*/
+        name?: string;
+        /** Number range: 0 ~ 99. Default: 'public' */
+        access_group?: number | 'private' | 'public' | 'authorized';
+        // subscription_group?: number;
+        /** When true, Record will be only accessible for subscribed users. */
+        subscription?: {
+            group: number; // subscription group. default 1.
+            exclude_from_feed?: boolean; // When true, record will be excluded from the subscribers feed.
+            notify_subscribers?: boolean; // When true, subscribers will receive notification when the record is uploaded.
+        };
+    };
+
+    source?: {
+        feed_referencing_records?: boolean; // When true, and if this is a record in subscription table, records referencing this record will be included to the subscribers feed.
+        referencing_limit?: number; // Default: null (Infinite)
+        prevent_multiple_referencing?: boolean; // If true, a single user can reference this record only once.
+        can_remove_referencing_records?: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
+        only_granted_can_reference?: boolean; // When true, only the user who has granted private access to the record can reference this record.
+        referencing_index_restrictions?: {
+            /** Not allowed: White space, special characters. Allowed: Alphanumeric, Periods. */
+            name: string; // Allowed index name
+            /** Not allowed: Periods, special characters. Allowed: Alphanumeric, White space. */
+            value?: string | number | boolean; // Allowed index value
+            range?: string | number | boolean; // Allowed index range
+            condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!='; // Allowed index value condition
+        }[]
+    };
+
+    /** Can be record ID or unique ID */
+    reference?: string;
+
+    /** null removes index */
+    index?: {
+        /** Not allowed: White space, special characters. Allowed: Periods. */
+        name: string;
+        /** Not allowed: Periods, special characters. Allowed: White space. */
+        value: string | number | boolean;
+    } | null;
+
+    tags?: string[] | null;
+    remove_bin?: BinaryFile[] | string[] | null; // Removes bin data from the record. When null, it will remove all bin data.
+    progress?: ProgressCallback; // Callback for database request progress. Useful when building progress bar.
 }
 
 export type DelRecordQuery = {
@@ -109,58 +164,6 @@ export type DelRecordQuery = {
     tag?: string;
 }
 
-export type PostRecordConfig = {
-    record_id?: string; // when record_id is given, it will update the record with the given record_id. If record_id is not given, it will create a new record.
-    unique_id?: string; // You can set unique_id to the record with the given unique_id.
-    readonly?: boolean; // When true, record cannot be updated or deleted.
-
-    /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
-    table?: {
-        /** Not allowed: Special characters. Allowed: White space. periods.*/
-        name?: string;
-        /** Number range: 0 ~ 99. Default: 'public' */
-        access_group?: number | 'private' | 'public' | 'authorized';
-        // subscription_group?: number;
-        /** When true, Record will be only accessible for subscribed users. */
-        subscription?: boolean;
-    };
-
-    /** If record ID string is given, "reference.record_id" will be set with default parameters. */
-    reference?: {
-        unique_id?: string; // null removes reference. When unique_id is given, it will override record_id.
-        record_id?: string; // null removes reference
-        reference_limit?: number | null; // Default: null (Infinite)
-        // referencing_limit?: number | null; // Default: null (Infinite)
-        allow_multiple_reference?: boolean; // Default: true
-        // prevent_multiple_referencing?: boolean; // Default: false
-        can_remove_referenced?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
-        // can_remove_referencing?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
-        exclude_from_subscription_feed?: boolean; // When true, referenced record will be excluded in the subscription feed.
-        only_allow_granted?: boolean; // When true, only the user who has granted access to the record can reference this record.
-        index_restrictions?: {
-            /** Not allowed: White space, special characters. Allowed: Alphanumeric, Periods. */
-            name: string; // Allowed index name
-            /** Not allowed: Periods, special characters. Allowed: Alphanumeric, White space. */
-            value?: string | number | boolean; // Allowed index value
-            range?: string | number | boolean; // Allowed index range
-            condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!='; // Allowed index value condition
-        }[]
-    } | string;
-
-    /** null removes index */
-    index?: {
-        /** Not allowed: White space, special characters. Allowed: Periods. */
-        name: string;
-        /** Not allowed: Periods, special characters. Allowed: White space. */
-        value: string | number | boolean;
-    } | null;
-
-    tags?: string[];
-
-    remove_bin?: BinaryFile[] | string[]; // Removes bin data from the record.
-    progress?: ProgressCallback; // Callback for database request progress. Useful when building progress bar.
-}
-
 export type BinaryFile = {
     access_group: number | 'private' | 'public' | 'authorized';
     filename: string;
@@ -183,23 +186,19 @@ export type RecordData = {
         /** Number range: 0 ~ 99 */
         access_group: 'private' | 'public' | 'authorized' | number;
         subscription: boolean;
-    },
-    reference: {
-        record_id?: string;
-        reference_limit: number;
-        // referencing_limit: number;
-        allow_multiple_reference: boolean;
-        // prevent_multiple_referencing: boolean;
-        referenced_count: number;
-        can_remove_referenced?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
-        // can_remove_referencing?: boolean; // Default: false. When true, owner of the record can remove any record that are referencing this record and when deleted, all the record referencing this record will be deleted.
-        exclude_from_subscription_feed?: boolean; // When true, referenced record will be excluded in the subscription feed.
-        only_allow_granted?: boolean; // When true, only the user who has granted access to the record can reference this record.
-    },
+    };
+    source?: {
+        referencing_limit?: number; // Default: null (Infinite)
+        prevent_multiple_referencing?: boolean; // If true, a single user can reference this record only once.
+        can_remove_referencing_records?: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
+        exclude_referencing_from_subscription_feed?: boolean; // If this record requires subscription and if this option is set to true, referencing records will be excluded from the subscription feed.
+        only_granted_can_reference?: boolean; // When true, only the user who has granted private access to the record can reference this record.
+    };
+    reference: string; // record id of the referenced record.
     index?: {
         name: string;
         value: string | number | boolean;
-    },
+    };
     data?: Record<string, any>;
     tags?: string[];
     bin?: { [key: string]: BinaryFile | BinaryFile[] };
