@@ -7,10 +7,10 @@ export function recordIdOrUniqueId(query) {
     }
 
     let outputObj: any = {};
-    if (query.service) {
+    if (query?.service) {
         outputObj.service = query.service;
     }
-    if (query.owner) {
+    if (query?.owner) {
         outputObj.owner = query.owner;
     }
     if (query?.record_id) {
