@@ -50,22 +50,22 @@ export type WebSocketMessage = {
 export type RealtimeCallback = (rt: WebSocketMessage) => void;
 
 export type GetRecordQuery = {
-    unique_id?: string; // When unique_id is given, it will fetch the record with the given unique_id. Unique ID overrides record_id.
-    record_id?: string;
+    unique_id?: string; // When unique_id is given, it will fetch the record with the given unique_id.
+    record_id?: string; // When record_id is given, it will fetch the record with the given record_id. This overrides all other parameters.
 
     /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
-    table?: {
+    table?: string | {
         /** Not allowed: Special characters. Allowed: White space. periods.*/
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
-        access_group?: number | 'private' | 'public' | 'authorized';
+        access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
         /** User ID of subscription */
         subscription?: string | {
             user_id: string;
             /** Number range: 0 ~ 99 */
             group: number;
         };
-    } | string;
+    };
 
     reference?: string // Referenced record ID or unique ID. If user ID is given, it will fetch records that are uploaded by the user.
 
@@ -91,7 +91,7 @@ export type PostRecordConfig = {
         /** Not allowed: Special characters. Allowed: White space. periods.*/
         name?: string;
         /** Number range: 0 ~ 99. Default: 'public' */
-        access_group?: number | 'private' | 'public' | 'authorized';
+        access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
 
         /** When true, Record will be only accessible for subscribed users. */
         subscription?: {
@@ -118,10 +118,7 @@ export type PostRecordConfig = {
     };
 
     /** Can be record ID or unique ID */
-    reference?: string | {
-        record_id: string;
-        unique_id: string;
-    };
+    reference?: string;
 
     /** null removes index */
     index?: {
@@ -131,7 +128,7 @@ export type PostRecordConfig = {
         value: string | number | boolean;
     } | null;
 
-    tags?: string[] | null;
+    tags?: string[] | null; // null removes all tags
     remove_bin?: BinaryFile[] | string[] | null; // Removes bin data from the record. When null, it will remove all bin data.
     progress?: ProgressCallback; // Callback for database request progress. Useful when building progress bar.
 }
@@ -145,7 +142,7 @@ export type DelRecordQuery = {
         /** Not allowed: Special characters. Allowed: White space. periods.*/
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
-        access_group?: number | 'private' | 'public' | 'authorized';
+        access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
         /** User ID of subscription */
         subscription?: string | {
             user_id: string;
@@ -181,7 +178,6 @@ export type BinaryFile = {
 export type RecordData = {
     record_id: string;
     unique_id?: string;
-    /** Uploader's user ID. */
     user_id: string;
     updated: number;
     uploaded: number;
@@ -190,7 +186,7 @@ export type RecordData = {
     table: {
         name: string;
         /** Number range: 0 ~ 99 */
-        access_group: 'private' | 'public' | 'authorized' | number;
+        access_group: number | 'private' | 'public' | 'authorized' | 'admin';
         /** User ID of subscription */
         subscription?: {
             user_id: string;
@@ -198,21 +194,29 @@ export type RecordData = {
             group: number;
         };
     };
-    source?: {
-        referencing_limit?: number; // Default: null (Infinite)
-        prevent_multiple_referencing?: boolean; // If true, a single user can reference this record only once.
-        can_remove_referencing_records?: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
-        exclude_referencing_from_subscription_feed?: boolean; // If this record requires subscription and if this option is set to true, referencing records will be excluded from the subscription feed.
-        only_granted_can_reference?: boolean; // When true, only the user who has granted private access to the record can reference this record.
+    source: {
+        referencing_limit: number; // Default: null (Infinite)
+        prevent_multiple_referencing: boolean; // If true, a single user can reference this record only once.
+        can_remove_referencing_records: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
+        exclude_referencing_from_subscription_feed: boolean; // If this record requires subscription and if this option is set to true, referencing records will be excluded from the subscription feed.
+        only_granted_can_reference: boolean; // When true, only the user who has granted private access to the record can reference this record.
+        referencing_index_restrictions?: {
+            /** Not allowed: White space, special characters. Allowed: Alphanumeric, Periods. */
+            name: string; // Allowed index name
+            /** Not allowed: Periods, special characters. Allowed: Alphanumeric, White space. */
+            value?: string | number | boolean; // Allowed index value
+            range?: string | number | boolean; // Allowed index range
+            condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!='; // Allowed index value condition
+        }[]
     };
-    reference: string; // record id of the referenced record.
+    reference?: string; // record id of the referenced record.
     index?: {
         name: string;
         value: string | number | boolean;
     };
     data?: Record<string, any>;
     tags?: string[];
-    bin?: { [key: string]: BinaryFile | BinaryFile[] };
+    bin: { [key: string]: BinaryFile | BinaryFile[] };
     ip: string;
     readonly: boolean;
 };
