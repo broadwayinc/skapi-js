@@ -40,16 +40,14 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             only_granted_can_reference: false,
             feed_referencing_records: false,
         },
-        // reference: {
-        //     // reference_limit: null,
-        //     // allow_multiple_reference: true,
-        //     // referenced_count: 0,
-        //     // can_remove_referenced: false
-        // },
         ip: '',
         bin: {}
     };
-
+    function access_group_set(v) {
+        let access_group = v == '**' ? 'private' : parseInt(v);
+        access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group == 99 ? 'admin' : access_group;
+        return access_group;
+    }
     const keys = {
         'ip': (r: string) => {
             let split_ip = r.split('#');
@@ -82,9 +80,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             if (!output.table.name) {
                 let rSplit = r.split('/');
                 output.table.name = rSplit[0];
-                let access_group = rSplit[2] == '**' ? 'private' : parseInt(rSplit[2]);
-                access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group;
-                output.table.access_group = access_group;
+                output.table.access_group = access_group_set(rSplit[2]);
                 if (rSplit?.[3]) {
                     output.table.subscription = {
                         user_id: rSplit[3],
@@ -107,9 +103,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             }
             if (!output.table.name) {
                 output.table.name = rSplit[1];
-                let access_group = rSplit[3] == '**' ? 'private' : parseInt(rSplit[3]);
-                access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group;
-                output.table.access_group = access_group;
+                output.table.access_group = access_group_set(rSplit[3]);
                 if (rSplit?.[4]) {
                     output.table.subscription = {
                         user_id: rSplit[4],
@@ -167,9 +161,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                     let pathKey = decodeURIComponent(splitPath[10]);
                     let size = splitPath[9];
                     let uploaded = splitPath[8];
-                    let access_group = splitPath[6] == '**' ? 'private' : parseInt(splitPath[6]);
-                    access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group;
-
+                    let access_group = access_group_set(splitPath[6]);
                     let url_endpoint = url;
                     if (access_group !== 'public') {
                         url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint' }) as string);
@@ -215,10 +207,6 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                 data = [];
             }
             output.data = data;
-        },
-        'idx_rst': (r: string) => {
-            // output.reference.index_restrictions = r; // depricated
-            output.source.referencing_index_restrictions = r;
         }
     };
 
