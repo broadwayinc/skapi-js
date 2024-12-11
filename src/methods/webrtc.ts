@@ -20,7 +20,7 @@ function setBuffer(buffer: { [recipient: string]: any[] }, recipient: string, it
 }
 
 async function processBuffer(buffer: { [recipient: string]: any[] }, recipient: string, fn: (item: any) => any): Promise<any[]> {
-    let proceed = []
+    let proceed = [];
     if (buffer[recipient]) {
         for (let v of buffer[recipient]) {
             if (v) {
