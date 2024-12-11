@@ -385,7 +385,7 @@ export function authentication() {
 }
 
 export async function getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
-    await this.__authConnection;
+    await this.__connection;
     try {
         await authentication.bind(this)().getSession(options);
         return this.user;
