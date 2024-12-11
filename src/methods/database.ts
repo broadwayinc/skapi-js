@@ -215,6 +215,10 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         return record as RecordData;
     }
 
+    if (this.__iPosted[record.rec]) {
+        return this.__iPosted[record.rec];
+    }
+
     for (let k in keys) {
         if (record.hasOwnProperty(k)) {
             let exec = keys[k](record[k]);
@@ -753,7 +757,9 @@ export async function postRecord(
         this.__private_access_key[is_reference_post] = rec.reference_private_key;
     }
 
-    return normalizeRecord.bind(this)(rec);
+    let record = await normalizeRecord.bind(this)(rec);
+    this.__iPosted[record.record_id] = record;
+    return record;
 }
 
 export async function getTables(
