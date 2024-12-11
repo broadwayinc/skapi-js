@@ -459,7 +459,7 @@ async function checkSchema(params) {
     return request.bind(this)('check-schema', params);
 }
 
-async function prepGetParams(query) {
+async function prepGetParams(query, isDel = false) {
     if (typeof query?.table === 'string') {
         query.table = {
             name: query.table,
@@ -474,7 +474,19 @@ async function prepGetParams(query) {
     if (rec_or_uniq) {
         query = rec_or_uniq;
         is_reference_fetch = query.record_id || query.unique_id;
-        query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+
+        if (typeof is_reference_fetch === 'string') {
+            query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+            if (this.__my_unique_ids[is_reference_fetch]) {
+                if (isDel) {
+                    delete this.__my_unique_ids[is_reference_fetch];
+                }
+                else {
+                    query.record_id = this.__my_unique_ids[is_reference_fetch];
+                    delete query.unique_id;
+                }
+            }
+        }
     }
     else {
         let isAdmin = await checkAdmin.bind(this)();
@@ -484,6 +496,11 @@ async function prepGetParams(query) {
         if (ref?.record_id || ref?.unique_id) {
             is_reference_fetch = ref.record_id || ref.unique_id;
             query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+
+            if (this.__my_unique_ids[is_reference_fetch]) {
+                query.record_id = this.__my_unique_ids[is_reference_fetch];
+                delete query.unique_id;
+            }
         }
         else if (ref?.user_id) {
             ref_user = ref.user_id;
@@ -644,6 +661,9 @@ export async function postRecord(
             }
             if (typeof v === 'string') {
                 is_reference_post = v;
+                if (this.__my_unique_ids[v]) {
+                    return this.__my_unique_ids[v];
+                }
                 return v;
             }
             if (typeof v !== 'object') {
@@ -759,6 +779,9 @@ export async function postRecord(
 
     let record = await normalizeRecord.bind(this)(rec);
     this.__iPosted[record.record_id] = record;
+    if (record.unique_id) {
+        this.__my_unique_ids[record.unique_id] = record.record_id;
+    }
     return record;
 }
 
@@ -959,7 +982,7 @@ export async function getTags(
 export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }): Promise<DatabaseResponse<string> | string> {
     await this.__connection;
 
-    let q = await prepGetParams.bind(this)(query);
+    let q = await prepGetParams.bind(this)(query, true);
     let is_reference_fetch = q.is_reference_fetch;
     let result = await request.bind(this)('del-records', q.query, { auth: true });
     if (is_reference_fetch && result?.reference_private_key) {
