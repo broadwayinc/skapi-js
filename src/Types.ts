@@ -136,34 +136,7 @@ export type PostRecordConfig = {
 export type DelRecordQuery = {
     unique_id?: string | string[];
     record_id?: string | string[];
-
-    /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
-    table?: {
-        /** Not allowed: Special characters. Allowed: White space. periods.*/
-        name: string;
-        /** Number range: 0 ~ 99. Default: 'public' */
-        access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
-        /** User ID of subscription */
-        subscription?: string | {
-            user_id: string;
-            /** Number range: 0 ~ 99 */
-            group: number;
-        };
-    } | string;
-
-    reference?: string // Referenced record ID or unique ID. If user ID is given, it will fetch records that are uploaded by the user.
-
-    /** Index condition and range cannot be used simultaneously.*/
-    index?: {
-        /** Not allowed: White space, special characters. Allowed: Periods. */
-        name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
-        /** Not allowed: Periods, special characters. Allowed: White space. */
-        value: string | number | boolean;
-        condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
-        range?: string | number | boolean;
-    };
-    tag?: string;
-}
+} & GetRecordQuery;
 
 export type BinaryFile = {
     access_group: number | 'private' | 'public' | 'authorized';
