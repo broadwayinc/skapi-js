@@ -67,11 +67,7 @@ export type GetRecordQuery = {
         };
     } | string;
 
-    reference?: string | {
-        record_id?: string;
-        unique_id?: string;
-        user_id?: string;
-    }; // Referenced record ID. If user ID is given, it will fetch records that are uploaded by the user.
+    reference?: string // Referenced record ID or unique ID. If user ID is given, it will fetch records that are uploaded by the user.
 
     /** Index condition and range cannot be used simultaneously.*/
     index?: {
@@ -96,7 +92,7 @@ export type PostRecordConfig = {
         name?: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized';
-        // subscription_group?: number;
+
         /** When true, Record will be only accessible for subscribed users. */
         subscription?: {
             group: number; // subscription group. default 1.
@@ -122,7 +118,10 @@ export type PostRecordConfig = {
     };
 
     /** Can be record ID or unique ID */
-    reference?: string;
+    reference?: string | {
+        record_id: string;
+        unique_id: string;
+    };
 
     /** null removes index */
     index?: {
@@ -147,10 +146,15 @@ export type DelRecordQuery = {
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized';
-        subscription?: boolean;
+        /** User ID of subscription */
+        subscription?: string | {
+            user_id: string;
+            /** Number range: 0 ~ 99 */
+            group: number;
+        };
     } | string;
 
-    reference?: string; // Referenced record ID. If user ID is given, it will fetch records that are uploaded by the user.
+    reference?: string // Referenced record ID or unique ID. If user ID is given, it will fetch records that are uploaded by the user.
 
     /** Index condition and range cannot be used simultaneously.*/
     index?: {
@@ -181,11 +185,18 @@ export type RecordData = {
     user_id: string;
     updated: number;
     uploaded: number;
+    referenced_count: number;
+
     table: {
         name: string;
         /** Number range: 0 ~ 99 */
         access_group: 'private' | 'public' | 'authorized' | number;
-        subscription: boolean;
+        /** User ID of subscription */
+        subscription?: {
+            user_id: string;
+            /** Number range: 0 ~ 99 */
+            group: number;
+        };
     };
     source?: {
         referencing_limit?: number; // Default: null (Infinite)
