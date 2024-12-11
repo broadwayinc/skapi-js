@@ -126,6 +126,7 @@ export default class Skapi {
     session: Record<string, any> | null = null;
     connection: Connection | null = null;
     private __iPosted: { [rec_id: string]: RecordData } = {};
+    private __my_unique_ids: { [rec_id: string]: string } = {};
     private userPool: CognitoUserPool | null = null;
     private __socket: Promise<WebSocket> | null = null;
     private __mediaStream: MediaStream = null;
