@@ -26,19 +26,26 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         record_id: '',
         updated: 0,
         uploaded: 0,
+        readonly: false,
         table: {
             name: '',
-            access_group: 0
+            access_group: 0,
+            subscription: null
         },
-        reference: {
-            reference_limit: null,
-            // referencing_limit: null,
-            allow_multiple_reference: true,
-            // prevent_multiple_referencing: false,
-            referenced_count: 0,
-            can_remove_referenced: false
-            // can_remove_referencing: false
+        referenced_count: 0,
+        source: {
+            referencing_limit: null,
+            prevent_multiple_referencing: false,
+            can_remove_referencing_records: false,
+            only_granted_can_reference: false,
+            feed_referencing_records: false,
         },
+        // reference: {
+        //     // reference_limit: null,
+        //     // allow_multiple_reference: true,
+        //     // referenced_count: 0,
+        //     // can_remove_referenced: false
+        // },
         ip: '',
         bin: {}
     };
@@ -78,18 +85,18 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                 let access_group = rSplit[2] == '**' ? 'private' : parseInt(rSplit[2]);
                 access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group;
                 output.table.access_group = access_group;
-                // if (rSplit?.[3]) {
-                //     output.table.subscription = {
-                //         user_id: rSplit[3],
-                //         group: parseInt(rSplit[4])
-                //     };
-                // }
                 if (rSplit?.[3]) {
-                    output.table.subscription = true;
+                    output.table.subscription = {
+                        user_id: rSplit[3],
+                        group: parseInt(rSplit[4])
+                    };
                 }
-                else {
-                    output.table.subscription = false;
-                }
+                // if (rSplit?.[3]) {
+                //     output.table.subscription = true;
+                // }
+                // else {
+                //     output.table.subscription = false;
+                // }
             }
         },
         'usr_tbl': (r: string) => {
@@ -103,18 +110,18 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                 let access_group = rSplit[3] == '**' ? 'private' : parseInt(rSplit[3]);
                 access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group;
                 output.table.access_group = access_group;
-                // if (rSplit?.[4]) {
-                //     output.table.subscription = {
-                //         user_id: rSplit[4],
-                //         group: parseInt(rSplit[5])
-                //     };
-                // }
                 if (rSplit?.[4]) {
-                    output.table.subscription = true;
+                    output.table.subscription = {
+                        user_id: rSplit[4],
+                        group: parseInt(rSplit[5])
+                    };
                 }
-                else {
-                    output.table.subscription = false;
-                }
+                // if (rSplit?.[4]) {
+                //     output.table.subscription = true;
+                // }
+                // else {
+                //     output.table.subscription = false;
+                // }
             }
         },
         'idx': (r: string) => {
@@ -129,7 +136,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         },
         'ref': (r: string) => {
             if (!r) return;
-            output.reference.record_id = r.split('/')[0];
+            // output.reference.record_id = r.split('/')[0];
+            output.reference = r.split('/')[0];
         },
         'tags': (r: string[]) => {
             output.tags = r;
@@ -138,15 +146,16 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             output.updated = r;
         },
         'acpt_mrf': (r: boolean) => {
-            output.reference.allow_multiple_reference = r;
-            // output.reference.prevent_multiple_referencing = !r;
+            // output.reference.allow_multiple_reference = r; // depricated
+            output.source.prevent_multiple_referencing = !r;
         },
         'ref_limt': (r: number) => {
-            output.reference.reference_limit = r;
-            // output.referenc.referencing_limit = r;
+            // output.reference.reference_limit = r; // depricated
+            output.source.referencing_limit = r;
         },
         'rfd': (r: number) => {
-            output.reference.referenced_count = r;
+            // output.reference.referenced_count = r; // depricated
+            output.referenced_count = r;
         },
         'bin': async (r: string[]) => {
             let binObj = {};
@@ -192,16 +201,10 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             output.bin = binObj;
         },
         'prv_acs': (r: { [key: string]: string }) => {
-            if (r?.can_remove_referenced) {
-                output.reference.can_remove_referenced = r.can_remove_referenced;
-                // output.reference.can_remove_referenced = r.can_remove_referenced;
-            }
-            if (r?.only_allow_granted) {
-                output.reference.only_allow_granted = r.only_allow_granted;
-            }
-            if (r?.exclude_from_subscription_feed) {
-                output.reference.exclude_from_subscription_feed = r.exclude_from_subscription_feed;
-            }
+            // if (r?.can_remove_referenced) {
+            //     output.reference.can_remove_referenced = r.can_remove_referenced; // depricated
+            // }
+            Object.assign(output.source, r);
         },
         'data': (r: any) => {
             let data = r;
@@ -214,7 +217,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             output.data = data;
         },
         'idx_rst': (r: string) => {
-            output.reference.index_restrictions = r;
+            // output.reference.index_restrictions = r; // depricated
+            output.source.referencing_index_restrictions = r;
         }
     };
 
@@ -231,10 +235,6 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             }
         }
     }
-
-    // if (record.private_key) {
-    //     this.__private_access_key[output.record_id] = record.private_key;
-    // }
 
     return output as RecordData;
 }
@@ -596,6 +596,13 @@ export async function postRecord(
                         }
                         return v;
                     }
+
+                    if (v === undefined || v === null) {
+                        if (!config.record_id)
+                            throw new SkapiError('"table.subscription.group" is required', { code: 'INVALID_PARAMETER' });
+                        return v;
+                    }
+
                     throw new SkapiError('"table.subscription.group" should be type: number', { code: 'INVALID_PARAMETER' });
                 }],
                 exclude_from_feed: 'boolean',
@@ -610,8 +617,14 @@ export async function postRecord(
             can_remove_referencing_records: 'boolean',
             only_granted_can_reference: 'boolean',
             referencing_index_restrictions: v => {
+                if (!v) {
+                    return v;
+                }
+                if (Array.isArray(v) && !v.length) {
+                    return null;
+                }
                 let p = {
-                    name: v => cannotBeEmptyString(v, '"name" in "index_restrictions"', true, false),
+                    name: [v => cannotBeEmptyString(v, '"name" in "index_restrictions"', true, false)],
                     value: v => indexValue(v),
                     condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne', () => null],
                     range: val => {
@@ -644,7 +657,7 @@ export async function postRecord(
             if (typeof v !== 'object') {
                 throw new SkapiError('"reference" should be type: <string | object>.', { code: 'INVALID_PARAMETER' });
             }
-            // depricated below
+
             return validator.Params(v, {
                 unique_id: 'string',
                 record_id: v => {
@@ -725,8 +738,6 @@ export async function postRecord(
     if (Object.keys(fetchOptions).length) {
         Object.assign(options, { fetchOptions });
     }
-
-    // postData.schema_pass = await checkSchema.bind(this)(_config);
 
     let rec = await request.bind(this)('post-record', postData, options);
     if (to_bin) {

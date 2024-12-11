@@ -127,7 +127,7 @@ export function getStruct(query) {
                     if (!v.user_id) {
                         throw new SkapiError('"subscription.user_id" is required.', { code: 'INVALID_PARAMETER' });
                     }
-                    validator.UserId(v.user_id, 'User ID in "subscription"');
+                    validator.UserId(v.user_id, 'User ID in "subscription.user_id"');
                     if (!v.group) {
                         v.group = 1;
                     }
@@ -135,26 +135,7 @@ export function getStruct(query) {
                 }
             }
         },
-        reference: v => {
-            if (!v) {
-                return undefined;
-            }
-            if (typeof v === 'string') {
-                return cannotBeEmptyString(v, 'reference', false, false);
-            }
-            if (typeof v !== 'object') {
-                throw new SkapiError('"reference" should be type: <string | object>.', { code: 'INVALID_PARAMETER' });
-            }
-            if (v.record_id) {
-                return { record_id: validator.specialChars(v.record_id, 'record_id', false, false) };
-            }
-            if (v.unique_id) {
-                return { unique_id: v.unique_id };
-            }
-            if (v.user_id) {
-                return { user_id: validator.UserId(v.user_id) };
-            }
-        },
+        reference: 'string',
         index: {
             name: ['$updated', '$uploaded', '$referenced_count', '$user_id', (v: string) => {
                 return cannotBeEmptyString(v, 'index.name', true, false)
@@ -179,6 +160,10 @@ export function getStruct(query) {
                     }
 
                     return v;
+                }
+
+                if (typeof v === 'string' && !v) {
+                    return " ";
                 }
 
                 return indexValue(v);
