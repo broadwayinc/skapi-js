@@ -615,7 +615,8 @@ export async function postRecord(
                     throw new SkapiError('"table.subscription.group" should be type: number', { code: 'INVALID_PARAMETER' });
                 }],
                 exclude_from_feed: 'boolean',
-                notify_subscribers: 'boolean'
+                notify_subscribers: 'boolean',
+                feedback_referencing_records: 'boolean',
             },
             access_group: accessGroup.bind(this),
         },
