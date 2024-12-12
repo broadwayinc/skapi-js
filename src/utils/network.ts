@@ -113,18 +113,19 @@ export async function request(
     if (auth) {
         if (this.session) {
             this.log('request:session', this.session);
-
-            let currTime = Math.floor(Date.now() / 1000);
-
+            
+            const currentTime = Math.floor(Date.now() / 1000);
+            const idToken = this.session.getIdToken();
+            const idTokenExp = idToken.getExpiration();
             this.log('request:tokens:', {
                 exp: this.session.idToken.payload.exp,
-                currTime,
-                expiresIn: this.session.idToken.payload.exp - currTime,
+                currentTime,
+                expiresIn: idTokenExp - currentTime,
                 token: this.session.accessToken.jwtToken,
                 refreshToken: this.session.refreshToken.token
             });
 
-            if (this.session.idToken.payload.exp < currTime) {
+            if (idTokenExp < currentTime) {
                 this.log('request:New token', null);
                 try {
                     await authentication.bind(this)().getSession({ refreshToken: true });
