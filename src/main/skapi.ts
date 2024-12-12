@@ -120,7 +120,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.188-beta.17';
+    private __version = '1.0.188-beta.18';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
