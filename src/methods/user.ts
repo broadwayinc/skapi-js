@@ -240,7 +240,7 @@ export function authentication() {
                     res(this.session);
                 }
                 const currentTime = Math.floor(Date.now() / 1000);
-                const idToken = this.session.getIdToken();
+                const idToken = session.getIdToken();
                 const idTokenExp = idToken.getExpiration();
                 // try refresh when invalid token
                 if ((idTokenExp < currentTime) || refreshToken || !session.isValid()) {
