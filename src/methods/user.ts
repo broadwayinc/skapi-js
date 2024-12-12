@@ -239,9 +239,11 @@ export function authentication() {
                     this._runOnLoginListeners(this.user);
                     res(this.session);
                 }
-
+                const currentTime = Math.floor(Date.now() / 1000);
+                const idToken = this.session.getIdToken();
+                const idTokenExp = idToken.getExpiration();
                 // try refresh when invalid token
-                if (refreshToken || !session.isValid()) {
+                if ((idTokenExp < currentTime) || refreshToken || !session.isValid()) {
                     cognitoUser.refreshSession(session.getRefreshToken(), async (refreshErr, refreshedSession) => {
                         this.log('getSession:refreshSessionCallback:', { err, refreshedSession });
 
@@ -385,7 +387,7 @@ export function authentication() {
 }
 
 export async function getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
-    await this.__connection;
+    await this.__authConnection;
     try {
         await authentication.bind(this)().getSession(options);
         return this.user;
