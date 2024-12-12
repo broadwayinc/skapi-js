@@ -398,7 +398,10 @@ export default class Skapi {
                         _out.bind(this)();
                     }
                     else {
-                        (fireWhenAutoLogin as Function)();
+                        let logFire = (fireWhenAutoLogin as Function)();
+                        if (logFire instanceof Promise) {
+                            await logFire;
+                        }
                     }
                 }
             }
