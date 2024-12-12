@@ -244,7 +244,7 @@ export function authentication() {
                 const idTokenExp = idToken.getExpiration();
                 // try refresh when invalid token
                 if ((idTokenExp < currentTime) || refreshToken || !session.isValid()) {
-                    cognitoUser.refreshSession(session.getRefreshToken(), async (refreshErr, refreshedSession) => {
+                    cognitoUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
                         this.log('getSession:refreshSessionCallback:', { err, refreshedSession });
 
                         if (refreshErr) {
