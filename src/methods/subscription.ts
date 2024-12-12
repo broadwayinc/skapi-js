@@ -2,12 +2,23 @@ import {
     DatabaseResponse,
     FetchOptions,
     Form,
-    Newsletters
+    Newsletters,
+    RecordData
 } from '../Types';
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
 import { checkAdmin } from './user';
+import { normalizeRecord } from './database';
+
+export async function getFeed(params: any, fetchOptions: FetchOptions): Promise<DatabaseResponse<RecordData>> {
+    params = params || {};
+    let recs = await request.bind(this)('get-feed', params, { auth: true, fetchOptions });
+    for (let i in recs.list) {
+        recs.list[i] = normalizeRecord(recs.list[i]);
+    }
+    return recs;
+}
 
 function grouper(v) {
     if (!v) return v;
@@ -95,6 +106,7 @@ export async function getSubscriptions(
 
     return response;
 }
+
 export async function subscribe(params: { user_id: string; group: number | number[]; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<'SUCCESS: the user has subscribed.'> {
     await this.__connection;
     let { user_id, group } = validator.Params(params, {
@@ -115,7 +127,12 @@ export async function subscribe(params: { user_id: string; group: number | numbe
 
     return await request.bind(this)('subscription', {
         subscribe: user_id,
-        group
+        group,
+        option: {
+            get_feed: params.get_feed || false,
+            get_notified: params.get_notified || false,
+            get_email: params.get_email || false
+        }
     }, { auth: true });
 }
 

@@ -72,7 +72,8 @@ import {
     subscribeNewsletter,
     getNewsletters,
     unsubscribeNewsletter,
-    getNewsletterSubscription
+    getNewsletterSubscription,
+    getFeed
 } from '../methods/subscription';
 import {
     getProfile,
@@ -120,7 +121,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.188-beta.20';
+    private __version = '1.0.188-beta.21';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -528,6 +529,11 @@ export default class Skapi {
                 console.log(`%c${n}`, 'color: blue;', v);
             }
         }
+    }
+
+    @formHandler()
+    getFeed(params: null, fetchOptions: FetchOptions): Promise<DatabaseResponse<RecordData>> {
+        return getFeed.bind(this)(params, fetchOptions);
     }
 
     @formHandler()
