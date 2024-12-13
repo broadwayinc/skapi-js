@@ -103,7 +103,7 @@ export type PostRecordConfig = {
     };
 
     source?: {
-        feed_referencing_records?: boolean; // When true, and if this is a record in subscription table, records referencing this record will be included to the subscribers feed.
+        allow_referencing_to_feed?: boolean; // When true, and if this is a record is referencing a record in subscription table, it will be included to the subscribers feed.
         referencing_limit?: number; // Default: null (Infinite)
         prevent_multiple_referencing?: boolean; // If true, a single user can reference this record only once.
         can_remove_referencing_records?: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
