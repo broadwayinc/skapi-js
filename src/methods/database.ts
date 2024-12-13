@@ -38,7 +38,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             prevent_multiple_referencing: false,
             can_remove_referencing_records: false,
             only_granted_can_reference: false,
-            feed_referencing_records: false,
+            allow_referencing_to_feed: false,
         },
         ip: '',
         bin: {}
@@ -193,10 +193,19 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             output.bin = binObj;
         },
         'prv_acs': (r: { [key: string]: string }) => {
-            // if (r?.can_remove_referenced) {
-            //     output.reference.can_remove_referenced = r.can_remove_referenced; // depricated
-            // }
-            Object.assign(output.source, r);
+            let subs_opt = ['feedback_referencing_records', 'exclude_from_feed', 'notify_subscribers'];
+
+            for (let k in r) {
+                if (subs_opt.includes(k)) {
+                    if(!output.table.subscription) {
+                        output.table.subscription = {};
+                    }
+                    output.table.subscription[k] = r[k];
+                }
+                else {
+                    output.source[k] = r[k];
+                }
+            }
         },
         'data': (r: any) => {
             let data = r;
@@ -621,7 +630,7 @@ export async function postRecord(
             access_group: accessGroup.bind(this),
         },
         source: {
-            feed_referencing_records: 'boolean',
+            allow_referencing_to_feed: 'boolean',
             referencing_limit: reference_limit_check,
             prevent_multiple_referencing: 'boolean',
             can_remove_referencing_records: 'boolean',
