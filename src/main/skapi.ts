@@ -121,7 +121,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.188-beta.25';
+    private __version = '1.0.188-beta.27';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -393,16 +393,13 @@ export default class Skapi {
                     _holdLogin: true
                 });
 
-                let cognitoUser = this.userPool.getCurrentUser();
-                if (cognitoUser) {
-                    if (!restore?.connection && !autoLogin) {
-                        _out.bind(this)();
-                    }
-                    else {
-                        let logFire = (fireWhenAutoLogin as Function)();
-                        if (logFire instanceof Promise) {
-                            await logFire;
-                        }
+                if (!restore?.connection && !autoLogin) {
+                    _out.bind(this)();
+                }
+                else {
+                    let logFire = (fireWhenAutoLogin as Function)();
+                    if (logFire instanceof Promise) {
+                        await logFire;
                     }
                 }
             }
