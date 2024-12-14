@@ -15,7 +15,7 @@ export async function getFeed(params: any, fetchOptions: FetchOptions): Promise<
     params = params || {};
     let recs = await request.bind(this)('get-feed', params, { auth: true, fetchOptions });
     for (let i in recs.list) {
-        recs.list[i] = normalizeRecord.bind(this)(recs.list[i]);
+        recs.list[i] = await normalizeRecord.bind(this)(recs.list[i]);
     }
     return recs;
 }

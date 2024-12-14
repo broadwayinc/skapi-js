@@ -168,6 +168,32 @@ export async function unregisterTicket(
     return request.bind(this)('register-ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
 }
 
+
+let isRefreshing = null;
+function refreshSession(session, cognitoUser) {
+    if (isRefreshing instanceof Promise) {
+        return isRefreshing;
+    }
+
+    return new Promise((res, rej) => {
+        cognitoUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
+            this.log('getSession:refreshSessionCallback:', { refreshErr, refreshedSession });
+
+            if (refreshErr) {
+                _out.bind(this)();
+                rej(refreshErr);
+            }
+            else if (refreshedSession.isValid()) {
+                res(refreshedSession);
+            }
+            else {
+                _out.bind(this)();
+                rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
+            }
+        });
+    });
+}
+
 export function authentication() {
     if (!this.userPool) throw new SkapiError('User pool is missing', { code: 'INVALID_REQUEST' });
 
@@ -182,9 +208,9 @@ export function authentication() {
         return user;
     };
 
-
     const getSession = async (option?: { refreshToken?: boolean; _holdLogin?: boolean }): Promise<CognitoUserSession | Function> => {
         // fetch session, updates user attributes
+        this.log('getSession:option', option);
         let { refreshToken = false } = option || {};
 
         return new Promise((res, rej) => {
@@ -242,22 +268,16 @@ export function authentication() {
                 const currentTime = Math.floor(Date.now() / 1000);
                 const idToken = session.getIdToken();
                 const idTokenExp = idToken.getExpiration();
+                const isExpired = idTokenExp < currentTime;
+                this.log('getSession:currentTime:', currentTime);
+                this.log('getSession:idTokenExp:', idTokenExp);
+                this.log('getSession:isExpired:', isExpired);
                 // try refresh when invalid token
-                if ((idTokenExp < currentTime) || refreshToken || !session.isValid()) {
-                    cognitoUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
-                        this.log('getSession:refreshSessionCallback:', { err, refreshedSession });
-
-                        if (refreshErr) {
-                            _out.bind(this)();
-                            rej(refreshErr);
-                        }
-                        else if (refreshedSession.isValid()) {
-                            respond(refreshedSession);
-                        }
-                        else {
-                            _out.bind(this)();
-                            rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
-                        }
+                if (isExpired || refreshToken || !session.isValid()) {
+                    refreshSession.bind(this)(session, cognitoUser).then(refreshedSession => {
+                        respond(refreshedSession);
+                    }).catch(err => rej(err)).finally(()=>{
+                        isRefreshing = null;
                     });
                 }
                 else {
