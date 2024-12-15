@@ -208,10 +208,10 @@ export function authentication() {
         return user;
     };
 
-    const getSession = async (option?: { refreshToken?: boolean; _holdLogin?: boolean }): Promise<CognitoUserSession | Function> => {
+    const getSession = async (option?: { skipEventTrigger?: boolean; refreshToken?: boolean; _holdLogin?: boolean }): Promise<CognitoUserSession | Function> => {
         // fetch session, updates user attributes
         this.log('getSession:option', option);
-        let { refreshToken = false } = option || {};
+        let { refreshToken = false, skipEventTrigger = false } = option || {};
 
         return new Promise((res, rej) => {
             cognitoUser = this.userPool.getCurrentUser();
@@ -243,14 +243,18 @@ export function authentication() {
                         res(() => {
                             this.session = s;
                             getUserProfile();
-                            this._runOnLoginListeners(this.user);
+                            if (!skipEventTrigger) {
+                                this._runOnLoginListeners(this.user);
+                            }
                             return this.session;
                         });
                         return;
                     }
                     this.session = s;
                     getUserProfile();
-                    this._runOnLoginListeners(this.user);
+                    if (!skipEventTrigger) {
+                        this._runOnLoginListeners(this.user);
+                    }
                     res(this.session);
                 }
 
@@ -266,7 +270,7 @@ export function authentication() {
                     }).catch(err => {
                         _out.bind(this)();
                         rej(err);
-                    }).finally(()=>{
+                    }).finally(() => {
                         isRefreshing = null;
                     });
 
@@ -283,11 +287,11 @@ export function authentication() {
                 // try refresh when invalid token
                 if (isExpired || refreshToken || !session.isValid()) {
                     refreshSession.bind(this)(session, cognitoUser).then(refreshedSession => {
-                        respond(refreshedSession).catch(err=>rej(err));
+                        respond(refreshedSession).catch(err => rej(err));
                     }).catch(err => {
                         _out.bind(this)();
                         rej(err);
-                    }).finally(()=>{
+                    }).finally(() => {
                         isRefreshing = null;
                     });
                 }
@@ -420,7 +424,7 @@ export function authentication() {
 export async function getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
     await this.__authConnection;
     try {
-        await authentication.bind(this)().getSession(options);
+        await authentication.bind(this)().getSession(Object.assign({ skipEventTrigger: true }, options));
         return this.user;
     } catch (err) {
         return null;
