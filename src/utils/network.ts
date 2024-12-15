@@ -286,7 +286,9 @@ export async function request(
 
     opt.method = method;
     let promise = _fetch.bind(this)(endpoint, opt, progress);
-    __pendingRequest[requestKey as string] = promise;
+    __pendingRequest[requestKey as string] = promise.finally(()=>{
+        delete __pendingRequest[requestKey as string];
+    });
 
     try {
         let result = update_startKey_keys.bind(this)({
@@ -295,20 +297,12 @@ export async function request(
             fetched: await promise
         });
 
-        // remove promise
-        if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
-            delete __pendingRequest[requestKey as string];
-        }
-
         this.log('request:end', result);
 
         return result;
     }
     catch (err) {
         // remove promise
-        if (requestKey && __pendingRequest.hasOwnProperty(requestKey as string)) {
-            delete __pendingRequest[requestKey as string];
-        }
         this.log('request:err', err);
         throw err;
     }
