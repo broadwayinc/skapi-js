@@ -21,6 +21,7 @@ import { accessGroup, cannotBeEmptyString, getStruct, indexValue, recordIdOrUniq
 
 
 export async function normalizeRecord(record: Record<string, any>): Promise<RecordData> {
+    this.log('normalizeRecord', record);
     const output: Record<string, any> = {
         user_id: '',
         record_id: '',
