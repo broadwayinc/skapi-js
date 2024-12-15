@@ -222,7 +222,7 @@ export async function request(
     }); // returns requrestKey | cached data
 
     this.log('requestKey:', requestKey);
-    
+
     if (!requestKey || requestKey && typeof requestKey === 'object') {
         // cahced data can be falsy data or object
         return requestKey;
@@ -230,6 +230,7 @@ export async function request(
 
     // prevent duplicate request
     if (typeof requestKey === 'string' && __pendingRequest[requestKey] instanceof Promise) {
+        this.log('request:returning pending', requestKey);
         return __pendingRequest[requestKey as string];
     }
 
