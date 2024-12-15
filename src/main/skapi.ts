@@ -318,7 +318,7 @@ export default class Skapi {
             }
         }
 
-        if (options?.eventListener?.onLogin) {
+        if (options?.eventListener?.onLogin && typeof options.eventListener.onLogin === 'function') {
             this.onLogin = options.eventListener.onLogin;
         }
 
