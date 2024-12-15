@@ -221,6 +221,8 @@ export async function request(
         hashedParams
     }); // returns requrestKey | cached data
 
+    this.log('requestKey:', requestKey);
+    
     if (!requestKey || requestKey && typeof requestKey === 'object') {
         // cahced data can be falsy data or object
         return requestKey;
