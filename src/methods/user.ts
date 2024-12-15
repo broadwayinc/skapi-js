@@ -283,7 +283,7 @@ export function authentication() {
                 // try refresh when invalid token
                 if (isExpired || refreshToken || !session.isValid()) {
                     refreshSession.bind(this)(session, cognitoUser).then(refreshedSession => {
-                        respond(refreshedSession);
+                        respond(refreshedSession).catch(err=>rej(err));
                     }).catch(err => {
                         _out.bind(this)();
                         rej(err);
@@ -292,7 +292,7 @@ export function authentication() {
                     });
                 }
                 else {
-                    respond(session);
+                    respond(session).catch(err => rej(err));
                 }
             });
         });

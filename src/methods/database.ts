@@ -197,7 +197,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
 
             for (let k in r) {
                 if (subs_opt.includes(k)) {
-                    if(!output.table.subscription) {
+                    if (!output.table.subscription) {
                         output.table.subscription = {};
                     }
                     output.table.subscription[k] = r[k];
@@ -225,7 +225,10 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
     }
 
     if (this.__iPosted[record.rec]) {
-        return this.__iPosted[record.rec];
+        if (this.__iPosted[record.rec].record_id)
+            return this.__iPosted[record.rec];
+        else
+            delete this.__iPosted[record.rec];
     }
 
     for (let k in keys) {
