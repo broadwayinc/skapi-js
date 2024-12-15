@@ -227,18 +227,6 @@ export function authentication() {
             cognitoUser.getSession((err: any, session: CognitoUserSession) => {
                 this.log('getSession:getSessionCallback', { err, session });
 
-                if (err) {
-                    _out.bind(this)();
-                    rej(err);
-                    return;
-                }
-
-                if (!session) {
-                    _out.bind(this)();
-                    rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
-                    return;
-                }
-
                 let respond = async (s: CognitoUserSession) => {
                     let sessionAttribute = s.getIdToken().payload;
                     this.log('getSession:respond:sessionAttribute', sessionAttribute);
@@ -265,6 +253,26 @@ export function authentication() {
                     this._runOnLoginListeners(this.user);
                     res(this.session);
                 }
+
+                if (!session) {
+                    _out.bind(this)();
+                    rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
+                    return;
+                }
+
+                if (err) {
+                    refreshSession.bind(this)(session, cognitoUser).then(refreshedSession => {
+                        respond(refreshedSession);
+                    }).catch(err => {
+                        _out.bind(this)();
+                        rej(err);
+                    }).finally(()=>{
+                        isRefreshing = null;
+                    });
+
+                    return;
+                }
+
                 const currentTime = Math.floor(Date.now() / 1000);
                 const idToken = session.getIdToken();
                 const idTokenExp = idToken.getExpiration();
@@ -276,7 +284,10 @@ export function authentication() {
                 if (isExpired || refreshToken || !session.isValid()) {
                     refreshSession.bind(this)(session, cognitoUser).then(refreshedSession => {
                         respond(refreshedSession);
-                    }).catch(err => rej(err)).finally(()=>{
+                    }).catch(err => {
+                        _out.bind(this)();
+                        rej(err);
+                    }).finally(()=>{
                         isRefreshing = null;
                     });
                 }
