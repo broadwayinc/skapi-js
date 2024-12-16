@@ -226,10 +226,12 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
     }
 
     if (this.__iPosted[record.rec]) {
-        if (this.__iPosted[record.rec].record_id)
+        if (this.__iPosted[record.rec].record_id) {
             return this.__iPosted[record.rec];
-        else
+        }
+        else {
             delete this.__iPosted[record.rec];
+        }
     }
 
     for (let k in keys) {
