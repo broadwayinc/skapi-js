@@ -18,7 +18,8 @@ export async function blockAccount(form: Form<{
 
     if (params?.service && params?.owner) {
         params = { service: params?.service, owner: params?.owner, block: params.user_id };
-    } else {
+    }
+    else {
         params = { block: params.user_id };
     }
 
@@ -356,7 +357,7 @@ export async function cancelInvitation(params: Form<{
     email: string;
 }>): Promise<"SUCCESS: Invitation has been canceled."> {
     params = validator.Params(params, {
-        email: v=>validator.Email(v),
+        email: v => validator.Email(v),
     }, ['email']);
 
     let isAdmin = await checkAdmin.bind(this)();
@@ -380,7 +381,7 @@ export async function resendInvitation(params: Form<{
     email: string;
 }>): Promise<"SUCCESS: Invitation has been re-sent. (User ID: xxx...)"> {
     params = validator.Params(params, {
-        email: v=>validator.Email(v),
+        email: v => validator.Email(v),
     }, ['email']);
 
     let isAdmin = await checkAdmin.bind(this)();
