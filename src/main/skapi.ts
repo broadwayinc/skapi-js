@@ -121,7 +121,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.188-beta.37';
+    private __version = '1.0.188-beta.38';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -135,6 +135,7 @@ export default class Skapi {
     private host = 'skapi';
     private hostDomain = 'skapi.com';
     private target_cdn = 'd3e9syvbtso631';
+    private customApiDomain = 'skapi.dev';
 
     // privates
     private __disabledAccount: string | null = null;
@@ -326,6 +327,8 @@ export default class Skapi {
 
         this.target_cdn = __etc?.target_cdn || this.target_cdn;
         this.hostDomain = __etc?.hostDomain || this.hostDomain;
+        this.customApiDomain = __etc?.customApiDomain || this.customApiDomain;
+
         this.__network_logs = !!__etc?.network_logs;
 
         const cdn_domain = `https://${this.target_cdn}.cloudfront.net`; // don't change this
