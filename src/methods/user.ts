@@ -1088,7 +1088,7 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
 export async function getUsers(
     params?: {
         searchFor: string;
-        value: string | number | boolean | string[];
+        value: string | number | boolean | string[] | { by: 'admin' | 'skapi' | 'master'; approved?: boolean };
         condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
         range?: string | number | boolean;
     },
