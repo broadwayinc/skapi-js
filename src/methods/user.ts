@@ -1135,13 +1135,30 @@ export async function getUsers(
         'subscribers': 'number',
         'timestamp': 'number',
         'access_group': 'number',
-        'approved': (v: boolean) => {
-            if (v) {
-                return 'by_admin:approved';
+        'approved': (v: {by: 'admin' | 'skapi' | 'master'; approved?: boolean}) => {
+            if(!v) return undefined;
+
+            let by = v.by;
+            if(!by) {
+                throw new SkapiError('Invalid "approved" object.', { code: 'INVALID_PARAMETER' });
             }
-            else {
-                return 'by_admin:suspended';
+
+            if(by !== 'admin' && by !== 'skapi' && by !== 'master') {
+                throw new SkapiError('Invalid "approved.by" value. Should be "admin" | "skapi" | "master"', { code: 'INVALID_PARAMETER' });
             }
+
+            let app = ''
+            
+            if(v.hasOwnProperty('approved')) {
+                if(typeof v.approved !== 'boolean') {
+                    throw new SkapiError('Invalid "approved" value.', { code: 'INVALID_PARAMETER' });
+                }
+                if(v.approved) {
+                    app = v.approved ? 'approved' : 'suspended';
+                }
+            }
+
+            return `by_${v.by}:${app}`;
         }
     };
 
@@ -1195,6 +1212,15 @@ export async function getUsers(
 
     if (params.searchFor === 'user_id' && (params.condition !== '=' || params.range)) {
         throw new SkapiError(`Conditions are not allowed on "${params.searchFor}"`, { code: 'INVALID_PARAMETER' });
+    }
+
+    if (params.searchFor === 'approved') {
+        if(params.condition !== '=' && params.condition !== '>=' || params.range) {
+            throw new SkapiError('Conditions are not allowed on "approved" search.', { code: 'INVALID_PARAMETER' });
+        }
+        else {
+            params.condition = '>=';
+        }
     }
 
     if (typeof params?.value === 'string' && !params?.value) {
