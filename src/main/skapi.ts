@@ -817,7 +817,7 @@ export default class Skapi {
             /** Index name to search. */
             searchFor: 'user_id' | 'email' | 'phone_number' | 'locale' | 'name' | 'address' | 'gender' | 'birthdate' | 'subscribers' | 'timestamp';
             /** Index value to search. */
-            value: string | number | boolean;
+            value: string | number | boolean | string[] | { by: 'admin' | 'skapi' | 'master'; approved?: boolean };
             /** Search condition. */
             condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
             /** Range of search. */
