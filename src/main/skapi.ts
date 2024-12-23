@@ -121,7 +121,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.189-beta.0';
+    private __version = '1.0.189-beta.1';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -817,7 +817,7 @@ export default class Skapi {
             /** Index name to search. */
             searchFor: 'user_id' | 'email' | 'phone_number' | 'locale' | 'name' | 'address' | 'gender' | 'birthdate' | 'subscribers' | 'timestamp';
             /** Index value to search. */
-            value: string | number | boolean | string[] | { by: 'admin' | 'skapi' | 'master'; approved?: boolean };
+            value: string | number | boolean | string[];
             /** Search condition. */
             condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
             /** Range of search. */
