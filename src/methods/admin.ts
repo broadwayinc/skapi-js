@@ -325,7 +325,7 @@ export async function grantAccess(params: Form<{
     return await request.bind(this)('grant-access', params, { auth: true })
 }
 
-export async function getInvitations(params: Form<{
+export async function getInvitations(params?: Form<{
     service?: string;
     owner?: string;
     email?: string;
