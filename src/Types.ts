@@ -193,7 +193,7 @@ export type RecordData = {
     bin: { [key: string]: BinaryFile | BinaryFile[] };
     ip: string;
     readonly: boolean;
-};
+}
 
 export type Connection = {
     /** User's locale */
@@ -222,7 +222,7 @@ export type Connection = {
         prevent_inquiry: boolean;
         prevent_signup: boolean;
     }
-};
+}
 
 export type Form<T> = HTMLFormElement | FormData | SubmitEvent | T;
 
@@ -246,7 +246,7 @@ export type Newsletters = {
      * Url of the message html.
      */
     url: string;
-};
+}
 
 export type UserProfilePublicSettings = {
     /** User's E-Mail is public when true. E-Mail should be verified. */
@@ -311,7 +311,7 @@ export type UserAttributes = {
     profile?: string;
     website?: string;
     nickname?: string;
-};
+}
 
 export type UserProfile = {
     /** Service id of the user account. */
@@ -373,14 +373,14 @@ export type FetchOptions = {
     startKey?: { [key: string]: any; };
     /** Callback for database request progress. Useful when building progress bar. */
     progress?: ProgressCallback;
-};
+}
 
 export type DatabaseResponse<T> = {
     list: T[];
     startKey: string;
     endOfList: boolean;
     startKeyHistory: string[];
-};
+}
 
 export type Service = {
     /** Shows active state. 1 = active, 0 = disabled */
@@ -436,7 +436,7 @@ export type Service = {
     };
     /** Number of users in the service. */
     users: number;
-};
+}
 
 export type FileInfo = {
     url: string;
