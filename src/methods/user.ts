@@ -208,7 +208,7 @@ export function authentication() {
         return user;
     };
 
-    const getSession = async (option?: { skipEventTrigger?: boolean; refreshToken?: boolean; _holdLogin?: boolean }): Promise<CognitoUserSession | Function> => {
+    const getSession = (option?: { skipEventTrigger?: boolean; refreshToken?: boolean; _holdLogin?: boolean }): Promise<CognitoUserSession | Function> => {
         // fetch session, updates user attributes
         this.log('getSession:option', option);
         let { refreshToken = false, skipEventTrigger = false } = option || {};
@@ -265,9 +265,7 @@ export function authentication() {
                 }
 
                 if (err) {
-                    refreshSession.bind(this)(session, cognitoUser).then(refreshedSession => {
-                        respond(refreshedSession);
-                    }).catch(err => {
+                    refreshSession.bind(this)(session, cognitoUser).then(refreshedSession => respond(refreshedSession)).catch(err => {
                         _out.bind(this)();
                         rej(err);
                     }).finally(() => {
@@ -286,9 +284,7 @@ export function authentication() {
                 this.log('getSession:isExpired:', isExpired);
                 // try refresh when invalid token
                 if (isExpired || refreshToken || !session.isValid()) {
-                    refreshSession.bind(this)(session, cognitoUser).then(refreshedSession => {
-                        respond(refreshedSession).catch(err => rej(err));
-                    }).catch(err => {
+                    refreshSession.bind(this)(session, cognitoUser).then(async (refreshedSession) => respond(refreshedSession)).catch(err => {
                         _out.bind(this)();
                         rej(err);
                     }).finally(() => {
