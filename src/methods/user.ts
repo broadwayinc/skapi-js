@@ -559,10 +559,7 @@ export async function login(
         throw new SkapiError('Least one of "username" or "email" is required.', { code: 'INVALID_PARAMETER' });
     }
 
-    return authentication.bind(this)().authenticateUser(params.username || params.email, params.password).catch(err => {
-        _out.bind(this)();
-        throw err;
-    });
+    return await authentication.bind(this)().authenticateUser(params.username || params.email, params.password);
 
     // INVALID_REQUEST: the account has been blacklisted.
     // NOT_EXISTS: the account does not exist.
