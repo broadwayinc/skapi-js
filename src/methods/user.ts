@@ -177,7 +177,7 @@ function refreshSession(session, cognitoUser) {
 
     return new Promise((res, rej) => {
         cognitoUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
-            this.log('getSession:refreshSessionCallback:', { refreshErr, refreshedSession });
+            this.log('getSession:refreshSessionCallback', { refreshErr, refreshedSession });
 
             if (refreshErr) {
                 _out.bind(this)();
@@ -200,7 +200,7 @@ export function authentication() {
     const getUserProfile = (): UserProfile => {
         // get users updated attribute
         let attr = cognitoUser.getSignInUserSession().getIdToken().payload || null;
-        this.log('attributes to normalize:', attr);
+        this.log('attributes to normalize', attr);
 
         // parse attribute structure: [ { Name, Value }, ... ]
         let user = parseUserAttributes(attr);
@@ -279,9 +279,9 @@ export function authentication() {
                 const idToken = session.getIdToken();
                 const idTokenExp = idToken.getExpiration();
                 const isExpired = idTokenExp < currentTime;
-                this.log('getSession:currentTime:', currentTime);
-                this.log('getSession:idTokenExp:', idTokenExp);
-                this.log('getSession:isExpired:', isExpired);
+                this.log('getSession:currentTime', currentTime);
+                this.log('getSession:idTokenExp', idTokenExp);
+                this.log('getSession:isExpired', isExpired);
                 // try refresh when invalid token
                 if (isExpired || refreshToken || !session.isValid()) {
                     refreshSession.bind(this)(session, cognitoUser).then(async (refreshedSession) => respond(refreshedSession)).catch(err => {
