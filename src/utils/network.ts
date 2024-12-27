@@ -309,7 +309,6 @@ export async function request(
         return result;
     }
     catch (err) {
-        // remove promise
         this.log('request:err', err);
         throw err;
     }
