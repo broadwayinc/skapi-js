@@ -200,10 +200,10 @@ export function authentication() {
     const getUserProfile = (): UserProfile => {
         // get users updated attribute
         let attr = cognitoUser.getSignInUserSession().getIdToken().payload || null;
-        this.log('attributes to normalize', attr);
 
         // parse attribute structure: [ { Name, Value }, ... ]
         let user = parseUserAttributes(attr);
+        this.log('normalized user attribute', user);
         this.__user = user;
         return user;
     };
