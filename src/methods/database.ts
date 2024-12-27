@@ -397,7 +397,7 @@ export async function getFile(
     else if (needAuth) {
         let currTime = Math.floor(Date.now() / 1000);
 
-        this.log('request:tokens:', {
+        this.log('getFile:tokens', {
             exp: this.session.idToken.payload.exp,
             currTime,
             expiresIn: this.session.idToken.payload.exp - currTime,
@@ -406,12 +406,19 @@ export async function getFile(
         });
 
         if (this.session.idToken.payload.exp < currTime) {
-            this.log('request:New token', null);
+            this.log('getFile:requesting new token', null);
             try {
                 await authentication.bind(this)().getSession({ refreshToken: true });
+                this.log('getFile:received new tokens', {
+                    exp: this.session.idToken.payload.exp,
+                    currTime,
+                    expiresIn: this.session.idToken.payload.exp - currTime,
+                    token: this.session.accessToken.jwtToken,
+                    refreshToken: this.session.refreshToken.token
+                });
             }
             catch (err) {
-                this.log('request:New token error', err);
+                this.log('getFile:new token error', err);
                 throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
             }
         }

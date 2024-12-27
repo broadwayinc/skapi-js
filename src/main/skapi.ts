@@ -121,7 +121,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.191';
+    private __version = '1.0.192';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -498,7 +498,7 @@ export default class Skapi {
             }, { bypassAwaitConnection: true, method: 'get' });
         }
         catch (err: any) {
-            this.log('Connection fail', err);
+            this.log('connection fail', err);
             alert('Service is not available: ' + (err.message || err.toString()));
 
             this.connection = null;
@@ -524,9 +524,9 @@ export default class Skapi {
     private log(n: string, v: any) {
         if (this.__network_logs) {
             try {
-                console.log(`%c${n}`, 'color: blue;', JSON.parse(JSON.stringify(v)));
+                console.log(`%c${n}:`, 'color: blue;', JSON.parse(JSON.stringify(v)));
             } catch (err) {
-                console.log(`%c${n}`, 'color: blue;', v);
+                console.log(`%c${n}:`, 'color: blue;', v);
             }
         }
     }

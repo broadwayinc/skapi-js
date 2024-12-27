@@ -280,7 +280,7 @@ export async function postRealtime(message: any, recipient: string): Promise<{ t
             }));
 
         } catch (err) {
-            this.log('postRealtime:err:', { err });
+            this.log('postRealtime:err', { err });
             if (__current_socket_room !== recipient) {
                 throw new SkapiError(`User has not joined to the recipient group. Run joinRealtime({ group: "${recipient}" })`, { code: 'INVALID_REQUEST' });
             }
