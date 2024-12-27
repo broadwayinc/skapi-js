@@ -86,7 +86,7 @@ export async function request(
         ignoreService: boolean;
     }
 ): Promise<any> {
-    this.log('request:', { url, data, options, _etc: _etc || {} });
+    this.log('request', { url, data, options, _etc: _etc || {} });
 
     options = options || {};
 
@@ -113,12 +113,10 @@ export async function request(
 
     if (auth) {
         if (this.session) {
-            this.log('request:session', this.session);
-            
             const currentTime = Math.floor(Date.now() / 1000);
             const idToken = this.session.getIdToken();
             const idTokenExp = idToken.getExpiration();
-            this.log('request:tokens:', {
+            this.log('request:tokens', {
                 exp: this.session.idToken.payload.exp,
                 currentTime,
                 expiresIn: idTokenExp - currentTime,
@@ -127,21 +125,27 @@ export async function request(
             });
 
             if (idTokenExp < currentTime) {
-                this.log('request:New token', null);
+                this.log('request:requesting new token', null);
                 try {
                     await authentication.bind(this)().getSession({ refreshToken: true });
+                    this.log('request:received new tokens', {
+                        exp: this.session.idToken.payload.exp,
+                        currentTime,
+                        expiresIn: idTokenExp - currentTime,
+                        token: this.session.accessToken.jwtToken,
+                        refreshToken: this.session.refreshToken.token
+                    });
                 }
                 catch (err) {
-                    this.log('request:New token error', err);
+                    this.log('request:new token error', err);
                     throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
                 }
             }
 
             token = this.session?.idToken?.jwtToken;
-            this.log('request:token to use', token);
         }
         else {
-            this.log('request:No session', null);
+            this.log('request:no session', null);
             throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
         }
     }
@@ -221,7 +225,7 @@ export async function request(
         hashedParams
     }); // returns requrestKey | cached data
 
-    this.log('requestKey:', requestKey);
+    this.log('requestKey', requestKey);
 
     if (!requestKey || requestKey && typeof requestKey === 'object') {
         // cahced data can be falsy data or object
