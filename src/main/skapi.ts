@@ -100,6 +100,7 @@ import {
     unregisterTicket,
     jwtLogin,
     _out,
+    openIdLogin,
 } from '../methods/user';
 import {
     extractFormData,
@@ -121,7 +122,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.194';
+    private __version = '1.0.195';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -583,6 +584,11 @@ export default class Skapi {
         email?: string;
     }>, fetchOptions: FetchOptions): Promise<DatabaseResponse<UserProfile>> {
         return getInvitations.bind(this)(params, fetchOptions);
+    }
+
+    @formHandler()
+    openIdLogin(params: { token: string; id: string; }): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
+        return openIdLogin.bind(this)(params);
     }
 
     @formHandler()
