@@ -427,6 +427,21 @@ export async function getProfile(options?: { refreshToken: boolean; }): Promise<
     }
 }
 
+export async function openIdLogin(params: { token: string; id: string; }): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
+    await this.__connection;
+    params = validator.Params(params, {
+        token: 'string',
+        id: 'string'
+    });
+
+    let oplog = await request.bind(this)("openid-logger", params);
+    let logger = oplog.logger.split('#');
+    let username = logger[0];
+    let password = logger[1];
+
+    return { userProfile: await authentication.bind(this)().authenticateUser(username, password), openid: oplog.openid };
+}
+
 export async function checkAdmin() {
     await this.__connection;
     if (this.__user?.service === this.service) {

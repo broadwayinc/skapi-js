@@ -44,6 +44,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'client-secret-request-public':
         case 'block-account':
         case 'invitation-list':
+        case 'openid-logger':
         case 'grant-access':
             return (auth ? admin.admin_private : admin.admin_public) + dest + query;
 
