@@ -16,7 +16,7 @@ Skapi provides all the backend features you need for your web application out of
 - File Storage
 - CDN
 - Automated Email Systems
-- Realtime Messaging
+- Realtime Messaging & Video Chat
 - API Bridge for 3rd party API's
 - Hosting
 
