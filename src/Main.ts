@@ -1,4 +1,6 @@
 import './polyfills/global';
 import Skapi from "./main/skapi";
 import SkapiError from "./main/error";
-export { Skapi, SkapiError };
+import * as Types from "./Types";
+
+export { Skapi, SkapiError, Types };

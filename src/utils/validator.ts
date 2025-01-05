@@ -198,7 +198,6 @@ function Params(
     // }
 
     let p = extractFormData(params).data;
-
     struct.service = 'string';
     struct.owner = 'string';
 
