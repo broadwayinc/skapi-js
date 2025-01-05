@@ -484,11 +484,12 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
 
                     else if (typeof result === 'object' && result?.message) {
                         let code = (result?.code || (status ? status.toString() : null) || 'ERROR');
-                        let msg = result.message;
-                        if (typeof msg === 'string') {
-                            msg = msg.trim();
+                        let message = result.message;
+                        let cause = result?.cause;
+                        if (typeof message === 'string') {
+                            message = message.trim();
                         }
-                        rej(new SkapiError(msg, { code: code }));
+                        rej(new SkapiError(message, { cause, code }));
                     }
 
                     else {
@@ -874,6 +875,8 @@ export async function getFormResponse(): Promise<any> {
     await this.__connection;
     let responseKey = `${this.service}:${MD5.hash(location.href.split('?')[0])}`;
     let stored = sessionStorage.getItem(responseKey);
+    sessionStorage.removeItem(responseKey);
+    
     if (stored !== null) {
         try {
             stored = JSON.parse(stored);

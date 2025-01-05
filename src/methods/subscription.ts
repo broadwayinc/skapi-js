@@ -10,6 +10,7 @@ import validator from '../utils/validator';
 import { request } from '../utils/network';
 import { checkAdmin } from './user';
 import { normalizeRecord } from './database';
+import { extractFormData } from '../utils/utils';
 
 export async function getFeed(params: any, fetchOptions: FetchOptions): Promise<DatabaseResponse<RecordData>> {
     params = params || {};
@@ -71,6 +72,7 @@ export async function getSubscriptions(
     get_notified: boolean; // True when subscriber gets notified
     get_email: boolean; // True when subscriber gets email
 }>> {
+    params = extractFormData(params).data as any;
     params = validator.Params(params, {
         subscriber: (v: string) => validator.UserId(v, 'User ID in "subscriber"'),
         group: ['number', () => 1],
@@ -78,7 +80,7 @@ export async function getSubscriptions(
             if (!v) {
                 return undefined;
             }
-            return validator.Params(params, {
+            return validator.Params(params.subscription, {
                 user_id: userider.bind(this),
                 group: grouper,
             }, ['user_id']);
@@ -320,6 +322,8 @@ export async function getNewsletters(
     if (!params) {
         fetchOptions = Object.assign({ ascending: false }, (fetchOptions || {}));
     }
+
+    params = extractFormData(params).data as any;
 
     params = params || {
         searchFor: 'timestamp',

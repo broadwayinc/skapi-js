@@ -15,7 +15,7 @@ import {
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
-import { MD5, fromBase62, parseUserAttributes } from '../utils/utils';
+import { MD5, extractFormData, fromBase62, parseUserAttributes } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
 
@@ -298,8 +298,8 @@ export function authentication() {
         });
     };
 
-    const createCognitoUser = (un: string) => {
-        let username = un.includes(this.service + '-') ? un : this.service + '-' + MD5.hash(un);
+    const createCognitoUser = (un: string, raw?:boolean) => {
+        let username = raw ? un : un.includes(this.service + '-') ? un : this.service + '-' + MD5.hash(un);
 
         return {
             cognitoUser: new CognitoUser({
@@ -310,12 +310,12 @@ export function authentication() {
         };
     };
 
-    const authenticateUser = (email: string, password: string): Promise<UserProfile> => {
+    const authenticateUser = (email: string, password: string, raw:boolean=false): Promise<UserProfile> => {
         return new Promise((res, rej) => {
             this.__request_signup_confirmation = null;
             this.__disabledAccount = null;
 
-            let initUser = createCognitoUser(email);
+            let initUser = createCognitoUser(email, raw);
             let username = initUser.cognitoUsername;
             let authenticationDetails = new AuthenticationDetails({
                 Username: username,
@@ -436,10 +436,10 @@ export async function openIdLogin(params: { token: string; id: string; }): Promi
 
     let oplog = await request.bind(this)("openid-logger", params);
     let logger = oplog.logger.split('#');
-    let username = logger[0];
+    let username = this.service + '-' + logger[0];
     let password = logger[1];
 
-    return { userProfile: await authentication.bind(this)().authenticateUser(username, password), openid: oplog.openid };
+    return { userProfile: await authentication.bind(this)().authenticateUser(username, password, true), openid: oplog.openid };
 }
 
 export async function checkAdmin() {
@@ -1101,6 +1101,9 @@ export async function getUsers(
         range?: string | number | boolean;
     },
     fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
+    
+    params = extractFormData(params).data as any;
+    
     if (!params) {
         // set default value
         params = {
@@ -1121,15 +1124,12 @@ export async function getUsers(
     const searchForTypes = {
         'user_id': (v: string) => {
             if (Array.isArray(v)) {
-                for (let id of v) {
-                    validator.UserId(id);
-                }
-                return v;
+                return v.map(id => validator.UserId(id));
             }
             return validator.UserId(v)
         },
-        'email': (v: string) => validator.Email(v),
-        'phone_number': (v: string) => validator.PhoneNumber(v),
+        'email': 'string',
+        'phone_number': 'string',
         'locale': (v: string) => {
             if (typeof v !== 'string' || typeof v === 'string' && v.length > 5) {
                 throw new SkapiError('Value of "locale" should be a country code.', { code: 'INVALID_PARAMETER' });
@@ -1189,7 +1189,7 @@ export async function getUsers(
             return v;
         }
     }, required);
-
+    
     if (params?.condition && params?.condition !== '=' && params.hasOwnProperty('range')) {
         throw new SkapiError('Conditions does not apply on range search.', { code: 'INVALID_PARAMETER' });
     }
