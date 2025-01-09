@@ -5,6 +5,7 @@ import { extractFormData } from '../utils/utils';
 import { request } from '../utils/network';
 import { DatabaseResponse, FetchOptions, RealtimeCallback, WebSocketMessage } from '../Types';
 import { answerSdpOffer, receiveIceCandidate, __peerConnection, __receiver_ringing, closeRTC, respondRTC, __caller_ringing, __rtcCallbacks } from './webrtc';
+import { getJwtToken } from './user';
 
 let __roomList: {
     [realTimeGroup: string]: {
@@ -31,16 +32,18 @@ async function prepareWebsocket() {
     );
 }
 
-export function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSocket> {
+export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSocket> {
     if (typeof cb !== 'function') {
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
     }
+    
+    await getJwtToken.bind(this)();
 
     if (this.__socket instanceof Promise) {
         return this.__socket;
     }
 
-    this.__socket = new Promise(resolve => {
+    this.__socket = new Promise(async (resolve) => {
         setTimeout(async () => {
             let socket: WebSocket = await prepareWebsocket.bind(this)();
 
@@ -267,6 +270,8 @@ export async function postRealtime(message: any, recipient: string): Promise<{ t
         throw new SkapiError(`No recipient.`, { code: 'INVALID_REQUEST' });
     }
 
+    await getJwtToken.bind(this)();
+
     message = extractFormData(message).data;
 
     if (socket.readyState === 1) {
@@ -306,6 +311,8 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
         throw new SkapiError(`No realtime connection. Execute connectRealtime() before this method.`, { code: 'INVALID_REQUEST' });
     }
 
+    await getJwtToken.bind(this)();
+    
     params = extractFormData(params).data;
 
     let { group = null } = params;

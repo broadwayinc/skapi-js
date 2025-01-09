@@ -3,7 +3,8 @@ import SkapiError from '../main/error';
 import { Form, FetchOptions, DatabaseResponse, ProgressCallback } from '../Types';
 import validator from './validator';
 import { MD5, generateRandom, extractFormData } from './utils';
-import { authentication } from '../methods/user';
+// import { authentication, getJwtToken } from '../methods/user';
+import { getJwtToken } from '../methods/user';
 
 async function getEndpoint(dest: string, auth: boolean) {
     const endpoints = await Promise.all([
@@ -72,6 +73,7 @@ async function getEndpoint(dest: string, auth: boolean) {
 
 const __pendingRequest: Record<string, Promise<any>> = {};
 
+
 export async function request(
     url: string,
     data: Form<any> = null,
@@ -113,42 +115,43 @@ export async function request(
     }
 
     if (auth) {
-        if (this.session) {
-            const currentTime = Math.floor(Date.now() / 1000);
-            const idToken = this.session.getIdToken();
-            const idTokenExp = idToken.getExpiration();
-            this.log('request:tokens', {
-                exp: this.session.idToken.payload.exp,
-                currentTime,
-                expiresIn: idTokenExp - currentTime,
-                token: this.session.accessToken.jwtToken,
-                refreshToken: this.session.refreshToken.token
-            });
+        token = await getJwtToken.bind(this)();
+        // if (this.session) {
+        //     const currentTime = Math.floor(Date.now() / 1000);
+        //     const idToken = this.session.getIdToken();
+        //     const idTokenExp = idToken.getExpiration();
+        //     this.log('request:tokens', {
+        //         exp: this.session.idToken.payload.exp,
+        //         currentTime,
+        //         expiresIn: idTokenExp - currentTime,
+        //         token: this.session.accessToken.jwtToken,
+        //         refreshToken: this.session.refreshToken.token
+        //     });
 
-            if (idTokenExp < currentTime) {
-                this.log('request:requesting new token', null);
-                try {
-                    await authentication.bind(this)().getSession({ refreshToken: true });
-                    this.log('request:received new tokens', {
-                        exp: this.session.idToken.payload.exp,
-                        currentTime,
-                        expiresIn: idTokenExp - currentTime,
-                        token: this.session.accessToken.jwtToken,
-                        refreshToken: this.session.refreshToken.token
-                    });
-                }
-                catch (err) {
-                    this.log('request:new token error', err);
-                    throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
-                }
-            }
+        //     if (idTokenExp < currentTime) {
+        //         this.log('request:requesting new token', null);
+        //         try {
+        //             await authentication.bind(this)().getSession({ refreshToken: true });
+        //             this.log('request:received new tokens', {
+        //                 exp: this.session.idToken.payload.exp,
+        //                 currentTime,
+        //                 expiresIn: idTokenExp - currentTime,
+        //                 token: this.session.accessToken.jwtToken,
+        //                 refreshToken: this.session.refreshToken.token
+        //             });
+        //         }
+        //         catch (err) {
+        //             this.log('request:new token error', err);
+        //             throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+        //         }
+        //     }
 
-            token = this.session?.idToken?.jwtToken;
-        }
-        else {
-            this.log('request:no session', null);
-            throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
-        }
+        //     token = this.session?.idToken?.jwtToken;
+        // }
+        // else {
+        //     this.log('request:no session', null);
+        //     throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+        // }
     }
 
     let fetchOptions = {}; // record fetch options
