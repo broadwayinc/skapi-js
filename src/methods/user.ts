@@ -168,6 +168,47 @@ export async function unregisterTicket(
     return request.bind(this)('register-ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
 }
 
+export async function getJwtToken() {
+    await this.__connection;
+    if (this.session) {
+        const currentTime = Math.floor(Date.now() / 1000);
+        const idToken = this.session.getIdToken();
+        const idTokenExp = idToken.getExpiration();
+        this.log('request:tokens', {
+            exp: this.session.idToken.payload.exp,
+            currentTime,
+            expiresIn: idTokenExp - currentTime,
+            token: this.session.accessToken.jwtToken,
+            refreshToken: this.session.refreshToken.token
+        });
+
+        if (idTokenExp < currentTime) {
+            this.log('request:requesting new token', null);
+            try {
+                await authentication.bind(this)().getSession({ refreshToken: true });
+                this.log('request:received new tokens', {
+                    exp: this.session.idToken.payload.exp,
+                    currentTime,
+                    expiresIn: idTokenExp - currentTime,
+                    token: this.session.accessToken.jwtToken,
+                    refreshToken: this.session.refreshToken.token
+                });
+            }
+            catch (err) {
+                this.log('request:new token error', err);
+                throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+            }
+        }
+
+        return this.session?.idToken?.jwtToken;
+    }
+    else {
+        this.log('request:no session', null);
+        _out.bind(this)();
+        throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+    }
+}
+
 
 let isRefreshing = null;
 function refreshSession(session, cognitoUser) {
@@ -284,7 +325,7 @@ export function authentication() {
                 this.log('getSession:isExpired', isExpired);
                 // try refresh when invalid token
                 if (isExpired || refreshToken || !session.isValid()) {
-                    refreshSession.bind(this)(session, cognitoUser).then(async (refreshedSession) => respond(refreshedSession)).catch(err => {
+                    refreshSession.bind(this)(session, cognitoUser).then(refreshedSession => respond(refreshedSession)).catch(err => {
                         _out.bind(this)();
                         rej(err);
                     }).finally(() => {
@@ -298,7 +339,7 @@ export function authentication() {
         });
     };
 
-    const createCognitoUser = (un: string, raw?:boolean) => {
+    const createCognitoUser = (un: string, raw?: boolean) => {
         let username = raw ? un : un.includes(this.service + '-') ? un : this.service + '-' + MD5.hash(un);
 
         return {
@@ -310,7 +351,7 @@ export function authentication() {
         };
     };
 
-    const authenticateUser = (email: string, password: string, raw:boolean=false): Promise<UserProfile> => {
+    const authenticateUser = (email: string, password: string, raw: boolean = false): Promise<UserProfile> => {
         return new Promise((res, rej) => {
             this.__request_signup_confirmation = null;
             this.__disabledAccount = null;
@@ -1101,9 +1142,9 @@ export async function getUsers(
         range?: string | number | boolean;
     },
     fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
-    
+
     params = extractFormData(params).data as any;
-    
+
     if (!params) {
         // set default value
         params = {
@@ -1189,7 +1230,7 @@ export async function getUsers(
             return v;
         }
     }, required);
-    
+
     if (params?.condition && params?.condition !== '=' && params.hasOwnProperty('range')) {
         throw new SkapiError('Conditions does not apply on range search.', { code: 'INVALID_PARAMETER' });
     }
