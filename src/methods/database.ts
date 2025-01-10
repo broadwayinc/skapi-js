@@ -168,6 +168,10 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                         url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint' }) as string);
                     }
                     // auth/serviceid/ownerid/uploaderid/records/recordid/access_group/bin/timestamp_base62/size_base62/form_keyname/filename.ext
+                    let _ref = output?.ref || null;
+                    if (_ref) {
+                        _ref = _ref.split('/')[0];
+                    }
                     let obj = {
                         access_group,
                         filename,
@@ -178,7 +182,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                         getFile: (dataType: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info', progress?: ProgressCallback) => {
                             let config = {
                                 dataType: dataType || 'download',
-                                progress
+                                progress,
+                                _ref
                             };
                             return getFile.bind(this)(url, config);
                         }
@@ -309,6 +314,7 @@ export async function getFile(
         dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info'; // default 'download'
         expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
         progress?: ProgressCallback;
+        _ref?: string;
     }
 ): Promise<Blob | string | void | FileInfo> {
     if (typeof url !== 'string') {
@@ -433,6 +439,12 @@ export async function getFile(
             let record_id = target_key[5];
             if (this.__private_access_key[record_id]) {
                 url += '&p=' + this.__private_access_key[record_id];
+            }
+            else {
+                try {
+                    let p = await this.requestPrivateRecordAccessKey({ record_id, reference_id: config?._ref });
+                    url += '&p=' + p;
+                } catch (err) { }
             }
         }
     }
@@ -1072,38 +1084,32 @@ export async function listPrivateRecordAccess(params: {
     return list;
 }
 
-export function requestPrivateRecordAccessKey(params: { record_id: string | string[] }): Promise<{ [record_id: string]: string }> {
+export function requestPrivateRecordAccessKey(params: { record_id: string, reference_id?: string }): Promise<string> {
     let record_id: string | string[] = params.record_id;
+    let reference_id = params.reference_id || null;
     if (!record_id) {
         throw new SkapiError(`Record ID is required.`, { code: 'INVALID_PARAMETER' });
     }
 
-    if (typeof record_id === 'string') {
-        record_id = [record_id];
+    if (typeof record_id !== 'string') {
+        throw new SkapiError(`Record ID should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
     }
 
-    if (typeof record_id !== 'string') {
-        if (Array.isArray(record_id)) {
-            record_id.forEach((id) => {
-                if (typeof id !== 'string') {
-                    throw new SkapiError(`Record ID should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
-                }
-            });
-        }
-        else {
-            throw new SkapiError(`Record ID should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
-        }
+    if (reference_id && typeof reference_id !== 'string') {
+        throw new SkapiError(`Reference ID should be type: <string>`, { code: 'INVALID_PARAMETER' });
+    }
+
+    if (this.__private_access_key[record_id]) {
+        return this.__private_access_key[record_id];
     }
 
     let res = request.bind(this)(
         'request-private-access-key',
-        { record_id },
+        { record_id, reference_id },
         { auth: true }
     );
 
-    for (let i in res) {
-        this.__private_access_key[i] = res[i];
-    }
+    this.__private_access_key[record_id] = res;
 
     return res;
 }

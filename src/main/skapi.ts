@@ -906,7 +906,7 @@ export default class Skapi {
         user_id: string | string[];
     }): Promise<DatabaseResponse<{ record_id: string; user_id: string; }>> { return listPrivateRecordAccess.bind(this)(params); }
     @formHandler()
-    requestPrivateRecordAccessKey(params: { record_id: string | string[] }): Promise<{ [record_id: string]: string }> {
+    requestPrivateRecordAccessKey(params: { record_id: string; reference_id?: string; }): Promise<string> {
         return requestPrivateRecordAccessKey.bind(this)(params);
     }
     @formHandler()
