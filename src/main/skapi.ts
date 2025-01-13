@@ -123,6 +123,9 @@ import {
 import{
     spellcast
 } from '../methods/vivian';
+import{
+    dopamine
+} from '../methods/vivian';
 export default class Skapi {
     // current version
     private __version = '1.0.199';
@@ -565,6 +568,15 @@ export default class Skapi {
         nonce?: string;
     }): Promise<UserProfile> {
         return jwtLogin.bind(this)(params);
+    }
+
+    @formHandler()
+    spellcast(params){
+        return spellcast.bind(this)(params)
+    }
+    @formHandler()
+    dopamine(params){
+        return dopamine.bind(this)(params)
     }
 
     @formHandler()
