@@ -119,6 +119,9 @@ import {
     cancelInvitation,
     resendInvitation
 } from '../methods/admin';
+import{
+    spellcast
+} from '../methods/vivian';
 export default class Skapi {
     // current version
     private __version = '1.0.188';
@@ -803,6 +806,10 @@ export default class Skapi {
     @formHandler()
     resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
         return resendSignupConfirmation.bind(this)();
+    }
+    @formHandler()
+    spellcast(params){
+        return spellcast.bind(this)(params)
     }
     @formHandler()
     recoverAccount(
