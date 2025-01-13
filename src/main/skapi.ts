@@ -100,6 +100,7 @@ import {
     unregisterTicket,
     jwtLogin,
     _out,
+    openIdLogin,
 } from '../methods/user';
 import {
     extractFormData,
@@ -124,7 +125,7 @@ import{
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.188';
+    private __version = '1.0.199';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -501,7 +502,7 @@ export default class Skapi {
             }, { bypassAwaitConnection: true, method: 'get' });
         }
         catch (err: any) {
-            this.log('Connection fail', err);
+            this.log('connection fail', err);
             alert('Service is not available: ' + (err.message || err.toString()));
 
             this.connection = null;
@@ -527,9 +528,9 @@ export default class Skapi {
     private log(n: string, v: any) {
         if (this.__network_logs) {
             try {
-                console.log(`%c${n}`, 'color: blue;', JSON.parse(JSON.stringify(v)));
+                console.log(`%c${n}:`, 'color: blue;', JSON.parse(JSON.stringify(v)));
             } catch (err) {
-                console.log(`%c${n}`, 'color: blue;', v);
+                console.log(`%c${n}:`, 'color: blue;', v);
             }
         }
     }
@@ -586,6 +587,11 @@ export default class Skapi {
         email?: string;
     }>, fetchOptions: FetchOptions): Promise<DatabaseResponse<UserProfile>> {
         return getInvitations.bind(this)(params, fetchOptions);
+    }
+
+    @formHandler()
+    openIdLogin(params: { token: string; id: string; }): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
+        return openIdLogin.bind(this)(params);
     }
 
     @formHandler()
@@ -808,10 +814,6 @@ export default class Skapi {
         return resendSignupConfirmation.bind(this)();
     }
     @formHandler()
-    spellcast(params){
-        return spellcast.bind(this)(params)
-    }
-    @formHandler()
     recoverAccount(
         /** Redirect url on confirmation success. */
         redirect: boolean | string = false
@@ -822,9 +824,9 @@ export default class Skapi {
     getUsers(
         params?: {
             /** Index name to search. */
-            searchFor: 'user_id' | 'email' | 'phone_number' | 'locale' | 'name' | 'address' | 'gender' | 'birthdate' | 'subscribers' | 'timestamp';
+            searchFor: 'user_id' | 'email' | 'phone_number' | 'locale' | 'name' | 'address' | 'gender' | 'birthdate' | 'subscribers' | 'timestamp' | 'approved';
             /** Index value to search. */
-            value: string | number | boolean;
+            value: string | number | boolean | string[];
             /** Search condition. */
             condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
             /** Range of search. */
@@ -907,7 +909,7 @@ export default class Skapi {
         user_id: string | string[];
     }): Promise<DatabaseResponse<{ record_id: string; user_id: string; }>> { return listPrivateRecordAccess.bind(this)(params); }
     @formHandler()
-    requestPrivateRecordAccessKey(params: { record_id: string | string[] }): Promise<{ [record_id: string]: string }> {
+    requestPrivateRecordAccessKey(params: { record_id: string; reference_id?: string; }): Promise<string> {
         return requestPrivateRecordAccessKey.bind(this)(params);
     }
     @formHandler()
