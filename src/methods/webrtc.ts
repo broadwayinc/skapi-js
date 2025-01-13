@@ -316,7 +316,7 @@ export async function connectRTC(
                 }
 
                 __peerConnection[cid].onnegotiationneeded = () => {
-                    this.log('onnegotiationneeded', `Sending offer to "${cid}".`);
+                    this.log('onnegotiationneeded', `sending offer to "${cid}".`);
                     sendOffer.bind(this)(cid);
                     if (__rtcCallbacks[cid])
                         __rtcCallbacks[cid]({
@@ -401,7 +401,7 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
         }
 
         __peerConnection[sender].ondatachannel = (event) => {
-            this.log('ondatachannel', `Received data channel "${event.channel.label}".`);
+            this.log('ondatachannel', `received data channel "${event.channel.label}".`);
             const dataChannel = event.channel;
             __dataChannel[sender][dataChannel.label] = dataChannel;
             handleDataChannel.bind(this)(sender, dataChannel);
@@ -438,7 +438,7 @@ async function sendOffer(recipient) {
     await __peerConnection[recipient].setLocalDescription(offer);
 
     let sdpoffer = __peerConnection[recipient].localDescription;
-    this.log('rtcSdpOffer to:', sdpoffer);
+    this.log('rtcSdpOffer to', sdpoffer);
 
     socket.send(JSON.stringify({
         action: 'rtc',
@@ -452,12 +452,12 @@ async function sendIceCandidate(event, recipient) {
     if (!this?.session?.accessToken?.jwtToken) {
         throw new SkapiError('Access token is required.', { code: 'INVALID_PARAMETER' });
     }
-    this.log('sendIceCandidate to:', recipient);
+    this.log('sendIceCandidate to', recipient);
 
     let socket: WebSocket = await this.__socket;
 
     if (!event.candidate) {
-        this.log('candidate-end', 'All ICE candidates have been sent');
+        this.log('candidate-end', 'all ice candidates have been sent');
         return;
     }
 
@@ -465,7 +465,7 @@ async function sendIceCandidate(event, recipient) {
 
     // Collect ICE candidates and send them to the remote peer
     let candidate = event.candidate;
-    this.log('ICE gathering state set to:', __peerConnection[recipient].iceGatheringState);
+    this.log('ice gathering state set to', __peerConnection[recipient].iceGatheringState);
 
     callback({
         type: 'icecandidate',
@@ -665,7 +665,7 @@ function handleDataChannel(key: string, dataChannel: RTCDataChannel, skipKey?: s
             cb(buffer);
         },
         onopen: (event) => {
-            this.log('dataChannel', `Data channel: "${dataChannel.label}" is open and ready to send messages.`);
+            this.log('dataChannel', `data channel: "${dataChannel.label}" is open and ready to send messages.`);
             let msg = {
                 type: event.type,
                 target: dataChannel,
