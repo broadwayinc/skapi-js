@@ -64,6 +64,8 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'del-files':
         case 'check-schema':
         case 'get-feed':
+        case 'castspell':
+        case 'dopamine':
             return (auth ? record.record_private : record.record_public) + dest + query;
 
         default:
