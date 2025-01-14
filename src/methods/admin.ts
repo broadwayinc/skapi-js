@@ -212,13 +212,14 @@ export async function createAccount(
     form: Form<
         UserAttributes & UserProfilePublicSettings &
         { email: string; password: string; } &
-        { service?: string; owner?: string; }
+        { service?: string; owner?: string; } &
+        { openid_id?: string; }
     >,
 ): Promise<UserProfile & PublicUser & { email_admin: string; approved: string; log: number; username: string; }> {
     let paramRestrictions = {
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v),
-
+        openid_id: 'string',
         name: 'string',
         username: 'string',
         gender: 'string',

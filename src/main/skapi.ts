@@ -122,7 +122,7 @@ import {
 } from '../methods/admin';
 export default class Skapi {
     // current version
-    private __version = '1.0.199';
+    private __version = '1.0.200';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -665,7 +665,7 @@ export default class Skapi {
 
     @formHandler()
     createAccount(
-        form: { email: string; password: string; } & UserAttributes & UserProfilePublicSettings
+        form: { email: string; password: string; } & UserAttributes & UserProfilePublicSettings & { openid_id?: string; }
     ): Promise<UserProfile & PublicUser & { email_admin: string; approved: string; log: number; username: string; }> {
         return createAccount.bind(this)(form);
     }
