@@ -10,5 +10,10 @@ export async function dopamine(params){
     await this.__connection;
 
     let response = await request.bind(this)('dopamine', params, {auth: true});
-    return response;
+    
+    let message = response.previous_message.message
+    let name = response.previous_message.name
+    alert(`${name} said ${message}`)
+
+    window.location.href = response.video
 }
