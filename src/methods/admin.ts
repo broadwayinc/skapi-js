@@ -103,7 +103,7 @@ export async function deleteAccount(form: Form<{
 }
 
 export async function inviteUser(
-    form: Form<UserAttributes & UserProfilePublicSettings & { email: string; owner?: string; service?: string; }>,
+    form: Form<UserAttributes & UserProfilePublicSettings & { email: string; owner?: string; service?: string; openid_id?: string; }>,
     options?: {
         confirmation_url?: string; // url 없으면 무조건 true
         email_subscription?: boolean;
@@ -142,6 +142,7 @@ export async function inviteUser(
         address_public: ['boolean', () => false],
         birthdate_public: ['boolean', () => false],
         phone_number_public: ['boolean', () => false],
+        openid_id: 'string',
         access_group: (v: number) => {
             // if string try to convert to number and if it's not a number, throw error
             try {
@@ -212,8 +213,7 @@ export async function createAccount(
     form: Form<
         UserAttributes & UserProfilePublicSettings &
         { email: string; password: string; } &
-        { service?: string; owner?: string; } &
-        { openid_id?: string; }
+        { service?: string; owner?: string; }
     >,
 ): Promise<UserProfile & PublicUser & { email_admin: string; approved: string; log: number; username: string; }> {
     let paramRestrictions = {
