@@ -1,8 +1,26 @@
 import { request } from '../utils/network';
+import validator from '../utils/validator';
 export async function spellcast(params){
     await this.__connection;
+    params = validator.Params(params, {
+        'spell': 'string',
+        'name': 'string',
+        'magic': 'object'
+    }, ['spell', 'name'])
 
-    let response = await request.bind(this)('castspell', params, {auth: true});
+    let response = await request.bind(this)('castspell', params);
+    return response;
+}
+
+export async function getspell(params){
+    await this.__connection;
+    params = validator.Params(params, {
+        'search_option': ['spell', 'name'],
+        'value': 'string',
+        'condition': ['starts_with', 'exact']
+    }, ['search_option', 'value', 'condition'])
+
+    let response = await request.bind(this)('getspell', params);
     return response;
 }
 

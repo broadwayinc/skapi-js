@@ -121,10 +121,7 @@ import {
     resendInvitation
 } from '../methods/admin';
 import{
-    spellcast
-} from '../methods/vivian';
-import{
-    dopamine
+    spellcast, dopamine, getspell
 } from '../methods/vivian';
 export default class Skapi {
     // current version
@@ -574,6 +571,12 @@ export default class Skapi {
     spellcast(params){
         return spellcast.bind(this)(params)
     }
+
+    @formHandler()
+    getspell(params){
+        return getspell.bind(this)(params)
+    }
+
     @formHandler()
     dopamine(params){
         return dopamine.bind(this)(params)
