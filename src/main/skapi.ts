@@ -355,6 +355,23 @@ export default class Skapi {
                 }
             });
 
+        // this.admin_endpoint_extra = fetch(`${cdn_domain}/${sreg}/admin-extra.json`)
+        //     .then(response => response.blob())
+        //     .then(blob => new Promise((resolve, reject) => {
+        //         const reader = new FileReader();
+        //         reader.onloadend = () => resolve(reader.result);
+        //         reader.onerror = reject;
+        //         reader.readAsDataURL(blob);
+        //     }))
+        //     .then(data => {
+        //         try {
+        //             return typeof data === 'string' ? JSON.parse(atob(data.split(',')[1])) : null
+        //         }
+        //         catch (err) {
+        //             throw new SkapiError('Service does not exist. Create your service from skapi.com', { code: 'NOT_EXISTS' });
+        //         }
+        //     });
+
         this.record_endpoint = fetch(`${cdn_domain}/${sreg}/record.json`)
             .then(response => response.blob())
             .then(blob => new Promise((resolve, reject) => {

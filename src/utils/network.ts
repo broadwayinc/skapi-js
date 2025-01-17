@@ -14,6 +14,7 @@ async function getEndpoint(dest: string, auth: boolean) {
 
     const admin = endpoints[0];
     const record = endpoints[1];
+
     let params = dest.split('?');
     let query = params.length > 1 ? '?' + params[1] : '';
     dest = params[0];
@@ -67,7 +68,11 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'castspell':
         case 'dopamine':
         case 'getspell':
-            return (auth ? record.record_private : record.record_public) + dest + query;
+            const gateway = auth
+                ? (Math.random() < 0.5 ? record.record_private : record.record_private_2)
+                : (Math.random() < 0.5 ? record.record_public : record.record_public_2);
+
+            return gateway + dest + query;
 
         default:
             return validator.Url(dest);
