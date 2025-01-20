@@ -76,6 +76,9 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'castspell':
         case 'dopamine':
         case 'getspell':
+            console.log("Auth:", auth);
+            console.log("Private Counter:", privateCounter, "Public Counter:", publicCounter);
+
             // Round-robin
             const gateways = auth
                 ? [record.record_private, record.record_private_2]
@@ -84,10 +87,14 @@ async function getEndpoint(dest: string, auth: boolean) {
             const counter = auth ? privateCounter : publicCounter;
             const selectedGateway = gateways[counter % gateways.length];
 
+            console.log("Selected Gateway:", selectedGateway);
+
             if (auth){
                 privateCounter++;
+                console.log("Incremented Private Counter:", privateCounter);
             } else {
                 publicCounter++;
+                console.log("Incremented Public Counter:", publicCounter);
             }
 
             return selectedGateway + dest + query
