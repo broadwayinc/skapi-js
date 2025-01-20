@@ -55,13 +55,20 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'grant-access':
             return (auth ? admin.admin_private : admin.admin_public) + dest + query;
 
+        // Records
         case 'post-record': ////
             // Dedicated gateway api for post-record
             return (auth ? record.post_private : record.post_public) + dest + query;
 
         case 'get-records': ////
+            // Dedicated gateway api for get-record
+            return (auth ? record.get_private : record.get_public) + dest + query;
+
         case 'del-files': //
         case 'del-records': //
+            // Dedicated gateway api for del-records and del-files
+            return (auth ? record.del_private : record.del_public) + dest + query;
+
         case 'subscription':
         case 'get-subscription':
         case 'get-table':
@@ -73,6 +80,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'get-ws-group':
         case 'check-schema':
         case 'get-feed':
+        // From viviplayground
         case 'castspell':
         case 'dopamine':
         case 'getspell':
