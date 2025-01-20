@@ -57,7 +57,7 @@ async function getEndpoint(dest: string, auth: boolean) {
 
         case 'post-record': ////
             // Dedicated gateway api for post-record
-            return (auth ? record.post_public : record.post_private) + dest + query;
+            return (auth ? record.post_private : record.post_public) + dest + query;
 
         case 'get-records': ////
         case 'del-files': //
