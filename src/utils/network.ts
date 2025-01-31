@@ -7,8 +7,10 @@ import { MD5, generateRandom, extractFormData } from './utils';
 import { getJwtToken } from '../methods/user';
 
 // Global counters for round-robin
-let privateCounter = 0;
-let publicCounter = 0;
+let privateCounter_admin = 0;
+let publicCounter_admin = 0;
+let privateCounter_record = 0;
+let publicCounter_record = 0;
 
 async function getEndpoint(dest: string, auth: boolean) {
     const endpoints = await Promise.all([
@@ -18,26 +20,34 @@ async function getEndpoint(dest: string, auth: boolean) {
 
     const admin = endpoints[0];
     const record = endpoints[1];
-    console.log('this is the record', record)
 
     let params = dest.split('?');
     let query = params.length > 1 ? '?' + params[1] : '';
     dest = params[0];
 
     switch (dest) {
+        case 'get-users': ////
+            return admin.get_users_private + dest + query;
+        case 'service': ////
+            return admin.service_public + dest + query;
         case 'get-newsletters': //
         case 'get-public-newsletters': //
-        case 'get-users': ////
+        // I could not find the lambda for post-userdata
         case 'post-userdata': //
-        case 'remove-account':
-        case 'post-secure':
         case 'subscribe-newsletter': //
         case 'subscribe-public-newsletter': //
+        case 'signupkey': //
+            return (auth ? admin.extra_private : admin.extra_public) + dest + query;
         case 'admin-signup': //
         case 'confirm-signup': //
+        case 'client-secret-request': //
+        case 'client-secret-request-public': //
+        case 'openid-logger': //
+            return (auth ? admin.extra_private_2 : admin.extra_public_2) + dest + query;
+        case 'remove-account':
+        case 'post-secure':
         case 'recover-account':
         case 'mock':
-        case 'service': ////
         case 'grant-access':
         case 'last-verified-email':
         case 'ticket':
@@ -45,15 +55,24 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'get-newsletter-subscription':
         case 'request-username-change':
         case 'jwt-login':
-        case 'client-secret-request': //
-        case 'signupkey': //
         case 'send-inquiry':
-        case 'client-secret-request-public': //
         case 'block-account':
         case 'invitation-list':
-        case 'openid-logger': //
         case 'grant-access':
-            return (auth ? admin.admin_private : admin.admin_public) + dest + query;
+            const gateways_admin = auth
+                ? [admin.admin_private, admin.admin_private_2]
+                : [admin.admin_public, admin.admin_public_2];
+
+            const counter_admin = auth ? privateCounter_admin : publicCounter_admin;
+            const selectedGateway_admin = gateways_admin[counter_admin % gateways_admin.length];
+
+            if (auth){
+                privateCounter_admin++;
+            } else {
+                publicCounter_admin++;
+            }
+
+            return selectedGateway_admin + dest + query
 
         // Records
         case 'post-record': ////
@@ -67,7 +86,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'del-files': //
         case 'del-records': //
             // Dedicated gateway api for del-records and del-files
-            return (auth ? record.del_private : record.del_public) + dest + query;
+            return record.del_private + dest + query;
 
         case 'subscription':
         case 'get-subscription':
@@ -85,20 +104,20 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'dopamine':
         case 'getspell':
             // Round-robin
-            const gateways = auth
+            const gateways_record = auth
                 ? [record.record_private, record.record_private_2]
                 : [record.record_public, record.record_public_2];
 
-            const counter = auth ? privateCounter : publicCounter;
-            const selectedGateway = gateways[counter % gateways.length];
+            const counter_record = auth ? privateCounter_record : publicCounter_record;
+            const selectedGateway_record = gateways_record[counter_record % gateways_record.length];
 
             if (auth){
-                privateCounter++;
+                privateCounter_record++;
             } else {
-                publicCounter++;
+                publicCounter_record++;
             }
 
-            return selectedGateway + dest + query
+            return selectedGateway_record + dest + query
 
         default:
             return validator.Url(dest);
