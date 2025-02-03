@@ -1092,7 +1092,7 @@ export async function listPrivateRecordAccess(params: {
 
 export function requestPrivateRecordAccessKey(params: { record_id: string, reference_id?: string }): Promise<string> {
     let record_id: string | string[] = params.record_id;
-    let reference_id = params.reference_id || null;
+    let reference_id = params.reference_id || undefined;
     if (!record_id) {
         throw new SkapiError(`Record ID is required.`, { code: 'INVALID_PARAMETER' });
     }
