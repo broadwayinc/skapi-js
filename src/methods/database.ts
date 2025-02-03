@@ -38,8 +38,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             referencing_limit: null,
             prevent_multiple_referencing: false,
             can_remove_referencing_records: false,
-            only_granted_can_reference: false,
-            allow_referencing_to_feed: false,
+            // only_granted_can_reference: false,
+            // allow_referencing_to_feed: false,
         },
         ip: '',
         bin: {}
@@ -199,7 +199,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             output.bin = binObj;
         },
         'prv_acs': (r: { [key: string]: string }) => {
-            let subs_opt = ['feedback_referencing_records', 'exclude_from_feed', 'notify_subscribers'];
+            // let subs_opt = ['feed_referencing_records', 'exclude_from_feed', 'notify_subscribers'];
+            let subs_opt = ['feed_referencing_records', 'exclude_from_feed'];
 
             for (let k in r) {
                 if (subs_opt.includes(k)) {
@@ -573,7 +574,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
 
     result.list = await Promise.all(result.list);
 
-    if (is_reference_fetch && result?.reference_private_key) {
+    if (is_reference_fetch && result?.reference_private_key && typeof result.reference_private_key === 'string') {
         this.__private_access_key[is_reference_fetch] = result.reference_private_key;
     }
 
@@ -654,17 +655,17 @@ export async function postRecord(
                     throw new SkapiError('"table.subscription.group" should be type: number', { code: 'INVALID_PARAMETER' });
                 },
                 exclude_from_feed: 'boolean',
-                notify_subscribers: 'boolean',
-                feedback_referencing_records: 'boolean',
+                // notify_subscribers: 'boolean',
+                feed_referencing_records: 'boolean',
             },
             access_group: accessGroup.bind(this),
         },
         source: {
-            allow_referencing_to_feed: 'boolean',
+            // allow_referencing_to_feed: 'boolean',
             referencing_limit: reference_limit_check,
             prevent_multiple_referencing: 'boolean',
             can_remove_referencing_records: 'boolean',
-            only_granted_can_reference: 'boolean',
+            // only_granted_can_reference: 'boolean',
             referencing_index_restrictions: v => {
                 if (!v) {
                     return v;
