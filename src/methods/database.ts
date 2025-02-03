@@ -38,7 +38,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             referencing_limit: null,
             prevent_multiple_referencing: false,
             can_remove_referencing_records: false,
-            // only_granted_can_reference: false,
+            only_granted_can_reference: false,
             // allow_referencing_to_feed: false,
         },
         ip: '',
@@ -670,7 +670,7 @@ export async function postRecord(
             referencing_limit: reference_limit_check,
             prevent_multiple_referencing: 'boolean',
             can_remove_referencing_records: 'boolean',
-            // only_granted_can_reference: 'boolean',
+            only_granted_can_reference: 'boolean',
             referencing_index_restrictions: v => {
                 if (!v) {
                     return v;

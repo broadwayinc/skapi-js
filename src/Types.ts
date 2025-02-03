@@ -107,7 +107,7 @@ export type PostRecordConfig = {
         referencing_limit?: number; // Default: null (Infinite)
         prevent_multiple_referencing?: boolean; // If true, a single user can reference this record only once.
         can_remove_referencing_records?: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
-        // only_granted_can_reference?: boolean; // When true, only the user who has granted private access to the record can reference this record.
+        only_granted_can_reference?: boolean; // When true, only the user who has granted private access to the record can reference this record.
         referencing_index_restrictions?: {
             /** Not allowed: White space, special characters. Allowed: Alphanumeric, Periods. */
             name: string; // Allowed index name
