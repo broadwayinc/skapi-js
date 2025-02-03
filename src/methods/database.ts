@@ -438,7 +438,7 @@ export async function getFile(
 
         if (this.user.user_id !== target_key[3] && (access_group === '**' || this.user?.access_group < access_group)) {
             let record_id = target_key[5];
-            if (this.__private_access_key[record_id]) {
+            if (this.__private_access_key[record_id] && typeof this.__private_access_key[record_id] === 'string') {
                 url += '&p=' + this.__private_access_key[record_id];
             }
             else {
@@ -814,7 +814,7 @@ export async function postRecord(
         }
     }
 
-    if (is_reference_post && rec?.reference_private_key) {
+    if (is_reference_post && typeof rec?.reference_private_key === 'string') {
         this.__private_access_key[is_reference_post] = rec.reference_private_key;
     }
 
@@ -1026,7 +1026,7 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
     let q = await prepGetParams.bind(this)(query, true);
     let is_reference_fetch = q.is_reference_fetch;
     let result = await request.bind(this)('del-records', q.query, { auth: true });
-    if (is_reference_fetch && result?.reference_private_key) {
+    if (is_reference_fetch && typeof result?.reference_private_key === 'string') {
         this.__private_access_key[is_reference_fetch] = result.reference_private_key;
     }
 
