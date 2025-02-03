@@ -554,7 +554,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
     let q = await prepGetParams.bind(this)(query);
     let is_reference_fetch = q.is_reference_fetch;
 
-    if(is_reference_fetch) {
+    if(is_reference_fetch && typeof this.__private_access_key[is_reference_fetch] === 'string') {
         q.query.private_key = this.__private_access_key[is_reference_fetch] || undefined;
     }
     
