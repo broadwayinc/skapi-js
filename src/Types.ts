@@ -96,18 +96,18 @@ export type PostRecordConfig = {
         /** When true, Record will be only accessible for subscribed users. */
         subscription?: {
             group: number; // subscription group. default 1.
-            exclude_from_feed?: boolean; // When true, record will be excluded from the subscribers feed.
+            // exclude_from_feed?: boolean; // When true, record will be excluded from the subscribers feed.
             notify_subscribers?: boolean; // When true, subscribers will receive notification when the record is uploaded.
-            feedback_referencing_records?: boolean; // When true, and if this is a record in subscription table, records referencing this record will be included to the subscribers feed of the owner of the record.
+            feed_referencing_records?: boolean; // When true, and if this is a record in subscription table, records referencing this record will be included to the subscribers feed of the owner of the record.
         };
     };
 
     source?: {
-        allow_referencing_to_feed?: boolean; // When true, and if this is a record is referencing a record in subscription table, it will be included to the reference record owners feed.
+        // allow_referencing_to_feed?: boolean; // When true, and if this is a record is referencing a record in subscription table, it will be included to the reference record owners feed.
         referencing_limit?: number; // Default: null (Infinite)
         prevent_multiple_referencing?: boolean; // If true, a single user can reference this record only once.
         can_remove_referencing_records?: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
-        only_granted_can_reference?: boolean; // When true, only the user who has granted private access to the record can reference this record.
+        // only_granted_can_reference?: boolean; // When true, only the user who has granted private access to the record can reference this record.
         referencing_index_restrictions?: {
             /** Not allowed: White space, special characters. Allowed: Alphanumeric, Periods. */
             name: string; // Allowed index name
