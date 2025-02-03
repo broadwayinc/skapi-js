@@ -6,6 +6,12 @@ import { MD5, generateRandom, extractFormData } from './utils';
 // import { authentication, getJwtToken } from '../methods/user';
 import { getJwtToken } from '../methods/user';
 
+// Global counters for round-robin
+let privateCounter_admin = 0;
+let publicCounter_admin = 0;
+let privateCounter_record = 0;
+let publicCounter_record = 0;
+
 async function getEndpoint(dest: string, auth: boolean) {
     const endpoints = await Promise.all([
         this.admin_endpoint,
@@ -14,24 +20,34 @@ async function getEndpoint(dest: string, auth: boolean) {
 
     const admin = endpoints[0];
     const record = endpoints[1];
+
     let params = dest.split('?');
     let query = params.length > 1 ? '?' + params[1] : '';
     dest = params[0];
 
     switch (dest) {
-        case 'get-newsletters':
-        case 'get-public-newsletters':
-        case 'get-users':
-        case 'post-userdata':
+        case 'get-users': ////
+            return admin.get_users_private + dest + query;
+        case 'service': ////
+            return admin.service_public + dest + query;
+        case 'get-newsletters': //
+        case 'get-public-newsletters': //
+        // I could not find the lambda for post-userdata
+        case 'post-userdata': //
+        case 'subscribe-newsletter': //
+        case 'subscribe-public-newsletter': //
+        case 'signupkey': //
+            return (auth ? admin.extra_private : admin.extra_public) + dest + query;
+        case 'admin-signup': //
+        case 'confirm-signup': //
+        case 'client-secret-request': //
+        case 'client-secret-request-public': //
+        case 'openid-logger': //
+            return (auth ? admin.extra_private_2 : admin.extra_public_2) + dest + query;
         case 'remove-account':
         case 'post-secure':
-        case 'subscribe-newsletter':
-        case 'subscribe-public-newsletter':
-        case 'admin-signup':
-        case 'confirm-signup':
         case 'recover-account':
         case 'mock':
-        case 'service':
         case 'grant-access':
         case 'last-verified-email':
         case 'ticket':
@@ -39,21 +55,41 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'get-newsletter-subscription':
         case 'request-username-change':
         case 'jwt-login':
-        case 'client-secret-request':
-        case 'signupkey':
         case 'send-inquiry':
-        case 'client-secret-request-public':
         case 'block-account':
         case 'invitation-list':
-        case 'openid-logger':
         case 'grant-access':
-            return (auth ? admin.admin_private : admin.admin_public) + dest + query;
+            const gateways_admin = auth
+                ? [admin.admin_private, admin.admin_private_2]
+                : [admin.admin_public, admin.admin_public_2];
 
-        case 'post-record':
-        case 'get-records':
+            const counter_admin = auth ? privateCounter_admin : publicCounter_admin;
+            const selectedGateway_admin = gateways_admin[counter_admin % gateways_admin.length];
+
+            if (auth){
+                privateCounter_admin++;
+            } else {
+                publicCounter_admin++;
+            }
+
+            return selectedGateway_admin + dest + query
+
+        // Records
+        case 'post-record': ////
+            // Dedicated gateway api for post-record
+            return (auth ? record.post_private : record.post_public) + dest + query;
+
+        case 'get-records': ////
+            // Dedicated gateway api for get-record
+            return (auth ? record.get_private : record.get_public) + dest + query;
+
+        case 'del-files': //
+        case 'del-records': //
+            // Dedicated gateway api for del-records and del-files
+            return record.del_private + dest + query;
+
         case 'subscription':
         case 'get-subscription':
-        case 'del-records':
         case 'get-table':
         case 'get-tag':
         case 'get-index':
@@ -61,10 +97,27 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'grant-private-access':
         case 'request-private-access-key':
         case 'get-ws-group':
-        case 'del-files':
         case 'check-schema':
         case 'get-feed':
-            return (auth ? record.record_private : record.record_public) + dest + query;
+        // From viviplayground
+        case 'castspell':
+        case 'dopamine':
+        case 'getspell':
+            // Round-robin
+            const gateways_record = auth
+                ? [record.record_private, record.record_private_2]
+                : [record.record_public, record.record_public_2];
+
+            const counter_record = auth ? privateCounter_record : publicCounter_record;
+            const selectedGateway_record = gateways_record[counter_record % gateways_record.length];
+
+            if (auth){
+                privateCounter_record++;
+            } else {
+                publicCounter_record++;
+            }
+
+            return selectedGateway_record + dest + query
 
         default:
             return validator.Url(dest);
