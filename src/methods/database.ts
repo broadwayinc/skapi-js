@@ -511,7 +511,9 @@ async function prepGetParams(query, isDel = false) {
         is_reference_fetch = query.record_id || query.unique_id;
 
         if (typeof is_reference_fetch === 'string') {
-            query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+            if (typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
+                query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+            }
             if (this.__my_unique_ids[is_reference_fetch]) {
                 if (isDel) {
                     delete this.__my_unique_ids[is_reference_fetch];
@@ -530,7 +532,10 @@ async function prepGetParams(query, isDel = false) {
 
         if (ref?.record_id || ref?.unique_id) {
             is_reference_fetch = ref.record_id || ref.unique_id;
-            query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+
+            if (typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
+                query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+            }
 
             if (this.__my_unique_ids[is_reference_fetch]) {
                 query.record_id = this.__my_unique_ids[is_reference_fetch];
@@ -554,10 +559,10 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
     let q = await prepGetParams.bind(this)(query);
     let is_reference_fetch = q.is_reference_fetch;
 
-    if(is_reference_fetch && typeof this.__private_access_key[is_reference_fetch] === 'string') {
+    if (is_reference_fetch && typeof this.__private_access_key[is_reference_fetch] === 'string') {
         q.query.private_key = this.__private_access_key[is_reference_fetch] || undefined;
     }
-    
+
     let result = await request.bind(this)(
         'get-records',
         q.query,
@@ -718,7 +723,9 @@ export async function postRecord(
                         return v;
                     }
                     is_reference_post = v;
-                    config.reference_private_key = this.__private_access_key[v] || undefined;
+                    if (typeof this.__private_access_key?.[v] === 'string') {
+                        config.reference_private_key = this.__private_access_key[v] || undefined;
+                    }
                     return validator.specialChars(v, '"reference.record_id"', false, false);
                 },
                 reference_limit: reference_limit_check, // depricated
