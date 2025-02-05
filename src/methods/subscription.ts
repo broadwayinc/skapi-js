@@ -138,6 +138,14 @@ export async function subscribe(params: { user_id: string; group: number | numbe
     }, { auth: true });
 }
 
+export async function adminNewsletterRequest(params){
+    await this.__connection;
+
+    let response = await request.bind(this)('admin-newsletter-request', params, {auth: true});
+    
+    return response
+}
+
 export async function unsubscribe(params: { user_id: string; group: number | number[]; }): Promise<'SUCCESS: the user has unsubscribed.'> {
     await this.__connection;
     let { user_id, group } = validator.Params(params, {

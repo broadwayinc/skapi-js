@@ -72,6 +72,7 @@ import {
     subscribeNewsletter,
     getNewsletters,
     unsubscribeNewsletter,
+    adminNewsletterRequest,
     getNewsletterSubscription,
     getFeed
 } from '../methods/subscription';
@@ -882,6 +883,11 @@ export default class Skapi {
         params: { group: number | 'public' | 'authorized' | null; }
     ): Promise<string> {
         return unsubscribeNewsletter.bind(this)(params);
+    }
+    @formHandler()
+    adminNewsletterRequest(params
+    ): Promise<'SUCCESS: the user has subscribed.'> {
+        return adminNewsletterRequest.bind(this)(params);
     }
     @formHandler()
     getNewsletters(

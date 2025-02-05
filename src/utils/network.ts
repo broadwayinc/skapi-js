@@ -37,6 +37,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'subscribe-newsletter': //
         case 'subscribe-public-newsletter': //
         case 'signupkey': //
+        case 'admin-newsletter-request':
             return (auth ? admin.extra_private : admin.extra_public) + dest + query;
         case 'admin-signup': //
         case 'confirm-signup': //
