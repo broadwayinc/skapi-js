@@ -141,7 +141,7 @@ export async function subscribe(params: { user_id: string; group: number | numbe
 export async function adminNewsletterRequest(params){
     await this.__connection;
 
-    let response = await request.bind(this)('admin-newsletter-request', params);
+    let response = await request.bind(this)('admin-newsletter-request', params, { method:'get'});
     
     return response
 }
