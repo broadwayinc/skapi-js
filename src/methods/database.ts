@@ -158,8 +158,10 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                 for (let url of r) {
                     let path = url.split('/').slice(3).join('/');
                     let splitPath = path.split('/');
-                    let filename = decodeURIComponent(splitPath.slice(-1)[0]);
-                    let pathKey = decodeURIComponent(splitPath[10]);
+                    // let filename = decodeURIComponent(splitPath.slice(-1)[0]);
+                    // let pathKey = decodeURIComponent(splitPath[10]);
+                    let filename = splitPath.slice(-1)[0];
+                    let pathKey = splitPath[10];
                     let size = splitPath[9];
                     let uploaded = splitPath[8];
                     let access_group = access_group_set(splitPath[6]);
