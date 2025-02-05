@@ -886,7 +886,7 @@ export default class Skapi {
     }
     @formHandler()
     adminNewsletterRequest(params
-    ): Promise<'SUCCESS: the user has subscribed.'> {
+    ): Promise<'SUCCESS: the admin has received email.'> {
         return adminNewsletterRequest.bind(this)(params);
     }
     @formHandler()
