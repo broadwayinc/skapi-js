@@ -158,10 +158,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                 for (let url of r) {
                     let path = url.split('/').slice(3).join('/');
                     let splitPath = path.split('/');
-                    // let filename = decodeURIComponent(splitPath.slice(-1)[0]);
-                    // let pathKey = decodeURIComponent(splitPath[10]);
-                    let filename = splitPath.slice(-1)[0];
-                    let pathKey = splitPath[10];
+                    let filename = decodeURIComponent(splitPath.slice(-1)[0]);
+                    let pathKey = decodeURIComponent(splitPath[10]);
                     let size = splitPath[9];
                     let uploaded = splitPath[8];
                     let access_group = access_group_set(splitPath[6]);
@@ -756,10 +754,12 @@ export async function postRecord(
             if (Array.isArray(v)) {
                 for (let i of v) {
                     if (typeof i === 'string') {
-                        arr.push(i.split('?')[0]);
+                        arr.push(decodeURIComponent(i.split('?')[0]));
                     }
                     else if (i.url && i.size && i.filename) {
-                        arr.push(i.url.split('?')[0]);
+                        let hostUrl = i.url.split('/').slice(0, 3).join('/');
+                        let url = hostUrl + '/' + i.path;
+                        arr.push(url);
                     }
                     else {
                         throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[] | null>`, { code: 'INVALID_PARAMETER' });
