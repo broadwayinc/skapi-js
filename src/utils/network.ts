@@ -32,8 +32,7 @@ async function getEndpoint(dest: string, auth: boolean) {
             return admin.service_public + dest + query;
         case 'get-newsletters': //
         case 'get-public-newsletters': //
-        // I could not find the lambda for post-userdata
-        case 'post-userdata': //
+        // case 'post-userdata': //
         case 'subscribe-newsletter': //
         case 'subscribe-public-newsletter': //
         case 'signupkey': //
