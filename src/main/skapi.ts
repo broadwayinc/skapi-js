@@ -126,7 +126,7 @@ import{
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.199';
+    private __version = '1.0.203';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -690,7 +690,7 @@ export default class Skapi {
 
     @formHandler()
     inviteUser(
-        form: { email: string; } & UserAttributes & UserProfilePublicSettings,
+        form: { email: string; openid_id: string; } & UserAttributes & UserProfilePublicSettings,
         options?: {
             confirmation_url?: string;
             email_subscription?: boolean;
