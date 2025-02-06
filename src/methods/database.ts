@@ -39,7 +39,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             prevent_multiple_referencing: false,
             can_remove_referencing_records: false,
             only_granted_can_reference: false,
-            allow_referencing_to_feed: false,
+            // allow_referencing_to_feed: false,
         },
         ip: '',
         bin: {}
@@ -199,7 +199,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             output.bin = binObj;
         },
         'prv_acs': (r: { [key: string]: string }) => {
-            let subs_opt = ['feedback_referencing_records', 'exclude_from_feed', 'notify_subscribers'];
+            // let subs_opt = ['feed_referencing_records', 'exclude_from_feed', 'notify_subscribers'];
+            let subs_opt = ['feed_referencing_records', 'exclude_from_feed'];
 
             for (let k in r) {
                 if (subs_opt.includes(k)) {
@@ -437,7 +438,7 @@ export async function getFile(
 
         if (this.user.user_id !== target_key[3] && (access_group === '**' || this.user?.access_group < access_group)) {
             let record_id = target_key[5];
-            if (this.__private_access_key[record_id]) {
+            if (this.__private_access_key[record_id] && typeof this.__private_access_key[record_id] === 'string') {
                 url += '&p=' + this.__private_access_key[record_id];
             }
             else {
@@ -510,7 +511,9 @@ async function prepGetParams(query, isDel = false) {
         is_reference_fetch = query.record_id || query.unique_id;
 
         if (typeof is_reference_fetch === 'string') {
-            query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+            if (typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
+                query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+            }
             if (this.__my_unique_ids[is_reference_fetch]) {
                 if (isDel) {
                     delete this.__my_unique_ids[is_reference_fetch];
@@ -529,7 +532,10 @@ async function prepGetParams(query, isDel = false) {
 
         if (ref?.record_id || ref?.unique_id) {
             is_reference_fetch = ref.record_id || ref.unique_id;
-            query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+
+            if (typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
+                query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+            }
 
             if (this.__my_unique_ids[is_reference_fetch]) {
                 query.record_id = this.__my_unique_ids[is_reference_fetch];
@@ -553,10 +559,10 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
     let q = await prepGetParams.bind(this)(query);
     let is_reference_fetch = q.is_reference_fetch;
 
-    if(is_reference_fetch) {
+    if (is_reference_fetch && typeof this.__private_access_key[is_reference_fetch] === 'string') {
         q.query.private_key = this.__private_access_key[is_reference_fetch] || undefined;
     }
-    
+
     let result = await request.bind(this)(
         'get-records',
         q.query,
@@ -573,7 +579,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
 
     result.list = await Promise.all(result.list);
 
-    if (is_reference_fetch && result?.reference_private_key) {
+    if (is_reference_fetch && result?.reference_private_key && typeof result.reference_private_key === 'string') {
         this.__private_access_key[is_reference_fetch] = result.reference_private_key;
     }
 
@@ -654,13 +660,13 @@ export async function postRecord(
                     throw new SkapiError('"table.subscription.group" should be type: number', { code: 'INVALID_PARAMETER' });
                 },
                 exclude_from_feed: 'boolean',
-                notify_subscribers: 'boolean',
-                feedback_referencing_records: 'boolean',
+                // notify_subscribers: 'boolean',
+                feed_referencing_records: 'boolean',
             },
             access_group: accessGroup.bind(this),
         },
         source: {
-            allow_referencing_to_feed: 'boolean',
+            // allow_referencing_to_feed: 'boolean',
             referencing_limit: reference_limit_check,
             prevent_multiple_referencing: 'boolean',
             can_remove_referencing_records: 'boolean',
@@ -717,7 +723,9 @@ export async function postRecord(
                         return v;
                     }
                     is_reference_post = v;
-                    config.reference_private_key = this.__private_access_key[v] || undefined;
+                    if (typeof this.__private_access_key?.[v] === 'string') {
+                        config.reference_private_key = this.__private_access_key[v] || undefined;
+                    }
                     return validator.specialChars(v, '"reference.record_id"', false, false);
                 },
                 reference_limit: reference_limit_check, // depricated
@@ -746,10 +754,12 @@ export async function postRecord(
             if (Array.isArray(v)) {
                 for (let i of v) {
                     if (typeof i === 'string') {
-                        arr.push(i.split('?')[0]);
+                        arr.push(decodeURIComponent(i.split('?')[0]));
                     }
                     else if (i.url && i.size && i.filename) {
-                        arr.push(i.url.split('?')[0]);
+                        let hostUrl = i.url.split('/').slice(0, 3).join('/');
+                        let url = hostUrl + '/' + i.path;
+                        arr.push(url);
                     }
                     else {
                         throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[] | null>`, { code: 'INVALID_PARAMETER' });
@@ -813,7 +823,7 @@ export async function postRecord(
         }
     }
 
-    if (is_reference_post && rec?.reference_private_key) {
+    if (is_reference_post && typeof rec?.reference_private_key === 'string') {
         this.__private_access_key[is_reference_post] = rec.reference_private_key;
     }
 
@@ -1025,7 +1035,7 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
     let q = await prepGetParams.bind(this)(query, true);
     let is_reference_fetch = q.is_reference_fetch;
     let result = await request.bind(this)('del-records', q.query, { auth: true });
-    if (is_reference_fetch && result?.reference_private_key) {
+    if (is_reference_fetch && typeof result?.reference_private_key === 'string') {
         this.__private_access_key[is_reference_fetch] = result.reference_private_key;
     }
 
@@ -1091,7 +1101,7 @@ export async function listPrivateRecordAccess(params: {
 
 export function requestPrivateRecordAccessKey(params: { record_id: string, reference_id?: string }): Promise<string> {
     let record_id: string | string[] = params.record_id;
-    let reference_id = params.reference_id || null;
+    let reference_id = params.reference_id || undefined;
     if (!record_id) {
         throw new SkapiError(`Record ID is required.`, { code: 'INVALID_PARAMETER' });
     }
