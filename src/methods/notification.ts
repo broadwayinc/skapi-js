@@ -26,9 +26,11 @@ export async function subscribeNotification(){
         console.error('Permission not granted for notifications');
         return;
     }
-
+    console.log('Permission granted for notifications');
+    
     // fetch service public vapid
     let vapid = await request.bind(this)('get-vapid', null, {auth: true});
+    console.log(vapid)
 
     // Subscribe to push notifications
     const subscription = (await registration.pushManager.subscribe({
