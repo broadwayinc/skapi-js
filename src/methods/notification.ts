@@ -35,7 +35,7 @@ export async function subscribeNotification(){
     await navigator.serviceWorker.ready; 
 
     console.log('Fetching VAPID public key');
-    let vapid = await request('get-vapid', {}, { auth: true });
+    let vapid = await request.bind(this)('get-vapid', {}, { auth: true });
 
     console.log('Subscribing to push notifications');
     const subscription = (await registration.pushManager.subscribe({
@@ -44,7 +44,7 @@ export async function subscribeNotification(){
     })).toJSON();
 
     console.log('Sending subscription to server');
-    let response = await request('subscribe-notification', subscription, { auth: true });
+    let response = await request.bind(this)('subscribe-notification', subscription, { auth: true });
 
     return response;
 
