@@ -87,7 +87,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'del-records': //
             // Dedicated gateway api for del-records and del-files
             return record.del_private + dest + query;
-        case 'subscribe-notification':
+        case 'store-subscription':
         case 'get-vapid-public-key':
         case 'subscription':
         case 'get-subscription':
