@@ -18,40 +18,34 @@ export async function subscribeNotification(){
         return outputArray;
     }
 
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js').then(registration => {
-                console.log('Service Worker registered with scope:', registration.scope);
-            }).catch(error => {
-                console.error('Service Worker registration failed:', error);
-            });
-        });
+    if (!('serviceWorker' in navigator)) {
+        console.error('Service workers are not supported in this browser.');
+        return;
     }
 
-    console.log('Subscribing to notifications');
-    const registration = await navigator.serviceWorker.ready;
-    console.log('Service worker ready');
-
     console.log('Requesting permission for notifications');
-    // ask if user wants to receive notifications
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
         console.error('Permission not granted for notifications');
         return;
     }
-    console.log('Permission granted for notifications');
 
-    // fetch service public vapid
-    let vapid = await request.bind(this)('get-vapid', null, {auth: true});
-    console.log(vapid)
+    console.log('Registering service worker');
+    const registration = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready; 
 
-    // Subscribe to push notifications
+    console.log('Fetching VAPID public key');
+    let vapid = await request('get-vapid', null, { auth: true });
+
+    console.log('Subscribing to push notifications');
     const subscription = (await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapid)
     })).toJSON();
 
-    let response = await request.bind(this)('subscribe-notification', subscription, {auth: true});
-    
+    console.log('Sending subscription to server');
+    let response = await request('subscribe-notification', subscription, { auth: true });
+
     return response;
+
 }
