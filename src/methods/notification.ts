@@ -18,8 +18,11 @@ export async function subscribeNotification(){
         return outputArray;
     }
 
+    console.log('Subscribing to notifications');
     const registration = await navigator.serviceWorker.ready;
+    console.log('Service worker ready');
 
+    console.log('Requesting permission for notifications');
     // ask if user wants to receive notifications
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
@@ -27,7 +30,7 @@ export async function subscribeNotification(){
         return;
     }
     console.log('Permission granted for notifications');
-    
+
     // fetch service public vapid
     let vapid = await request.bind(this)('get-vapid', null, {auth: true});
     console.log(vapid)
