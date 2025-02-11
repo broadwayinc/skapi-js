@@ -18,6 +18,16 @@ export async function subscribeNotification(){
         return outputArray;
     }
 
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').then(registration => {
+                console.log('Service Worker registered with scope:', registration.scope);
+            }).catch(error => {
+                console.error('Service Worker registration failed:', error);
+            });
+        });
+    }
+
     console.log('Subscribing to notifications');
     const registration = await navigator.serviceWorker.ready;
     console.log('Service worker ready');
