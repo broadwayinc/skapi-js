@@ -121,6 +121,9 @@ import {
     cancelInvitation,
     resendInvitation
 } from '../methods/admin';
+import {
+    subscribeNotification
+} from '../methods/notification';
 import{
     spellcast, dopamine, getspell
 } from '../methods/vivian';
@@ -688,6 +691,7 @@ export default class Skapi {
         return deleteAccount.bind(this)(form);
     }
 
+
     @formHandler()
     inviteUser(
         form: { email: string; openid_id: string; } & UserAttributes & UserProfilePublicSettings,
@@ -887,6 +891,10 @@ export default class Skapi {
     @formHandler()
     adminNewsletterRequest(params){
         return adminNewsletterRequest.bind(this)(params);
+    }
+    @formHandler()
+    subscribeNotification(): Promise<'SUCCESS: subscribed receive notifications.'>{
+        return subscribeNotification.bind(this)();
     }
     @formHandler()
     getNewsletters(
