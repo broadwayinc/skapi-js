@@ -89,7 +89,7 @@ export type PostRecordConfig = {
     /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
     table?: {
         /** Not allowed: Special characters. Allowed: White space. periods.*/
-        name?: string;
+        name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
 
@@ -108,6 +108,7 @@ export type PostRecordConfig = {
         prevent_multiple_referencing?: boolean; // If true, a single user can reference this record only once.
         can_remove_referencing_records?: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
         only_granted_can_reference?: boolean; // When true, only the user who has granted private access to the record can reference this record.
+        /** Index restrictions for referencing records. null removes all restrictions. */
         referencing_index_restrictions?: {
             /** Not allowed: White space, special characters. Allowed: Alphanumeric, Periods. */
             name: string; // Allowed index name
@@ -115,7 +116,7 @@ export type PostRecordConfig = {
             value?: string | number | boolean; // Allowed index value
             range?: string | number | boolean; // Allowed index range
             condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!='; // Allowed index value condition
-        }[]
+        }[] | null;
     };
 
     /** Can be record ID or unique ID */
@@ -134,10 +135,10 @@ export type PostRecordConfig = {
     progress?: ProgressCallback; // Callback for database request progress. Useful when building progress bar.
 }
 
-export type DelRecordQuery = {
+export type DelRecordQuery = GetRecordQuery & {
     unique_id?: string | string[];
     record_id?: string | string[];
-} & GetRecordQuery;
+};
 
 export type BinaryFile = {
     access_group: number | 'private' | 'public' | 'authorized';
@@ -380,62 +381,6 @@ export type DatabaseResponse<T> = {
     startKey: string;
     endOfList: boolean;
     startKeyHistory: string[];
-}
-
-export type Service = {
-    /** Shows active state. 1 = active, 0 = disabled */
-    active: number;
-    /** Custom api key to use for service owners custom api. */
-    api_key: string;
-    /** Service cors for connection. */
-    cors: string[];
-    /** Service owners E-Mail. */
-    email: string;
-    /** Number of users subscribed to service E-Mail. */
-    email_subscribers: number;
-    /** Service group. 1 = free try out. 1 > paid users. */
-    group: number;
-    /** Service region */
-    region: string;
-    /** Service name. */
-    name: string;
-    /** Number of newsletter subscribers. */
-    newsletter_subscribers: number;
-    /** Service id. */
-    service: string;
-    /** E-Mail template for signup confirmation. This can be changed by trigger E-Mail. */
-    template_activation: {
-        url: string;
-        subject: string;
-    };
-    /** E-Mail template for verification code E-Mail. This can be changed by trigger E-Mail. */
-    template_verification: {
-        url: string;
-        sms: string;
-        subject: string;
-    };
-    /** E-Mail template for welcome E-Mail that user receives after signup process. This can be changed by trigger E-Mail. */
-    template_welcome: {
-        url: string;
-        subject: string;
-    };
-    /** 13 digit timestamp  */
-    timestamp: number;
-    /** Service owner can send email to the triggers to send newsletters, or change automated E-Mail templates. */
-    triggers: {
-        /** Sends service E-Mail to E-Mail subscribed service users. */
-        newsletter_signed: string;
-        /** Sends newsletters. */
-        newsletter_subscribers: string;
-        /** Sets template of signup confirmation and account enable E-Mail. */
-        template_activation: string;
-        /** Sets template of verification E-Mail. */
-        template_verification: string;
-        /** Sets template of welcome E-Mail. */
-        template_welcome: string;
-    };
-    /** Number of users in the service. */
-    users: number;
 }
 
 export type FileInfo = {

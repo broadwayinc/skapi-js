@@ -489,10 +489,6 @@ export async function getFile(
     return blob;
 }
 
-async function checkSchema(params) {
-    return request.bind(this)('check-schema', params);
-}
-
 async function prepGetParams(query, isDel = false) {
     query = extractFormData(query, { ignoreEmpty: true }).data;
 
