@@ -90,6 +90,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'store-subscription':
         case 'get-vapid-public-key':
         case 'push-notification':
+        case 'delete-subscription':
         case 'subscription':
         case 'get-subscription':
         case 'get-table':
