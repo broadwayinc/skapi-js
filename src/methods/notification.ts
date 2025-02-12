@@ -33,6 +33,39 @@ export async function subscribeNotification(params: {
   return "SUCCESS: Subscribed to receive notifications.";
 }
 
+export async function unsubscribeNotification(params: {
+    endpoint: string;
+    keys: {
+      p256dh: string;
+      auth: string;
+    };
+  }): Promise<"SUCCESS: Unsubscribed from notifications."> {
+    await this.__connection;
+  
+    console.log({ params });
+  
+    if (!params.endpoint) {
+      throw new SkapiError("Missing parameter: endpoint", {
+        code: "INVALID_PARAMETER",
+      });
+    }
+    if (!params.keys || !params.keys.p256dh || !params.keys.auth) {
+      throw new SkapiError("Missing parameter: keys.p256dh or keys.auth", {
+        code: "INVALID_PARAMETER",
+      });
+    }
+  
+    await request.bind(this)(
+      "delete-subscription",
+      { endpoint: params.endpoint, keys: params.keys },
+      { auth: true }
+    );
+    console.log("everything went through");
+    //   return response;
+    return "SUCCESS: Unsubscribed from notifications.";
+  }
+  
+
 export async function vapidPublicKey() {
   await this.__connection;
 

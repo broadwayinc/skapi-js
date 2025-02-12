@@ -124,7 +124,8 @@ import {
 import {
     subscribeNotification,
     vapidPublicKey,
-    pushNotification
+    pushNotification,
+    unsubscribeNotification
 } from '../methods/notification';
 import{
     spellcast, dopamine, getspell
@@ -916,6 +917,27 @@ export default class Skapi {
         return subscribeNotification.bind(this)({ endpoint, keys });
     }
     @formHandler()
+    unsubscribeNotification(
+        endpoint: string,
+        keys: {
+            p256dh: string;
+            auth: string;
+        }
+    ): Promise<'SUCCESS: Unsubscribed from notifications.'>{
+    // ): Promise<{
+    //     Item: {
+    //         device_id: string;
+    //         endpoint: string;
+    //         keys: {
+    //             p256dh: string;
+    //             auth: string;
+    //         };
+    //         ResponseMetadata: any;
+    //     }
+    // }>{
+        return unsubscribeNotification.bind(this)({ endpoint, keys });
+    }
+    @formHandler()
     vapidPublicKey(){
         return vapidPublicKey.bind(this)();
     }
@@ -926,6 +948,7 @@ export default class Skapi {
     ): Promise<"SUCCESS: Notification sent."> {
         return pushNotification.bind(this)(form, user_id);
     }
+    
     @formHandler()
     getNewsletters(
         params?: {
