@@ -187,10 +187,14 @@ function generateRandom(length: number = 6): string {
     return result;
 }
 
-function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key: string]: any } | number | string | boolean | null, options?: {
-    nullIfEmpty?: boolean,
-    ignoreEmpty?: boolean,
-}, callback?: (name: string, value: any) => any): { data: any, files: { name: string, file: File }[] } {
+function extractFormData(
+    form: FormData | HTMLFormElement | SubmitEvent | { [key: string]: any } | number | string | boolean | null,
+    options?: {
+        nullIfEmpty?: boolean,
+        ignoreEmpty?: boolean,
+    },
+    callback?: (name: string, value: any) => any
+): { data: any, files: { name: string, file: File }[] } {
     let data = {};
     let files = [];
 
@@ -280,7 +284,7 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
         }
     }
 
-    let handleInput = (i:HTMLInputElement) => {
+    let handleInput = (i: HTMLInputElement) => {
         if (i.name) {
             if (i.type === 'number') {
                 if (i.value) {
@@ -337,7 +341,7 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
                 }
                 else if ((v as any) instanceof Blob) {
                     let j = v as any;
-                    if(j.type === 'application/json') {
+                    if (j.type === 'application/json') {
                         try {
                             let json = JSON.parse(j.text());
                             appendData(data, name, json);
@@ -385,11 +389,11 @@ function extractFormData(form: FormData | HTMLFormElement | SubmitEvent | { [key
             return { data, files };
         }
     }
-    
+
     if (sizeof(form) > 2 * 1024 * 1024) {
         throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
     }
-    
+
     return { data: form, files };
 }
 

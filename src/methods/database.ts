@@ -30,8 +30,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         readonly: false,
         table: {
             name: '',
-            access_group: 0,
-            subscription: null
+            access_group: 0
         },
         referenced_count: 0,
         source: {
@@ -204,7 +203,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
 
             for (let k in r) {
                 if (subs_opt.includes(k)) {
-                    if (!output.table.subscription) {
+                    if (!output.table?.subscription) {
                         output.table.subscription = {};
                     }
                     output.table.subscription[k] = r[k];
@@ -495,6 +494,8 @@ async function checkSchema(params) {
 }
 
 async function prepGetParams(query, isDel = false) {
+    query = extractFormData(query, { ignoreEmpty: true }).data;
+
     if (typeof query?.table === 'string') {
         query.table = {
             name: query.table,
@@ -545,7 +546,7 @@ async function prepGetParams(query, isDel = false) {
         else if (ref?.user_id) {
             ref_user = ref.user_id;
         }
-        query = validator.Params(query || {}, getStruct.bind(this)(query), ref_user || isAdmin ? [] : ['table']);
+        query = validator.Params(query || {}, getStruct.bind(this)(query), ref_user || isAdmin ? [] : ['table'], { ignoreEmpty: true });
     }
     return {
         query,
@@ -728,8 +729,8 @@ export async function postRecord(
                     }
                     return validator.specialChars(v, '"reference.record_id"', false, false);
                 },
-                reference_limit: reference_limit_check, // depricated
-                allow_multiple_reference: 'boolean', // depricated
+                reference_limit: reference_limit_check, // depricated. this is here just for backward compatibility.
+                allow_multiple_reference: 'boolean', // depricated. this is here just for backward compatibility.
             });
         },
         index: {
@@ -1046,17 +1047,33 @@ export function grantPrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
-    if (!params.record_id) {
-        throw new SkapiError(`Record ID is required.`, { code: 'INVALID_PARAMETER' });
-    }
+    params = validator.Params(params, {
+        record_id: 'string',
+        user_id: (v: string | string[]) => {
+            if (!v) {
+                throw new SkapiError(`User ID is required.`, { code: 'INVALID_PARAMETER' });
+            }
 
-    if (!params.user_id || Array.isArray(params.user_id) && !params.user_id.length) {
-        throw new SkapiError(`User ID is required.`, { code: 'INVALID_PARAMETER' });
-    }
+            let id = v;
+            if (typeof id === 'string') {
+                id = [id];
+            }
+
+            if (id.length > 100) {
+                throw new SkapiError(`Cannot process more than 100 users at once.`, { code: 'INVALID_REQUEST' });
+            }
+
+            for (let i of id) {
+                validator.UserId(i, 'User ID in "user_id"');
+            }
+
+            return id;
+        }
+    }, ['record_id', 'user_id'], { ignoreEmpty: true });
 
     return recordAccess.bind(this)({
         record_id: params.record_id,
-        user_id: params.user_id || null,
+        user_id: params.user_id,
         execute: 'add'
     });
 }
