@@ -59,8 +59,8 @@ export type GetRecordQuery = {
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
-        /** User ID of subscription */
-        subscription?: string | {
+        subscription?: {
+            /** User ID of subscription */
             user_id: string;
             /** Number range: 0 ~ 99 */
             group: number;
@@ -95,7 +95,7 @@ export type PostRecordConfig = {
 
         /** When true, Record will be only accessible for subscribed users. */
         subscription?: {
-            group: number; // subscription group. default 1.
+            group: number; // subscription group number. 0 ~ 99.
             // exclude_from_feed?: boolean; // When true, record will be excluded from the subscribers feed.
             notify_subscribers?: boolean; // When true, subscribers will receive notification when the record is uploaded.
             feed_referencing_records?: boolean; // When true, and if this is a record in subscription table, records referencing this record will be included to the subscribers feed of the owner of the record.
