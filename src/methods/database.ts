@@ -673,12 +673,18 @@ export async function postRecord(
             can_remove_referencing_records: 'boolean',
             only_granted_can_reference: 'boolean',
             referencing_index_restrictions: v => {
-                if (!v) {
-                    return v;
+                if (v === undefined) {
+                    return undefined;
                 }
+
+                if (!v) {
+                    return null;
+                }
+
                 if (Array.isArray(v) && !v.length) {
                     return null;
                 }
+
                 let p = {
                     name: [v => cannotBeEmptyString(v, '"name" in "index_restrictions"', true, false)],
                     value: v => indexValue(v),
@@ -696,7 +702,12 @@ export async function postRecord(
                         return val;
                     }
                 }
-                return validator.Params(v, p);
+
+                if (!Array.isArray(v)) {
+                    v = [v];
+                }
+
+                return v.map(vv => validator.Params(vv, p));
             }
         },
         reference: v => {
