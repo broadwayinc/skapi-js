@@ -44,19 +44,40 @@ export async function vapidPublicKey() {
   return { VAPIDPublicKey: vapid };
 }
 
-export async function pushNotification(
-  title: string,
-  body: string
-): Promise<"SUCESS: Notification sent."> {
+export async function pushNotification(form: {
+  title: string;
+  body: string;
+}, user_ids?: string | string[]): Promise<"SUCCESS: Notification sent."> {
   await this.__connection;
+
+    console.log(form.title)
+  if (!form.title) {
+    throw new SkapiError("Missing parameter: message title", {
+      code: "INVALID_PARAMETER",
+    });
+  }
+  if (!form.body) {
+    throw new SkapiError("Missing parameter: message body", {
+      code: "INVALID_PARAMETER",
+    });
+  }
+
+
+  const payload = { title: form.title, body: form.body };
+  if (user_ids) {
+    payload['user_ids'] = user_ids;
+  }
+  else{
+    payload['user_ids'] = 'all_users';
+  }
 
   await request.bind(this)(
     "push-notification",
-    { title, body },
+    payload,
     {
       auth: true,
     }
   );
 
-  return "SUCESS: Notification sent.";
+  return "SUCCESS: Notification sent.";
 }

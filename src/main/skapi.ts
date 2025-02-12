@@ -920,11 +920,11 @@ export default class Skapi {
         return vapidPublicKey.bind(this)();
     }
     @formHandler()
-    pushNotification(
-        title: string,
-        body: string
-      ):Promise<"SUCESS: Notification sent.">{
-        return pushNotification.bind(this)( title, body);
+    pushNotification(form:{ title: string,
+        body: string},
+        user_id?: string
+    ): Promise<"SUCCESS: Notification sent."> {
+        return pushNotification.bind(this)(form, user_id);
     }
     @formHandler()
     getNewsletters(
