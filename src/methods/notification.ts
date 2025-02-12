@@ -10,8 +10,6 @@ export async function subscribeNotification(params: {
 }): Promise<"SUCCESS: Subscribed to receive notifications."> {
   await this.__connection;
 
-  console.log({ params });
-
   if (!params.endpoint) {
     throw new SkapiError("Missing parameter: endpoint", {
       code: "INVALID_PARAMETER",
@@ -28,8 +26,7 @@ export async function subscribeNotification(params: {
     { endpoint: params.endpoint, keys: params.keys },
     { auth: true }
   );
-  console.log("everything went through");
-  //   return response;
+
   return "SUCCESS: Subscribed to receive notifications.";
 }
 
@@ -41,9 +38,7 @@ export async function unsubscribeNotification(params: {
     };
   }): Promise<"SUCCESS: Unsubscribed from notifications."> {
     await this.__connection;
-  
-    console.log({ params });
-  
+    
     if (!params.endpoint) {
       throw new SkapiError("Missing parameter: endpoint", {
         code: "INVALID_PARAMETER",
@@ -60,8 +55,6 @@ export async function unsubscribeNotification(params: {
       { endpoint: params.endpoint, keys: params.keys },
       { auth: true }
     );
-    console.log("everything went through");
-    //   return response;
     return "SUCCESS: Unsubscribed from notifications.";
   }
   
@@ -73,7 +66,6 @@ export async function vapidPublicKey() {
     auth: true,
   });
 
-  console.log({ VAPIDPublicKey: vapid });
   return { VAPIDPublicKey: vapid };
 }
 
@@ -83,7 +75,6 @@ export async function pushNotification(form: {
 }, user_ids?: string | string[]): Promise<"SUCCESS: Notification sent."> {
   await this.__connection;
 
-    console.log(form.title)
   if (!form.title) {
     throw new SkapiError("Missing parameter: message title", {
       code: "INVALID_PARAMETER",
