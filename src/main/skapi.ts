@@ -944,9 +944,9 @@ export default class Skapi {
     @formHandler()
     pushNotification(form:{ title: string,
         body: string},
-        user_id?: string
+        user_ids?: string | string[]
     ): Promise<"SUCCESS: Notification sent."> {
-        return pushNotification.bind(this)(form, user_id);
+        return pushNotification.bind(this)(form, user_ids);
     }
     
     @formHandler()
