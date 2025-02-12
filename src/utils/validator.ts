@@ -189,7 +189,11 @@ function specialChars(
 function Params(
     params: any,
     struct: Record<string, any>,
-    required: string[] = []
+    required: string[] = [],
+    options?: {
+        ignoreEmpty?: boolean;
+        nullIfEmpty?: boolean;
+    }
 ): any {
     // struct = {
     //     a: 'type or value',
@@ -197,7 +201,7 @@ function Params(
     //     c: (v: any) => { return 'value to assign'; }
     // }
 
-    let p = extractFormData(params).data;
+    let p = extractFormData(params, options).data;
     struct.service = 'string';
     struct.owner = 'string';
 
