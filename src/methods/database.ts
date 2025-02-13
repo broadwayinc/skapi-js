@@ -611,6 +611,19 @@ export async function postRecord(
         throw new SkapiError(`"reference_limit" should be type: <number | null>`, { code: 'INVALID_PARAMETER' });
     }
 
+
+    if(config.table?.subscription) {
+        if (config.table?.subscription?.is_subscription_record) {
+            Object.assign(config.table.subscription, { group: 1 });
+        }
+    
+        else if (config.table?.subscription?.is_subscription_record === false || !config.record_id && !config.table.subscription?.is_subscription_record) {
+            Object.assign(config.table.subscription, { group: null });
+        }
+
+        delete config.table.subscription?.is_subscription_record;
+    }
+
     let _config = validator.Params(config || {}, {
         record_id: ['string', () => {
             if (!config.table || !config.table.name) {
@@ -623,20 +636,10 @@ export async function postRecord(
             name: v => cannotBeEmptyString(v, 'table name', true, true),
             subscription: {
                 group: v => {
-                    if (typeof v === 'number') {
-                        if (v < 0 || v > 99) {
-                            throw new SkapiError('"table.subscription.group" should be between 0 ~ 99', { code: 'INVALID_PARAMETER' });
-                        }
-                        return v;
+                    if (v === 1) {
+                        return 1
                     }
-
-                    if (v === undefined || v === null) {
-                        if (!config.record_id)
-                            throw new SkapiError('"table.subscription.group" is required', { code: 'INVALID_PARAMETER' });
-                        return v;
-                    }
-
-                    throw new SkapiError('"table.subscription.group" should be type: number', { code: 'INVALID_PARAMETER' });
+                    return null;
                 },
 
                 exclude_from_feed: 'boolean',
