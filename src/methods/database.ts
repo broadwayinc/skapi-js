@@ -80,10 +80,10 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                 let rSplit = r.split('/');
                 output.table.name = rSplit[0];
                 output.table.access_group = access_group_set(rSplit[2]);
-                if (rSplit?.[3] && !output.table?.subscription) {
-                    output.table.subscription = {
-                        group: parseInt(rSplit[4])
-                    };
+                if (rSplit?.[3]) {
+                    if (!output.table?.subscription)
+                        output.table.subscription = {};
+                    output.table.subscription.is_subscription_record = true;
                 }
             }
         },
@@ -96,10 +96,10 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             if (!output.table.name) {
                 output.table.name = rSplit[1];
                 output.table.access_group = access_group_set(rSplit[3]);
-                if (rSplit?.[4] && !output.table?.subscription) {
-                    output.table.subscription = {
-                        group: parseInt(rSplit[5])
-                    };
+                if (rSplit?.[4]) {
+                    if (!output.table?.subscription)
+                        output.table.subscription = {};
+                    output.table.subscription.is_subscription_record = true;
                 }
             }
         },

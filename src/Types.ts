@@ -59,12 +59,8 @@ export type GetRecordQuery = {
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
-        subscription?: {
-            /** User ID of subscription */
-            user_id: string;
-            /** Number range: 0 ~ 99 */
-            group: number;
-        };
+        /** User ID of subscription */
+        subscription?: string;
     };
 
     reference?: string // Referenced record ID or unique ID. If user ID is given, it will fetch records that are uploaded by the user.
@@ -95,12 +91,12 @@ export type PostRecordConfig = {
 
         /** When true, Record will be only accessible for subscribed users. */
         subscription?: {
-            group: number; // subscription group number. 0 ~ 99.
+            is_subscription_record: boolean;
 
-            exclude_from_feed: boolean; // When true, record will be excluded from the subscribers feed.
-            notify_subscribers: boolean; // When true, subscribers will receive notification when the record is uploaded.
-            feed_referencing_records: boolean; // When true, records referencing this record will be included to the subscribers feed.
-            notify_referencing_records: boolean; // When true, records referencing this record will be notified to subscribers.
+            exclude_from_feed?: boolean; // When true, record will be excluded from the subscribers feed.
+            notify_subscribers?: boolean; // When true, subscribers will receive notification when the record is uploaded.
+            feed_referencing_records?: boolean; // When true, records referencing this record will be included to the subscribers feed.
+            notify_referencing_records?: boolean; // When true, records referencing this record will be notified to subscribers.
         };
     };
 
@@ -165,7 +161,7 @@ export type RecordData = {
         access_group: number | 'private' | 'public' | 'authorized' | 'admin';
         /** User ID of subscription */
         subscription?: {
-            group: number; // subscription group number. 0 ~ 99.
+            is_subscription_record: boolean;
 
             exclude_from_feed: boolean; // When true, record will be excluded from the subscribers feed.
             notify_subscribers: boolean; // When true, subscribers will receive notification when the record is uploaded.
