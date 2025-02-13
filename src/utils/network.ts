@@ -32,11 +32,11 @@ async function getEndpoint(dest: string, auth: boolean) {
             return admin.service_public + dest + query;
         case 'get-newsletters': //
         case 'get-public-newsletters': //
-        // I could not find the lambda for post-userdata
-        case 'post-userdata': //
+        // case 'post-userdata': //
         case 'subscribe-newsletter': //
         case 'subscribe-public-newsletter': //
         case 'signupkey': //
+        case 'admin-newsletter-request':
             return (auth ? admin.extra_private : admin.extra_public) + dest + query;
         case 'admin-signup': //
         case 'confirm-signup': //
@@ -87,7 +87,10 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'del-records': //
             // Dedicated gateway api for del-records and del-files
             return record.del_private + dest + query;
-
+        case 'store-subscription':
+        case 'get-vapid-public-key':
+        case 'push-notification':
+        case 'delete-subscription':
         case 'subscription':
         case 'get-subscription':
         case 'get-table':
