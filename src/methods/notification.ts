@@ -31,33 +31,33 @@ export async function subscribeNotification(params: {
 }
 
 export async function unsubscribeNotification(params: {
-    endpoint: string;
-    keys: {
-      p256dh: string;
-      auth: string;
-    };
-  }): Promise<"SUCCESS: Unsubscribed from notifications."> {
-    await this.__connection;
-    
-    if (!params.endpoint) {
-      throw new SkapiError("Missing parameter: endpoint", {
-        code: "INVALID_PARAMETER",
-      });
-    }
-    if (!params.keys || !params.keys.p256dh || !params.keys.auth) {
-      throw new SkapiError("Missing parameter: keys.p256dh or keys.auth", {
-        code: "INVALID_PARAMETER",
-      });
-    }
-  
-    await request.bind(this)(
-      "delete-subscription",
-      { endpoint: params.endpoint, keys: params.keys },
-      { auth: true }
-    );
-    return "SUCCESS: Unsubscribed from notifications.";
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}): Promise<"SUCCESS: Unsubscribed from notifications."> {
+  await this.__connection;
+
+  if (!params.endpoint) {
+    throw new SkapiError("Missing parameter: endpoint", {
+      code: "INVALID_PARAMETER",
+    });
   }
-  
+  if (!params.keys || !params.keys.p256dh || !params.keys.auth) {
+    throw new SkapiError("Missing parameter: keys.p256dh or keys.auth", {
+      code: "INVALID_PARAMETER",
+    });
+  }
+
+  await request.bind(this)(
+    "delete-subscription",
+    { endpoint: params.endpoint, keys: params.keys },
+    { auth: true }
+  );
+  return "SUCCESS: Unsubscribed from notifications.";
+}
+
 
 export async function vapidPublicKey() {
   await this.__connection;
@@ -86,12 +86,11 @@ export async function pushNotification(form: {
     });
   }
 
-
   const payload = { title: form.title, body: form.body };
   if (user_ids) {
     payload['user_ids'] = user_ids;
   }
-  else{
+  else {
     payload['user_ids'] = 'all_users';
   }
 
