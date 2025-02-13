@@ -91,7 +91,7 @@ export type PostRecordConfig = {
 
         /** When true, Record will be only accessible for subscribed users. */
         subscription?: {
-            is_subscription_record: boolean;
+            is_subscription_record?: boolean;
 
             exclude_from_feed?: boolean; // When true, record will be excluded from the subscribers feed.
             notify_subscribers?: boolean; // When true, subscribers will receive notification when the record is uploaded.
