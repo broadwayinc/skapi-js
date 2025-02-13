@@ -72,6 +72,7 @@ import {
     subscribeNewsletter,
     getNewsletters,
     unsubscribeNewsletter,
+    adminNewsletterRequest,
     getNewsletterSubscription,
     getFeed
 } from '../methods/subscription';
@@ -120,12 +121,18 @@ import {
     cancelInvitation,
     resendInvitation
 } from '../methods/admin';
+import {
+    subscribeNotification,
+    vapidPublicKey,
+    pushNotification,
+    unsubscribeNotification
+} from '../methods/notification';
 import{
     spellcast, dopamine, getspell
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.203';
+    private __version = '1.0.205';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -687,6 +694,7 @@ export default class Skapi {
         return deleteAccount.bind(this)(form);
     }
 
+
     @formHandler()
     inviteUser(
         form: { email: string; openid_id: string; } & UserAttributes & UserProfilePublicSettings,
@@ -883,6 +891,64 @@ export default class Skapi {
     ): Promise<string> {
         return unsubscribeNewsletter.bind(this)(params);
     }
+    @formHandler()
+    adminNewsletterRequest(params){
+        return adminNewsletterRequest.bind(this)(params);
+    }
+    @formHandler()
+    subscribeNotification(
+        endpoint: string,
+        keys: {
+            p256dh: string;
+            auth: string;
+        }
+    ): Promise<'SUCCESS: Subscribed to receive notifications.'>{
+    // ): Promise<{
+    //     Item: {
+    //         device_id: string;
+    //         endpoint: string;
+    //         keys: {
+    //             p256dh: string;
+    //             auth: string;
+    //         };
+    //         ResponseMetadata: any;
+    //     }
+    // }>{
+        return subscribeNotification.bind(this)({ endpoint, keys });
+    }
+    @formHandler()
+    unsubscribeNotification(
+        endpoint: string,
+        keys: {
+            p256dh: string;
+            auth: string;
+        }
+    ): Promise<'SUCCESS: Unsubscribed from notifications.'>{
+    // ): Promise<{
+    //     Item: {
+    //         device_id: string;
+    //         endpoint: string;
+    //         keys: {
+    //             p256dh: string;
+    //             auth: string;
+    //         };
+    //         ResponseMetadata: any;
+    //     }
+    // }>{
+        return unsubscribeNotification.bind(this)({ endpoint, keys });
+    }
+    @formHandler()
+    vapidPublicKey(){
+        return vapidPublicKey.bind(this)();
+    }
+    @formHandler()
+    pushNotification(form:{ title: string,
+        body: string},
+        user_ids?: string | string[]
+    ): Promise<"SUCCESS: Notification sent."> {
+        return pushNotification.bind(this)(form, user_ids);
+    }
+    
     @formHandler()
     getNewsletters(
         params?: {
