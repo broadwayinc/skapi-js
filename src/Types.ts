@@ -96,8 +96,11 @@ export type PostRecordConfig = {
         /** When true, Record will be only accessible for subscribed users. */
         subscription?: {
             group: number; // subscription group number. 0 ~ 99.
-            exclude_from_feed?: boolean; // When true, record will be excluded from the subscribers feed.
-            notify_subscribers?: boolean; // When true, subscribers will receive notification when the record is uploaded.
+
+            exclude_from_feed: boolean; // When true, record will be excluded from the subscribers feed.
+            notify_subscribers: boolean; // When true, subscribers will receive notification when the record is uploaded.
+            feed_referencing_records: boolean; // When true, records referencing this record will be included to the subscribers feed.
+            notify_referencing_records: boolean; // When true, records referencing this record will be notified to subscribers.
         };
     };
 
@@ -115,9 +118,6 @@ export type PostRecordConfig = {
             range?: string | number | boolean; // Allowed index range
             condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!='; // Allowed index value condition
         }[] | null;
-
-        feed_referencing_records?: boolean; // When true, and if this is a subscription record, records referencing this record will be included to the subscribers feed.
-        notify_referencing_records?: boolean; // When true, and if this is a subscription record, records referencing this record will be notified to subscribers.
     };
 
     /** Can be record ID or unique ID */
@@ -165,9 +165,12 @@ export type RecordData = {
         access_group: number | 'private' | 'public' | 'authorized' | 'admin';
         /** User ID of subscription */
         subscription?: {
-            user_id: string;
-            /** Number range: 0 ~ 99 */
-            group: number;
+            group: number; // subscription group number. 0 ~ 99.
+
+            exclude_from_feed: boolean; // When true, record will be excluded from the subscribers feed.
+            notify_subscribers: boolean; // When true, subscribers will receive notification when the record is uploaded.
+            feed_referencing_records: boolean; // When true, records referencing this record will be included to the subscribers feed.
+            notify_referencing_records: boolean; // When true, records referencing this record will be notified to subscribers.
         };
     };
     source: {
@@ -183,9 +186,6 @@ export type RecordData = {
             range?: string | number | boolean; // Allowed index range
             condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!='; // Allowed index value condition
         }[];
-        
-        feed_referencing_records?: boolean; // When true, and if this is a subscription record, records referencing this record will be included to the subscribers feed.
-        notify_referencing_records?: boolean; // When true, and if this is a subscription record, records referencing this record will be notified to subscribers.
     };
     reference?: string; // record id of the referenced record.
     index?: {
@@ -202,21 +202,10 @@ export type RecordData = {
 export type Connection = {
     /** User's locale */
     locale: string;
-    /** Service owner's ID */
-    // owner: string;
-    /** E-Mail address of the service owner */
-    // email: string;
-    /** Service ID */
-    // service: string;
-    /** Service region */
-    // region: string;
-    /** 13 digits timestamp of the service creation */
-    // timestamp: number;
-    /** User agent info */
     user_agent: string;
     /** Connected user's IP address */
     ip: string;
-    /** Service level */
+    /** Service group */
     group: number;
     /** Service name */
     service_name: string;

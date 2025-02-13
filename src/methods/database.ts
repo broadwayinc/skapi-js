@@ -38,8 +38,6 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             prevent_multiple_referencing: false,
             can_remove_referencing_records: false,
             only_granted_can_reference: false,
-            feed_referencing_records: false,
-            notify_referencing_records: false,
         },
         ip: '',
         bin: {}
@@ -82,18 +80,11 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                 let rSplit = r.split('/');
                 output.table.name = rSplit[0];
                 output.table.access_group = access_group_set(rSplit[2]);
-                if (rSplit?.[3]) {
+                if (rSplit?.[3] && !output.table?.subscription) {
                     output.table.subscription = {
-                        user_id: rSplit[3],
                         group: parseInt(rSplit[4])
                     };
                 }
-                // if (rSplit?.[3]) {
-                //     output.table.subscription = true;
-                // }
-                // else {
-                //     output.table.subscription = false;
-                // }
             }
         },
         'usr_tbl': (r: string) => {
@@ -105,18 +96,11 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             if (!output.table.name) {
                 output.table.name = rSplit[1];
                 output.table.access_group = access_group_set(rSplit[3]);
-                if (rSplit?.[4]) {
+                if (rSplit?.[4] && !output.table?.subscription) {
                     output.table.subscription = {
-                        user_id: rSplit[4],
                         group: parseInt(rSplit[5])
                     };
                 }
-                // if (rSplit?.[4]) {
-                //     output.table.subscription = true;
-                // }
-                // else {
-                //     output.table.subscription = false;
-                // }
             }
         },
         'idx': (r: string) => {
@@ -131,7 +115,6 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         },
         'ref': (r: string) => {
             if (!r) return;
-            // output.reference.record_id = r.split('/')[0];
             output.reference = r.split('/')[0];
         },
         'tags': (r: string[]) => {
@@ -200,7 +183,16 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         },
         'prv_acs': (r: { [key: string]: string }) => {
             for (let k in r) {
-                output.source[k] = r[k];
+                let subscription_config = ['notify_subscribers', 'exclude_from_feed', 'feed_referencing_records', 'notify_referencing_records'];
+                if (subscription_config.includes(k)) {
+                    if (!output.table.subscription) {
+                        output.table.subscription = {};
+                    }
+                    output.table.subscription[k] = r[k];
+                }
+                else {
+                    output.source[k] = r[k];
+                }
             }
         },
         'data': (r: any) => {
@@ -646,8 +638,12 @@ export async function postRecord(
 
                     throw new SkapiError('"table.subscription.group" should be type: number', { code: 'INVALID_PARAMETER' });
                 },
+
                 exclude_from_feed: 'boolean',
                 notify_subscribers: 'boolean',
+
+                feed_referencing_records: 'boolean',
+                notify_referencing_records: 'boolean',
             },
             access_group: accessGroup.bind(this),
         },
@@ -693,8 +689,6 @@ export async function postRecord(
 
                 return v.map(vv => validator.Params(vv, p));
             },
-            feed_referencing_records: 'boolean',
-            notify_referencing_records: 'boolean',
         },
         reference: v => {
             if (v === null) {
