@@ -38,7 +38,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             prevent_multiple_referencing: false,
             can_remove_referencing_records: false,
             only_granted_can_reference: false,
-            // allow_referencing_to_feed: false,
+            feed_referencing_records: false,
+            notify_referencing_records: false,
         },
         ip: '',
         bin: {}
@@ -198,19 +199,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             output.bin = binObj;
         },
         'prv_acs': (r: { [key: string]: string }) => {
-            // let subs_opt = ['feed_referencing_records', 'exclude_from_feed', 'notify_subscribers'];
-            let subs_opt = ['feed_referencing_records', 'exclude_from_feed'];
-
             for (let k in r) {
-                if (subs_opt.includes(k)) {
-                    if (!output.table?.subscription) {
-                        output.table.subscription = {};
-                    }
-                    output.table.subscription[k] = r[k];
-                }
-                else {
-                    output.source[k] = r[k];
-                }
+                output.source[k] = r[k];
             }
         },
         'data': (r: any) => {
@@ -657,13 +647,11 @@ export async function postRecord(
                     throw new SkapiError('"table.subscription.group" should be type: number', { code: 'INVALID_PARAMETER' });
                 },
                 exclude_from_feed: 'boolean',
-                // notify_subscribers: 'boolean',
-                feed_referencing_records: 'boolean',
+                notify_subscribers: 'boolean',
             },
             access_group: accessGroup.bind(this),
         },
         source: {
-            // allow_referencing_to_feed: 'boolean',
             referencing_limit: reference_limit_check,
             prevent_multiple_referencing: 'boolean',
             can_remove_referencing_records: 'boolean',
@@ -704,7 +692,9 @@ export async function postRecord(
                 }
 
                 return v.map(vv => validator.Params(vv, p));
-            }
+            },
+            feed_referencing_records: 'boolean',
+            notify_referencing_records: 'boolean',
         },
         reference: v => {
             if (v === null) {

@@ -96,14 +96,12 @@ export type PostRecordConfig = {
         /** When true, Record will be only accessible for subscribed users. */
         subscription?: {
             group: number; // subscription group number. 0 ~ 99.
-            // exclude_from_feed?: boolean; // When true, record will be excluded from the subscribers feed.
+            exclude_from_feed?: boolean; // When true, record will be excluded from the subscribers feed.
             notify_subscribers?: boolean; // When true, subscribers will receive notification when the record is uploaded.
-            feed_referencing_records?: boolean; // When true, and if this is a record in subscription table, records referencing this record will be included to the subscribers feed of the owner of the record.
         };
     };
 
     source?: {
-        // allow_referencing_to_feed?: boolean; // When true, and if this is a record is referencing a record in subscription table, it will be included to the reference record owners feed.
         referencing_limit?: number; // Default: null (Infinite)
         prevent_multiple_referencing?: boolean; // If true, a single user can reference this record only once.
         can_remove_referencing_records?: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
@@ -117,6 +115,9 @@ export type PostRecordConfig = {
             range?: string | number | boolean; // Allowed index range
             condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!='; // Allowed index value condition
         }[] | null;
+
+        feed_referencing_records?: boolean; // When true, and if this is a subscription record, records referencing this record will be included to the subscribers feed.
+        notify_referencing_records?: boolean; // When true, and if this is a subscription record, records referencing this record will be notified to subscribers.
     };
 
     /** Can be record ID or unique ID */
@@ -173,7 +174,6 @@ export type RecordData = {
         referencing_limit: number; // Default: null (Infinite)
         prevent_multiple_referencing: boolean; // If true, a single user can reference this record only once.
         can_remove_referencing_records: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
-        exclude_referencing_from_subscription_feed: boolean; // If this record requires subscription and if this option is set to true, referencing records will be excluded from the subscription feed.
         only_granted_can_reference: boolean; // When true, only the user who has granted private access to the record can reference this record.
         referencing_index_restrictions?: {
             /** Not allowed: White space, special characters. Allowed: Alphanumeric, Periods. */
@@ -182,7 +182,10 @@ export type RecordData = {
             value?: string | number | boolean; // Allowed index value
             range?: string | number | boolean; // Allowed index range
             condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!='; // Allowed index value condition
-        }[]
+        }[];
+        
+        feed_referencing_records?: boolean; // When true, and if this is a subscription record, records referencing this record will be included to the subscribers feed.
+        notify_referencing_records?: boolean; // When true, and if this is a subscription record, records referencing this record will be notified to subscribers.
     };
     reference?: string; // record id of the referenced record.
     index?: {
