@@ -12,8 +12,26 @@ import { checkAdmin } from './user';
 import { normalizeRecord } from './database';
 import { extractFormData } from '../utils/utils';
 
-export async function getFeed(params: any, fetchOptions: FetchOptions): Promise<DatabaseResponse<RecordData>> {
-    params = params || {};
+export async function getFeed(params?: { access_group?: number; }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
+    await this.__connection;
+
+    params = validator.Params(
+        params || {},
+        {
+            access_group: v => {
+                if (typeof v !== 'number') {
+                    throw new SkapiError('"access_group" should be type number.', { code: 'INVALID_PARAMETER' });
+                }
+                if (v < 0) {
+                    throw new SkapiError('"access_group" should be zero or a positive number.', { code: 'INVALID_PARAMETER' });
+                }
+                if(v > this.__user.access_group) {
+                    throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
+                }
+                return v;
+            }
+        }
+    );
     let recs = await request.bind(this)('get-feed', params, { auth: true, fetchOptions });
     for (let i in recs.list) {
         recs.list[i] = await normalizeRecord.bind(this)(recs.list[i]);

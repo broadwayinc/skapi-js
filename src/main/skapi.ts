@@ -560,7 +560,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    getFeed(params: null, fetchOptions: FetchOptions): Promise<DatabaseResponse<RecordData>> {
+    getFeed(params?: { access_group?: number; }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
         return getFeed.bind(this)(params, fetchOptions);
     }
 
