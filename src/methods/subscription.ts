@@ -111,7 +111,7 @@ export async function subscribe(params: { user_id: string; get_feed?: boolean; g
         option: {
             get_feed: params.get_feed,
             get_notified: params.get_notified,
-            get_email: params.get_email
+            get_email: params.get_email || false
         }
     }, { auth: true });
 }
