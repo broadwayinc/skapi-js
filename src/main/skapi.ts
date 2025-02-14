@@ -127,7 +127,7 @@ import {
     pushNotification,
     unsubscribeNotification
 } from '../methods/notification';
-import{
+import {
     spellcast, dopamine, getspell
 } from '../methods/vivian';
 export default class Skapi {
@@ -560,7 +560,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    getFeed(params: null, fetchOptions: FetchOptions): Promise<DatabaseResponse<RecordData>> {
+    getFeed(params?: { access_group?: number; }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
         return getFeed.bind(this)(params, fetchOptions);
     }
 
@@ -592,17 +592,17 @@ export default class Skapi {
     }
 
     @formHandler()
-    spellcast(params){
+    spellcast(params) {
         return spellcast.bind(this)(params)
     }
 
     @formHandler()
-    getspell(params){
+    getspell(params) {
         return getspell.bind(this)(params)
     }
 
     @formHandler()
-    dopamine(params){
+    dopamine(params) {
         return dopamine.bind(this)(params)
     }
 
@@ -892,7 +892,7 @@ export default class Skapi {
         return unsubscribeNewsletter.bind(this)(params);
     }
     @formHandler()
-    adminNewsletterRequest(params){
+    adminNewsletterRequest(params) {
         return adminNewsletterRequest.bind(this)(params);
     }
     @formHandler()
@@ -902,18 +902,7 @@ export default class Skapi {
             p256dh: string;
             auth: string;
         }
-    ): Promise<'SUCCESS: Subscribed to receive notifications.'>{
-    // ): Promise<{
-    //     Item: {
-    //         device_id: string;
-    //         endpoint: string;
-    //         keys: {
-    //             p256dh: string;
-    //             auth: string;
-    //         };
-    //         ResponseMetadata: any;
-    //     }
-    // }>{
+    ): Promise<'SUCCESS: Subscribed to receive notifications.'> {
         return subscribeNotification.bind(this)({ endpoint, keys });
     }
     @formHandler()
@@ -923,32 +912,24 @@ export default class Skapi {
             p256dh: string;
             auth: string;
         }
-    ): Promise<'SUCCESS: Unsubscribed from notifications.'>{
-    // ): Promise<{
-    //     Item: {
-    //         device_id: string;
-    //         endpoint: string;
-    //         keys: {
-    //             p256dh: string;
-    //             auth: string;
-    //         };
-    //         ResponseMetadata: any;
-    //     }
-    // }>{
+    ): Promise<'SUCCESS: Unsubscribed from notifications.'> {
         return unsubscribeNotification.bind(this)({ endpoint, keys });
     }
     @formHandler()
-    vapidPublicKey(){
+    vapidPublicKey(): Promise<{ VAPIDPublicKey: string }> {
         return vapidPublicKey.bind(this)();
     }
     @formHandler()
-    pushNotification(form:{ title: string,
-        body: string},
+    pushNotification(
+        form: {
+            title: string,
+            body: string
+        },
         user_ids?: string | string[]
     ): Promise<"SUCCESS: Notification sent."> {
         return pushNotification.bind(this)(form, user_ids);
     }
-    
+
     @formHandler()
     getNewsletters(
         params?: {
@@ -1117,10 +1098,7 @@ export default class Skapi {
             /** Subscribers user id. */
             subscriber?: string;
             /** User ID of the subscription. User id that subscriber has subscribed to. */
-            subscription?: {
-                user_id: string;
-                group?: number | number[];
-            };
+            subscription?: string;
             /** Fetch blocked subscription when True */
             blocked?: boolean;
         },
@@ -1128,7 +1106,6 @@ export default class Skapi {
     ): Promise<DatabaseResponse<{
         subscriber: string; // Subscriber ID
         subscription: string; // Subscription ID
-        group: number; // Subscription group number
         timestamp: number; // Subscribed UNIX timestamp
         blocked: boolean; // True when subscriber is blocked by subscription
         get_feed: boolean; // True when subscriber gets feed
@@ -1138,19 +1115,19 @@ export default class Skapi {
         return getSubscriptions.bind(this)(params, fetchOptions);
     }
     @formHandler()
-    subscribe(params: { user_id: string; group: number | number[]; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<'SUCCESS: the user has subscribed.'> {
+    subscribe(params: { user_id: string; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<'SUCCESS: The user has subscribed.'> {
         return subscribe.bind(this)(params);
     }
     @formHandler()
-    unsubscribe(params: { user_id: string; group: number | number[]; }): Promise<'SUCCESS: the user has unsubscribed.'> {
+    unsubscribe(params: { user_id: string; }): Promise<'SUCCESS: The user has unsubscribed.'> {
         return unsubscribe.bind(this)(params);
     }
     @formHandler()
-    blockSubscriber(params: { user_id: string; group: number | number[]; }): Promise<'SUCCESS: blocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
+    blockSubscriber(params: { user_id: string; }): Promise<'SUCCESS: Blocked user ID "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
         return blockSubscriber.bind(this)(params);
     }
     @formHandler()
-    unblockSubscriber(params: { user_id: string; group: number | number[]; }): Promise<'SUCCESS: unblocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
+    unblockSubscriber(params: { user_id: string; }): Promise<'SUCCESS: Unblocked user ID "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
         return unblockSubscriber.bind(this)(params);
     }
     @formHandler()

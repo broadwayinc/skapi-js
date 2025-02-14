@@ -110,29 +110,12 @@ export function getStruct(query) {
             name: [v => cannotBeEmptyString(v, 'table.name', true, true)],
             access_group: [accessGroup.bind(this)],
             subscription: (v: any) => {
-                if (!v) {
-                    return undefined;
-                }
                 if (typeof v === 'string') {
                     validator.UserId(v, 'User ID in "subscription"');
-                    if (!this.__user) {
-                        throw new SkapiError('Unsigned users have no access to subscription records.', { code: 'INVALID_REQUEST' });
-                    }
-                    return {
-                        user_id: v,
-                        group: 1
-                    }
+                    return v
                 }
-                else if (v && typeof v === 'object') {
-                    if (!v.user_id) {
-                        throw new SkapiError('"subscription.user_id" is required.', { code: 'INVALID_PARAMETER' });
-                    }
-                    validator.UserId(v.user_id, 'User ID in "subscription.user_id"');
-                    if (!v.group) {
-                        v.group = 1;
-                    }
-                    return v;
-                }
+
+                return undefined;
             }
         },
         reference: 'string',

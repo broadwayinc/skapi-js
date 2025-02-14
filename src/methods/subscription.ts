@@ -12,8 +12,26 @@ import { checkAdmin } from './user';
 import { normalizeRecord } from './database';
 import { extractFormData } from '../utils/utils';
 
-export async function getFeed(params: any, fetchOptions: FetchOptions): Promise<DatabaseResponse<RecordData>> {
-    params = params || {};
+export async function getFeed(params?: { access_group?: number; }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
+    await this.__connection;
+
+    params = validator.Params(
+        params || {},
+        {
+            access_group: v => {
+                if (typeof v !== 'number') {
+                    throw new SkapiError('"access_group" should be type number.', { code: 'INVALID_PARAMETER' });
+                }
+                if (v < 0) {
+                    throw new SkapiError('"access_group" should be zero or a positive number.', { code: 'INVALID_PARAMETER' });
+                }
+                if(v > this.__user.access_group) {
+                    throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
+                }
+                return v;
+            }
+        }
+    );
     let recs = await request.bind(this)('get-feed', params, { auth: true, fetchOptions });
     for (let i in recs.list) {
         recs.list[i] = await normalizeRecord.bind(this)(recs.list[i]);
@@ -21,28 +39,7 @@ export async function getFeed(params: any, fetchOptions: FetchOptions): Promise<
     return recs;
 }
 
-function grouper(v) {
-    if (!v) return v;
-    if (!Array.isArray(v)) {
-        v = [v];
-    }
-    function chkit(v) {
-        if (typeof v !== 'number') {
-            throw new SkapiError('"group" should be type number.', { code: 'INVALID_PARAMETER' });
-        }
-        if (v < 1 || v > 99) {
-            throw new SkapiError('"group" should be between 1 and 99.', { code: 'INVALID_PARAMETER' });
-        }
-        return v;
-    }
-    if (Array.isArray(v)) {
-        v = v.map(chkit);
-    }
-
-    return v;
-}
-
-function userider(v) {
+function cannotBeSelfId(v) {
     if (v === this.__user.user_id) {
         throw new SkapiError(`"user_id" cannot be the user's own ID.`, { code: 'INVALID_PARAMETER' });
     }
@@ -54,10 +51,7 @@ export async function getSubscriptions(
         /** Subscribers user id. */
         subscriber?: string;
         /** User ID of the subscription. User id that subscriber has subscribed to. */
-        subscription?: {
-            user_id: string;
-            group?: number | number[];
-        };
+        subscription?: string;
         /** Fetch blocked subscription when True */
         blocked?: boolean;
     },
@@ -65,26 +59,16 @@ export async function getSubscriptions(
 ): Promise<DatabaseResponse<{
     subscriber: string; // Subscriber ID
     subscription: string; // Subscription ID
-    group: number; // Subscription group number
     timestamp: number; // Subscribed UNIX timestamp
     blocked: boolean; // True when subscriber is blocked by subscription
     get_feed: boolean; // True when subscriber gets feed
     get_notified: boolean; // True when subscriber gets notified
     get_email: boolean; // True when subscriber gets email
 }>> {
-    params = extractFormData(params).data as any;
+    params = extractFormData(params, { ignoreEmpty: true }).data as any;
     params = validator.Params(params, {
         subscriber: (v: string) => validator.UserId(v, 'User ID in "subscriber"'),
-        group: ['number', () => 1],
-        subscription: (v: any) => {
-            if (!v) {
-                return undefined;
-            }
-            return validator.Params(params.subscription, {
-                user_id: userider.bind(this),
-                group: grouper,
-            }, ['user_id']);
-        },
+        subscription: cannotBeSelfId.bind(this),
         blocked: 'boolean'
     });
 
@@ -99,21 +83,19 @@ export async function getSubscriptions(
         let subSplit = s.sub.split('#');
         subscription.subscriber = subSplit[2];
         subscription.subscription = subSplit[0];
-        subscription.group = parseInt(subSplit[1]);
         subscription.timestamp = s.stmp;
         subscription.blocked = s.grp.substring(0, 1) === 'N';
-
+        Object.assign(subscription, s.opt);
         return subscription;
     }));
 
     return response;
 }
 
-export async function subscribe(params: { user_id: string; group: number | number[]; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<'SUCCESS: the user has subscribed.'> {
+export async function subscribe(params: { user_id: string; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<'SUCCESS: The user has subscribed.'> {
     await this.__connection;
-    let { user_id, group } = validator.Params(params, {
-        user_id: userider.bind(this),
-        group: grouper,
+    let { user_id } = validator.Params(params, {
+        user_id: cannotBeSelfId.bind(this),
         get_feed: 'boolean',
         get_notified: 'boolean',
         get_email: v => {
@@ -125,11 +107,10 @@ export async function subscribe(params: { user_id: string; group: number | numbe
             }
             return v;
         }
-    }, ['user_id', 'group']);
+    }, ['user_id']);
 
     return await request.bind(this)('subscription', {
         subscribe: user_id,
-        group,
         option: {
             get_feed: params.get_feed || false,
             get_notified: params.get_notified || false,
@@ -138,43 +119,38 @@ export async function subscribe(params: { user_id: string; group: number | numbe
     }, { auth: true });
 }
 
-export async function adminNewsletterRequest(params){
+export async function adminNewsletterRequest(params) {
     await this.__connection;
+    let response = await request.bind(this)('admin-newsletter-request', params, { auth: true });
 
-    let response = await request.bind(this)('admin-newsletter-request', params, { auth: true});
-    
     return response
 }
 
-export async function unsubscribe(params: { user_id: string; group: number | number[]; }): Promise<'SUCCESS: the user has unsubscribed.'> {
+export async function unsubscribe(params: { user_id: string; }): Promise<'SUCCESS: The user has unsubscribed.'> {
     await this.__connection;
-    let { user_id, group } = validator.Params(params, {
-        user_id: userider.bind(this),
-        group: grouper
-    }, ['user_id', 'group']);
+    let { user_id } = validator.Params(params, {
+        user_id: cannotBeSelfId.bind(this),
+    }, ['user_id']);
 
     return await request.bind(this)('subscription', {
         unsubscribe: user_id,
-        group
     }, { auth: true });
 }
 
-export async function blockSubscriber(params: { user_id: string; group: number | number[]; }): Promise<'SUCCESS: blocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
+export async function blockSubscriber(params: { user_id: string; }): Promise<'SUCCESS: Blocked user ID "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
     await this.__connection;
-    let { user_id, group } = validator.Params(params, {
-        user_id: userider.bind(this),
-        group: grouper
-    }, ['user_id', 'group']);
-    return await request.bind(this)('subscription', { block: user_id, group }, { auth: true });
+    let { user_id } = validator.Params(params, {
+        user_id: cannotBeSelfId.bind(this),
+    }, ['user_id']);
+    return await request.bind(this)('subscription', { block: user_id }, { auth: true });
 }
 
-export async function unblockSubscriber(params: { user_id: string; group: number | number[]; }): Promise<'SUCCESS: unblocked user id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
+export async function unblockSubscriber(params: { user_id: string; }): Promise<'SUCCESS: Unblocked user ID "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
     await this.__connection;
-    let { user_id, group } = validator.Params(params, {
-        user_id: userider.bind(this),
-        group: grouper
-    }, ['user_id', 'group']);
-    return await request.bind(this)('subscription', { unblock: user_id, group }, { auth: true });
+    let { user_id } = validator.Params(params, {
+        user_id: cannotBeSelfId.bind(this),
+    }, ['user_id']);
+    return await request.bind(this)('subscription', { unblock: user_id }, { auth: true });
 }
 
 // requires auth
