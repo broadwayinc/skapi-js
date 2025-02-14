@@ -1,9 +1,5 @@
 export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
 
-export type RTCCallback = (e: {
-    type: string;
-    [key: string]: any;
-}) => void
 
 export type RTCReceiverParams = {
     ice?: string;
@@ -37,10 +33,15 @@ export type RTCResolved = {
     media: MediaStream;
 }
 
+export type RTCEvent = (e: {
+    type: string;
+    [key: string]: any;
+}) => void
+
 export type WebSocketMessage = {
-    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' | 'reconnect' | 'rtc:incoming' | 'rtc:closed';
+    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc:incoming' | 'rtc:closed';
     message?: any;
-    connectRTC?: (params: RTCReceiverParams, callback: RTCCallback) => Promise<RTCResolved>;
+    connectRTC?: (params: RTCReceiverParams, callback: RTCEvent) => Promise<RTCResolved>;
     hangup?: () => void; // Reject incoming RTC connection.
     sender?: string; // user_id of the sender
     sender_cid?: string; // scid of the sender

@@ -15,7 +15,7 @@ import {
     UserProfilePublicSettings,
     FileInfo,
     DelRecordQuery,
-    RTCCallback,
+    RTCEvent,
     RealtimeCallback,
     RTCConnectorParams,
     RTCConnector,
@@ -555,7 +555,7 @@ export default class Skapi {
     @formHandler()
     connectRTC(
         params: RTCConnectorParams,
-        callback?: RTCCallback
+        callback?: RTCEvent
     ): Promise<RTCConnector> {
         return connectRTC.bind(this)(params, callback);
     }
