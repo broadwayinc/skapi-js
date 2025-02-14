@@ -61,11 +61,9 @@ export async function getSubscriptions(
     subscription: string; // Subscription ID
     timestamp: number; // Subscribed UNIX timestamp
     blocked: boolean; // True when subscriber is blocked by subscription
-    options: {
-        get_feed: boolean; // True when subscriber gets feed
-        get_notified: boolean; // True when subscriber gets notified
-        get_email: boolean; // True when subscriber gets email
-    };
+    get_feed: boolean; // True when subscriber gets feed
+    get_notified: boolean; // True when subscriber gets notified
+    get_email: boolean; // True when subscriber gets email
 }>> {
     params = extractFormData(params, { ignoreEmpty: true }).data as any;
     params = validator.Params(params, {
@@ -87,7 +85,7 @@ export async function getSubscriptions(
         subscription.subscription = subSplit[0];
         subscription.timestamp = s.stmp;
         subscription.blocked = s.grp.substring(0, 1) === 'N';
-        subscription.options = s.opt;
+        Object.assign(subscription, s.opt);
         return subscription;
     }));
 

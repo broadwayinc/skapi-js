@@ -1108,11 +1108,9 @@ export default class Skapi {
         subscription: string; // Subscription ID
         timestamp: number; // Subscribed UNIX timestamp
         blocked: boolean; // True when subscriber is blocked by subscription
-        options: {
-            get_feed: boolean; // True when subscriber gets feed
-            get_notified: boolean; // True when subscriber gets notified
-            get_email: boolean; // True when subscriber gets email
-        };
+        get_feed: boolean; // True when subscriber gets feed
+        get_notified: boolean; // True when subscriber gets notified
+        get_email: boolean; // True when subscriber gets email
     }>> {
         return getSubscriptions.bind(this)(params, fetchOptions);
     }
