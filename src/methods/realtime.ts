@@ -36,14 +36,14 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
     if (typeof cb !== 'function') {
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
     }
-    
-    await getJwtToken.bind(this)();
 
     if (this.__socket instanceof Promise) {
         return this.__socket;
     }
 
     this.__socket = new Promise(async (resolve) => {
+        await getJwtToken.bind(this)();
+
         setTimeout(async () => {
             let socket: WebSocket = await prepareWebsocket.bind(this)();
 
@@ -312,11 +312,9 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
     }
 
     await getJwtToken.bind(this)();
-    
-    params = extractFormData(params).data;
+    params = extractFormData(params, { nullIfEmpty: true }).data;
 
     let { group = null } = params;
-
     if (!group && !__current_socket_room) {
         return { type: 'success', message: 'Left realtime message group.' }
     }
