@@ -38,7 +38,6 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             prevent_multiple_referencing: false,
             can_remove_referencing_records: false,
             only_granted_can_reference: false,
-            // allow_referencing_to_feed: false,
         },
         ip: '',
         bin: {}
@@ -82,17 +81,10 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                 output.table.name = rSplit[0];
                 output.table.access_group = access_group_set(rSplit[2]);
                 if (rSplit?.[3]) {
-                    output.table.subscription = {
-                        user_id: rSplit[3],
-                        group: parseInt(rSplit[4])
-                    };
+                    if (!output.table?.subscription)
+                        output.table.subscription = {};
+                    output.table.subscription.is_subscription_record = true;
                 }
-                // if (rSplit?.[3]) {
-                //     output.table.subscription = true;
-                // }
-                // else {
-                //     output.table.subscription = false;
-                // }
             }
         },
         'usr_tbl': (r: string) => {
@@ -105,17 +97,10 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                 output.table.name = rSplit[1];
                 output.table.access_group = access_group_set(rSplit[3]);
                 if (rSplit?.[4]) {
-                    output.table.subscription = {
-                        user_id: rSplit[4],
-                        group: parseInt(rSplit[5])
-                    };
+                    if (!output.table?.subscription)
+                        output.table.subscription = {};
+                    output.table.subscription.is_subscription_record = true;
                 }
-                // if (rSplit?.[4]) {
-                //     output.table.subscription = true;
-                // }
-                // else {
-                //     output.table.subscription = false;
-                // }
             }
         },
         'idx': (r: string) => {
@@ -130,7 +115,6 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         },
         'ref': (r: string) => {
             if (!r) return;
-            // output.reference.record_id = r.split('/')[0];
             output.reference = r.split('/')[0];
         },
         'tags': (r: string[]) => {
@@ -198,12 +182,10 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             output.bin = binObj;
         },
         'prv_acs': (r: { [key: string]: string }) => {
-            // let subs_opt = ['feed_referencing_records', 'exclude_from_feed', 'notify_subscribers'];
-            let subs_opt = ['feed_referencing_records', 'exclude_from_feed'];
-
             for (let k in r) {
-                if (subs_opt.includes(k)) {
-                    if (!output.table?.subscription) {
+                let subscription_config = ['notify_subscribers', 'exclude_from_feed', 'feed_referencing_records', 'notify_referencing_records'];
+                if (subscription_config.includes(k)) {
+                    if (!output.table.subscription) {
                         output.table.subscription = {};
                     }
                     output.table.subscription[k] = r[k];
@@ -489,10 +471,6 @@ export async function getFile(
     return blob;
 }
 
-async function checkSchema(params) {
-    return request.bind(this)('check-schema', params);
-}
-
 async function prepGetParams(query, isDel = false) {
     query = extractFormData(query, { ignoreEmpty: true }).data;
 
@@ -633,6 +611,19 @@ export async function postRecord(
         throw new SkapiError(`"reference_limit" should be type: <number | null>`, { code: 'INVALID_PARAMETER' });
     }
 
+
+    if(config.table?.subscription) {
+        if (config.table?.subscription?.is_subscription_record) {
+            Object.assign(config.table.subscription, { group: 1 });
+        }
+    
+        else if (config.table?.subscription?.is_subscription_record === false || !config.record_id && !config.table.subscription?.is_subscription_record) {
+            Object.assign(config.table.subscription, { group: null });
+        }
+
+        delete config.table.subscription?.is_subscription_record;
+    }
+
     let _config = validator.Params(config || {}, {
         record_id: ['string', () => {
             if (!config.table || !config.table.name) {
@@ -645,29 +636,21 @@ export async function postRecord(
             name: v => cannotBeEmptyString(v, 'table name', true, true),
             subscription: {
                 group: v => {
-                    if (typeof v === 'number') {
-                        if (v < 0 || v > 99) {
-                            throw new SkapiError('"table.subscription.group" should be between 0 ~ 99', { code: 'INVALID_PARAMETER' });
-                        }
-                        return v;
+                    if (v === 1) {
+                        return 1
                     }
-
-                    if (v === undefined || v === null) {
-                        if (!config.record_id)
-                            throw new SkapiError('"table.subscription.group" is required', { code: 'INVALID_PARAMETER' });
-                        return v;
-                    }
-
-                    throw new SkapiError('"table.subscription.group" should be type: number', { code: 'INVALID_PARAMETER' });
+                    return null;
                 },
+
                 exclude_from_feed: 'boolean',
-                // notify_subscribers: 'boolean',
+                notify_subscribers: 'boolean',
+
                 feed_referencing_records: 'boolean',
+                notify_referencing_records: 'boolean',
             },
             access_group: accessGroup.bind(this),
         },
         source: {
-            // allow_referencing_to_feed: 'boolean',
             referencing_limit: reference_limit_check,
             prevent_multiple_referencing: 'boolean',
             can_remove_referencing_records: 'boolean',
@@ -708,7 +691,7 @@ export async function postRecord(
                 }
 
                 return v.map(vv => validator.Params(vv, p));
-            }
+            },
         },
         reference: v => {
             if (v === null) {
