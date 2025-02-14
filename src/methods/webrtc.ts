@@ -88,7 +88,7 @@ export async function receiveIceCandidate(candidate: any, recipient: string) {
 export async function closeRTC(params: { cid?: string; close_all?: boolean }): Promise<void> {
     validator.Params(params, {
         cid: v => {
-            if (v && typeof v !== 'string') {
+            if (typeof v !== 'string') {
                 throw new SkapiError(`"cid" should be type: <string>.`, { code: 'INVALID_PARAMETER' });
             }
             if (v && v.slice(0, 4) !== 'cid:') {
@@ -181,11 +181,11 @@ export async function connectRTC(
     }
 
     params = validator.Params(params, {
-        cid: v=>{
-            if(typeof v !== 'string'){
+        cid: v => {
+            if (typeof v !== 'string') {
                 throw new SkapiError(`"cid" should be type: <string>.`, { code: 'INVALID_PARAMETER' });
             }
-            if(v.slice(0, 4) !== 'cid:') {
+            if (v && v.slice(0, 4) !== 'cid:') {
                 throw new SkapiError(`"cid" should be a valid connection id.`, { code: 'INVALID_PARAMETER' });
             }
             return v;
@@ -205,7 +205,7 @@ export async function connectRTC(
     }, ['cid']);
 
     let { cid, ice } = params;
-    
+
     if (!(params?.media instanceof MediaStream)) {
         if (params?.media?.video || params?.media?.audio) {
             // check if it is localhost or https
@@ -242,11 +242,19 @@ export async function connectRTC(
             this.__mediaStream = this.__mediaStream || params.media;
         }
         else {
-            if (params?.media?.video || params?.media?.audio) {
-                this.__mediaStream = await navigator.mediaDevices.getUserMedia({
-                    video: params?.media?.video,
-                    audio: params?.media?.audio
-                });
+            try {
+                if (params?.media?.video || params?.media?.audio) {
+                    this.__mediaStream = await navigator.mediaDevices.getUserMedia({
+                        video: params?.media?.video,
+                        audio: params?.media?.audio
+                    });
+                }
+            } catch (error) {
+                if ((error as any)?.name === 'NotFoundError') {
+                    throw new SkapiError('Requested media device not found.', { code: 'DEVICE_NOT_FOUND' });
+                } else {
+                    throw error;
+                }
             }
         }
         if (this.__mediaStream)
