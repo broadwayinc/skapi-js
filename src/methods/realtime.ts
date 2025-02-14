@@ -4,7 +4,7 @@ import validator from '../utils/validator';
 import { extractFormData } from '../utils/utils';
 import { request } from '../utils/network';
 import { DatabaseResponse, FetchOptions, RealtimeCallback, WebSocketMessage } from '../Types';
-import { answerSdpOffer, receiveIceCandidate, __peerConnection, __receiver_ringing, closeRTC, respondRTC, __caller_ringing, __rtcCallbacks } from './webrtc';
+import { answerSdpOffer, receiveIceCandidate, __peerConnection, __receiver_ringing, closeRTC, respondRTC, __caller_ringing, __rtcEvents } from './webrtc';
 import { getJwtToken } from './user';
 
 let __roomList: {
