@@ -680,7 +680,7 @@ export default class Skapi {
 
     @formHandler()
     inviteUser(
-        form: { email: string; openid_id: string; } & UserAttributes & UserProfilePublicSettings,
+        form: { email: string; } & UserAttributes & UserProfilePublicSettings,
         options?: {
             confirmation_url?: string;
             email_subscription?: boolean;
