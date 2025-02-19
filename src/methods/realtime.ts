@@ -72,7 +72,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
 
                         // Send message back to main thread
                         // postMessage({ message: "tick", delay: actualDelay });
-                        postMessage(null);
+                        postMessage({ type: "ping" });
 
                         // lastTime = currentTime;
                         setTimeout(runInterval, interval); // Use setTimeout instead of setInterval
