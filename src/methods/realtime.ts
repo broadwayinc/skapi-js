@@ -15,7 +15,7 @@ let __roomList: {
 
 let __current_socket_room: string;
 let __keepAliveInterval = null;
-let __cid: { [user_id: string]: string } = {};
+// let __cid: { [user_id: string]: string } = {};
 
 async function prepareWebsocket() {
     // Connect to the WebSocket server
@@ -281,7 +281,8 @@ export async function postRealtime(message: any, recipient: string): Promise<{ t
                 action: 'sendMessage',
                 uid: recipient,
                 content: message,
-                token: this.session.accessToken.jwtToken
+                // token: this.session.accessToken.jwtToken
+                token: `IdT:${this.service}:${this.owner}:` + (this.session?.idToken?.jwtToken || 'null')
             }));
 
         } catch (err) {
@@ -294,7 +295,8 @@ export async function postRealtime(message: any, recipient: string): Promise<{ t
                 action: 'broadcast',
                 rid: recipient,
                 content: message,
-                token: this.session.accessToken.jwtToken
+                // token: this.session.accessToken.jwtToken,
+                token: `IdT:${this.service}:${this.owner}:` + (this.session?.idToken?.jwtToken || 'null')
             }));
         }
 
