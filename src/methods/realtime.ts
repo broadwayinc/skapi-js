@@ -60,14 +60,50 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
                 }
 
                 // keep alive
-                __keepAliveInterval = setInterval(() => {
+
+                // Define worker script as a string
+                const workerScript = `
+                    let interval = 30000; // Set interval time
+                    // let lastTime = performance.now();
+
+                    function runInterval() {
+                        let currentTime = performance.now();
+                        // let actualDelay = currentTime - lastTime;
+
+                        // Send message back to main thread
+                        // postMessage({ message: "tick", delay: actualDelay });
+                        postMessage(null);
+
+                        // lastTime = currentTime;
+                        setTimeout(runInterval, interval); // Use setTimeout instead of setInterval
+                    }
+
+                    runInterval(); // Start interval
+                `;
+
+                // Create a Blob URL for the worker
+                const blob = new Blob([workerScript], { type: "application/javascript" });
+                __keepAliveInterval = new Worker(URL.createObjectURL(blob));
+
+                // Listen for messages from the worker
+                __keepAliveInterval.onmessage = (event) => {
+                    // console.log(`Worker Tick! Delay: ${event.data.delay.toFixed(2)}ms`);
                     if (socket.readyState === 1) {
                         socket.send(JSON.stringify({
                             action: 'keepAlive',
                             token: this.session.accessToken.jwtToken
                         }));
                     }
-                }, 30000);
+                };
+  
+                // __keepAliveInterval = setInterval(() => {
+                //     if (socket.readyState === 1) {
+                //         socket.send(JSON.stringify({
+                //             action: 'keepAlive',
+                //             token: this.session.accessToken.jwtToken
+                //         }));
+                //     }
+                // }, 30000);
 
                 resolve(socket);
             };
@@ -242,7 +278,8 @@ export async function closeRealtime(): Promise<void> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
     closeRTC.bind(this)({ close_all: true });
     if (__keepAliveInterval) {
-        clearInterval(__keepAliveInterval);
+        // clearInterval(__keepAliveInterval);
+        __keepAliveInterval.terminate();
         __keepAliveInterval = null;
     }
 
