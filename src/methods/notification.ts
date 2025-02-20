@@ -70,10 +70,12 @@ export async function vapidPublicKey() {
   return { VAPIDPublicKey: vapid };
 }
 
-export async function pushNotification(form: {
-  title: string;
-  body: string;
-}, user_ids?: string | string[]): Promise<"SUCCESS: Notification sent."> {
+export async function pushNotification(
+  form: {
+    title: string;
+    body: string;
+  },
+  user_ids?: string | string[]): Promise<"SUCCESS: Notification sent."> {
   await this.__connection;
 
   let { title, body } = extractFormData(form || {}, { nullIfEmpty: true }).data;
