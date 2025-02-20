@@ -166,7 +166,8 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                             let config = {
                                 dataType: dataType || 'download',
                                 progress,
-                                _ref
+                                _ref,
+                                _update: obj
                             };
                             return getFile.bind(this)(url, config);
                         }
@@ -297,6 +298,7 @@ export async function getFile(
         expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
         progress?: ProgressCallback;
         _ref?: string;
+        _update?: any;
     }
 ): Promise<Blob | string | void | FileInfo> {
     if (typeof url !== 'string') {
@@ -336,7 +338,9 @@ export async function getFile(
     config = validator.Params(config, {
         expires: ['number', () => 0],
         dataType: ['base64', 'blob', 'endpoint', 'text', 'info', () => 'download'],
-        progress: 'function'
+        progress: 'function',
+        _ref: 'string',
+        _update: v => v
     });
 
 
@@ -432,6 +436,10 @@ export async function getFile(
     }
 
     if (config?.dataType === 'endpoint') {
+        if (config._update) {
+            // updates the url in the record (when called from the record bin object)
+            config._update.url = url;
+        }
         return url;
     }
 
@@ -612,11 +620,11 @@ export async function postRecord(
     }
 
 
-    if(config.table?.subscription) {
+    if (config.table?.subscription) {
         if (config.table?.subscription?.is_subscription_record) {
             Object.assign(config.table.subscription, { group: 1 });
         }
-    
+
         else if (config.table?.subscription?.is_subscription_record === false || !config.record_id && !config.table.subscription?.is_subscription_record) {
             Object.assign(config.table.subscription, { group: null });
         }
