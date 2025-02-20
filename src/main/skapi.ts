@@ -99,7 +99,6 @@ import {
     getTickets,
     registerTicket,
     unregisterTicket,
-    jwtLogin,
     _out,
     openIdLogin,
 } from '../methods/user';
@@ -562,16 +561,6 @@ export default class Skapi {
 
     connectRealtime(callback: RealtimeCallback): Promise<WebSocket> {
         return connectRealtime.bind(this)(callback);
-    }
-
-    private jwtLogin(params: {
-        idToken: string;
-        keyUrl: string;
-        clientId: string;
-        provider: string;
-        nonce?: string;
-    }): Promise<UserProfile> {
-        return jwtLogin.bind(this)(params);
     }
 
     @formHandler()
