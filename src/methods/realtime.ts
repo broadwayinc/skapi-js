@@ -15,7 +15,6 @@ let __roomList: {
 
 let __current_socket_room: string;
 let __keepAliveInterval = null;
-// let __cid: { [user_id: string]: string } = {};
 
 async function prepareWebsocket() {
     // Connect to the WebSocket server
@@ -64,17 +63,9 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
                 // Define worker script as a string
                 const workerScript = `
                     let interval = 30000; // Set interval time
-                    // let lastTime = performance.now();
 
                     function runInterval() {
-                        let currentTime = performance.now();
-                        // let actualDelay = currentTime - lastTime;
-
-                        // Send message back to main thread
-                        // postMessage({ message: "tick", delay: actualDelay });
                         postMessage({ type: "ping" });
-
-                        // lastTime = currentTime;
                         setTimeout(runInterval, interval); // Use setTimeout instead of setInterval
                     }
 
@@ -95,15 +86,6 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
                         }));
                     }
                 };
-  
-                // __keepAliveInterval = setInterval(() => {
-                //     if (socket.readyState === 1) {
-                //         socket.send(JSON.stringify({
-                //             action: 'keepAlive',
-                //             token: this.session.accessToken.jwtToken
-                //         }));
-                //     }
-                // }, 30000);
 
                 resolve(socket);
             };
@@ -278,7 +260,6 @@ export async function closeRealtime(): Promise<void> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
     closeRTC.bind(this)({ close_all: true });
     if (__keepAliveInterval) {
-        // clearInterval(__keepAliveInterval);
         __keepAliveInterval.terminate();
         __keepAliveInterval = null;
     }
