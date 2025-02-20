@@ -277,7 +277,7 @@ export async function closeRealtime(): Promise<void> {
     return null;
 }
 
-export async function postRealtime(message: any, recipient: string): Promise<{ type: 'success', message: 'Message sent.' }> {
+export async function postRealtime(message: any, recipient: string, notification?: { title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
 
     if (!socket) {
@@ -292,6 +292,24 @@ export async function postRealtime(message: any, recipient: string): Promise<{ t
 
     message = extractFormData(message).data;
 
+    let notificationStr = '';
+    if(notification) {
+        notification = validator.Params(
+            notification,
+            {
+                title: 'string',
+                body: 'string'
+            },
+            ['title', 'body']
+        );
+        // stringify notification and check if size exceeds 3kb
+        notificationStr = JSON.stringify(notification);
+        let notificationSize = new Blob([notificationStr]).size;
+        if (notificationSize > 3072) {
+            throw new SkapiError(`Notification size exceeds 3kb.`, { code: 'INVALID_PARAMETER' });
+        }
+    }
+
     if (socket.readyState === 1) {
         try {
             validator.UserId(recipient);
@@ -299,6 +317,7 @@ export async function postRealtime(message: any, recipient: string): Promise<{ t
                 action: 'sendMessage',
                 uid: recipient,
                 content: message,
+                notification: notificationStr,
                 // token: this.session.accessToken.jwtToken
                 token: `IdT:${this.service}:${this.owner}:` + (this.session?.idToken?.jwtToken || 'null')
             }));
@@ -313,6 +332,7 @@ export async function postRealtime(message: any, recipient: string): Promise<{ t
                 action: 'broadcast',
                 rid: recipient,
                 content: message,
+                notification: notificationStr,
                 // token: this.session.accessToken.jwtToken,
                 token: `IdT:${this.service}:${this.owner}:` + (this.session?.idToken?.jwtToken || 'null')
             }));
