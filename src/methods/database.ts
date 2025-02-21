@@ -560,15 +560,15 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
         }
     );
 
+    if (is_reference_fetch && result?.reference_private_key && typeof result.reference_private_key === 'string') {
+        this.__private_access_key[is_reference_fetch] = result.reference_private_key;
+    }
+
     for (let i in result.list) {
         result.list[i] = normalizeRecord.bind(this)(result.list[i]);
     };
 
     result.list = await Promise.all(result.list);
-
-    if (is_reference_fetch && result?.reference_private_key && typeof result.reference_private_key === 'string') {
-        this.__private_access_key[is_reference_fetch] = result.reference_private_key;
-    }
 
     return result;
 }
