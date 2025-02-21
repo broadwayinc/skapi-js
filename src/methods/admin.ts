@@ -142,7 +142,7 @@ export async function inviteUser(
         address_public: ['boolean', () => false],
         birthdate_public: ['boolean', () => false],
         phone_number_public: ['boolean', () => false],
-        // openid_id: 'string',
+        openid_id: 'string',
         access_group: (v: number) => {
             // if string try to convert to number and if it's not a number, throw error
             try {
