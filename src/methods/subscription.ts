@@ -94,26 +94,23 @@ export async function getSubscriptions(
 
 export async function subscribe(params: { user_id: string; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<'SUCCESS: The user has subscribed.'> {
     await this.__connection;
-    let { user_id } = validator.Params(params, {
+    params = validator.Params(params, {
         user_id: cannotBeSelfId.bind(this),
-        get_feed: 'boolean',
-        get_notified: 'boolean',
+        get_feed: ['boolean', ()=>false],
+        get_notified: ['boolean', ()=>false],
         get_email: v => {
-            if (typeof v !== 'boolean') {
-                throw new SkapiError('"get_email" should be type boolean.', { code: 'INVALID_PARAMETER' });
-            }
             if (v && !this.__user.email || !this.__user.email_verified) {
                 throw new SkapiError('User has no verified email address.', { code: 'INVALID_REQUEST' });
             }
-            return v;
+            return !!v;
         }
     }, ['user_id']);
 
     return await request.bind(this)('subscription', {
-        subscribe: user_id,
+        subscribe: params.user_id,
         option: {
-            get_feed: params.get_feed || false,
-            get_notified: params.get_notified || false,
+            get_feed: params.get_feed,
+            get_notified: params.get_notified,
             get_email: params.get_email || false
         }
     }, { auth: true });

@@ -1,5 +1,6 @@
 import { SkapiError } from "../Main";
 import { request } from "../utils/network";
+import { extractFormData } from "../utils/utils";
 
 export async function subscribeNotification(params: {
   endpoint: string;
@@ -69,25 +70,33 @@ export async function vapidPublicKey() {
   return { VAPIDPublicKey: vapid };
 }
 
-export async function pushNotification(form: {
-  title: string;
-  body: string;
-}, user_ids?: string | string[]): Promise<"SUCCESS: Notification sent."> {
+export async function pushNotification(
+  form: {
+    title: string;
+    body: string;
+  },
+  user_ids?: string | string[]): Promise<"SUCCESS: Notification sent."> {
   await this.__connection;
 
-  if (!form.title) {
+  let { title, body } = extractFormData(form || {}, { nullIfEmpty: true }).data;
+
+  if (!title) {
     throw new SkapiError("Missing parameter: message title", {
       code: "INVALID_PARAMETER",
     });
   }
-  if (!form.body) {
+  if (!body) {
     throw new SkapiError("Missing parameter: message body", {
       code: "INVALID_PARAMETER",
     });
   }
 
-  const payload = { title: form.title, body: form.body };
+  const payload = { title, body };
+
   if (user_ids) {
+    if (typeof user_ids === 'string') {
+      user_ids = [user_ids];
+    }
     payload['user_ids'] = user_ids;
   }
   else {

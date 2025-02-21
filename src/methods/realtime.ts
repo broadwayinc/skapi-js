@@ -4,7 +4,7 @@ import validator from '../utils/validator';
 import { extractFormData } from '../utils/utils';
 import { request } from '../utils/network';
 import { DatabaseResponse, FetchOptions, RealtimeCallback, WebSocketMessage } from '../Types';
-import { answerSdpOffer, receiveIceCandidate, __peerConnection, __receiver_ringing, closeRTC, respondRTC, __caller_ringing, __rtcCallbacks } from './webrtc';
+import { answerSdpOffer, receiveIceCandidate, __peerConnection, __receiver_ringing, closeRTC, respondRTC, __caller_ringing, __rtcEvents } from './webrtc';
 import { getJwtToken } from './user';
 
 let __roomList: {
@@ -15,7 +15,6 @@ let __roomList: {
 
 let __current_socket_room: string;
 let __keepAliveInterval = null;
-let __cid: { [user_id: string]: string } = {};
 
 async function prepareWebsocket() {
     // Connect to the WebSocket server
@@ -60,14 +59,33 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
                 }
 
                 // keep alive
-                __keepAliveInterval = setInterval(() => {
+
+                // Define worker script as a string
+                const workerScript = `
+                    let interval = 30000; // Set interval time
+
+                    function runInterval() {
+                        postMessage({ type: "ping" });
+                        setTimeout(runInterval, interval); // Use setTimeout instead of setInterval
+                    }
+
+                    runInterval(); // Start interval
+                `;
+
+                // Create a Blob URL for the worker
+                const blob = new Blob([workerScript], { type: "application/javascript" });
+                __keepAliveInterval = new Worker(URL.createObjectURL(blob));
+
+                // Listen for messages from the worker
+                __keepAliveInterval.onmessage = (event) => {
+                    // console.log(`Worker Tick! Delay: ${event.data.delay.toFixed(2)}ms`);
                     if (socket.readyState === 1) {
                         socket.send(JSON.stringify({
                             action: 'keepAlive',
                             token: this.session.accessToken.jwtToken
                         }));
                     }
-                }, 30000);
+                };
 
                 resolve(socket);
             };
@@ -242,7 +260,7 @@ export async function closeRealtime(): Promise<void> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
     closeRTC.bind(this)({ close_all: true });
     if (__keepAliveInterval) {
-        clearInterval(__keepAliveInterval);
+        __keepAliveInterval.terminate();
         __keepAliveInterval = null;
     }
 
@@ -259,7 +277,7 @@ export async function closeRealtime(): Promise<void> {
     return null;
 }
 
-export async function postRealtime(message: any, recipient: string): Promise<{ type: 'success', message: 'Message sent.' }> {
+export async function postRealtime(message: any, recipient: string, notification?: { title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
 
     if (!socket) {
@@ -274,6 +292,24 @@ export async function postRealtime(message: any, recipient: string): Promise<{ t
 
     message = extractFormData(message).data;
 
+    let notificationStr = '';
+    if(notification) {
+        notification = validator.Params(
+            notification,
+            {
+                title: 'string',
+                body: 'string'
+            },
+            ['title', 'body']
+        );
+        // stringify notification and check if size exceeds 3kb
+        notificationStr = JSON.stringify(notification);
+        let notificationSize = new Blob([notificationStr]).size;
+        if (notificationSize > 3072) {
+            throw new SkapiError(`Notification size exceeds 3kb.`, { code: 'INVALID_PARAMETER' });
+        }
+    }
+
     if (socket.readyState === 1) {
         try {
             validator.UserId(recipient);
@@ -281,7 +317,9 @@ export async function postRealtime(message: any, recipient: string): Promise<{ t
                 action: 'sendMessage',
                 uid: recipient,
                 content: message,
-                token: this.session.accessToken.jwtToken
+                notification: notificationStr,
+                // token: this.session.accessToken.jwtToken
+                token: `IdT:${this.service}:${this.owner}:` + (this.session?.idToken?.jwtToken || 'null')
             }));
 
         } catch (err) {
@@ -294,7 +332,9 @@ export async function postRealtime(message: any, recipient: string): Promise<{ t
                 action: 'broadcast',
                 rid: recipient,
                 content: message,
-                token: this.session.accessToken.jwtToken
+                notification: notificationStr,
+                // token: this.session.accessToken.jwtToken,
+                token: `IdT:${this.service}:${this.owner}:` + (this.session?.idToken?.jwtToken || 'null')
             }));
         }
 

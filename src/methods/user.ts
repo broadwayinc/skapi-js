@@ -554,32 +554,6 @@ export async function recoverAccount(
     return 'SUCCESS: Recovery e-mail has been sent.';
 }
 
-export async function jwtLogin(params: {
-    idToken: string;
-    keyUrl: string;
-    clientId: string;
-    provider: string;
-    nonce?: string;
-}) {
-    validator.Params(params, {
-        idToken: 'string',
-        clientId: 'string',
-        keyUrl: (v: string) => validator.Url(v),
-        provider: 'string',
-        nonce: 'string'
-    }, ['idToken', 'keyUrl', 'clientId']);
-
-    let { hashedPassword, username, email } = await request.bind(this)("jwt-login", params);
-    try {
-        return login.bind(this)({ username: username, password: hashedPassword, email });
-    }
-    catch (err: SkapiError | any) {
-        if (err?.code === 'INCORRECT_USERNAME_OR_PASSWORD') {
-            throw new SkapiError('User has migrated the account. Login with the service email and password.', { code: 'INVALID_REQUEST' });
-        }
-    }
-}
-
 export async function login(
     form: Form<{
         /** if given, username will be used instead of email. */

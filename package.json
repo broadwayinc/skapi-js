@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "1.0.207-vivi.0",
+  "version": "1.0.211-vivi.1",
   "description": "Skapi: Backend API for HTML frontend.",
   "main": "js/Main.js",
   "browser": "dist/skapi.js",
@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "npx tsc --project tsconfig.json && npx webpack --config webpack.config.js",
-    "dev": "npx bns 3300"
+    "dev": "npx bns 3333"
   },
   "repository": {
     "type": "git",
