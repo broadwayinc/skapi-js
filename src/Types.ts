@@ -1,9 +1,5 @@
 export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
 
-export type RTCCallback = (e: {
-    type: string;
-    [key: string]: any;
-}) => void
 
 export type RTCReceiverParams = {
     ice?: string;
@@ -37,10 +33,15 @@ export type RTCResolved = {
     media: MediaStream;
 }
 
+export type RTCEvent = (e: {
+    type: string;
+    [key: string]: any;
+}) => void
+
 export type WebSocketMessage = {
-    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc' | 'reconnect' | 'rtc:incoming' | 'rtc:closed';
+    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc:incoming' | 'rtc:closed';
     message?: any;
-    connectRTC?: (params: RTCReceiverParams, callback: RTCCallback) => Promise<RTCResolved>;
+    connectRTC?: (params: RTCReceiverParams, callback: RTCEvent) => Promise<RTCResolved>;
     hangup?: () => void; // Reject incoming RTC connection.
     sender?: string; // user_id of the sender
     sender_cid?: string; // scid of the sender
@@ -175,9 +176,7 @@ export type RecordData = {
         can_remove_referencing_records: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
         only_granted_can_reference: boolean; // When true, only the user who has granted private access to the record can reference this record.
         referencing_index_restrictions?: {
-            /** Not allowed: White space, special characters. Allowed: Alphanumeric, Periods. */
             name: string; // Allowed index name
-            /** Not allowed: Periods, special characters. Allowed: Alphanumeric, White space. */
             value?: string | number | boolean; // Allowed index value
             range?: string | number | boolean; // Allowed index range
             condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!='; // Allowed index value condition

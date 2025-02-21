@@ -15,7 +15,7 @@ import {
     UserProfilePublicSettings,
     FileInfo,
     DelRecordQuery,
-    RTCCallback,
+    RTCEvent,
     RealtimeCallback,
     RTCConnectorParams,
     RTCConnector,
@@ -99,7 +99,6 @@ import {
     getTickets,
     registerTicket,
     unregisterTicket,
-    jwtLogin,
     _out,
     openIdLogin,
 } from '../methods/user';
@@ -132,7 +131,7 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.207';
+    private __version = '1.0.211';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -362,23 +361,6 @@ export default class Skapi {
                 }
             });
 
-        // this.admin_endpoint_extra = fetch(`${cdn_domain}/${sreg}/admin-extra.json`)
-        //     .then(response => response.blob())
-        //     .then(blob => new Promise((resolve, reject) => {
-        //         const reader = new FileReader();
-        //         reader.onloadend = () => resolve(reader.result);
-        //         reader.onerror = reject;
-        //         reader.readAsDataURL(blob);
-        //     }))
-        //     .then(data => {
-        //         try {
-        //             return typeof data === 'string' ? JSON.parse(atob(data.split(',')[1])) : null
-        //         }
-        //         catch (err) {
-        //             throw new SkapiError('Service does not exist. Create your service from skapi.com', { code: 'NOT_EXISTS' });
-        //         }
-        //     });
-
         this.record_endpoint = fetch(`${cdn_domain}/${sreg}/record.json`)
             .then(response => response.blob())
             .then(blob => new Promise((resolve, reject) => {
@@ -572,23 +554,13 @@ export default class Skapi {
     @formHandler()
     connectRTC(
         params: RTCConnectorParams,
-        callback?: RTCCallback
+        callback?: RTCEvent
     ): Promise<RTCConnector> {
         return connectRTC.bind(this)(params, callback);
     }
 
     connectRealtime(callback: RealtimeCallback): Promise<WebSocket> {
         return connectRealtime.bind(this)(callback);
-    }
-
-    private jwtLogin(params: {
-        idToken: string;
-        keyUrl: string;
-        clientId: string;
-        provider: string;
-        nonce?: string;
-    }): Promise<UserProfile> {
-        return jwtLogin.bind(this)(params);
     }
 
     @formHandler()
@@ -697,7 +669,7 @@ export default class Skapi {
 
     @formHandler()
     inviteUser(
-        form: { email: string; openid_id: string; } & UserAttributes & UserProfilePublicSettings,
+        form: { email: string; } & UserAttributes & UserProfilePublicSettings,
         options?: {
             confirmation_url?: string;
             email_subscription?: boolean;
@@ -739,8 +711,8 @@ export default class Skapi {
     }
 
     @formHandler()
-    postRealtime(message: any, recipient: string): Promise<{ type: 'success', message: 'Message sent.' }> {
-        return postRealtime.bind(this)(message, recipient);
+    postRealtime(message: any, recipient: string, notification?: { title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
+        return postRealtime.bind(this)(message, recipient, notification);
     }
 
     @formHandler()

@@ -54,7 +54,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'register-ticket':
         case 'get-newsletter-subscription':
         case 'request-username-change':
-        case 'jwt-login':
+        // case 'jwt-login':
         case 'send-inquiry':
         case 'block-account':
         case 'invitation-list':
