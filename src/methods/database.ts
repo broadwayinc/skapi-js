@@ -360,7 +360,6 @@ export async function getFile(
 
     let filename = url.split('/').slice(-1)[0];
     let expires = config.expires;
-
     if (expires) {
         if (!isValidEndpoint) {
             throw new SkapiError('Expires option can only be used on skapi cdn endpoints.', { code: 'INVALID_PARAMETER' });
