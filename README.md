@@ -1,11 +1,11 @@
 # Skapi
 
-Serverless backend API Library for HTML Frontend.
-Build fullstack web applications directly from your HTML without backend engineering.
+Serverless backend API for HTML Frontend.
+Build full-stack web applications directly from your HTML frontend.
 
 ### Compatible with both vanilla HTML and SPA projects
 
-No fancy framework or complex deployment required. Just focused on the basics, Skapi is a single JavaScript library fully compatible with vanilla HTML, as well as any frontend frameworks.
+No fancy framework or complex deployment required. Just focused on the basics, Skapi is a single JavaScript library fully compatible with vanilla HTML, as well as any JS frameworks.
 
 ### All-in-One Package
 
@@ -14,12 +14,12 @@ Skapi provides all the backend features you need for your web application out of
 - Authentication
 - Database
 - File Storage
+- Realtime Messaging & Video Chat
+- Notification
 - CDN
 - Automated Email Systems
-- Realtime Messaging & Video Chat
 - API Bridge for 3rd party API's
-- Hosting
-
+- Web Hosting
 
 ## Getting Started
 
