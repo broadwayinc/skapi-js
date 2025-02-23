@@ -44,6 +44,8 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'client-secret-request-public': //
         case 'openid-logger': //
             return (auth ? admin.extra_private_2 : admin.extra_public_2) + dest + query;
+        case 'block-account':
+            return record.admin_private + dest + query;
         case 'remove-account':
         case 'post-secure':
         case 'recover-account':
@@ -56,7 +58,6 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'request-username-change':
         // case 'jwt-login':
         case 'send-inquiry':
-        case 'block-account':
         case 'invitation-list':
         case 'grant-access':
             const gateways_admin = auth
