@@ -45,7 +45,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'openid-logger': //
             return (auth ? admin.extra_private_2 : admin.extra_public_2) + dest + query;
         case 'block-account':
-            return record.admin_private + dest + query;
+            return admin.admin_private + dest + query;
         case 'remove-account':
         case 'post-secure':
         case 'recover-account':
@@ -67,7 +67,7 @@ async function getEndpoint(dest: string, auth: boolean) {
             const counter_admin = auth ? privateCounter_admin : publicCounter_admin;
             const selectedGateway_admin = gateways_admin[counter_admin % gateways_admin.length];
 
-            if (auth){
+            if (auth) {
                 privateCounter_admin++;
             } else {
                 publicCounter_admin++;
@@ -115,7 +115,7 @@ async function getEndpoint(dest: string, auth: boolean) {
             const counter_record = auth ? privateCounter_record : publicCounter_record;
             const selectedGateway_record = gateways_record[counter_record % gateways_record.length];
 
-            if (auth){
+            if (auth) {
                 privateCounter_record++;
             } else {
                 publicCounter_record++;
@@ -354,7 +354,7 @@ export async function request(
 
     opt.method = method;
     let promise = _fetch.bind(this)(endpoint, opt, progress);
-    __pendingRequest[requestKey as string] = promise.finally(()=>{
+    __pendingRequest[requestKey as string] = promise.finally(() => {
         delete __pendingRequest[requestKey as string];
     });
 
@@ -936,7 +936,7 @@ export async function getFormResponse(): Promise<any> {
     let responseKey = `${this.service}:${MD5.hash(location.href.split('?')[0])}`;
     let stored = sessionStorage.getItem(responseKey);
     sessionStorage.removeItem(responseKey);
-    
+
     if (stored !== null) {
         try {
             stored = JSON.parse(stored);
