@@ -425,7 +425,7 @@ export async function getFile(
             if (this.__private_access_key[record_id] && typeof this.__private_access_key[record_id] === 'string') {
                 url += '&p=' + this.__private_access_key[record_id];
             }
-            else {
+            else if (this.owner !== this.host) {
                 try {
                     let p = await this.requestPrivateRecordAccessKey({ record_id, reference_id: config?._ref });
                     url += '&p=' + p;
