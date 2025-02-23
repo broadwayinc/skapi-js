@@ -1,6 +1,6 @@
 # Skapi
 
-Serverless backend API for HTML Frontend.
+Serverless backend API for HTML frontend.
 Build full-stack web applications directly from your HTML frontend.
 
 ### Compatible with both vanilla HTML and SPA projects
