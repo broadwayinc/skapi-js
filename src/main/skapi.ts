@@ -131,7 +131,7 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.214';
+    private __version = '1.0.215';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -281,6 +281,7 @@ export default class Skapi {
     private __connection: Promise<Connection>;
     private __authConnection: Promise<void>;
     private __network_logs = false;
+    private __endpoint_version = 'v1';
 
     constructor(service: string, owner: string, options?: {
         autoLogin: boolean;
@@ -344,7 +345,7 @@ export default class Skapi {
         const cdn_domain = `https://${this.target_cdn}.cloudfront.net`; // don't change this
         let sreg = service.substring(0, 4);
 
-        this.admin_endpoint = fetch(`${cdn_domain}/${sreg}/admin.json`)
+        this.admin_endpoint = fetch(`${cdn_domain}/${sreg}/admin-${this.__endpoint_version}.json`)
             .then(response => response.blob())
             .then(blob => new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -361,7 +362,7 @@ export default class Skapi {
                 }
             });
 
-        this.record_endpoint = fetch(`${cdn_domain}/${sreg}/record.json`)
+        this.record_endpoint = fetch(`${cdn_domain}/${sreg}/record-${this.__endpoint_version}.json`)
             .then(response => response.blob())
             .then(blob => new Promise((resolve, reject) => {
                 const reader = new FileReader();
