@@ -1063,8 +1063,9 @@ export default class Skapi {
     @formHandler()
     postRecord(
         form: Form<Record<string, any>> | null | undefined,
-        config: PostRecordConfig
-    ): Promise<RecordData> { return postRecord.bind(this)(form, config); }
+        config: PostRecordConfig,
+        files?: { name: string, file: File }[]
+    ): Promise<RecordData> { return postRecord.bind(this)(form, config, files); }
     @formHandler()
     getSubscriptions(
         params: {
