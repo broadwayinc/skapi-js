@@ -189,7 +189,7 @@ export type RecordData = {
     };
     data?: Record<string, any>;
     tags?: string[];
-    bin: { [key: string]: BinaryFile | BinaryFile[] };
+    bin: { [key: string]: BinaryFile[] };
     ip: string;
     readonly: boolean;
 }

@@ -574,7 +574,8 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
 
 export async function postRecord(
     form: Form<Record<string, any>> | null | undefined,
-    config: PostRecordConfig & { reference_private_key?: string; }
+    config: PostRecordConfig & { reference_private_key?: string; },
+    files?: { name: string, file: File }[],
 ): Promise<RecordData> {
     await this.__connection;
 
@@ -787,7 +788,10 @@ export async function postRecord(
     let to_bin = null;
     let extractedForm = extractFormData(form);
 
-    if (extractedForm.files.length) {
+    if(files) {
+        to_bin = files;
+    }
+    else if (extractedForm.files.length) {
         to_bin = extractedForm.files;
     }
 
