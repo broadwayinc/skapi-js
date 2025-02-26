@@ -14,7 +14,7 @@ let __roomList: {
 } = {};
 
 let __current_socket_room: string;
-let __keepAliveInterval = null;
+// let __keepAliveInterval = null;
 
 async function prepareWebsocket() {
     // Connect to the WebSocket server
@@ -58,34 +58,34 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
                     }));
                 }
 
-                // keep alive
+                // // keep alive
 
-                // Define worker script as a string
-                const workerScript = `
-                    let interval = 30000; // Set interval time
+                // // Define worker script as a string
+                // const workerScript = `
+                //     let interval = 30000; // Set interval time
 
-                    function runInterval() {
-                        postMessage({ type: "ping" });
-                        setTimeout(runInterval, interval); // Use setTimeout instead of setInterval
-                    }
+                //     function runInterval() {
+                //         postMessage({ type: "ping" });
+                //         setTimeout(runInterval, interval); // Use setTimeout instead of setInterval
+                //     }
 
-                    runInterval(); // Start interval
-                `;
+                //     runInterval(); // Start interval
+                // `;
 
-                // Create a Blob URL for the worker
-                const blob = new Blob([workerScript], { type: "application/javascript" });
-                __keepAliveInterval = new Worker(URL.createObjectURL(blob));
+                // // Create a Blob URL for the worker
+                // const blob = new Blob([workerScript], { type: "application/javascript" });
+                // __keepAliveInterval = new Worker(URL.createObjectURL(blob));
 
-                // Listen for messages from the worker
-                __keepAliveInterval.onmessage = (event) => {
-                    // console.log(`Worker Tick! Delay: ${event.data.delay.toFixed(2)}ms`);
-                    if (socket.readyState === 1) {
-                        socket.send(JSON.stringify({
-                            action: 'keepAlive',
-                            token: this.session.accessToken.jwtToken
-                        }));
-                    }
-                };
+                // // Listen for messages from the worker
+                // __keepAliveInterval.onmessage = (event) => {
+                //     // console.log(`Worker Tick! Delay: ${event.data.delay.toFixed(2)}ms`);
+                //     if (socket.readyState === 1) {
+                //         socket.send(JSON.stringify({
+                //             action: 'keepAlive',
+                //             token: this.session.accessToken.jwtToken
+                //         }));
+                //     }
+                // };
 
                 resolve(socket);
             };
@@ -259,10 +259,10 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
 export async function closeRealtime(): Promise<void> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
     closeRTC.bind(this)({ close_all: true });
-    if (__keepAliveInterval) {
-        __keepAliveInterval.terminate();
-        __keepAliveInterval = null;
-    }
+    // if (__keepAliveInterval) {
+    //     __keepAliveInterval.terminate();
+    //     __keepAliveInterval = null;
+    // }
 
     try {
         if (socket) {
