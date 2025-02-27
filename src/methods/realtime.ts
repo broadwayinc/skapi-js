@@ -337,6 +337,7 @@ export async function postRealtime(message: any, recipient: string, notification
                 rid: recipient,
                 content: message,
                 notification: notificationStr,
+                notificationConfig: notification?.config || {},
                 // token: this.session.accessToken.jwtToken,
                 token: `IdT:${this.service}:${this.owner}:` + (this.session?.idToken?.jwtToken || 'null')
             }));
