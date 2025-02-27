@@ -131,7 +131,7 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.218';
+    private __version = '1.0.219';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -712,7 +712,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    postRealtime(message: any, recipient: string, notification?: { config: { always:boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
+    postRealtime(message: any, recipient: string, notification?: { config?: { always:boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
         return postRealtime.bind(this)(message, recipient, notification);
     }
 
