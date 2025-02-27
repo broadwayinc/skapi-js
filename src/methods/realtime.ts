@@ -277,7 +277,7 @@ export async function closeRealtime(): Promise<void> {
     return null;
 }
 
-export async function postRealtime(message: any, recipient: string, notification?: { config: { always:boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
+export async function postRealtime(message: any, recipient: string, notification?: { config?: { always:boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
 
     if (!socket) {
