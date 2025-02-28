@@ -242,7 +242,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
                 }
                 else {
                     // Handle max reconnection attempts reached
-                    this.log('realtime onclose', 'WebSocket connection error. Max reconnection attempts reached.');
+                    this.log('realtime onclose', 'WebSocket unexpected close.');
                     cb({ type: 'error', message: 'Skapi: WebSocket unexpected close.' });
                     closeRealtime.bind(this)();
                 }
