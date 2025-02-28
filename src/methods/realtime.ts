@@ -47,8 +47,8 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
             let socket: WebSocket = await prepareWebsocket.bind(this)();
 
             socket.onopen = () => {
-                this.log('realtime onopen', 'Connected to websocket server.');
-                cb({ type: 'success', message: 'Connected to websocket server.' });
+                this.log('realtime onopen', 'Connected to WebSocket server.');
+                cb({ type: 'success', message: 'Connected to WebSocket server.' });
 
                 if (__current_socket_room) {
                     socket.send(JSON.stringify({
