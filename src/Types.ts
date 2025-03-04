@@ -333,9 +333,11 @@ export type PublicUser = {
     locale: string;
     /** Number of the user's subscribers. */
     subscribers?: number;
+    /** Number of subscription the user has made */
+    subscribed?: number;
     /** Number of the records the user have created. */
     records?: number;
-    /** Timestamp of user last signup time. */
+    /** Timestamp of user last login time. */
     timestamp: number;
 } & UserAttributes;
 
