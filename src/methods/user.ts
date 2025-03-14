@@ -1267,10 +1267,28 @@ export async function requestUsernameChange(params: {
 
 export async function registerSenderEmail(params: Form<{
     email_alias: string;
-}>): Promise<"SUCCESS: Sender e-mail has been registered."> {
+}>): Promise<"SUCCESS: Sender e-mail has been registered." | "ERROR: Email contains special characters." | "ERROR: Email is required."> {
     await this.__connection;
 
-    let response = await request.bind(this)('register-sender-email', params);
+    let emailAlias: string;
 
+    if (params instanceof FormData) {
+        emailAlias = params.get('email_alias') as string;
+    } else if (params && 'email_alias' in params) {
+        emailAlias = params.email_alias;
+    } else {
+        emailAlias = '';
+    }
+
+    if (!emailAlias) {
+        return "ERROR: Email is required.";
+    }
+
+    const specialCharPattern = /[!#$%^&*(),?":{}|<>]/g;
+    if (specialCharPattern.test(emailAlias)) {
+        return "ERROR: Email contains special characters.";
+    }
+
+    let response = await request.bind(this)('register-sender-email', { email_alias: emailAlias });
     return response;
 }

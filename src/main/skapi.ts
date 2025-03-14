@@ -597,7 +597,7 @@ export default class Skapi {
     @formHandler()
     registerSenderEmail(params: Form<{
         email_alias: string;
-    }>): Promise<"SUCCESS: Sender e-mail has been registered."> {
+    }>): Promise<"SUCCESS: Sender e-mail has been registered." | "ERROR: Email contains special characters." | "ERROR: Email is required."> {
         return registerSenderEmail.bind(this)(params);
     }
 
