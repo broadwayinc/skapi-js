@@ -1270,6 +1270,10 @@ export async function registerSenderEmail(params: Form<{
 }>): Promise<"SUCCESS: Sender e-mail has been registered." | "ERROR: Email contains special characters." | "ERROR: Email is required."> {
     await this.__connection;
 
+    if (!this.session) {
+        throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+    }
+
     let emailAlias: string;
 
     if (params instanceof FormData) {
@@ -1281,12 +1285,12 @@ export async function registerSenderEmail(params: Form<{
     }
 
     if (!emailAlias) {
-        return "ERROR: Email is required.";
+        throw new SkapiError('Email is required.', { code: 'INVALID_PARAMETER' });
     }
 
     const specialCharPattern = /[!#$%^&*(),?":{}|<>]/g;
     if (specialCharPattern.test(emailAlias)) {
-        return "ERROR: Email contains special characters.";
+        throw new SkapiError('Email contains special characters.', { code: 'INVALID_PARAMETER' });
     }
 
     let response = await request.bind(this)('register-sender-email', { email_alias: emailAlias });
