@@ -1266,11 +1266,11 @@ export async function requestUsernameChange(params: {
 }
 
 export async function registerSenderEmail(params: Form<{
-    email: string;
+    email_alias: string;
 }>): Promise<"SUCCESS: Sender e-mail has been registered."> {
     await this.__connection;
 
     let response = await request.bind(this)('register-sender-email', params);
-    
+
     return response;
 }
