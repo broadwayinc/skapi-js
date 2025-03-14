@@ -101,6 +101,7 @@ import {
     unregisterTicket,
     _out,
     openIdLogin,
+    registerSenderEmail
 } from '../methods/user';
 import {
     extractFormData,
@@ -591,6 +592,13 @@ export default class Skapi {
         email: string;
     }>): Promise<"SUCCESS: Invitation has been canceled."> {
         return cancelInvitation.bind(this)(params);
+    }
+
+    @formHandler()
+    registerSenderEmail(params: Form<{
+        email: string;
+    }>): Promise<"SUCCESS: Sender e-mail has been registered."> {
+        return registerSenderEmail.bind(this)(params);
     }
 
     @formHandler()

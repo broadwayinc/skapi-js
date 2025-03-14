@@ -59,6 +59,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'block-account':
         case 'invitation-list':
         case 'grant-access':
+        case 'register-sender-email':
             const gateways_admin = auth
                 ? [admin.admin_private, admin.admin_private_2]
                 : [admin.admin_public, admin.admin_public_2];
