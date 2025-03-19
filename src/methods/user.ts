@@ -1273,7 +1273,6 @@ export async function registerSenderEmail(params: Form<{
     if (!this.session) {
         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
     }
-    let user_id = this.session.idToken.payload.sub
     let emailAlias: string;
 
     if (params instanceof FormData) {
@@ -1293,6 +1292,6 @@ export async function registerSenderEmail(params: Form<{
         throw new SkapiError('Email contains special characters.', { code: 'INVALID_PARAMETER' });
     }
 
-    let response = await request.bind(this)('register-sender-email', { email_alias: emailAlias, user_id: user_id});
+    let response = await request.bind(this)('register-sender-email', { email_alias: emailAlias});
     return response;
 }
