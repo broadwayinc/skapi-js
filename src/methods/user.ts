@@ -1273,7 +1273,7 @@ export async function registerSenderEmail(params: Form<{
     if (!this.session) {
         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
     }
-
+    console.log(this.session)
     let emailAlias: string;
 
     if (params instanceof FormData) {
