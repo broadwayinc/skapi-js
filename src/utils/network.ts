@@ -398,7 +398,7 @@ function load_startKey_keys(option: {
         }
     }
 
-    if (!fetchMore && this.__startKeyHistory?.[url]?.[hashedParams]) {
+    if (!fetchMore) {
         // init cache, init startKey
 
         if (this.__cached_requests?.[url]?.[hashedParams]) {
@@ -406,18 +406,20 @@ function load_startKey_keys(option: {
             delete this.__cached_requests[url][hashedParams];
         }
 
-        if (Array.isArray(this.__startKeyHistory[url][hashedParams]) && this.__startKeyHistory[url][hashedParams].length) {
-            // delete cache of all startkeys
-            for (let p of this.__startKeyHistory[url][hashedParams]) {
-                let hashedParams_cached = hashedParams + MD5.hash(p);
-                if (this.__cached_requests?.[url] && this.__cached_requests?.[url]?.[hashedParams_cached]) {
-                    delete this.__cached_requests[url][hashedParams_cached];
+        if (this.__startKeyHistory?.[url]?.[hashedParams]) {
+            if (Array.isArray(this.__startKeyHistory[url][hashedParams]) && this.__startKeyHistory[url][hashedParams].length) {
+                // delete cache of all startkeys
+                for (let p of this.__startKeyHistory[url][hashedParams]) {
+                    let hashedParams_cached = hashedParams + MD5.hash(p);
+                    if (this.__cached_requests?.[url] && this.__cached_requests?.[url]?.[hashedParams_cached]) {
+                        delete this.__cached_requests[url][hashedParams_cached];
+                    }
                 }
             }
+            
+            // delete start key lists
+            delete this.__startKeyHistory[url][hashedParams];
         }
-
-        // delete start key lists
-        delete this.__startKeyHistory[url][hashedParams];
 
         return hashedParams;
     }
