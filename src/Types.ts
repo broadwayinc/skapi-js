@@ -1,4 +1,4 @@
-export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | '>' | '>=' | '<' | '<=' | '=';
 
 
 export type RTCReceiverParams = {
@@ -72,7 +72,7 @@ export type GetRecordQuery = {
         name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
         /** Not allowed: Periods, special characters. Allowed: White space. */
         value: string | number | boolean;
-        condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+        condition?: Condition;
         range?: string | number | boolean;
     };
     tag?: string;
