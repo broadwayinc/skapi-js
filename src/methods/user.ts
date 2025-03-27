@@ -1112,7 +1112,7 @@ export async function getUsers(
     params?: {
         searchFor: string;
         value: string | number | boolean | string[];
-        condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
+        condition?: '>' | '>=' | '=' | '<' | '<=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte';
         range?: string | number | boolean;
     },
     fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
