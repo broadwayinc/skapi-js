@@ -131,7 +131,7 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.224';
+    private __version = '1.0.225';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -841,7 +841,7 @@ export default class Skapi {
             /** Index value to search. */
             value: string | number | boolean | string[];
             /** Search condition. */
-            condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
+            condition?: '>' | '>=' | '=' | '<' | '<=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte';
             /** Range of search. */
             range?: string | number | boolean;
         },
