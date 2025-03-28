@@ -1275,9 +1275,15 @@ export async function registerSenderEmail(params: Form<{
     }
     let emailAlias: string;
 
-    if (params instanceof FormData) {
-        emailAlias = params.get('email_alias') as string;
-    } else if (params && 'email_alias' in params) {
+    let user_params = extractFormData(params)
+
+    params = user_params.data;
+
+    // if (params instanceof FormData) {
+    //     emailAlias = params.get('email_alias') as string;
+    // } else
+    
+    if (params && 'email_alias' in params) {
         emailAlias = params.email_alias;
     } else {
         emailAlias = '';
