@@ -1265,39 +1265,39 @@ export async function requestUsernameChange(params: {
     return await request.bind(this)('request-username-change', params, { auth: true });
 }
 
-export async function registerSenderEmail(params: Form<{
-    email_alias: string;
-}>): Promise<"SUCCESS: Sender e-mail has been registered." | "ERROR: Email contains special characters." | "ERROR: Email is required."> {
-    await this.__connection;
+// export async function registerSenderEmail(params: Form<{
+//     email_alias: string;
+// }>): Promise<"SUCCESS: Sender e-mail has been registered." | "ERROR: Email contains special characters." | "ERROR: Email is required."> {
+//     await this.__connection;
 
-    if (!this.session) {
-        throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
-    }
-    let emailAlias: string;
+//     if (!this.session) {
+//         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+//     }
+//     let emailAlias: string;
 
-    let user_params = extractFormData(params)
+//     let user_params = extractFormData(params)
 
-    params = user_params.data;
+//     params = user_params.data;
 
-    // if (params instanceof FormData) {
-    //     emailAlias = params.get('email_alias') as string;
-    // } else
+//     // if (params instanceof FormData) {
+//     //     emailAlias = params.get('email_alias') as string;
+//     // } else
     
-    if (params && 'email_alias' in params) {
-        emailAlias = params.email_alias;
-    } else {
-        emailAlias = '';
-    }
+//     if (params && 'email_alias' in params) {
+//         emailAlias = params.email_alias;
+//     } else {
+//         emailAlias = '';
+//     }
 
-    if (!emailAlias) {
-        throw new SkapiError('Email is required.', { code: 'INVALID_PARAMETER' });
-    }
+//     if (!emailAlias) {
+//         throw new SkapiError('Email is required.', { code: 'INVALID_PARAMETER' });
+//     }
 
-    const specialCharPattern = /[!#$%^&*(),?":{}|<>]/g;
-    if (specialCharPattern.test(emailAlias)) {
-        throw new SkapiError('Email contains special characters.', { code: 'INVALID_PARAMETER' });
-    }
+//     const specialCharPattern = /[!#$%^&*(),?":{}|<>]/g;
+//     if (specialCharPattern.test(emailAlias)) {
+//         throw new SkapiError('Email contains special characters.', { code: 'INVALID_PARAMETER' });
+//     }
 
-    let response = await request.bind(this)('register-sender-email', { email_alias: emailAlias});
-    return response;
-}
+//     let response = await request.bind(this)('register-sender-email', { email_alias: emailAlias});
+//     return response;
+// }
