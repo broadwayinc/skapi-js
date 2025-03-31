@@ -101,7 +101,7 @@ import {
     unregisterTicket,
     _out,
     openIdLogin,
-    registerSenderEmail
+    // registerSenderEmail
 } from '../methods/user';
 import {
     extractFormData,
@@ -132,7 +132,7 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.225';
+    private __version = '1.0.226';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -595,12 +595,12 @@ export default class Skapi {
         return cancelInvitation.bind(this)(params);
     }
 
-    @formHandler()
-    registerSenderEmail(params: Form<{
-        email_alias: string;
-    }>): Promise<"SUCCESS: Sender e-mail has been registered." | "ERROR: Email contains special characters." | "ERROR: Email is required."> {
-        return registerSenderEmail.bind(this)(params);
-    }
+    // @formHandler()
+    // registerSenderEmail(params: Form<{
+    //     email_alias: string;
+    // }>): Promise<"SUCCESS: Sender e-mail has been registered." | "ERROR: Email contains special characters." | "ERROR: Email is required."> {
+    //     return registerSenderEmail.bind(this)(params);
+    // }
 
     @formHandler()
     getInvitations(params: Form<{
