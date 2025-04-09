@@ -529,6 +529,10 @@ export async function _out(global: boolean = false) {
         this[k] = to_be_erased[k];
     }
 
+    if(toReturn) {
+        toReturn = await toReturn;
+    }
+    
     this._runOnLoginListeners(null);
     return toReturn;
 }
