@@ -537,9 +537,12 @@ export async function _out(global: boolean = false) {
     return toReturn;
 }
 
-export async function logout(params?:{ global:boolean; }): Promise<'SUCCESS: The user has been logged out.'> {
+export async function logout(params?: Form<{ global:boolean; }>): Promise<'SUCCESS: The user has been logged out.'> {
     await this.__connection;
-    await _out.bind(this)(params?.global);
+
+    let { data } = extractFormData(params);
+
+    await _out.bind(this)(data?.global);
     return 'SUCCESS: The user has been logged out.';
 }
 

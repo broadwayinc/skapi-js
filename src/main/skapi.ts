@@ -132,7 +132,7 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.226';
+    private __version = '1.0.227';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -1007,7 +1007,7 @@ export default class Skapi {
             password: string;
         }>): Promise<UserProfile> { return login.bind(this)(form); }
     @formHandler()
-    logout(): Promise<'SUCCESS: The user has been logged out.'> { return logout.bind(this)(); }
+    logout(form?: Form<{ global: boolean; }>): Promise<'SUCCESS: The user has been logged out.'> { return logout.bind(this)(form); }
 
     @formHandler({ preventMultipleCalls: true })
     signup(
