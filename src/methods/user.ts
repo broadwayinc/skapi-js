@@ -525,14 +525,14 @@ export async function _out(global: boolean = false) {
         '__user': null
     };
 
+    if(toReturn) {
+        toReturn = await toReturn;
+    }
+
     for (let k in to_be_erased) {
         this[k] = to_be_erased[k];
     }
 
-    if(toReturn) {
-        toReturn = await toReturn;
-    }
-    
     this._runOnLoginListeners(null);
     return toReturn;
 }
