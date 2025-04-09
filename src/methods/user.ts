@@ -496,9 +496,26 @@ export async function checkAdmin() {
     return false;
 }
 
-export function _out() {
+export async function _out(global: boolean = false) {
+    let toReturn = null;
     if (cognitoUser) {
-        cognitoUser.signOut();
+        if(global) {
+            toReturn = new Promise((res, rej) => {
+                cognitoUser.globalSignOut({
+                    onSuccess: (result: any) => {
+                        this.log('globalSignOut:success', result);
+                        res(result);
+                    },
+                    onFailure: (err: any) => {
+                        this.log('globalSignOut:error', err);
+                        rej(err);
+                    }
+                });
+            });
+        }
+        else {
+            cognitoUser.signOut();
+        }
     }
 
     let to_be_erased = {
@@ -513,11 +530,12 @@ export function _out() {
     }
 
     this._runOnLoginListeners(null);
+    return toReturn;
 }
 
-export async function logout(): Promise<'SUCCESS: The user has been logged out.'> {
+export async function logout(params?:{ global:boolean; }): Promise<'SUCCESS: The user has been logged out.'> {
     await this.__connection;
-    _out.bind(this)();
+    await _out.bind(this)(params?.global);
     return 'SUCCESS: The user has been logged out.';
 }
 
