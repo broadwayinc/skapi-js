@@ -26,8 +26,6 @@ async function getEndpoint(dest: string, auth: boolean) {
     dest = params[0];
 
     switch (dest) {
-        case 'get-services':
-            return admin.admin_private + dest + query;
         case 'get-users': ////
             return admin.get_users_private + dest + query;
         case 'service': ////
