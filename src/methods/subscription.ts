@@ -248,6 +248,29 @@ export async function subscribeNewsletter(
     return request.bind(this)(`subscribe-${this.__user ? '' : 'public-'}newsletter`, params, { auth: !!this.__user });
 }
 
+export async function registerNewsletterGroup(
+    form: Form<{
+        group: string;
+    }>
+): Promise<string> {
+    await this.__connection;
+
+    let params = validator.Params(
+        form || {},
+        {
+            group: (v: string) => {
+                if (typeof v !== 'string' || v.length > 20 || !/^[a-zA-Z0-9]+$/.test(v)) {
+                    throw new SkapiError('"group" should be an alphanumeric string without spaces and less than 20 characters.', { code: 'INVALID_PARAMETER' });
+                }
+                return v;
+            }
+        },
+        ['group']
+    );
+
+    return request.bind(this)('register-newsletter-group', params, { auth: true });
+}
+
 /**
  * Only signed users can unsubscribe newsletter via api.
  * if form.group is null, unsubscribes from all groups.

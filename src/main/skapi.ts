@@ -74,7 +74,8 @@ import {
     unsubscribeNewsletter,
     adminNewsletterRequest,
     getNewsletterSubscription,
-    getFeed
+    getFeed,
+    registerNewsletterGroup,
 } from '../methods/subscription';
 import {
     getProfile,
@@ -592,6 +593,13 @@ export default class Skapi {
         email: string;
     }>): Promise<"SUCCESS: Invitation has been canceled."> {
         return cancelInvitation.bind(this)(params);
+    }
+
+    @formHandler()
+    registerNewsletterGroup(params: Form<{
+        group: string;
+    }>): Promise<"SUCCESS: Your newsletter group has been registered."> {
+        return registerNewsletterGroup.bind(this)(params) as Promise<"SUCCESS: Your newsletter group has been registered.">;
     }
 
     @formHandler()

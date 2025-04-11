@@ -26,23 +26,24 @@ async function getEndpoint(dest: string, auth: boolean) {
     dest = params[0];
 
     switch (dest) {
-        case 'get-users': ////
+        // Admin
+        case 'get-users': 
             return admin.get_users_private + dest + query;
-        case 'service': ////
+        case 'service': 
             return admin.service_public + dest + query;
-        case 'get-newsletters': //
-        case 'get-public-newsletters': //
+        case 'get-newsletters': 
+        case 'get-public-newsletters': 
         // case 'post-userdata': //
-        case 'subscribe-newsletter': //
-        case 'subscribe-public-newsletter': //
-        case 'signupkey': //
+        case 'subscribe-newsletter': 
+        case 'subscribe-public-newsletter': 
+        case 'signupkey': 
         case 'admin-newsletter-request':
             return (auth ? admin.extra_private : admin.extra_public) + dest + query;
-        case 'admin-signup': //
-        case 'confirm-signup': //
-        case 'client-secret-request': //
-        case 'client-secret-request-public': //
-        case 'openid-logger': //
+        case 'admin-signup': 
+        case 'confirm-signup': 
+        case 'client-secret-request': 
+        case 'client-secret-request-public': 
+        case 'openid-logger': 
             return (auth ? admin.extra_private_2 : admin.extra_public_2) + dest + query;
         case 'remove-account':
         case 'post-secure':
@@ -55,6 +56,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'get-newsletter-subscription':
         case 'request-username-change':
         // case 'jwt-login':
+        case 'register-newsletter-group':
         case 'send-inquiry':
         case 'block-account':
         case 'invitation-list':
@@ -76,16 +78,16 @@ async function getEndpoint(dest: string, auth: boolean) {
             return selectedGateway_admin + dest + query
 
         // Records
-        case 'post-record': ////
+        case 'post-record': 
             // Dedicated gateway api for post-record
             return (auth ? record.post_private : record.post_public) + dest + query;
 
-        case 'get-records': ////
+        case 'get-records': 
             // Dedicated gateway api for get-record
             return (auth ? record.get_private : record.get_public) + dest + query;
 
-        case 'del-files': //
-        case 'del-records': //
+        case 'del-files': 
+        case 'del-records': 
             // Dedicated gateway api for del-records and del-files
             return record.del_private + dest + query;
         case 'store-subscription':
