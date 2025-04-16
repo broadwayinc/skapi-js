@@ -599,6 +599,7 @@ export default class Skapi {
     @formHandler()
     registerNewsletterGroup(params: Form<{
         group: string;
+        restriction: number;
     }>): Promise<"SUCCESS: Your newsletter group has been registered."> {
         return registerNewsletterGroup.bind(this)(params) as Promise<"SUCCESS: Your newsletter group has been registered.">;
     }
