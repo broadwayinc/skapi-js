@@ -271,6 +271,15 @@ export async function registerNewsletterGroup(
     return request.bind(this)('register-newsletter-group', params, { auth: true });
 }
 
+
+export async function NewsletterGroupEndpoint(params) {
+    await this.__connection;
+    let response = await request.bind(this)('newsletter-group-endpoint', params, { auth: true });
+
+    return response
+}
+
+
 /**
  * Only signed users can unsubscribe newsletter via api.
  * if form.group is null, unsubscribes from all groups.
