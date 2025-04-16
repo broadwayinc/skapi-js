@@ -266,7 +266,7 @@ export async function registerNewsletterGroup(
                 return v;
             },
             restriction: (v: number) => {
-                if (typeof v !== 'number' || v < 0 || v > 3) {
+                if (typeof v !== 'number' || v < 0 || v > 99) {
                     throw new SkapiError('"restriction" should be a number between 0 and 99.', { code: 'INVALID_PARAMETER' });
                 }
                 return v;
