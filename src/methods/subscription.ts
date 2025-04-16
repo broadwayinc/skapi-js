@@ -251,6 +251,7 @@ export async function subscribeNewsletter(
 export async function registerNewsletterGroup(
     form: Form<{
         group: string;
+        restriction: number;
     }>
 ): Promise<string> {
     await this.__connection;
@@ -263,9 +264,15 @@ export async function registerNewsletterGroup(
                     throw new SkapiError('"group" should be an alphanumeric string without spaces and less than 20 characters.', { code: 'INVALID_PARAMETER' });
                 }
                 return v;
+            },
+            restriction: (v: number) => {
+                if (typeof v !== 'number' || v < 0 || v > 3) {
+                    throw new SkapiError('"restriction" should be a number between 0 and 99.', { code: 'INVALID_PARAMETER' });
+                }
+                return v;
             }
         },
-        ['group']
+        ['group', 'restriction']
     );
 
     return request.bind(this)('register-newsletter-group', params, { auth: true });
