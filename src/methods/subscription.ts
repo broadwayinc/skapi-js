@@ -279,7 +279,7 @@ export async function registerNewsletterGroup(
 }
 
 
-export async function NewsletterGroupEndpoint(params) {
+export async function newsletterGroupEndpoint(params) {
     await this.__connection;
     let response = await request.bind(this)('newsletter-group-endpoint', params, { auth: true });
 

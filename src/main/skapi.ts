@@ -76,7 +76,7 @@ import {
     getNewsletterSubscription,
     getFeed,
     registerNewsletterGroup,
-    NewsletterGroupEndpoint,
+    newsletterGroupEndpoint,
 } from '../methods/subscription';
 import {
     getProfile,
@@ -886,8 +886,8 @@ export default class Skapi {
         return adminNewsletterRequest.bind(this)(params);
     }
     @formHandler()
-    NewsletterGroupEndpoint(params) {
-        return NewsletterGroupEndpoint.bind(this)(params);
+    newsletterGroupEndpoint(params) {
+        return newsletterGroupEndpoint.bind(this)(params);
     }
     @formHandler()
     subscribeNotification(
