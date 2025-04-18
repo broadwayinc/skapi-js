@@ -229,7 +229,7 @@ export async function getNewsletterSubscription(params: {
 export async function subscribeNewsletter(
     form: Form<{
         email?: string;
-        group: number | 'public' | 'authorized' | 'admin';
+        group: number | 'public' | 'authorized' | 'admin' | string; 
         redirect?: string;
     }>
 ): Promise<string> {
@@ -239,7 +239,12 @@ export async function subscribeNewsletter(
         form || {},
         {
             email: (v: string) => validator.Email(v),
-            group: ['number', 'public', 'authorized', 'admin'],
+            group: ['number', 'public', 'authorized', 'admin', (v: string) => {
+                if (typeof v !== 'string' || v.length > 20 || !/^[a-zA-Z0-9]+$/.test(v)) {
+                    throw new SkapiError('"group" should be an alphanumeric string without spaces and less than 20 characters.', { code: 'INVALID_PARAMETER' });
+                }
+                return v;
+            }], 
             redirect: (v: string) => validator.Url(v)
         },
         this.__user ? ['group'] : ['email', 'group']
