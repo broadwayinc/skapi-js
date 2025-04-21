@@ -1011,6 +1011,7 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
     }
 
     let params = validator.Params(form || {}, {
+        user_id: (v: string) => validator.UserId(v),
         email: (v: string) => validator.Email(v),
         address: (v: any) => {
             if (!v) return '';
@@ -1098,6 +1099,16 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
 
     for (let k of toRemove) {
         delete params[k];
+    }
+
+    if (params.user_id) {
+        let user_id = params.user_id;
+        if(user_id === this.user.user_id) {
+            delete params.user_id;
+        }
+        else {
+            return request.bind(this)('admin-edit-profile', {attributes: params}, { auth: true });
+        }
     }
 
     if (params && typeof params === 'object' && Object.keys(params).length) {
