@@ -97,6 +97,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'get-subscription':
         case 'get-table':
         case 'get-tag':
+        case 'get-uniqueid':
         case 'get-index':
         case 'get-signed-url':
         case 'grant-private-access':

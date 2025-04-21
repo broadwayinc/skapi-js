@@ -1034,7 +1034,42 @@ export async function getTags(
 
     return res;
 }
+export async function getUniqueId(
+    query?: {
+        /** Unique ID */
+        unique_id?: string;
+        /** String query condition for tag name. */
+        condition?: Condition;
+    },
+    fetchOptions?: FetchOptions
+): Promise<DatabaseResponse<{
+    unique_id: string; // Unique ID
+    record_id: string; // Record ID
+}>> {
 
+    let res = await request.bind(this)(
+        'get-uniqueid',
+        validator.Params(query || {},
+            {
+                unique_id: 'string',
+                condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
+            }
+        ),
+        Object.assign({ auth: !!this.__user }, { fetchOptions });
+    );
+
+    if (Array.isArray(res?.list)) {
+        for (let i in res.list) {
+            let item = res.list[i];
+            res.list[i] = {
+                unique_id: item.unq,
+                record_id: item.rec
+            };
+        }
+    }
+
+    return res;
+}
 export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }): Promise<DatabaseResponse<string> | string> {
     await this.__connection;
 
