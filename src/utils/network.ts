@@ -45,6 +45,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'openid-logger': //
             return (auth ? admin.extra_private_2 : admin.extra_public_2) + dest + query;
         case 'block-account':
+        case 'admin-edit-profile':
             return admin.admin_private + dest + query;
         case 'remove-account':
         case 'post-secure':

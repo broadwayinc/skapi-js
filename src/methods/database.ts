@@ -1055,7 +1055,7 @@ export async function getUniqueId(
                 condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
             }
         ),
-        Object.assign({ auth: !!this.__user }, { fetchOptions });
+        Object.assign({ auth: !!this.__user }, { fetchOptions })
     );
 
     if (Array.isArray(res?.list)) {

@@ -250,6 +250,8 @@ export type UserProfilePublicSettings = {
 }
 
 export type UserAttributes = {
+    user_id?: string; // User ID
+
     /** User's name */
     name?: string;
     /**
