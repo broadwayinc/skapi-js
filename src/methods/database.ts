@@ -1035,12 +1035,12 @@ export async function getTags(
     return res;
 }
 export async function getUniqueId(
-    query?: {
+    query?: Form<{
         /** Unique ID */
         unique_id?: string;
         /** String query condition for tag name. */
         condition?: Condition;
-    },
+    }>,
     fetchOptions?: FetchOptions
 ): Promise<DatabaseResponse<{
     unique_id: string; // Unique ID
