@@ -37,7 +37,8 @@ import {
     removePrivateRecordAccess,
     listPrivateRecordAccess,
     requestPrivateRecordAccessKey,
-    deleteFiles
+    deleteFiles,
+    getUniqueId
 } from '../methods/database';
 import {
     connectRealtime,
@@ -132,7 +133,7 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.230';
+    private __version = '1.0.231';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -578,6 +579,18 @@ export default class Skapi {
     @formHandler()
     dopamine(params) {
         return dopamine.bind(this)(params)
+    }
+    @formHandler()
+    getUniqueId(params: Form<{
+        /** Unique ID */
+        unique_id?: string;
+        /** String query condition for tag name. */
+        condition?: Condition;
+    }>, fetchOptions?:FetchOptions): Promise<DatabaseResponse<{
+        unique_id: string; // Unique ID
+        record_id: string; // Record ID
+    }>> {
+        return getUniqueId.bind(this)(params, fetchOptions);
     }
 
     @formHandler()
