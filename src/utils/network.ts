@@ -535,7 +535,7 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                         'NOT_EXISTS'
                     ];
 
-                    let result: any = xhr.responseText;
+                    let result: any = opt.responseType == 'blob' ? xhr.response : xhr.responseText;
                     try {
                         result = JSON.parse(result);
                     }
