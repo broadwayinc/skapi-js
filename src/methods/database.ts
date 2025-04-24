@@ -360,10 +360,10 @@ export async function getFile(
 
     let filename = url.split('/').slice(-1)[0];
     
-    if ((config?.dataType === 'blob' || config?.dataType === 'base64') && needAuth) {
-        // when downloading blob, use signed url
-        config.expires = 60;
-    }
+    // if ((config?.dataType === 'blob' || config?.dataType === 'base64') && needAuth) {
+    //     // when downloading blob, use signed url
+    //     config.expires = 60;
+    // }
     
     let expires = config.expires;
     if (expires) {
