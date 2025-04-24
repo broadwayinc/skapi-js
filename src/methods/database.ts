@@ -295,7 +295,7 @@ export async function getFile(
     url: string, // cdn endpoint url https://xxxx.cloudfront.net/path/file
     config?: {
         dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info'; // default 'download'
-        expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
+        expires?: number; // uses url that expires in given seconds. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
         progress?: ProgressCallback;
         _ref?: string;
         _update?: any;
@@ -359,6 +359,12 @@ export async function getFile(
     }
 
     let filename = url.split('/').slice(-1)[0];
+    
+    if ((config?.dataType === 'blob' || config?.dataType === 'base64') && needAuth) {
+        // when downloading blob, use signed url
+        config.expires = 60;
+    }
+    
     let expires = config.expires;
     if (expires) {
         if (!isValidEndpoint) {
