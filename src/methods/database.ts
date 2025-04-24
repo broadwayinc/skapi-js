@@ -169,7 +169,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                                 _ref,
                                 _update: obj
                             };
-                            return getFile.bind(this)(url, config);
+                            return getFile.bind(this)(url_endpoint, config);
                         }
                     };
                     if (binObj[pathKey]) {
