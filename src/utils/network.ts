@@ -127,7 +127,7 @@ async function getEndpoint(dest: string, auth: boolean) {
             return selectedGateway_record + dest + query
 
         default:
-            return validator.Url(dest);
+            return validator.Url(dest) + query;
     }
 }
 
