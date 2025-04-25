@@ -33,7 +33,7 @@ export default class SkapiError extends Error {
             }
         }
         else {
-            super((error.message || 'Something went wrong.').trim());
+            super((error?.message || ((typeof error === 'string') ? error : 'Something went wrong.')).trim());
 
             if (typeof error === 'string') {
                 this.name = options?.name || "SKAPI";
@@ -42,7 +42,7 @@ export default class SkapiError extends Error {
                     this.cause = options.cause;
                 }
             }
-    
+
             else if (error instanceof Error) {
                 this.cause = error;
                 this.name = error.name;
@@ -50,7 +50,7 @@ export default class SkapiError extends Error {
                     this.code = (error as any).code;
                 }
             }
-    
+
             else if (typeof error === 'object' && error?.code && error?.message) {
                 this.name = options?.name || "SKAPI";
                 this.code = options?.code || 'ERROR';
