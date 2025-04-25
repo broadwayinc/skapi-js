@@ -419,7 +419,7 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
 
         return {
             user_id,
-            cid: v.cid
+            cid: "cid:" + v.cid
         }
     });
 
