@@ -14,7 +14,9 @@ let __roomList: {
 } = {};
 
 let __current_socket_room: string;
-// let __keepAliveInterval = null;
+let __keepAliveInterval = null;
+let wasClean = true;
+let reconnectAttempts = 0;
 
 async function prepareWebsocket() {
     // Connect to the WebSocket server
@@ -31,7 +33,7 @@ async function prepareWebsocket() {
     );
 }
 
-export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSocket> {
+export async function connectRealtime(cb: RealtimeCallback, delay = 50): Promise<WebSocket> {
     if (typeof cb !== 'function') {
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
     }
@@ -47,6 +49,8 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
             let socket: WebSocket = await prepareWebsocket.bind(this)();
 
             socket.onopen = () => {
+                wasClean = false;
+
                 this.log('realtime onopen', 'Connected to WebSocket server.');
                 cb({ type: 'success', message: 'Connected to WebSocket server.' });
 
@@ -60,32 +64,30 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
 
                 // // keep alive
 
-                // // Define worker script as a string
-                // const workerScript = `
-                //     let interval = 30000; // Set interval time
+                // Define worker script as a string
+                const workerScript = /*js*/`
+                    let interval = 15000; // Set interval time 15 seconds
 
-                //     function runInterval() {
-                //         postMessage({ type: "ping" });
-                //         setTimeout(runInterval, interval); // Use setTimeout instead of setInterval
-                //     }
+                    function runInterval() {
+                        postMessage({ type: "ping" });
+                        setTimeout(runInterval, interval); // Use setTimeout instead of setInterval
+                    }
 
-                //     runInterval(); // Start interval
-                // `;
+                    runInterval(); // Start interval
+                `;
 
-                // // Create a Blob URL for the worker
-                // const blob = new Blob([workerScript], { type: "application/javascript" });
-                // __keepAliveInterval = new Worker(URL.createObjectURL(blob));
+                // Create a Blob URL for the worker
+                const blob = new Blob([workerScript], { type: "application/javascript" });
+                __keepAliveInterval = new Worker(URL.createObjectURL(blob));
 
-                // // Listen for messages from the worker
-                // __keepAliveInterval.onmessage = (event) => {
-                //     // console.log(`Worker Tick! Delay: ${event.data.delay.toFixed(2)}ms`);
-                //     if (socket.readyState === 1) {
-                //         socket.send(JSON.stringify({
-                //             action: 'keepAlive',
-                //             token: this.session.accessToken.jwtToken
-                //         }));
-                //     }
-                // };
+                // Listen for messages from the worker
+                __keepAliveInterval.onmessage = (event) => {
+                    if (socket.readyState === 1) {
+                        socket.send(JSON.stringify({
+                            action: 'keepAlive'
+                        }));
+                    }
+                };
 
                 resolve(socket);
             };
@@ -140,6 +142,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
                         }
 
                         if (__roomList?.[__current_socket_room]?.[user_id]) {
+                            // user is still in the group don't call the callback
                             return
                         }
                     }
@@ -234,23 +237,42 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
                 }
             };
 
+            let handleSocketClose = () => {
+                if (wasClean) {
+                    closeRealtime.bind(this)();
+                }
+                else {
+                    reconnectAttempts++;
+                    if (reconnectAttempts < 5) {
+                        this.log('realtime onclose', 'Reconnecting to WebSocket server...');
+                        connectRealtime.bind(this)(cb, 0);
+                    }
+                    else {
+                        this.log('realtime onclose', 'Max reconnection attempts reached.');
+                        cb({ type: 'error', message: 'Skapi: Max reconnection attempts reached.' });
+                        closeRealtime.bind(this)();
+                    }
+                }
+            }
+
             socket.onclose = event => {
                 if (event.wasClean) {
                     this.log('realtime onclose', 'WebSocket connection closed.');
                     cb({ type: 'close', message: 'WebSocket connection closed.' });
-                    closeRealtime.bind(this)();
+                    handleSocketClose();
                 }
                 else {
                     // Handle max reconnection attempts reached
                     this.log('realtime onclose', 'WebSocket unexpected close.');
                     cb({ type: 'error', message: 'Skapi: WebSocket unexpected close.' });
-                    closeRealtime.bind(this)();
+                    handleSocketClose();
                 }
             };
 
             socket.onerror = () => {
                 this.log('realtime onerror', 'WebSocket connection error.');
                 cb({ type: 'error', message: 'Skapi: WebSocket connection error.' });
+                handleSocketClose();
             };
         }, delay);
     });
@@ -259,10 +281,10 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
 export async function closeRealtime(): Promise<void> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
     closeRTC.bind(this)({ close_all: true });
-    // if (__keepAliveInterval) {
-    //     __keepAliveInterval.terminate();
-    //     __keepAliveInterval = null;
-    // }
+    if (__keepAliveInterval) {
+        __keepAliveInterval.terminate();
+        __keepAliveInterval = null;
+    }
 
     try {
         if (socket) {
@@ -273,11 +295,14 @@ export async function closeRealtime(): Promise<void> {
 
     this.__socket = null;
     __current_socket_room = null;
+    __roomList = {};
+    wasClean = true;
+    reconnectAttempts = 0;
 
     return null;
 }
 
-export async function postRealtime(message: any, recipient: string, notification?: { config?: { always:boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
+export async function postRealtime(message: any, recipient: string, notification?: { config?: { always: boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
 
     if (!socket) {
@@ -293,7 +318,7 @@ export async function postRealtime(message: any, recipient: string, notification
     message = extractFormData(message).data;
 
     let notificationStr = '';
-    if(notification) {
+    if (notification) {
         notification = validator.Params(
             notification,
             {
@@ -306,7 +331,7 @@ export async function postRealtime(message: any, recipient: string, notification
             ['title', 'body']
         );
         // stringify notification and check if size exceeds 3kb
-        notificationStr = JSON.stringify({title: notification.title, body: notification.body});
+        notificationStr = JSON.stringify({ title: notification.title, body: notification.body });
         let notificationSize = new Blob([notificationStr]).size;
         if (notificationSize > 3072) {
             throw new SkapiError(`Notification size exceeds 3kb.`, { code: 'INVALID_PARAMETER' });
@@ -442,7 +467,7 @@ export async function getRealtimeGroups(
     await this.__connection;
 
     if (!params) {
-        params = { searchFor: 'group' };
+        params = { searchFor: 'group', value: ' ', condition: '>' };
     }
 
     params = validator.Params(
