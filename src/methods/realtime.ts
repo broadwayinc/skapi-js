@@ -34,13 +34,20 @@ async function prepareWebsocket() {
 }
 
 
-export async function connectRealtime(cb: RealtimeCallback, delay = 50): Promise<WebSocket> {
+export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnect?: string): Promise<WebSocket> {
     if (typeof cb !== 'function') {
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
     }
 
-    if (this.__socket instanceof Promise) {
-        return this.__socket;
+    if(reconnect !== 'reconnect') {
+        if (this.__socket instanceof Promise) {
+            return this.__socket;
+        }
+    }
+
+    if (__keepAliveInterval) {
+        __keepAliveInterval.terminate();
+        __keepAliveInterval = null;
     }
 
     this.__socket = new Promise(async (resolve) => {
@@ -51,10 +58,12 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50): Promise
 
             socket.onopen = () => {
                 wasClean = false;
+                reconnectAttempts = 0;
+                
                 window.addEventListener('visibilitychange', () => {
                     if (!document.hidden) {
                         if ((this.__socket instanceof Promise) && !wasClean) {
-                            connectRealtime.bind(this)(cb, 0);
+                            connectRealtime.bind(this)(cb, 0, 'reconnect');
                         }
                     }
                 });
@@ -251,10 +260,10 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50): Promise
                 }
                 else {
                     reconnectAttempts++;
-                    if (reconnectAttempts < 5) {
+                    if (reconnectAttempts < 3) {
                         this.log('realtime onclose', 'Reconnecting to WebSocket server...');
                         cb({ type: 'reconnect', message: 'Reconnecting to WebSocket server...' });
-                        connectRealtime.bind(this)(cb, 0);
+                        connectRealtime.bind(this)(cb, 3000, 'reconnect');
                     }
                     else {
                         this.log('realtime onclose', 'Max reconnection attempts reached.');
