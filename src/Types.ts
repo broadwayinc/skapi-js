@@ -39,7 +39,7 @@ export type RTCEvent = (e: {
 }) => void
 
 export type WebSocketMessage = {
-    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc:incoming' | 'rtc:closed';
+    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'reconnect' | 'rtc:incoming' | 'rtc:closed';
     message?: any;
     connectRTC?: (params: RTCReceiverParams, callback: RTCEvent) => Promise<RTCResolved>;
     hangup?: () => void; // Reject incoming RTC connection.

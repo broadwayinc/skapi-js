@@ -33,6 +33,7 @@ async function prepareWebsocket() {
     );
 }
 
+
 export async function connectRealtime(cb: RealtimeCallback, delay = 50): Promise<WebSocket> {
     if (typeof cb !== 'function') {
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
@@ -50,6 +51,13 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50): Promise
 
             socket.onopen = () => {
                 wasClean = false;
+                window.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) {
+                        if ((this.__socket instanceof Promise) && !wasClean) {
+                            connectRealtime.bind(this)(cb, 0);
+                        }
+                    }
+                });
 
                 this.log('realtime onopen', 'Connected to WebSocket server.');
                 cb({ type: 'success', message: 'Connected to WebSocket server.' });
@@ -245,12 +253,13 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50): Promise
                     reconnectAttempts++;
                     if (reconnectAttempts < 5) {
                         this.log('realtime onclose', 'Reconnecting to WebSocket server...');
+                        cb({ type: 'reconnect', message: 'Reconnecting to WebSocket server...' });
                         connectRealtime.bind(this)(cb, 0);
                     }
                     else {
                         this.log('realtime onclose', 'Max reconnection attempts reached.');
                         cb({ type: 'error', message: 'Skapi: Max reconnection attempts reached.' });
-                        closeRealtime.bind(this)();
+                        // closeRealtime.bind(this)();
                     }
                 }
             }
