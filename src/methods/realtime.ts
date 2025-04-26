@@ -325,7 +325,7 @@ export async function closeRealtime(): Promise<void> {
     __roomList = {};
     wasClean = true;
     reconnectAttempts = 0;
-
+    wasClosed = false;
     return null;
 }
 
