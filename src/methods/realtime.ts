@@ -17,6 +17,7 @@ let __current_socket_room: string;
 let __keepAliveInterval = null;
 let wasClean = true;
 let reconnectAttempts = 0;
+let wasClosed = true;
 
 async function prepareWebsocket() {
     // Connect to the WebSocket server
@@ -39,7 +40,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
     }
 
-    if(reconnect !== 'reconnect') {
+    if (reconnect !== 'reconnect') {
         if (this.__socket instanceof Promise) {
             return this.__socket;
         }
@@ -50,6 +51,14 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
         __keepAliveInterval = null;
     }
 
+    let visibilitychange = () => {
+        if (!document.hidden) {
+            if ((this.__socket instanceof Promise) && !wasClean && wasClosed) {
+                connectRealtime.bind(this)(cb, 0, 'reconnect');
+            }
+        }
+    }
+
     this.__socket = new Promise(async (resolve) => {
         await getJwtToken.bind(this)();
 
@@ -58,15 +67,12 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
 
             socket.onopen = () => {
                 wasClean = false;
+                wasClosed = false;
                 reconnectAttempts = 0;
-                
-                window.addEventListener('visibilitychange', () => {
-                    if (!document.hidden) {
-                        if ((this.__socket instanceof Promise) && !wasClean) {
-                            connectRealtime.bind(this)(cb, 0, 'reconnect');
-                        }
-                    }
-                });
+
+                if (reconnect !== 'reconnect') {
+                    window.addEventListener('visibilitychange', visibilitychange);
+                }
 
                 this.log('realtime onopen', 'Connected to WebSocket server.');
                 cb({ type: 'success', message: 'Connected to WebSocket server.' });
@@ -256,6 +262,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
 
             let handleSocketClose = () => {
                 if (wasClean) {
+                    window.removeEventListener('visibilitychange', visibilitychange);
                     closeRealtime.bind(this)();
                 }
                 else {
@@ -274,20 +281,21 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
             }
 
             socket.onclose = event => {
+                wasClosed = true;
                 if (event.wasClean) {
                     this.log('realtime onclose', 'WebSocket connection closed.');
                     cb({ type: 'close', message: 'WebSocket connection closed.' });
-                    handleSocketClose();
                 }
                 else {
-                    // Handle max reconnection attempts reached
                     this.log('realtime onclose', 'WebSocket unexpected close.');
                     cb({ type: 'error', message: 'Skapi: WebSocket unexpected close.' });
-                    handleSocketClose();
                 }
+                
+                handleSocketClose();
             };
 
             socket.onerror = () => {
+                wasClosed = true;
                 this.log('realtime onerror', 'WebSocket connection error.');
                 cb({ type: 'error', message: 'Skapi: WebSocket connection error.' });
                 handleSocketClose();
@@ -299,6 +307,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
 export async function closeRealtime(): Promise<void> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
     closeRTC.bind(this)({ close_all: true });
+
     if (__keepAliveInterval) {
         __keepAliveInterval.terminate();
         __keepAliveInterval = null;
