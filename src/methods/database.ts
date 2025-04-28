@@ -512,7 +512,7 @@ async function prepGetParams(query, isDel = false) {
                 }
                 else {
                     query.record_id = this.__my_unique_ids[is_reference_fetch];
-                    delete query.unique_id;
+                    // delete query.unique_id;
                 }
             }
         }
@@ -531,7 +531,7 @@ async function prepGetParams(query, isDel = false) {
 
             if (this.__my_unique_ids[is_reference_fetch]) {
                 query.record_id = this.__my_unique_ids[is_reference_fetch];
-                delete query.unique_id;
+                // delete query.unique_id;
             }
         }
         else if (ref?.user_id) {
