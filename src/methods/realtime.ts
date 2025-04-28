@@ -145,6 +145,10 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                         break;
                 }
 
+                if (!type) {
+                    return;
+                }
+
                 let msg: WebSocketMessage = {
                     type,
                     message: data?.['#rtc'] || data?.['#message'] || data?.['#private'] || data?.['#notice'] || data?.['#error'] || null,
