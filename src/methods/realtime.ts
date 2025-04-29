@@ -65,7 +65,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
             let socket: WebSocket = await prepareWebsocket.bind(this)();
 
             socket.onopen = () => {
-                wasClean = false;
+                wasClean = true;
                 reconnectAttempts = 0;
 
                 if (reconnect !== 'reconnect') {
@@ -269,6 +269,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                     // closeRealtime.bind(this)();
                 }
                 else {
+                    wasClean = false;
                     reconnectAttempts++;
                     if (reconnectAttempts < 3) {
                         this.log('realtime onclose', 'Reconnecting to WebSocket server...');
@@ -297,6 +298,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
             };
 
             socket.onerror = () => {
+                wasClean = false;
                 this.log('realtime onerror', 'WebSocket connection error.');
                 cb({ type: 'error', message: 'Skapi: WebSocket connection error.' });
                 handleSocketClose();
