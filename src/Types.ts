@@ -46,6 +46,7 @@ export type WebSocketMessage = {
     sender?: string; // user_id of the sender
     sender_cid?: string; // scid of the sender
     sender_rid?: string; // group of the sender
+    code?: 'USER_LEFT' | 'USER_DISCONNECTED' | 'USER_JOINED' | null; // code for notice messeges
 }
 
 export type RealtimeCallback = (rt: WebSocketMessage) => void;

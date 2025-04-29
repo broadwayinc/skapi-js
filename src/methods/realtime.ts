@@ -150,13 +150,14 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                 let msg: WebSocketMessage = {
                     type,
                     message: data?.['#rtc'] || data?.['#message'] || data?.['#private'] || data?.['#notice'] || data?.['#error'] || null,
-                    sender: !!data['#user_id'] ? data['#user_id'] : null,
+                    sender: data?.['#user_id'] || null,
                     sender_cid: !!data?.['#scid'] ? "cid:" + data['#scid'] : null,
-                    sender_rid: !!data?.['#srid'] ? data['#srid'] : null
+                    sender_rid: data?.['#srid'] || null,
+                    code: data?.['#code'] || null
                 };
 
                 if (type === 'notice') {
-                    if (__current_socket_room && (msg.message.includes('has left the message group.') || msg.message.includes('has been disconnected.'))) {
+                    if (__current_socket_room && (msg.code === 'USER_LEFT' || msg.code === 'USER_DISCONNECTED')) {
                         let user_id = msg.sender;
                         if (__roomList?.[__current_socket_room]?.[user_id]) {
                             __roomList[__current_socket_room][user_id] = __roomList[__current_socket_room][user_id].filter(v => v !== msg.sender_cid);
@@ -171,7 +172,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                             return
                         }
                     }
-                    else if (__current_socket_room && msg.message.includes('has joined the message group.')) {
+                    else if (__current_socket_room && msg.code === 'USER_JOINED') {
                         let user_id = msg.sender;
                         if (!__roomList?.[__current_socket_room]) {
                             __roomList[__current_socket_room] = {};
@@ -291,7 +292,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                     this.log('realtime onclose', 'WebSocket unexpected close.');
                     cb({ type: 'error', message: 'Skapi: WebSocket unexpected close.' });
                 }
-                
+
                 handleSocketClose();
             };
 
