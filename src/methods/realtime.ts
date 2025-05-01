@@ -80,7 +80,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
         catch (e) { }
     }
 
-    if (this.__socket instanceof Promise) {
+    else if (this.__socket instanceof Promise) {
         return this.__socket;
     }
 
