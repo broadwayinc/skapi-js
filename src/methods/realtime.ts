@@ -15,7 +15,7 @@ let __roomList: {
 
 let __current_socket_room: string;
 let __keepAliveInterval = null;
-let wasClean = true;
+let closedByIntention = true;
 let reconnectAttempts = 0;
 
 async function prepareWebsocket() {
@@ -34,28 +34,67 @@ async function prepareWebsocket() {
 }
 
 
-export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnect?: string): Promise<WebSocket> {
-    if (typeof cb !== 'function') {
-        throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
+let visibilitychange = null;
+
+export async function closeRealtime(): Promise<void> {
+    closedByIntention = true;
+    let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
+    closeRTC.bind(this)({ close_all: true });
+
+    if(__current_socket_room) {
+        joinRealtime.bind(this)({ group: null });
     }
 
-    if (reconnect !== 'reconnect') {
-        if (this.__socket instanceof Promise) {
-            return this.__socket;
-        }
-    }
+    __roomList = {};
+    reconnectAttempts = 0;
 
     if (__keepAliveInterval) {
         __keepAliveInterval.terminate();
         __keepAliveInterval = null;
     }
 
-    let visibilitychange = () => {
-        if (!document.hidden) {
-            if (!wasClean) {
+    try {
+        if (socket) {
+            socket.close();
+        }
+    }
+    catch (e) { }
+
+    window.removeEventListener('visibilitychange', visibilitychange);
+    this.__socket = null;
+    return null;
+}
+
+export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnect?: string): Promise<WebSocket> {
+    if (typeof cb !== 'function') {
+        throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
+    }
+
+    if(reconnect === 'reconnect' && !closedByIntention) {
+        let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
+        try {
+            if (socket) {
+                socket.close();
+            }
+        }
+        catch (e) { }
+    }
+
+    if (this.__socket instanceof Promise) {
+        return this.__socket;
+    }
+
+    if (reconnect !== 'reconnect' && closedByIntention) {
+        visibilitychange = () => {
+            if (!document.hidden && !closedByIntention) {
                 connectRealtime.bind(this)(cb, 0, 'reconnect');
             }
         }
+    }
+
+    if (__keepAliveInterval) {
+        __keepAliveInterval.terminate();
+        __keepAliveInterval = null;
     }
 
     this.__socket = new Promise(async (resolve) => {
@@ -65,7 +104,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
             let socket: WebSocket = await prepareWebsocket.bind(this)();
 
             socket.onopen = () => {
-                wasClean = true;
+                closedByIntention = false;
                 reconnectAttempts = 0;
 
                 if (reconnect !== 'reconnect') {
@@ -263,13 +302,15 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                 }
             };
 
-            let handleSocketClose = () => {
-                if (wasClean) {
-                    window.removeEventListener('visibilitychange', visibilitychange);
-                    // closeRealtime.bind(this)();
+            socket.onclose = () => {
+                if (closedByIntention) {
+                    this.log('realtime onclose', 'WebSocket connection closed.');
+                    cb({ type: 'close', message: 'WebSocket connection closed.' });
                 }
                 else {
-                    wasClean = false;
+                    this.log('realtime onclose', 'WebSocket unexpected close.');
+                    cb({ type: 'error', message: 'Skapi: WebSocket unexpected close.' });
+
                     reconnectAttempts++;
                     if (reconnectAttempts < 3) {
                         this.log('realtime onclose', 'Reconnecting to WebSocket server...');
@@ -279,58 +320,18 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                     else {
                         this.log('realtime onclose', 'Max reconnection attempts reached.');
                         cb({ type: 'error', message: 'Skapi: Max reconnection attempts reached.' });
-                        // closeRealtime.bind(this)();
                     }
                 }
-            }
-
-            socket.onclose = event => {
-                if (wasClean) {
-                    this.log('realtime onclose', 'WebSocket connection closed.');
-                    cb({ type: 'close', message: 'WebSocket connection closed.' });
-                }
-                else {
-                    this.log('realtime onclose', 'WebSocket unexpected close.');
-                    cb({ type: 'error', message: 'Skapi: WebSocket unexpected close.' });
-                }
-
-                handleSocketClose();
             };
 
             socket.onerror = () => {
-                wasClean = false;
                 this.log('realtime onerror', 'WebSocket connection error.');
                 cb({ type: 'error', message: 'Skapi: WebSocket connection error.' });
-                handleSocketClose();
             };
         }, delay);
     });
 }
 
-export async function closeRealtime(): Promise<void> {
-    wasClean = true;
-    let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
-    closeRTC.bind(this)({ close_all: true });
-
-    __current_socket_room = null;
-    __roomList = {};
-    reconnectAttempts = 0;
-
-    if (__keepAliveInterval) {
-        __keepAliveInterval.terminate();
-        __keepAliveInterval = null;
-    }
-
-    try {
-        if (socket) {
-            socket.close();
-        }
-    }
-    catch (e) { }
-
-    this.__socket = null;
-    return null;
-}
 
 export async function postRealtime(message: any, recipient: string, notification?: { config?: { always: boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
