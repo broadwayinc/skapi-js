@@ -7,11 +7,11 @@ import { DatabaseResponse, FetchOptions, RealtimeCallback, WebSocketMessage } fr
 import { answerSdpOffer, receiveIceCandidate, __peerConnection, __receiver_ringing, closeRTC, respondRTC, __caller_ringing, __rtcEvents } from './webrtc';
 import { getJwtToken } from './user';
 
-let __roomList: {
-    [realTimeGroup: string]: {
-        [sender_id: string]: string[]; // connection id, (single person can have multiple connection id)
-    }
-} = {};
+// let __roomList: {
+//     [realTimeGroup: string]: {
+//         [sender_id: string]: string[]; // connection id, (single person can have multiple connection id)
+//     }
+// } = {};
 
 let __current_socket_room: string;
 let __keepAliveInterval = null;
@@ -45,7 +45,7 @@ export async function closeRealtime(): Promise<void> {
         joinRealtime.bind(this)({ group: null });
     }
 
-    __roomList = {};
+    // __roomList = {};
     reconnectAttempts = 0;
 
     if (__keepAliveInterval) {
@@ -70,25 +70,25 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
     }
 
-    if(reconnect === 'reconnect' && !closedByIntention) {
-        let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
-        try {
-            if (socket) {
-                socket.close();
+    if(reconnect === 'reconnect') {
+        if(this.__socket instanceof Promise) {
+            let socket = await this.__socket;
+            if (socket.readyState !== WebSocket.CLOSED && socket.readyState !== WebSocket.CLOSING) {
+                return this.__socket;
             }
         }
-        catch (e) { }
     }
 
-    else if (this.__socket instanceof Promise) {
-        return this.__socket;
-    }
-
-    if (reconnect !== 'reconnect' && closedByIntention) {
+    else if (closedByIntention) {
+        // if the connection was closed intentionally, and it's not a reconnect attempt
         visibilitychange = () => {
             if (!document.hidden && !closedByIntention) {
                 connectRealtime.bind(this)(cb, 0, 'reconnect');
             }
+        }
+
+        if (this.__socket instanceof Promise) {
+            return this.__socket;
         }
     }
 
@@ -196,36 +196,36 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                 };
 
                 if (type === 'notice') {
-                    if (__current_socket_room && (msg.code === 'USER_LEFT' || msg.code === 'USER_DISCONNECTED')) {
-                        let user_id = msg.sender;
-                        if (__roomList?.[__current_socket_room]?.[user_id]) {
-                            __roomList[__current_socket_room][user_id] = __roomList[__current_socket_room][user_id].filter(v => v !== msg.sender_cid);
-                        }
+                    // if (__current_socket_room && (msg.code === 'USER_LEFT' || msg.code === 'USER_DISCONNECTED')) {
+                    //     let user_id = msg.sender;
+                    //     if (__roomList?.[__current_socket_room]?.[user_id]) {
+                    //         __roomList[__current_socket_room][user_id] = __roomList[__current_socket_room][user_id].filter(v => v !== msg.sender_cid);
+                    //     }
 
-                        if (__roomList?.[__current_socket_room]?.[user_id] && __roomList[__current_socket_room][user_id].length === 0) {
-                            delete __roomList[__current_socket_room][user_id];
-                        }
+                    //     if (__roomList?.[__current_socket_room]?.[user_id] && __roomList[__current_socket_room][user_id].length === 0) {
+                    //         delete __roomList[__current_socket_room][user_id];
+                    //     }
 
-                        if (__roomList?.[__current_socket_room]?.[user_id]) {
-                            // user is still in the group don't call the callback
-                            return
-                        }
-                    }
-                    else if (__current_socket_room && msg.code === 'USER_JOINED') {
-                        let user_id = msg.sender;
-                        if (!__roomList?.[__current_socket_room]) {
-                            __roomList[__current_socket_room] = {};
-                        }
-                        if (!__roomList[__current_socket_room][user_id]) {
-                            __roomList[__current_socket_room][user_id] = [msg.sender_cid];
-                        }
-                        else {
-                            if (!__roomList[__current_socket_room][user_id].includes(msg.sender_cid)) {
-                                __roomList[__current_socket_room][user_id].push(msg.sender_cid);
-                            }
-                            return;
-                        }
-                    }
+                    //     if (__roomList?.[__current_socket_room]?.[user_id]) {
+                    //         // user is still in the group don't call the callback
+                    //         return
+                    //     }
+                    // }
+                    // else if (__current_socket_room && msg.code === 'USER_JOINED') {
+                    //     let user_id = msg.sender;
+                    //     if (!__roomList?.[__current_socket_room]) {
+                    //         __roomList[__current_socket_room] = {};
+                    //     }
+                    //     if (!__roomList[__current_socket_room][user_id]) {
+                    //         __roomList[__current_socket_room][user_id] = [msg.sender_cid];
+                    //     }
+                    //     else {
+                    //         if (!__roomList[__current_socket_room][user_id].includes(msg.sender_cid)) {
+                    //             __roomList[__current_socket_room][user_id].push(msg.sender_cid);
+                    //         }
+                    //         return;
+                    //     }
+                    // }
                     cb(msg);
                 }
                 else if (type === 'rtc') {
@@ -313,8 +313,8 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
 
                     reconnectAttempts++;
                     if (reconnectAttempts < 3) {
-                        this.log('realtime onclose', 'Reconnecting to WebSocket server...');
-                        cb({ type: 'reconnect', message: 'Reconnecting to WebSocket server...' });
+                        this.log('realtime onclose', 'Reconnecting to WebSocket server...' + reconnectAttempts);
+                        cb({ type: 'reconnect', message: 'Reconnecting to WebSocket server...' + reconnectAttempts });
                         connectRealtime.bind(this)(cb, 3000, 'reconnect');
                     }
                     else {
@@ -461,17 +461,17 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
 
     res.list = res.list.map((v: any) => {
         let user_id = v.uid.split('#')[1];
-        if (!params.user_id) {
-            if (!__roomList[params.group]) {
-                __roomList[params.group] = {};
-            }
-            if (!__roomList[params.group][user_id]) {
-                __roomList[params.group][user_id] = [v.cid];
-            }
-            else if (!__roomList[params.group][user_id].includes(v.cid)) {
-                __roomList[params.group][user_id].push(v.cid);
-            }
-        }
+        // if (!params.user_id) {
+        //     if (!__roomList[params.group]) {
+        //         __roomList[params.group] = {};
+        //     }
+        //     if (!__roomList[params.group][user_id]) {
+        //         __roomList[params.group][user_id] = [v.cid];
+        //     }
+        //     else if (!__roomList[params.group][user_id].includes(v.cid)) {
+        //         __roomList[params.group][user_id].push(v.cid);
+        //     }
+        // }
 
         return {
             user_id,
