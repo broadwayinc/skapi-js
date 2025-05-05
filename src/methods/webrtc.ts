@@ -135,7 +135,7 @@ export async function closeRTC(params: { cid?: string; close_all?: boolean }): P
                     token: this.session.accessToken.jwtToken
                 }));
             }
-
+    
             let msg = {
                 type: 'connectionstatechange',
                 target: __peerConnection[cid],
@@ -152,14 +152,6 @@ export async function closeRTC(params: { cid?: string; close_all?: boolean }): P
             this.log('closeRTC', msg);
         }
 
-        this.log('Cleaning up media stream...');
-        if (this.__mediaStream) {
-            this.__mediaStream.getTracks().forEach((track) => {
-                track.stop(); // Stops the track (audio or video)
-            });
-            this.__mediaStream = null; // Clear the reference to the MediaStream
-        }
-
         delete __rtcEvents[cid];
         delete __receiver_ringing[cid];
         delete __caller_ringing[cid];
@@ -173,6 +165,14 @@ export async function closeRTC(params: { cid?: string; close_all?: boolean }): P
     }
     else {
         close(cid);
+    }
+
+    this.log('Cleaning up media stream...');
+    if (this.__mediaStream) {
+        this.__mediaStream.getTracks().forEach((track) => {
+            track.stop(); // Stops the track (audio or video)
+        });
+        this.__mediaStream = null; // Clear the reference to the MediaStream
     }
 }
 
