@@ -152,6 +152,7 @@ export async function closeRTC(params: { cid?: string; close_all?: boolean }): P
             this.log('closeRTC', msg);
         }
 
+        this.log('Cleaning up media stream...');
         if (this.__mediaStream) {
             this.__mediaStream.getTracks().forEach((track) => {
                 track.stop(); // Stops the track (audio or video)
