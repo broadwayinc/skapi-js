@@ -6,7 +6,7 @@ export type RTCReceiverParams = {
     media?: {
         video: boolean;
         audio: boolean;
-    } | MediaStream;
+    } | MediaStream | MediaStreamConstraints;
 }
 
 export type RTCConnectorParams = {
@@ -15,7 +15,7 @@ export type RTCConnectorParams = {
     media?: {
         video: boolean;
         audio: boolean;
-    } | MediaStream;
+    } | MediaStream | MediaStreamConstraints;
     channels?: Array<RTCDataChannelInit | 'text-chat' | 'file-transfer' | 'video-chat' | 'voice-chat' | 'gaming'>;
 }
 
