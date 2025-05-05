@@ -152,6 +152,13 @@ export async function closeRTC(params: { cid?: string; close_all?: boolean }): P
             this.log('closeRTC', msg);
         }
 
+        if (this.__mediaStream) {
+            this.__mediaStream.getTracks().forEach((track) => {
+                track.stop(); // Stops the track (audio or video)
+            });
+            this.__mediaStream = null; // Clear the reference to the MediaStream
+        }
+
         delete __rtcEvents[cid];
         delete __receiver_ringing[cid];
         delete __caller_ringing[cid];
@@ -342,7 +349,7 @@ export async function connectRTC(
                     channels: __dataChannel[cid],
                     hangup: () => closeRTC.bind(this)({ cid: cid }),
                     media: this.__mediaStream
-                })
+                });
             }).bind(this);
         })
     }
@@ -394,10 +401,11 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
                         audio: params?.media?.audio
                     });
             }
-            if (this.__mediaStream)
+            if (this.__mediaStream) {
                 this.__mediaStream.getTracks().forEach(track => {
                     __peerConnection[sender].addTrack(track, this.__mediaStream);
                 });
+            }
         }
 
         delete __receiver_ringing[sender];
