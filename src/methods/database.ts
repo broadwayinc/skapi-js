@@ -1080,7 +1080,7 @@ export async function getUniqueId(
 
     return res;
 }
-export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<string | RecordData> | string> {
+export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> {
     await this.__connection;
 
     let q = await prepGetParams.bind(this)(query, true);
