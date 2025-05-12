@@ -842,7 +842,7 @@ export default class Skapi {
         number_of_records: string; // Number records tagged
     }>> { return getTags.bind(this)(query, fetchOptions); }
     @formHandler()
-    deleteRecords(query: DelRecordQuery, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> { return deleteRecords.bind(this)(params, fetchOptions); }
+    deleteRecords(params: DelRecordQuery, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> { return deleteRecords.bind(this)(params, fetchOptions); }
     @formHandler()
     resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
         return resendSignupConfirmation.bind(this)();
