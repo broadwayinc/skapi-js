@@ -8,8 +8,7 @@ import {
     PostRecordConfig,
     ProgressCallback,
     BinaryFile,
-    FileInfo,
-    DelRecordQuery
+    FileInfo
 } from '../Types';
 import SkapiError from '../main/error';
 import { extractFormData, fromBase62 } from '../utils/utils';
@@ -1080,12 +1079,12 @@ export async function getUniqueId(
 
     return res;
 }
-export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }): Promise<DatabaseResponse<string> | string> {
+export async function deleteRecords(query: GetRecordQuery & { private_key?: string; }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<string | RecordData> | string> {
     await this.__connection;
 
     let q = await prepGetParams.bind(this)(query, true);
     let is_reference_fetch = q.is_reference_fetch;
-    let result = await request.bind(this)('del-records', q.query, { auth: true });
+    let result = await request.bind(this)('del-records', q.query, { auth: true, fetchOptions });
     if (is_reference_fetch && typeof result?.reference_private_key === 'string') {
         this.__private_access_key[is_reference_fetch] = result.reference_private_key;
     }

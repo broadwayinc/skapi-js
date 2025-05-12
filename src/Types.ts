@@ -134,11 +134,6 @@ export type PostRecordConfig = {
     progress?: ProgressCallback; // Callback for database request progress. Useful when building progress bar.
 }
 
-export type DelRecordQuery = GetRecordQuery & {
-    unique_id?: string | string[];
-    record_id?: string | string[];
-};
-
 export type BinaryFile = {
     access_group: number | 'private' | 'public' | 'authorized';
     filename: string;
