@@ -18,6 +18,7 @@ import {
     RealtimeCallback,
     RTCConnectorParams,
     RTCConnector,
+    DelRecordQuery,
 } from '../Types';
 import {
     CognitoUserPool
@@ -132,7 +133,7 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.242';
+    private __version = '1.0.243';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -841,7 +842,7 @@ export default class Skapi {
         number_of_records: string; // Number records tagged
     }>> { return getTags.bind(this)(query, fetchOptions); }
     @formHandler()
-    deleteRecords(query: GetRecordQuery, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> { return deleteRecords.bind(this)(params, fetchOptions); }
+    deleteRecords(query: DelRecordQuery, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> { return deleteRecords.bind(this)(params, fetchOptions); }
     @formHandler()
     resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
         return resendSignupConfirmation.bind(this)();
