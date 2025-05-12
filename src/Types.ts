@@ -51,6 +51,11 @@ export type WebSocketMessage = {
 
 export type RealtimeCallback = (rt: WebSocketMessage) => void;
 
+export type DelRecordQuery = GetRecordQuery & {
+    unique_id?: string | string[];
+    record_id?: string | string[];
+};
+
 export type GetRecordQuery = {
     unique_id?: string; // When unique_id is given, it will fetch the record with the given unique_id.
     record_id?: string; // When record_id is given, it will fetch the record with the given record_id. This overrides all other parameters.
