@@ -14,7 +14,6 @@ import {
     PublicUser,
     UserProfilePublicSettings,
     FileInfo,
-    DelRecordQuery,
     RTCEvent,
     RealtimeCallback,
     RTCConnectorParams,
@@ -842,7 +841,7 @@ export default class Skapi {
         number_of_records: string; // Number records tagged
     }>> { return getTags.bind(this)(query, fetchOptions); }
     @formHandler()
-    deleteRecords(params: DelRecordQuery): Promise<string | DatabaseResponse<string>> { return deleteRecords.bind(this)(params); }
+    deleteRecords(query: GetRecordQuery, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> { return deleteRecords.bind(this)(params, fetchOptions); }
     @formHandler()
     resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
         return resendSignupConfirmation.bind(this)();
