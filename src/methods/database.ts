@@ -137,10 +137,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         },
         'bin': async (r: string[]) => {
             let binObj = {};
-            let _ref = record?.ref || null;
-            if (_ref) {
-                _ref = _ref.split('/')[0];
-            }
+            let _ref = output?.reference || null;
             if (Array.isArray(r)) {
                 for (let url of r) {
                     let path = url.split('/').slice(3).join('/');
@@ -152,7 +149,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                     let access_group = access_group_set(splitPath[6]);
                     let url_endpoint = url;
                     if (access_group !== 'public') {
-                        url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint' }) as string);
+                        url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint', _ref }) as string);
                     }
                     // auth/serviceid/ownerid/uploaderid/records/recordid/access_group/bin/timestamp_base62/size_base62/form_keyname/filename.ext
 
