@@ -151,7 +151,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                         url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint' }) as string);
                     }
                     // auth/serviceid/ownerid/uploaderid/records/recordid/access_group/bin/timestamp_base62/size_base62/form_keyname/filename.ext
-                    let _ref = output?.ref || null;
+                    let _ref = record?.ref || null;
                     if (_ref) {
                         _ref = _ref.split('/')[0];
                     }
