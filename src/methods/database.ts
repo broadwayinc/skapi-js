@@ -671,6 +671,7 @@ export async function postRecord(
             prevent_multiple_referencing: 'boolean',
             can_remove_referencing_records: 'boolean',
             only_granted_can_reference: 'boolean',
+            allow_granted_to_grant_others: 'boolean',
             referencing_index_restrictions: v => {
                 if (v === undefined) {
                     return undefined;
