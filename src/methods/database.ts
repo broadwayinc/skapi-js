@@ -131,6 +131,9 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
             // output.reference.reference_limit = r; // depricated
             output.source.referencing_limit = r;
         },
+        "alw_gnt": (r: boolean) => {
+            output.source.allow_granted_to_grant_others = r;
+        },
         'rfd': (r: number) => {
             // output.reference.referenced_count = r; // depricated
             output.referenced_count = r;
