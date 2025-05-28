@@ -496,26 +496,9 @@ export async function checkAdmin() {
     return false;
 }
 
-export async function _out(global: boolean = false) {
-    let toReturn = null;
+export function _out() {
     if (cognitoUser) {
-        if(global) {
-            toReturn = new Promise((res, rej) => {
-                cognitoUser.globalSignOut({
-                    onSuccess: (result: any) => {
-                        this.log('globalSignOut:success', result);
-                        res(result);
-                    },
-                    onFailure: (err: any) => {
-                        this.log('globalSignOut:error', err);
-                        rej(err);
-                    }
-                });
-            });
-        }
-        else {
-            cognitoUser.signOut();
-        }
+        cognitoUser.signOut();
     }
 
     let to_be_erased = {
@@ -525,24 +508,16 @@ export async function _out(global: boolean = false) {
         '__user': null
     };
 
-    if(toReturn) {
-        toReturn = await toReturn;
-    }
-
     for (let k in to_be_erased) {
         this[k] = to_be_erased[k];
     }
 
     this._runOnLoginListeners(null);
-    return toReturn;
 }
 
-export async function logout(params?: Form<{ global:boolean; }>): Promise<'SUCCESS: The user has been logged out.'> {
+export async function logout(): Promise<'SUCCESS: The user has been logged out.'> {
     await this.__connection;
-
-    let { data } = extractFormData(params);
-
-    await _out.bind(this)(data?.global);
+    _out.bind(this)();
     return 'SUCCESS: The user has been logged out.';
 }
 
@@ -1011,7 +986,6 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
     }
 
     let params = validator.Params(form || {}, {
-        user_id: (v: string) => validator.UserId(v),
         email: (v: string) => validator.Email(v),
         address: (v: any) => {
             if (!v) return '';
@@ -1101,16 +1075,6 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
         delete params[k];
     }
 
-    if (params.user_id) {
-        let user_id = params.user_id;
-        if(user_id === this.user.user_id) {
-            delete params.user_id;
-        }
-        else {
-            return request.bind(this)('admin-edit-profile', {attributes: params}, { auth: true });
-        }
-    }
-
     if (params && typeof params === 'object' && Object.keys(params).length) {
         // format params to cognito attribute
         let toSet: Array<CognitoUserAttribute> = [];
@@ -1148,7 +1112,7 @@ export async function getUsers(
     params?: {
         searchFor: string;
         value: string | number | boolean | string[];
-        condition?: '>' | '>=' | '=' | '<' | '<=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte';
+        condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
         range?: string | number | boolean;
     },
     fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
@@ -1301,39 +1265,39 @@ export async function requestUsernameChange(params: {
     return await request.bind(this)('request-username-change', params, { auth: true });
 }
 
-// export async function registerSenderEmail(params: Form<{
-//     email_alias: string;
-// }>): Promise<"SUCCESS: Sender e-mail has been registered." | "ERROR: Email contains special characters." | "ERROR: Email is required."> {
-//     await this.__connection;
+export async function registerSenderEmail(params: Form<{
+    email_alias: string;
+}>): Promise<"SUCCESS: Sender e-mail has been registered." | "ERROR: Email contains special characters." | "ERROR: Email is required."> {
+    await this.__connection;
 
-//     if (!this.session) {
-//         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
-//     }
-//     let emailAlias: string;
+    if (!this.session) {
+        throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+    }
+    let emailAlias: string;
 
-//     let user_params = extractFormData(params)
+    let user_params = extractFormData(params)
 
-//     params = user_params.data;
+    params = user_params.data;
 
-//     // if (params instanceof FormData) {
-//     //     emailAlias = params.get('email_alias') as string;
-//     // } else
+    // if (params instanceof FormData) {
+    //     emailAlias = params.get('email_alias') as string;
+    // } else
     
-//     if (params && 'email_alias' in params) {
-//         emailAlias = params.email_alias;
-//     } else {
-//         emailAlias = '';
-//     }
+    if (params && 'email_alias' in params) {
+        emailAlias = params.email_alias;
+    } else {
+        emailAlias = '';
+    }
 
-//     if (!emailAlias) {
-//         throw new SkapiError('Email is required.', { code: 'INVALID_PARAMETER' });
-//     }
+    if (!emailAlias) {
+        throw new SkapiError('Email is required.', { code: 'INVALID_PARAMETER' });
+    }
 
-//     const specialCharPattern = /[!#$%^&*(),?":{}|<>]/g;
-//     if (specialCharPattern.test(emailAlias)) {
-//         throw new SkapiError('Email contains special characters.', { code: 'INVALID_PARAMETER' });
-//     }
+    const specialCharPattern = /[!#$%^&*(),?":{}|<>]/g;
+    if (specialCharPattern.test(emailAlias)) {
+        throw new SkapiError('Email contains special characters.', { code: 'INVALID_PARAMETER' });
+    }
 
-//     let response = await request.bind(this)('register-sender-email', { email_alias: emailAlias});
-//     return response;
-// }
+    let response = await request.bind(this)('register-sender-email', { email_alias: emailAlias});
+    return response;
+}

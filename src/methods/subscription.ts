@@ -229,7 +229,7 @@ export async function getNewsletterSubscription(params: {
 export async function subscribeNewsletter(
     form: Form<{
         email?: string;
-        group: number | 'public' | 'authorized' | 'admin';
+        group: number | 'public' | 'authorized' | 'admin' | string; 
         redirect?: string;
     }>
 ): Promise<string> {
@@ -239,7 +239,12 @@ export async function subscribeNewsletter(
         form || {},
         {
             email: (v: string) => validator.Email(v),
-            group: ['number', 'public', 'authorized', 'admin'],
+            group: ['number', 'public', 'authorized', 'admin', (v: string) => {
+                if (typeof v !== 'string' || v.length > 20 || !/^[a-zA-Z0-9]+$/.test(v)) {
+                    throw new SkapiError('"group" should be an alphanumeric string without spaces and less than 20 characters.', { code: 'INVALID_PARAMETER' });
+                }
+                return v;
+            }], 
             redirect: (v: string) => validator.Url(v)
         },
         this.__user ? ['group'] : ['email', 'group']
@@ -247,6 +252,45 @@ export async function subscribeNewsletter(
 
     return request.bind(this)(`subscribe-${this.__user ? '' : 'public-'}newsletter`, params, { auth: !!this.__user });
 }
+
+export async function registerNewsletterGroup(
+    form: Form<{
+        group: string;
+        restriction: number;
+    }>
+): Promise<string> {
+    await this.__connection;
+
+    let params = validator.Params(
+        form || {},
+        {
+            group: (v: string) => {
+                if (typeof v !== 'string' || v.length > 20 || !/^[a-zA-Z0-9]+$/.test(v)) {
+                    throw new SkapiError('"group" should be an alphanumeric string without spaces and less than 20 characters.', { code: 'INVALID_PARAMETER' });
+                }
+                return v;
+            },
+            restriction: (v: number) => {
+                if (typeof v !== 'number' || v < 0 || v > 99) {
+                    throw new SkapiError('"restriction" should be a number between 0 and 99.', { code: 'INVALID_PARAMETER' });
+                }
+                return v;
+            }
+        },
+        ['group', 'restriction']
+    );
+
+    return request.bind(this)('register-newsletter-group', params, { auth: true });
+}
+
+
+export async function newsletterGroupEndpoint(params) {
+    await this.__connection;
+    let response = await request.bind(this)('newsletter-group-endpoint', params, { auth: true });
+
+    return response
+}
+
 
 /**
  * Only signed users can unsubscribe newsletter via api.

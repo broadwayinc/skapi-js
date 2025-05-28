@@ -14,11 +14,11 @@ import {
     PublicUser,
     UserProfilePublicSettings,
     FileInfo,
+    DelRecordQuery,
     RTCEvent,
     RealtimeCallback,
     RTCConnectorParams,
     RTCConnector,
-    DelRecordQuery,
 } from '../Types';
 import {
     CognitoUserPool
@@ -37,8 +37,7 @@ import {
     removePrivateRecordAccess,
     listPrivateRecordAccess,
     requestPrivateRecordAccessKey,
-    deleteFiles,
-    getUniqueId
+    deleteFiles
 } from '../methods/database';
 import {
     connectRealtime,
@@ -75,7 +74,9 @@ import {
     unsubscribeNewsletter,
     adminNewsletterRequest,
     getNewsletterSubscription,
-    getFeed
+    getFeed,
+    registerNewsletterGroup,
+    newsletterGroupEndpoint,
 } from '../methods/subscription';
 import {
     getProfile,
@@ -102,7 +103,7 @@ import {
     unregisterTicket,
     _out,
     openIdLogin,
-    // registerSenderEmail
+    registerSenderEmail
 } from '../methods/user';
 import {
     extractFormData,
@@ -133,7 +134,7 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.244';
+    private __version = '1.0.211';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -283,7 +284,6 @@ export default class Skapi {
     private __connection: Promise<Connection>;
     private __authConnection: Promise<void>;
     private __network_logs = false;
-    private __endpoint_version = 'v1';
 
     constructor(service: string, owner: string, options?: {
         autoLogin: boolean;
@@ -347,7 +347,7 @@ export default class Skapi {
         const cdn_domain = `https://${this.target_cdn}.cloudfront.net`; // don't change this
         let sreg = service.substring(0, 4);
 
-        this.admin_endpoint = fetch(`${cdn_domain}/${sreg}/admin-${this.__endpoint_version}.json`)
+        this.admin_endpoint = fetch(`${cdn_domain}/${sreg}/admin.json`)
             .then(response => response.blob())
             .then(blob => new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -364,7 +364,7 @@ export default class Skapi {
                 }
             });
 
-        this.record_endpoint = fetch(`${cdn_domain}/${sreg}/record-${this.__endpoint_version}.json`)
+        this.record_endpoint = fetch(`${cdn_domain}/${sreg}/record.json`)
             .then(response => response.blob())
             .then(blob => new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -580,18 +580,6 @@ export default class Skapi {
     dopamine(params) {
         return dopamine.bind(this)(params)
     }
-    @formHandler()
-    getUniqueId(params: Form<{
-        /** Unique ID */
-        unique_id?: string;
-        /** String query condition for tag name. */
-        condition?: Condition;
-    }>, fetchOptions?:FetchOptions): Promise<DatabaseResponse<{
-        unique_id: string; // Unique ID
-        record_id: string; // Record ID
-    }>> {
-        return getUniqueId.bind(this)(params, fetchOptions);
-    }
 
     @formHandler()
     resendInvitation(params: Form<{
@@ -608,12 +596,20 @@ export default class Skapi {
         return cancelInvitation.bind(this)(params);
     }
 
-    // @formHandler()
-    // registerSenderEmail(params: Form<{
-    //     email_alias: string;
-    // }>): Promise<"SUCCESS: Sender e-mail has been registered." | "ERROR: Email contains special characters." | "ERROR: Email is required."> {
-    //     return registerSenderEmail.bind(this)(params);
-    // }
+    @formHandler()
+    registerNewsletterGroup(params: Form<{
+        group: string;
+        restriction: number;
+    }>): Promise<"SUCCESS: Your newsletter group has been registered."> {
+        return registerNewsletterGroup.bind(this)(params) as Promise<"SUCCESS: Your newsletter group has been registered.">;
+    }
+
+    @formHandler()
+    registerSenderEmail(params: Form<{
+        email_alias: string;
+    }>): Promise<"SUCCESS: Sender e-mail has been registered." | "ERROR: Email contains special characters." | "ERROR: Email is required."> {
+        return registerSenderEmail.bind(this)(params);
+    }
 
     @formHandler()
     getInvitations(params: Form<{
@@ -733,7 +729,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    postRealtime(message: any, recipient: string, notification?: { config?: { always:boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
+    postRealtime(message: any, recipient: string, notification?: { title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
         return postRealtime.bind(this)(message, recipient, notification);
     }
 
@@ -842,7 +838,7 @@ export default class Skapi {
         number_of_records: string; // Number records tagged
     }>> { return getTags.bind(this)(query, fetchOptions); }
     @formHandler()
-    deleteRecords(params: DelRecordQuery, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> { return deleteRecords.bind(this)(params, fetchOptions); }
+    deleteRecords(params: DelRecordQuery): Promise<string | DatabaseResponse<string>> { return deleteRecords.bind(this)(params); }
     @formHandler()
     resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
         return resendSignupConfirmation.bind(this)();
@@ -862,7 +858,7 @@ export default class Skapi {
             /** Index value to search. */
             value: string | number | boolean | string[];
             /** Search condition. */
-            condition?: '>' | '>=' | '=' | '<' | '<=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte';
+            condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
             /** Range of search. */
             range?: string | number | boolean;
         },
@@ -888,6 +884,10 @@ export default class Skapi {
     @formHandler()
     adminNewsletterRequest(params) {
         return adminNewsletterRequest.bind(this)(params);
+    }
+    @formHandler()
+    newsletterGroupEndpoint(params) {
+        return newsletterGroupEndpoint.bind(this)(params);
     }
     @formHandler()
     subscribeNotification(
@@ -1020,7 +1020,7 @@ export default class Skapi {
             password: string;
         }>): Promise<UserProfile> { return login.bind(this)(form); }
     @formHandler()
-    logout(form?: Form<{ global: boolean; }>): Promise<'SUCCESS: The user has been logged out.'> { return logout.bind(this)(form); }
+    logout(): Promise<'SUCCESS: The user has been logged out.'> { return logout.bind(this)(); }
 
     @formHandler({ preventMultipleCalls: true })
     signup(
@@ -1084,9 +1084,8 @@ export default class Skapi {
     @formHandler()
     postRecord(
         form: Form<Record<string, any>> | null | undefined,
-        config: PostRecordConfig,
-        files?: { name: string, file: File }[]
-    ): Promise<RecordData> { return postRecord.bind(this)(form, config, files); }
+        config: PostRecordConfig
+    ): Promise<RecordData> { return postRecord.bind(this)(form, config); }
     @formHandler()
     getSubscriptions(
         params: {
