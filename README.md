@@ -1,13 +1,11 @@
 # Skapi
 
-### Zero-Setup Backend API for HTML Frontend
-
-Skapi is a zero-setup backend API that runs entirely serverless.
-Build full-featured web applications faster with Skapi - No complex installations, No server configurations, No database management required.
+Serverless backend API Library for HTML Frontend.
+Build fullstack web applications directly from your HTML without backend engineering.
 
 ### Compatible with both vanilla HTML and SPA projects
 
-No fancy framework or complex deployment required. Just focused on the basics, Skapi is a single JavaScript library fully compatible with vanilla HTML, as well as any JS frameworks.
+No fancy framework or complex deployment required. Just focused on the basics, Skapi is a single JavaScript library fully compatible with vanilla HTML, as well as any frontend frameworks.
 
 ### All-in-One Package
 
@@ -16,13 +14,12 @@ Skapi provides all the backend features you need for your web application out of
 - Authentication
 - Database
 - File Storage
-- Realtime websocket messaging
-- WebRTC media streaming
-- Notification
 - CDN
 - Automated Email Systems
-- API Bridge for 3rd party APIs
-- File Hosting
+- Realtime Messaging & Video Chat
+- API Bridge for 3rd party API's
+- Hosting
+
 
 ## Getting Started
 
@@ -68,7 +65,7 @@ Then, import the library into your main JavaScript file.
 import { Skapi } from 'skapi-js';
 const skapi = new Skapi('service_id', 'owner_id');
 
-// Export the skapi instance, so you can use it in other component files
+// Export the skapi instance, so you can use it in other components
 export { skapi }
 ```
 
