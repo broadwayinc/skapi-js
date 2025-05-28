@@ -1,7 +1,7 @@
 {
   "name": "skapi-js",
-  "version": "1.0.211-vivi.1",
-  "description": "Skapi: Backend API for HTML frontend.",
+  "version": "1.0.246",
+  "description": "Serverless Backend API for HTML frontend.",
   "main": "js/Main.js",
   "browser": "dist/skapi.js",
   "types": "js/Main.d.ts",
