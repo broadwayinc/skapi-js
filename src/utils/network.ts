@@ -26,25 +26,27 @@ async function getEndpoint(dest: string, auth: boolean) {
     dest = params[0];
 
     switch (dest) {
-        // Admin
-        case 'get-users': 
+        case 'get-users': ////
             return admin.get_users_private + dest + query;
-        case 'service': 
+        case 'service': ////
             return admin.service_public + dest + query;
-        case 'get-newsletters': 
-        case 'get-public-newsletters': 
+        case 'get-newsletters': //
+        case 'get-public-newsletters': //
         // case 'post-userdata': //
-        case 'subscribe-newsletter': 
-        case 'subscribe-public-newsletter': 
-        case 'signupkey': 
+        case 'subscribe-newsletter': //
+        case 'subscribe-public-newsletter': //
+        case 'signupkey': //
         case 'admin-newsletter-request':
             return (auth ? admin.extra_private : admin.extra_public) + dest + query;
-        case 'admin-signup': 
-        case 'confirm-signup': 
-        case 'client-secret-request': 
-        case 'client-secret-request-public': 
-        case 'openid-logger': 
+        case 'admin-signup': //
+        case 'confirm-signup': //
+        case 'client-secret-request': //
+        case 'client-secret-request-public': //
+        case 'openid-logger': //
             return (auth ? admin.extra_private_2 : admin.extra_public_2) + dest + query;
+        case 'block-account':
+        case 'admin-edit-profile':
+            return admin.admin_private + dest + query;
         case 'remove-account':
         case 'post-secure':
         case 'recover-account':
@@ -56,13 +58,11 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'get-newsletter-subscription':
         case 'request-username-change':
         // case 'jwt-login':
-        case 'register-newsletter-group':
         case 'send-inquiry':
-        case 'block-account':
-        case 'invitation-list':
-        case 'grant-access':
-        case 'register-sender-email':
+        case 'register-newsletter-group':
         case 'newsletter-group-endpoint':
+        case 'invitation-list':
+        // case 'register-sender-email':
             const gateways_admin = auth
                 ? [admin.admin_private, admin.admin_private_2]
                 : [admin.admin_public, admin.admin_public_2];
@@ -70,7 +70,7 @@ async function getEndpoint(dest: string, auth: boolean) {
             const counter_admin = auth ? privateCounter_admin : publicCounter_admin;
             const selectedGateway_admin = gateways_admin[counter_admin % gateways_admin.length];
 
-            if (auth){
+            if (auth) {
                 privateCounter_admin++;
             } else {
                 publicCounter_admin++;
@@ -79,16 +79,16 @@ async function getEndpoint(dest: string, auth: boolean) {
             return selectedGateway_admin + dest + query
 
         // Records
-        case 'post-record': 
+        case 'post-record': ////
             // Dedicated gateway api for post-record
             return (auth ? record.post_private : record.post_public) + dest + query;
 
-        case 'get-records': 
+        case 'get-records': ////
             // Dedicated gateway api for get-record
             return (auth ? record.get_private : record.get_public) + dest + query;
 
-        case 'del-files': 
-        case 'del-records': 
+        case 'del-files': //
+        case 'del-records': //
             // Dedicated gateway api for del-records and del-files
             return record.del_private + dest + query;
         case 'store-subscription':
@@ -99,6 +99,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'get-subscription':
         case 'get-table':
         case 'get-tag':
+        case 'get-uniqueid':
         case 'get-index':
         case 'get-signed-url':
         case 'grant-private-access':
@@ -118,7 +119,7 @@ async function getEndpoint(dest: string, auth: boolean) {
             const counter_record = auth ? privateCounter_record : publicCounter_record;
             const selectedGateway_record = gateways_record[counter_record % gateways_record.length];
 
-            if (auth){
+            if (auth) {
                 privateCounter_record++;
             } else {
                 publicCounter_record++;
@@ -127,7 +128,7 @@ async function getEndpoint(dest: string, auth: boolean) {
             return selectedGateway_record + dest + query
 
         default:
-            return validator.Url(dest);
+            return validator.Url(dest) + query;
     }
 }
 
@@ -357,7 +358,7 @@ export async function request(
 
     opt.method = method;
     let promise = _fetch.bind(this)(endpoint, opt, progress);
-    __pendingRequest[requestKey as string] = promise.finally(()=>{
+    __pendingRequest[requestKey as string] = promise.finally(() => {
         delete __pendingRequest[requestKey as string];
     });
 
@@ -401,7 +402,7 @@ function load_startKey_keys(option: {
         }
     }
 
-    if (!fetchMore && this.__startKeyHistory?.[url]?.[hashedParams]) {
+    if (!fetchMore) {
         // init cache, init startKey
 
         if (this.__cached_requests?.[url]?.[hashedParams]) {
@@ -409,18 +410,20 @@ function load_startKey_keys(option: {
             delete this.__cached_requests[url][hashedParams];
         }
 
-        if (Array.isArray(this.__startKeyHistory[url][hashedParams]) && this.__startKeyHistory[url][hashedParams].length) {
-            // delete cache of all startkeys
-            for (let p of this.__startKeyHistory[url][hashedParams]) {
-                let hashedParams_cached = hashedParams + MD5.hash(p);
-                if (this.__cached_requests?.[url] && this.__cached_requests?.[url]?.[hashedParams_cached]) {
-                    delete this.__cached_requests[url][hashedParams_cached];
+        if (this.__startKeyHistory?.[url]?.[hashedParams]) {
+            if (Array.isArray(this.__startKeyHistory[url][hashedParams]) && this.__startKeyHistory[url][hashedParams].length) {
+                // delete cache of all startkeys
+                for (let p of this.__startKeyHistory[url][hashedParams]) {
+                    let hashedParams_cached = hashedParams + MD5.hash(p);
+                    if (this.__cached_requests?.[url] && this.__cached_requests?.[url]?.[hashedParams_cached]) {
+                        delete this.__cached_requests[url][hashedParams_cached];
+                    }
                 }
             }
+            
+            // delete start key lists
+            delete this.__startKeyHistory[url][hashedParams];
         }
-
-        // delete start key lists
-        delete this.__startKeyHistory[url][hashedParams];
 
         return hashedParams;
     }
@@ -533,7 +536,7 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                         'NOT_EXISTS'
                     ];
 
-                    let result: any = xhr.responseText;
+                    let result: any = opt.responseType == 'blob' ? xhr.response : xhr.responseText;
                     try {
                         result = JSON.parse(result);
                     }
@@ -939,7 +942,7 @@ export async function getFormResponse(): Promise<any> {
     let responseKey = `${this.service}:${MD5.hash(location.href.split('?')[0])}`;
     let stored = sessionStorage.getItem(responseKey);
     sessionStorage.removeItem(responseKey);
-    
+
     if (stored !== null) {
         try {
             stored = JSON.parse(stored);

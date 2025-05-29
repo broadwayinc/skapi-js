@@ -7,14 +7,16 @@ import { DatabaseResponse, FetchOptions, RealtimeCallback, WebSocketMessage } fr
 import { answerSdpOffer, receiveIceCandidate, __peerConnection, __receiver_ringing, closeRTC, respondRTC, __caller_ringing, __rtcEvents } from './webrtc';
 import { getJwtToken } from './user';
 
-let __roomList: {
-    [realTimeGroup: string]: {
-        [sender_id: string]: string[]; // connection id, (single person can have multiple connection id)
-    }
-} = {};
+// let __roomList: {
+//     [realTimeGroup: string]: {
+//         [sender_id: string]: string[]; // connection id, (single person can have multiple connection id)
+//     }
+// } = {};
 
 let __current_socket_room: string;
 let __keepAliveInterval = null;
+let closedByIntention = true;
+let reconnectAttempts = 0;
 
 async function prepareWebsocket() {
     // Connect to the WebSocket server
@@ -31,13 +33,68 @@ async function prepareWebsocket() {
     );
 }
 
-export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise<WebSocket> {
+
+let visibilitychange = null;
+
+export async function closeRealtime(): Promise<void> {
+    closedByIntention = true;
+    let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
+    closeRTC.bind(this)({ close_all: true });
+
+    if(__current_socket_room) {
+        joinRealtime.bind(this)({ group: null });
+    }
+
+    // __roomList = {};
+    reconnectAttempts = 0;
+
+    if (__keepAliveInterval) {
+        __keepAliveInterval.terminate();
+        __keepAliveInterval = null;
+    }
+
+    try {
+        if (socket) {
+            socket.close();
+        }
+    }
+    catch (e) { }
+
+    window.removeEventListener('visibilitychange', visibilitychange);
+    this.__socket = null;
+    return null;
+}
+
+export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnect?: string): Promise<WebSocket> {
     if (typeof cb !== 'function') {
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
     }
 
-    if (this.__socket instanceof Promise) {
-        return this.__socket;
+    if(reconnect === 'reconnect') {
+        if(this.__socket instanceof Promise) {
+            let socket = await this.__socket;
+            if (socket.readyState !== WebSocket.CLOSED && socket.readyState !== WebSocket.CLOSING) {
+                return this.__socket;
+            }
+        }
+    }
+
+    else if (closedByIntention) {
+        // if the connection was closed intentionally, and it's not a reconnect attempt
+        visibilitychange = () => {
+            if (!document.hidden && !closedByIntention) {
+                connectRealtime.bind(this)(cb, 0, 'reconnect');
+            }
+        }
+
+        if (this.__socket instanceof Promise) {
+            return this.__socket;
+        }
+    }
+
+    if (__keepAliveInterval) {
+        __keepAliveInterval.terminate();
+        __keepAliveInterval = null;
     }
 
     this.__socket = new Promise(async (resolve) => {
@@ -47,6 +104,13 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
             let socket: WebSocket = await prepareWebsocket.bind(this)();
 
             socket.onopen = () => {
+                closedByIntention = false;
+                reconnectAttempts = 0;
+
+                if (reconnect !== 'reconnect') {
+                    window.addEventListener('visibilitychange', visibilitychange);
+                }
+
                 this.log('realtime onopen', 'Connected to WebSocket server.');
                 cb({ type: 'success', message: 'Connected to WebSocket server.' });
 
@@ -58,11 +122,11 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
                     }));
                 }
 
-                // keep alive
+                // // keep alive
 
                 // Define worker script as a string
-                const workerScript = `
-                    let interval = 30000; // Set interval time
+                const workerScript = /*js*/`
+                    let interval = 15000; // Set interval time 15 seconds
 
                     function runInterval() {
                         postMessage({ type: "ping" });
@@ -78,11 +142,9 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
 
                 // Listen for messages from the worker
                 __keepAliveInterval.onmessage = (event) => {
-                    // console.log(`Worker Tick! Delay: ${event.data.delay.toFixed(2)}ms`);
                     if (socket.readyState === 1) {
                         socket.send(JSON.stringify({
-                            action: 'keepAlive',
-                            token: this.session.accessToken.jwtToken
+                            action: 'keepAlive'
                         }));
                     }
                 };
@@ -120,44 +182,50 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
                         break;
                 }
 
+                if (!type) {
+                    return;
+                }
+
                 let msg: WebSocketMessage = {
                     type,
                     message: data?.['#rtc'] || data?.['#message'] || data?.['#private'] || data?.['#notice'] || data?.['#error'] || null,
-                    sender: !!data['#user_id'] ? data['#user_id'] : null,
+                    sender: data?.['#user_id'] || null,
                     sender_cid: !!data?.['#scid'] ? "cid:" + data['#scid'] : null,
-                    sender_rid: !!data?.['#srid'] ? data['#srid'] : null
+                    sender_rid: data?.['#srid'] || null,
+                    code: data?.['#code'] || null
                 };
 
                 if (type === 'notice') {
-                    if (__current_socket_room && (msg.message.includes('has left the message group.') || msg.message.includes('has been disconnected.'))) {
-                        let user_id = msg.sender;
-                        if (__roomList?.[__current_socket_room]?.[user_id]) {
-                            __roomList[__current_socket_room][user_id] = __roomList[__current_socket_room][user_id].filter(v => v !== msg.sender_cid);
-                        }
+                    // if (__current_socket_room && (msg.code === 'USER_LEFT' || msg.code === 'USER_DISCONNECTED')) {
+                    //     let user_id = msg.sender;
+                    //     if (__roomList?.[__current_socket_room]?.[user_id]) {
+                    //         __roomList[__current_socket_room][user_id] = __roomList[__current_socket_room][user_id].filter(v => v !== msg.sender_cid);
+                    //     }
 
-                        if (__roomList?.[__current_socket_room]?.[user_id] && __roomList[__current_socket_room][user_id].length === 0) {
-                            delete __roomList[__current_socket_room][user_id];
-                        }
+                    //     if (__roomList?.[__current_socket_room]?.[user_id] && __roomList[__current_socket_room][user_id].length === 0) {
+                    //         delete __roomList[__current_socket_room][user_id];
+                    //     }
 
-                        if (__roomList?.[__current_socket_room]?.[user_id]) {
-                            return
-                        }
-                    }
-                    else if (__current_socket_room && msg.message.includes('has joined the message group.')) {
-                        let user_id = msg.sender;
-                        if (!__roomList?.[__current_socket_room]) {
-                            __roomList[__current_socket_room] = {};
-                        }
-                        if (!__roomList[__current_socket_room][user_id]) {
-                            __roomList[__current_socket_room][user_id] = [msg.sender_cid];
-                        }
-                        else {
-                            if (!__roomList[__current_socket_room][user_id].includes(msg.sender_cid)) {
-                                __roomList[__current_socket_room][user_id].push(msg.sender_cid);
-                            }
-                            return;
-                        }
-                    }
+                    //     if (__roomList?.[__current_socket_room]?.[user_id]) {
+                    //         // user is still in the group don't call the callback
+                    //         return
+                    //     }
+                    // }
+                    // else if (__current_socket_room && msg.code === 'USER_JOINED') {
+                    //     let user_id = msg.sender;
+                    //     if (!__roomList?.[__current_socket_room]) {
+                    //         __roomList[__current_socket_room] = {};
+                    //     }
+                    //     if (!__roomList[__current_socket_room][user_id]) {
+                    //         __roomList[__current_socket_room][user_id] = [msg.sender_cid];
+                    //     }
+                    //     else {
+                    //         if (!__roomList[__current_socket_room][user_id].includes(msg.sender_cid)) {
+                    //             __roomList[__current_socket_room][user_id].push(msg.sender_cid);
+                    //         }
+                    //         return;
+                    //     }
+                    // }
                     cb(msg);
                 }
                 else if (type === 'rtc') {
@@ -234,17 +302,25 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
                 }
             };
 
-            socket.onclose = event => {
-                if (event.wasClean) {
+            socket.onclose = () => {
+                if (closedByIntention) {
                     this.log('realtime onclose', 'WebSocket connection closed.');
                     cb({ type: 'close', message: 'WebSocket connection closed.' });
-                    closeRealtime.bind(this)();
                 }
                 else {
-                    // Handle max reconnection attempts reached
-                    this.log('realtime onclose', 'WebSocket connection error. Max reconnection attempts reached.');
+                    this.log('realtime onclose', 'WebSocket unexpected close.');
                     cb({ type: 'error', message: 'Skapi: WebSocket unexpected close.' });
-                    closeRealtime.bind(this)();
+
+                    reconnectAttempts++;
+                    if (reconnectAttempts < 3) {
+                        this.log('realtime onclose', 'Reconnecting to WebSocket server...' + reconnectAttempts);
+                        cb({ type: 'reconnect', message: 'Reconnecting to WebSocket server...' + reconnectAttempts });
+                        connectRealtime.bind(this)(cb, 3000, 'reconnect');
+                    }
+                    else {
+                        this.log('realtime onclose', 'Max reconnection attempts reached.');
+                        cb({ type: 'error', message: 'Skapi: Max reconnection attempts reached.' });
+                    }
                 }
             };
 
@@ -256,28 +332,8 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 10): Promise
     });
 }
 
-export async function closeRealtime(): Promise<void> {
-    let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
-    closeRTC.bind(this)({ close_all: true });
-    if (__keepAliveInterval) {
-        __keepAliveInterval.terminate();
-        __keepAliveInterval = null;
-    }
 
-    try {
-        if (socket) {
-            socket.close();
-        }
-    }
-    catch (e) { }
-
-    this.__socket = null;
-    __current_socket_room = null;
-
-    return null;
-}
-
-export async function postRealtime(message: any, recipient: string, notification?: { title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
+export async function postRealtime(message: any, recipient: string, notification?: { config?: { always: boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
 
     if (!socket) {
@@ -293,17 +349,20 @@ export async function postRealtime(message: any, recipient: string, notification
     message = extractFormData(message).data;
 
     let notificationStr = '';
-    if(notification) {
+    if (notification) {
         notification = validator.Params(
             notification,
             {
+                config: {
+                    always: 'boolean'
+                },
                 title: 'string',
                 body: 'string'
             },
             ['title', 'body']
         );
         // stringify notification and check if size exceeds 3kb
-        notificationStr = JSON.stringify(notification);
+        notificationStr = JSON.stringify({ title: notification.title, body: notification.body });
         let notificationSize = new Blob([notificationStr]).size;
         if (notificationSize > 3072) {
             throw new SkapiError(`Notification size exceeds 3kb.`, { code: 'INVALID_PARAMETER' });
@@ -318,6 +377,7 @@ export async function postRealtime(message: any, recipient: string, notification
                 uid: recipient,
                 content: message,
                 notification: notificationStr,
+                notificationConfig: notification?.config || {},
                 // token: this.session.accessToken.jwtToken
                 token: `IdT:${this.service}:${this.owner}:` + (this.session?.idToken?.jwtToken || 'null')
             }));
@@ -333,6 +393,7 @@ export async function postRealtime(message: any, recipient: string, notification
                 rid: recipient,
                 content: message,
                 notification: notificationStr,
+                notificationConfig: notification?.config || {},
                 // token: this.session.accessToken.jwtToken,
                 token: `IdT:${this.service}:${this.owner}:` + (this.session?.idToken?.jwtToken || 'null')
             }));
@@ -400,21 +461,21 @@ export async function getRealtimeUsers(params: { group: string, user_id?: string
 
     res.list = res.list.map((v: any) => {
         let user_id = v.uid.split('#')[1];
-        if (!params.user_id) {
-            if (!__roomList[params.group]) {
-                __roomList[params.group] = {};
-            }
-            if (!__roomList[params.group][user_id]) {
-                __roomList[params.group][user_id] = [v.cid];
-            }
-            else if (!__roomList[params.group][user_id].includes(v.cid)) {
-                __roomList[params.group][user_id].push(v.cid);
-            }
-        }
+        // if (!params.user_id) {
+        //     if (!__roomList[params.group]) {
+        //         __roomList[params.group] = {};
+        //     }
+        //     if (!__roomList[params.group][user_id]) {
+        //         __roomList[params.group][user_id] = [v.cid];
+        //     }
+        //     else if (!__roomList[params.group][user_id].includes(v.cid)) {
+        //         __roomList[params.group][user_id].push(v.cid);
+        //     }
+        // }
 
         return {
             user_id,
-            cid: v.cid
+            cid: "cid:" + v.cid
         }
     });
 
@@ -437,7 +498,7 @@ export async function getRealtimeGroups(
     await this.__connection;
 
     if (!params) {
-        params = { searchFor: 'group' };
+        params = { searchFor: 'group', value: ' ', condition: '>' };
     }
 
     params = validator.Params(

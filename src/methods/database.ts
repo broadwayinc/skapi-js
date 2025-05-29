@@ -140,6 +140,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
         },
         'bin': async (r: string[]) => {
             let binObj = {};
+            let _ref = output?.reference || null;
             if (Array.isArray(r)) {
                 for (let url of r) {
                     let path = url.split('/').slice(3).join('/');
@@ -151,13 +152,10 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                     let access_group = access_group_set(splitPath[6]);
                     let url_endpoint = url;
                     if (access_group !== 'public') {
-                        url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint' }) as string);
+                        url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint', _ref }) as string);
                     }
                     // auth/serviceid/ownerid/uploaderid/records/recordid/access_group/bin/timestamp_base62/size_base62/form_keyname/filename.ext
-                    let _ref = output?.ref || null;
-                    if (_ref) {
-                        _ref = _ref.split('/')[0];
-                    }
+
                     let obj = {
                         access_group,
                         filename,
@@ -172,7 +170,7 @@ export async function normalizeRecord(record: Record<string, any>): Promise<Reco
                                 _ref,
                                 _update: obj
                             };
-                            return getFile.bind(this)(url, config);
+                            return getFile.bind(this)(url_endpoint, config);
                         }
                     };
                     if (binObj[pathKey]) {
@@ -298,7 +296,7 @@ export async function getFile(
     url: string, // cdn endpoint url https://xxxx.cloudfront.net/path/file
     config?: {
         dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info'; // default 'download'
-        expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
+        expires?: number; // uses url that expires in given seconds. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
         progress?: ProgressCallback;
         _ref?: string;
         _update?: any;
@@ -362,8 +360,13 @@ export async function getFile(
     }
 
     let filename = url.split('/').slice(-1)[0];
+    
+    // if ((config?.dataType === 'blob' || config?.dataType === 'base64') && needAuth) {
+    //     // when downloading blob, use signed url
+    //     config.expires = 60;
+    // }
+    
     let expires = config.expires;
-
     if (expires) {
         if (!isValidEndpoint) {
             throw new SkapiError('Expires option can only be used on skapi cdn endpoints.', { code: 'INVALID_PARAMETER' });
@@ -429,7 +432,7 @@ export async function getFile(
             if (this.__private_access_key[record_id] && typeof this.__private_access_key[record_id] === 'string') {
                 url += '&p=' + this.__private_access_key[record_id];
             }
-            else {
+            else if (this.owner !== this.host) {
                 try {
                     let p = await this.requestPrivateRecordAccessKey({ record_id, reference_id: config?._ref });
                     url += '&p=' + p;
@@ -510,7 +513,7 @@ async function prepGetParams(query, isDel = false) {
                 }
                 else {
                     query.record_id = this.__my_unique_ids[is_reference_fetch];
-                    delete query.unique_id;
+                    // delete query.unique_id;
                 }
             }
         }
@@ -520,20 +523,24 @@ async function prepGetParams(query, isDel = false) {
         let ref: any = query.reference;
         let ref_user = '';
 
-        if (ref?.record_id || ref?.unique_id) {
+        // if (ref?.record_id || ref?.unique_id) {
+        if (ref?.record_id) {
             is_reference_fetch = ref.record_id || ref.unique_id;
 
-            if (typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
+            if (is_reference_fetch && typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
                 query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
             }
 
-            if (this.__my_unique_ids[is_reference_fetch]) {
-                query.record_id = this.__my_unique_ids[is_reference_fetch];
-                delete query.unique_id;
-            }
+            // if (this.__my_unique_ids[is_reference_fetch]) {
+            //     // ref.record_id = this.__my_unique_ids[is_reference_fetch];
+            //     // delete ref.unique_id;
+            // }
+
+            query.reference = is_reference_fetch;
         }
         else if (ref?.user_id) {
             ref_user = ref.user_id;
+            query.reference = ref_user;
         }
         query = validator.Params(query || {}, getStruct.bind(this)(query), ref_user || isAdmin ? [] : ['table'], { ignoreEmpty: true });
     }
@@ -549,9 +556,9 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
     let q = await prepGetParams.bind(this)(query);
     let is_reference_fetch = q.is_reference_fetch;
 
-    if (is_reference_fetch && typeof this.__private_access_key[is_reference_fetch] === 'string') {
-        q.query.private_key = this.__private_access_key[is_reference_fetch] || undefined;
-    }
+    // if (is_reference_fetch && typeof this.__private_access_key[is_reference_fetch] === 'string') {
+    //     q.query.private_key = this.__private_access_key[is_reference_fetch] || undefined;
+    // }
 
     let result = await request.bind(this)(
         'get-records',
@@ -563,22 +570,23 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
         }
     );
 
+    if (is_reference_fetch && result?.reference_private_key && typeof result.reference_private_key === 'string') {
+        this.__private_access_key[is_reference_fetch] = result.reference_private_key;
+    }
+
     for (let i in result.list) {
         result.list[i] = normalizeRecord.bind(this)(result.list[i]);
     };
 
     result.list = await Promise.all(result.list);
 
-    if (is_reference_fetch && result?.reference_private_key && typeof result.reference_private_key === 'string') {
-        this.__private_access_key[is_reference_fetch] = result.reference_private_key;
-    }
-
     return result;
 }
 
 export async function postRecord(
     form: Form<Record<string, any>> | null | undefined,
-    config: PostRecordConfig & { reference_private_key?: string; }
+    config: PostRecordConfig & { reference_private_key?: string; },
+    files?: { name: string, file: File }[],
 ): Promise<RecordData> {
     await this.__connection;
 
@@ -792,7 +800,10 @@ export async function postRecord(
     let to_bin = null;
     let extractedForm = extractFormData(form);
 
-    if (extractedForm.files.length) {
+    if(files) {
+        to_bin = files;
+    }
+    else if (extractedForm.files.length) {
         to_bin = extractedForm.files;
     }
 
@@ -1035,13 +1046,48 @@ export async function getTags(
 
     return res;
 }
+export async function getUniqueId(
+    query?: Form<{
+        /** Unique ID */
+        unique_id?: string;
+        /** String query condition for tag name. */
+        condition?: Condition;
+    }>,
+    fetchOptions?: FetchOptions
+): Promise<DatabaseResponse<{
+    unique_id: string; // Unique ID
+    record_id: string; // Record ID
+}>> {
 
-export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }): Promise<DatabaseResponse<string> | string> {
+    let res = await request.bind(this)(
+        'get-uniqueid',
+        validator.Params(query || {},
+            {
+                unique_id: 'string',
+                condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
+            }
+        ),
+        Object.assign({ auth: !!this.__user }, { fetchOptions })
+    );
+
+    if (Array.isArray(res?.list)) {
+        for (let i in res.list) {
+            let item = res.list[i];
+            res.list[i] = {
+                unique_id: item.unq,
+                record_id: item.rec
+            };
+        }
+    }
+
+    return res;
+}
+export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> {
     await this.__connection;
 
     let q = await prepGetParams.bind(this)(query, true);
     let is_reference_fetch = q.is_reference_fetch;
-    let result = await request.bind(this)('del-records', q.query, { auth: true });
+    let result = await request.bind(this)('del-records', q.query, { auth: true, fetchOptions });
     if (is_reference_fetch && typeof result?.reference_private_key === 'string') {
         this.__private_access_key[is_reference_fetch] = result.reference_private_key;
     }
