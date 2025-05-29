@@ -151,7 +151,7 @@ export function getStruct(query) {
 
                 return indexValue(v);
             },
-            condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne'],
+            condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq'],
             range: (v: number | boolean | string) => indexRange(v, query)
         },
         tag: (v: string) => {

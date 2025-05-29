@@ -1,4 +1,4 @@
-export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | '>' | '>=' | '<' | '<=' | '=';
 
 
 export type RTCReceiverParams = {
@@ -6,7 +6,7 @@ export type RTCReceiverParams = {
     media?: {
         video: boolean;
         audio: boolean;
-    } | MediaStream;
+    } | MediaStream | MediaStreamConstraints;
 }
 
 export type RTCConnectorParams = {
@@ -15,7 +15,7 @@ export type RTCConnectorParams = {
     media?: {
         video: boolean;
         audio: boolean;
-    } | MediaStream;
+    } | MediaStream | MediaStreamConstraints;
     channels?: Array<RTCDataChannelInit | 'text-chat' | 'file-transfer' | 'video-chat' | 'voice-chat' | 'gaming'>;
 }
 
@@ -39,16 +39,22 @@ export type RTCEvent = (e: {
 }) => void
 
 export type WebSocketMessage = {
-    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'rtc:incoming' | 'rtc:closed';
+    type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'reconnect' | 'rtc:incoming' | 'rtc:closed';
     message?: any;
     connectRTC?: (params: RTCReceiverParams, callback: RTCEvent) => Promise<RTCResolved>;
     hangup?: () => void; // Reject incoming RTC connection.
     sender?: string; // user_id of the sender
     sender_cid?: string; // scid of the sender
     sender_rid?: string; // group of the sender
+    code?: 'USER_LEFT' | 'USER_DISCONNECTED' | 'USER_JOINED' | null; // code for notice messeges
 }
 
 export type RealtimeCallback = (rt: WebSocketMessage) => void;
+
+export type DelRecordQuery = GetRecordQuery & {
+    unique_id?: string | string[];
+    record_id?: string | string[];
+};
 
 export type GetRecordQuery = {
     unique_id?: string; // When unique_id is given, it will fetch the record with the given unique_id.
@@ -72,7 +78,7 @@ export type GetRecordQuery = {
         name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
         /** Not allowed: Periods, special characters. Allowed: White space. */
         value: string | number | boolean;
-        condition?: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
+        condition?: Condition;
         range?: string | number | boolean;
     };
     tag?: string;
@@ -134,11 +140,6 @@ export type PostRecordConfig = {
     progress?: ProgressCallback; // Callback for database request progress. Useful when building progress bar.
 }
 
-export type DelRecordQuery = GetRecordQuery & {
-    unique_id?: string | string[];
-    record_id?: string | string[];
-};
-
 export type BinaryFile = {
     access_group: number | 'private' | 'public' | 'authorized';
     filename: string;
@@ -190,7 +191,7 @@ export type RecordData = {
     };
     data?: Record<string, any>;
     tags?: string[];
-    bin: { [key: string]: BinaryFile | BinaryFile[] };
+    bin: { [key: string]: BinaryFile[] };
     ip: string;
     readonly: boolean;
 }
@@ -251,6 +252,8 @@ export type UserProfilePublicSettings = {
 }
 
 export type UserAttributes = {
+    user_id?: string; // User ID
+
     /** User's name */
     name?: string;
     /**
@@ -334,9 +337,11 @@ export type PublicUser = {
     locale: string;
     /** Number of the user's subscribers. */
     subscribers?: number;
+    /** Number of subscription the user has made */
+    subscribed?: number;
     /** Number of the records the user have created. */
     records?: number;
-    /** Timestamp of user last signup time. */
+    /** Timestamp of user last login time. */
     timestamp: number;
 } & UserAttributes;
 

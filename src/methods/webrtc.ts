@@ -166,6 +166,41 @@ export async function closeRTC(params: { cid?: string; close_all?: boolean }): P
     else {
         close(cid);
     }
+
+    this.log('Cleaning up media stream...');
+    if (this.__mediaStream) {
+        this.__mediaStream.getTracks().forEach((track) => {
+            track.stop(); // Stops the track (audio or video)
+        });
+        this.__mediaStream = null; // Clear the reference to the MediaStream
+    }
+}
+
+async function createMediaStream(media: MediaStream | MediaStreamConstraints): Promise<MediaStream> {
+    if (media instanceof MediaStream) {
+        return media;
+    }
+    
+    if (!media.video && !media.audio) {
+        // make dummy media stream
+        // Create a dummy MediaStream
+        const dummyStream = new MediaStream();
+
+        // Create a dummy video track (using a canvas)
+        const canvas = document.createElement('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        const dummyVideoStream = canvas.captureStream();
+        const dummyVideoTrack = dummyVideoStream.getVideoTracks()[0];
+
+        // Add the dummy video track to the MediaStream
+        dummyStream.addTrack(dummyVideoTrack);
+
+        // Assign the dummy MediaStream to this.__mediaStream
+        return dummyStream;
+    }
+
+    return navigator.mediaDevices.getUserMedia(media);
 }
 
 export async function connectRTC(
@@ -238,29 +273,10 @@ export async function connectRTC(
 
     // add media stream
     if (params?.media) {
-        if (params?.media instanceof MediaStream || this.__mediaStream) {
-            this.__mediaStream = this.__mediaStream || params.media;
-        }
-        else {
-            try {
-                if (params?.media?.video || params?.media?.audio) {
-                    this.__mediaStream = await navigator.mediaDevices.getUserMedia({
-                        video: params?.media?.video,
-                        audio: params?.media?.audio
-                    });
-                }
-            } catch (error) {
-                if ((error as any)?.name === 'NotFoundError') {
-                    throw new SkapiError('Requested media device not found.', { code: 'DEVICE_NOT_FOUND' });
-                } else {
-                    throw error;
-                }
-            }
-        }
-        if (this.__mediaStream)
-            this.__mediaStream.getTracks().forEach(track => {
-                __peerConnection[cid].addTrack(track, this.__mediaStream);
-            });
+        this.__mediaStream = await createMediaStream(params.media);
+        this.__mediaStream.getTracks().forEach(track => {
+            __peerConnection[cid].addTrack(track, this.__mediaStream);
+        });
     }
 
     __rtcEvents[cid] = callback;
@@ -342,7 +358,7 @@ export async function connectRTC(
                     channels: __dataChannel[cid],
                     hangup: () => closeRTC.bind(this)({ cid: cid }),
                     media: this.__mediaStream
-                })
+                });
             }).bind(this);
         })
     }
@@ -384,20 +400,10 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
         }
 
         if (params?.media) {
-            if (params?.media instanceof MediaStream || this.__mediaStream) {
-                this.__mediaStream = this.__mediaStream || params.media;
-            }
-            else {
-                if (params?.media?.video || params?.media?.audio)
-                    this.__mediaStream = await navigator.mediaDevices.getUserMedia({
-                        video: params?.media?.video,
-                        audio: params?.media?.audio
-                    });
-            }
-            if (this.__mediaStream)
-                this.__mediaStream.getTracks().forEach(track => {
-                    __peerConnection[sender].addTrack(track, this.__mediaStream);
-                });
+            this.__mediaStream = await createMediaStream(params.media);
+            this.__mediaStream.getTracks().forEach(track => {
+                __peerConnection[sender].addTrack(track, this.__mediaStream);
+            });
         }
 
         delete __receiver_ringing[sender];
