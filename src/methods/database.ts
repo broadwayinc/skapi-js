@@ -20,12 +20,15 @@ import { authentication } from './user';
 import { accessGroup, cannotBeEmptyString, getStruct, indexValue, recordIdOrUniqueId } from './param_restrictions';
 
 
-export async function normalizeRecord(record: Record<string, any>): Promise<RecordData> {
+export async function normalizeRecord(record: Record<string, any>, _called_from?): Promise<RecordData> {
     this.log('normalizeRecord', record);
     if(record?.rec) {
-        let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
-        if (recPost) {
-            record = JSON.parse(recPost);
+        if(_called_from !== 'called from postRecord') {
+            let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
+            if (recPost) {
+                record = JSON.parse(recPost);
+                window.sessionStorage.removeItem(`${this.service}:post:${record.rec}`);
+            }
         }
     }
 
@@ -854,7 +857,7 @@ export async function postRecord(
 
     window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
 
-    let record = await normalizeRecord.bind(this)(rec);
+    let record = await normalizeRecord.bind(this)(rec, 'called from postRecord');
     this.__iPosted[record.record_id] = record;
     if (record.unique_id) {
         this.__my_unique_ids[record.unique_id] = record.record_id;
