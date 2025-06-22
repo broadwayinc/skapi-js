@@ -424,6 +424,15 @@ export default class Skapi {
             catch (err) {
             }
         })()
+        
+        let uniqueids = window.sessionStorage.getItem(`${this.service}:uniqueids`);
+        if (uniqueids) {
+            try {
+                this.__my_unique_ids = JSON.parse(uniqueids);
+            } catch (err) {
+                this.__my_unique_ids = {};
+            }
+        }
 
         // connects to server
         this.__connection = (async (): Promise<Connection> => {
