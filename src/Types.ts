@@ -347,9 +347,9 @@ export type PublicUser = {
 
 export type ProgressCallback = (e: {
     status: 'upload' | 'download';
-    progress: number;
-    loaded: number;
-    total: number;
+    progress: number; // 0 ~ 100, number of percent completed.
+    loaded: number; // Number of bytes loaded.
+    total: number; // Total number of bytes to be loaded.
     currentFile?: File, // Only for uploadFiles()
     completed?: File[]; // Only for uploadFiles()
     failed?: File[]; // Only for uploadFiles()
