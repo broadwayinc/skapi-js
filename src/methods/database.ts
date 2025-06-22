@@ -22,11 +22,14 @@ import { accessGroup, cannotBeEmptyString, getStruct, indexValue, recordIdOrUniq
 
 export async function normalizeRecord(record: Record<string, any>, _called_from?): Promise<RecordData> {
     this.log('normalizeRecord', record);
-    if(record?.rec) {
-        if(_called_from !== 'called from postRecord') {
+    if (record?.rec) {
+        if (_called_from !== 'called from postRecord') {
             let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
             if (recPost) {
-                record = JSON.parse(recPost);
+                try {
+                    record = JSON.parse(recPost);
+                }
+                catch (err) { }
                 window.sessionStorage.removeItem(`${this.service}:post:${record.rec}`);
             }
         }
@@ -370,12 +373,12 @@ export async function getFile(
     }
 
     let filename = url.split('/').slice(-1)[0];
-    
+
     // if ((config?.dataType === 'blob' || config?.dataType === 'base64') && needAuth) {
     //     // when downloading blob, use signed url
     //     config.expires = 60;
     // }
-    
+
     let expires = config.expires;
     if (expires) {
         if (!isValidEndpoint) {
@@ -810,7 +813,7 @@ export async function postRecord(
     let to_bin = null;
     let extractedForm = extractFormData(form);
 
-    if(files) {
+    if (files) {
         to_bin = files;
     }
     else if (extractedForm.files.length) {
@@ -846,7 +849,7 @@ export async function postRecord(
         if (!rec.bin) {
             rec.bin = bin_endpoints;
         }
-        else { 
+        else {
             rec.bin.push(...bin_endpoints);
         }
     }
@@ -863,7 +866,7 @@ export async function postRecord(
         this.__my_unique_ids[record.unique_id] = record.record_id;
         window.sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids[record.unique_id]));
     }
-    
+
     return record;
 }
 
