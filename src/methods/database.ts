@@ -22,6 +22,13 @@ import { accessGroup, cannotBeEmptyString, getStruct, indexValue, recordIdOrUniq
 
 export async function normalizeRecord(record: Record<string, any>): Promise<RecordData> {
     this.log('normalizeRecord', record);
+    if(record?.rec) {
+        let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
+        if (recPost) {
+            record = JSON.parse(recPost);
+        }
+    }
+
     const output: Record<string, any> = {
         user_id: '',
         record_id: '',
@@ -836,7 +843,7 @@ export async function postRecord(
         if (!rec.bin) {
             rec.bin = bin_endpoints;
         }
-        else {
+        else { 
             rec.bin.push(...bin_endpoints);
         }
     }
@@ -845,11 +852,15 @@ export async function postRecord(
         this.__private_access_key[is_reference_post] = rec.reference_private_key;
     }
 
+    window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
+
     let record = await normalizeRecord.bind(this)(rec);
     this.__iPosted[record.record_id] = record;
     if (record.unique_id) {
         this.__my_unique_ids[record.unique_id] = record.record_id;
+        window.sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids[record.unique_id]));
     }
+    
     return record;
 }
 
