@@ -21,7 +21,6 @@ import { accessGroup, cannotBeEmptyString, getStruct, indexValue, recordIdOrUniq
 
 
 export async function normalizeRecord(record: Record<string, any>, _called_from?): Promise<RecordData> {
-    this.log('normalizeRecord', record);
     if (record?.rec) {
         if (_called_from !== 'called from postRecord') {
             let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
@@ -35,6 +34,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
         }
     }
 
+    this.log('normalizeRecord', record);
     const output: Record<string, any> = {
         user_id: '',
         record_id: '',
