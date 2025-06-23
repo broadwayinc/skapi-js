@@ -23,13 +23,13 @@ import { accessGroup, cannotBeEmptyString, getStruct, indexValue, recordIdOrUniq
 export async function normalizeRecord(record: Record<string, any>, _called_from?): Promise<RecordData> {
     if (record?.rec) {
         if (_called_from !== 'called from postRecord') {
-            let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
+            let recPost = sessionStorage.getItem(`${this.service}:post:${record.rec}`);
             if (recPost) {
                 try {
                     record = JSON.parse(recPost);
                 }
                 catch (err) { }
-                window.sessionStorage.removeItem(`${this.service}:post:${record.rec}`);
+                sessionStorage.removeItem(`${this.service}:post:${record.rec}`);
             }
         }
     }
@@ -858,13 +858,13 @@ export async function postRecord(
         this.__private_access_key[is_reference_post] = rec.reference_private_key;
     }
 
-    window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
+    sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
 
     let record = await normalizeRecord.bind(this)(rec, 'called from postRecord');
     this.__iPosted[record.record_id] = record;
     if (record.unique_id) {
         this.__my_unique_ids[record.unique_id] = record.record_id;
-        window.sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids[record.unique_id]));
+        sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids[record.unique_id]));
     }
 
     return record;

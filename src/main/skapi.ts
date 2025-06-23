@@ -425,7 +425,7 @@ export default class Skapi {
             }
         })()
         
-        let uniqueids = window.sessionStorage.getItem(`${this.service}:uniqueids`);
+        let uniqueids = sessionStorage.getItem(`${this.service}:uniqueids`);
         if (uniqueids) {
             try {
                 this.__my_unique_ids = JSON.parse(uniqueids);
