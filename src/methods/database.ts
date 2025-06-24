@@ -227,15 +227,6 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
         return record as RecordData;
     }
 
-    if (this.__iPosted[record.rec]) {
-        if (this.__iPosted[record.rec].record_id) {
-            return this.__iPosted[record.rec];
-        }
-        else {
-            delete this.__iPosted[record.rec];
-        }
-    }
-
     for (let k in keys) {
         if (record.hasOwnProperty(k)) {
             let exec = keys[k](record[k]);
@@ -861,7 +852,6 @@ export async function postRecord(
     sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
 
     let record = await normalizeRecord.bind(this)(rec, 'called from postRecord');
-    this.__iPosted[record.record_id] = record;
     if (record.unique_id) {
         this.__my_unique_ids[record.unique_id] = record.record_id;
         sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids[record.unique_id]));
