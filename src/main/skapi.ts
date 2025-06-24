@@ -135,12 +135,11 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.250';
+    private __version = '1.0.251';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
     connection: Connection | null = null;
-    private __iPosted: { [rec_id: string]: RecordData } = {};
     private __my_unique_ids: { [rec_id: string]: string } = {};
     private userPool: CognitoUserPool | null = null;
     private __socket: Promise<WebSocket> | null = null;
