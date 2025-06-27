@@ -145,7 +145,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             output.source.referencing_limit = r;
         },
         "alw_gnt": (r: boolean) => {
-            output.source.allow_granted_to_grant_others = r;
+            output.source.allow_granted_to_grant_others = r; // depricated. // this is here just for backward compatibility. // now it will have value directly in prv_acs.allow_granted_to_grant_others
         },
         'rfd': (r: number) => {
             // output.reference.referenced_count = r; // depricated
