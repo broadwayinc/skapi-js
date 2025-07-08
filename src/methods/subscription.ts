@@ -19,6 +19,12 @@ export async function getFeed(params?: { access_group?: number; }, fetchOptions?
         params || {},
         {
             access_group: v => {
+                if(v === 'authorized') {
+                    v = 1;
+                }
+                if(v === 'public') {
+                    v = 0;
+                }
                 if (typeof v !== 'number') {
                     throw new SkapiError('"access_group" should be type number.', { code: 'INVALID_PARAMETER' });
                 }
