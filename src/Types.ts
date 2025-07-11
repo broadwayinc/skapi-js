@@ -98,9 +98,8 @@ export type PostRecordConfig = {
 
         /** When true, Record will be only accessible for subscribed users. */
         subscription?: {
-            is_subscription_record?: boolean;
-
-            exclude_from_feed?: boolean; // When true, record will be excluded from the subscribers feed.
+            is_subscription_record: boolean; // When true, record will be treated as a subscription record.
+            upload_to_feed?: boolean; // When true, record will be uploaded to the feed of the subscribers.
             notify_subscribers?: boolean; // When true, subscribers will receive notification when the record is uploaded.
             feed_referencing_records?: boolean; // When true, records referencing this record will be included to the subscribers feed.
             notify_referencing_records?: boolean; // When true, records referencing this record will be notified to subscribers.
@@ -165,8 +164,7 @@ export type RecordData = {
         /** User ID of subscription */
         subscription?: {
             is_subscription_record: boolean;
-
-            exclude_from_feed: boolean; // When true, record will be excluded from the subscribers feed.
+            upload_to_feed: boolean; // When true, record will be uploaded to the feed of the subscribers.
             notify_subscribers: boolean; // When true, subscribers will receive notification when the record is uploaded.
             feed_referencing_records: boolean; // When true, records referencing this record will be included to the subscribers feed.
             notify_referencing_records: boolean; // When true, records referencing this record will be notified to subscribers.

@@ -198,7 +198,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
         },
         'prv_acs': (r: { [key: string]: string }) => {
             for (let k in r) {
-                let subscription_config = ['notify_subscribers', 'exclude_from_feed', 'feed_referencing_records', 'notify_referencing_records'];
+                let subscription_config = ['notify_subscribers', 'upload_to_feed', 'feed_referencing_records', 'notify_referencing_records'];
                 if (subscription_config.includes(k)) {
                     if (!output.table.subscription) {
                         output.table.subscription = {};
@@ -664,10 +664,8 @@ export async function postRecord(
                     }
                     return null;
                 },
-
-                exclude_from_feed: 'boolean',
+                upload_to_feed: 'boolean',
                 notify_subscribers: 'boolean',
-
                 feed_referencing_records: 'boolean',
                 notify_referencing_records: 'boolean',
             },
