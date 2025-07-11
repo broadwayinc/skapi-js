@@ -43,7 +43,14 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
         readonly: false,
         table: {
             name: '',
-            access_group: 0
+            access_group: 0,
+            subscription: {
+                is_subscription_record: false,
+                upload_to_feed:false,
+                notify_subscribers: false,
+                feed_referencing_records:false,
+                notify_referencing_records:false
+            }
         },
         referenced_count: 0,
         source: {
@@ -94,8 +101,6 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                 output.table.name = rSplit[0];
                 output.table.access_group = access_group_set(rSplit[2]);
                 if (rSplit?.[3]) {
-                    if (!output.table?.subscription)
-                        output.table.subscription = {};
                     output.table.subscription.is_subscription_record = true;
                 }
             }
@@ -110,8 +115,6 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                 output.table.name = rSplit[1];
                 output.table.access_group = access_group_set(rSplit[3]);
                 if (rSplit?.[4]) {
-                    if (!output.table?.subscription)
-                        output.table.subscription = {};
                     output.table.subscription.is_subscription_record = true;
                 }
             }
@@ -200,9 +203,6 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             for (let k in r) {
                 let subscription_config = ['notify_subscribers', 'upload_to_feed', 'feed_referencing_records', 'notify_referencing_records'];
                 if (subscription_config.includes(k)) {
-                    if (!output.table.subscription) {
-                        output.table.subscription = {};
-                    }
                     output.table.subscription[k] = r[k];
                 }
                 else {
