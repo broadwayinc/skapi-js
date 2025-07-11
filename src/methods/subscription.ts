@@ -86,11 +86,17 @@ export async function getSubscriptions(
 
     response.list = response.list.map(((s: Record<string, any>) => {
         let subscription: Record<string, any> = {};
-        let subSplit = s.sub.split('#');
-        subscription.subscriber = subSplit[2];
-        subscription.subscription = subSplit[0];
-        subscription.timestamp = s.stmp;
-        subscription.blocked = s.grp.substring(0, 1) === 'N';
+        if(s.sub) {
+            let subSplit = s.sub.split('#');
+            subscription.subscriber = subSplit[2];
+            subscription.subscription = subSplit[0];
+        }
+        else {
+            subscription.subscriber = s.subscriber;
+            subscription.subscription = s.subscription;
+        }
+        subscription.timestamp = s?.timestamp || s.stmp;
+        subscription.blocked = s?.blocked || s.grp.substring(0, 1) === 'N';
         Object.assign(subscription, s.opt);
         return subscription;
     }));
