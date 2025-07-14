@@ -1129,7 +1129,15 @@ export default class Skapi {
         return getSubscriptions.bind(this)(params, fetchOptions);
     }
     @formHandler()
-    subscribe(params: { user_id: string; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<'SUCCESS: The user has subscribed.'> {
+    subscribe(params: { user_id: string; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<{
+        subscriber: string; // Subscriber ID
+        subscription: string; // Subscription ID
+        timestamp: number; // Subscribed UNIX timestamp
+        blocked: boolean; // True when subscriber is blocked by subscription
+        get_feed: boolean; // True when subscriber gets feed
+        get_notified: boolean; // True when subscriber gets notified
+        get_email: boolean; // True when subscriber gets email
+    }> {
         return subscribe.bind(this)(params);
     }
     @formHandler()
