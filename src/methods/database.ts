@@ -46,10 +46,10 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             access_group: 0,
             subscription: {
                 is_subscription_record: false,
-                upload_to_feed:false,
+                upload_to_feed: false,
                 notify_subscribers: false,
-                feed_referencing_records:false,
-                notify_referencing_records:false
+                feed_referencing_records: false,
+                notify_referencing_records: false
             }
         },
         referenced_count: 0,
@@ -608,10 +608,10 @@ export async function postRecord(
         config.table = {
             name: config.table
         };
+    }
 
-        if (!config.record_id) {
-            config.table.access_group = 0;
-        }
+    if (!config.record_id && !config.table.hasOwnProperty('access_group')) {
+        config.table.access_group = 0;
     }
 
     let reference_limit_check = (v: number) => {
