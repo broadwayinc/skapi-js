@@ -852,7 +852,7 @@ export async function postRecord(
     let record = await normalizeRecord.bind(this)(rec, 'called from postRecord');
     if (record.unique_id) {
         this.__my_unique_ids[record.unique_id] = record.record_id;
-        sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids[record.unique_id]));
+        sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids));
     }
 
     return record;
