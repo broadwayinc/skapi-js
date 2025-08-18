@@ -97,3 +97,15 @@ When the request is resolved, the `mock()` method will return the response data 
 The response data will be displayed in an alert box.
 
 #### For more information, check out our [documentation](https://docs.skapi.com).
+
+
+## Updates
+
+**Current version: 1.0.260**
+
+- Service admin user invitations are now supported. [Learn more](https://docs.skapi.com/admin/invite.html)
+- Custom unique ID features have been added to the database. [Learn more](https://docs.skapi.com/database/unique-id.html)
+- Database referencing now offers index restriction controls, enabling fine-grained data ownership management. [Learn more](https://docs.skapi.com/database/referencing.html#referencing-index-restrictions)
+- The database subscription feature is now available. [Learn more](https://docs.skapi.com/database/subscription.html)
+- [WebRTC](https://docs.skapi.com/realtime/webRTC.html) and [Web notification](https://docs.skapi.com/notification/send-notifications.html) are now available, making it easy to build video chat and notification features for your application.
+- Fixed various minor bugs.
