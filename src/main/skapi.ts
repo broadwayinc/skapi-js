@@ -863,7 +863,7 @@ export default class Skapi {
     @formHandler()
     deleteRecords(params: DelRecordQuery, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> { return deleteRecords.bind(this)(params, fetchOptions); }
     @formHandler()
-    resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
+    resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation e-mail has been sent.'> {
         return resendSignupConfirmation.bind(this)();
     }
     @formHandler()

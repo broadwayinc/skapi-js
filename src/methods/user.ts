@@ -546,7 +546,7 @@ export async function logout(params?: Form<{ global:boolean; }>): Promise<'SUCCE
     return 'SUCCESS: The user has been logged out.';
 }
 
-export async function resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
+export async function resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation e-mail has been sent.'> {
     if (!this.__request_signup_confirmation) {
         throw new SkapiError('Least one login attempt is required.', { code: 'INVALID_REQUEST' });
     }
@@ -555,7 +555,7 @@ export async function resendSignupConfirmation(): Promise<'SUCCESS: Signup confi
         username: this.__request_signup_confirmation,
     });
 
-    return resend; // 'SUCCESS: Signup confirmation E-Mail has been sent.'
+    return resend; // 'SUCCESS: Signup confirmation e-mail has been sent.'
 }
 
 export async function recoverAccount(
