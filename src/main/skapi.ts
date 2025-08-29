@@ -135,7 +135,7 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.259';
+    private __version = '1.0.261';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -863,7 +863,7 @@ export default class Skapi {
     @formHandler()
     deleteRecords(params: DelRecordQuery, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> { return deleteRecords.bind(this)(params, fetchOptions); }
     @formHandler()
-    resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation E-Mail has been sent.'> {
+    resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation e-mail has been sent.'> {
         return resendSignupConfirmation.bind(this)();
     }
     @formHandler()
