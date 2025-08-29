@@ -1056,7 +1056,7 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
     }
 
     let collision = [
-        ['email_public', 'email_verified', "User's E-Mail should be verified to set"],
+        ['email_public', 'email_verified', "User's e-mail should be verified to set"],
         ['phone_number_public', 'phone_number_verified', "User's phone number should be verified to set"]
     ];
 
