@@ -135,7 +135,7 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.261';
+    private __version = '1.0.262';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
