@@ -309,8 +309,8 @@ export default class Skapi {
         }
 
         if (!service || !owner) {
-            alert("Service ID or Owner ID is invalid.");
-            throw new SkapiError('"service" and "owner" is required', { code: 'INVALID_PARAMETER' });
+            alert('Service ID and Owner ID are required.');
+            throw new SkapiError('"service" and "owner" are required.', { code: 'INVALID_PARAMETER' });
         }
 
         if (owner !== this.host) {
