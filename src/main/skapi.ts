@@ -313,6 +313,11 @@ export default class Skapi {
             throw new SkapiError('"service" and "owner" are required.', { code: 'INVALID_PARAMETER' });
         }
 
+        if (service.toLowerCase() === 'service_id' || owner.toLowerCase() === 'owner_id') {
+            alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
+            throw new SkapiError('"service" and "owner" are required.', { code: 'INVALID_PARAMETER' });
+        }
+
         if (owner !== this.host) {
             try {
                 validator.UserId(owner, '"owner"');
