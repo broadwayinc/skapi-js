@@ -135,7 +135,7 @@ import {
 } from '../methods/vivian';
 export default class Skapi {
     // current version
-    private __version = '1.0.262';
+    private __version = '1.0.263';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -195,9 +195,20 @@ export default class Skapi {
 
     get onLogin(): Function[] {
         return this._onLoginListeners;
-    }
+    } // to be depricated
 
     set onLogin(listener: (user: UserProfile) => void) {
+        // setting onLogin is bypassed
+        if (typeof listener === 'function') {
+            this._onLoginListeners.push(listener);
+        }
+    } // to be depricated
+    
+    get onUserUpdate(): Function[] {
+        return this._onLoginListeners;
+    }
+
+    set onUserUpdate(listener: (user: UserProfile) => void) {
         // setting onLogin is bypassed
         if (typeof listener === 'function') {
             this._onLoginListeners.push(listener);
@@ -289,7 +300,8 @@ export default class Skapi {
     constructor(service: string, owner: string, options?: {
         autoLogin: boolean;
         eventListener?: {
-            onLogin: (user: UserProfile) => void;
+            onLogin: (user: UserProfile) => void; // to be depricated
+            onUserUpdate: (user: UserProfile) => void;
         }
     }, __etc?: any) {
         if (!sessionStorage) {
@@ -340,6 +352,10 @@ export default class Skapi {
 
         if (options?.eventListener?.onLogin && typeof options.eventListener.onLogin === 'function') {
             this.onLogin = options.eventListener.onLogin;
+        } // to be depricated
+
+        if (options?.eventListener?.onUserUpdate && typeof options.eventListener.onUserUpdate === 'function') {
+            this.onUserUpdate = options.eventListener.onUserUpdate;
         }
 
         // get endpoints
