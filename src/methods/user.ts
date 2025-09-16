@@ -30,6 +30,7 @@ function map_ticket_obj(t) {
         'plch': 'placeholder',
         'hash': 'hash',
         'desc': 'description',
+        'pmc': 'limit_per_user'
     }
     let new_obj = {};
     for (let k in t) {
@@ -93,6 +94,7 @@ export async function registerTicket(
         count?: number;
         time_to_live?: number;
         placeholder?: { [key: string]: string };
+        limit_per_user?: number;
         condition?: {
             return200?: boolean; // When true, returns 200 when regardless condition mismatch
             method?: 'GET' | 'POST'; // Defaults to 'GET' method when not given
