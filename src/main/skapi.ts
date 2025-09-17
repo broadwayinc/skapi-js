@@ -677,7 +677,14 @@ export default class Skapi {
     }
 
     @formHandler()
-    consumeTicket(params: { ticket_id: string;[key: string]: any; }): Promise<any> {
+    consumeTicket(params: { 
+        ticket_id: string;
+        method: string; // GET | POST
+        auth?: boolean;
+        data?: {
+            [key: string]: any; 
+        }
+    }): Promise<any> {
         return consumeTicket.bind(this)(params);
     }
 
