@@ -35,7 +35,7 @@
     "amazon-cognito-identity-js": "^6.3.12"
   },
   "devDependencies": {
-    "basic-node-server": "^1.0.11",
+    "basic-node-server": "^1.0.16",
     "ts-loader": "^9.5.1",
     "typescript": "^5.3.3",
     "webpack": "^5.74.0",
