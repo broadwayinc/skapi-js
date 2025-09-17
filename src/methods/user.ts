@@ -58,14 +58,24 @@ function map_ticket_obj(t) {
     return new_obj;
 }
 
-export async function consumeTicket(params: { ticket_id: string; } & { [key: string]: any }): Promise<any> {
+export async function consumeTicket(params: { 
+        ticket_id: string;
+        method: string; // GET | POST
+        auth?: boolean;
+        data?: {
+            [key: string]: any; 
+        }
+    }): Promise<any> {
     if (!params.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
+    }
+    if(!params.method) {
+        throw new SkapiError('Method is required. Should be either "GET" or "POST"', { code: 'INVALID_PARAMETER' });
     }
     let ticket_id = params.ticket_id;
 
     await this.__connection;
-    let resp = await request.bind(this)(`https://${this.service.slice(0, 4)}.${this.customApiDomain}/auth/consume/${this.service}/${this.owner}/${ticket_id}`, params, { auth: true });
+    let resp = await request.bind(this)(`https://${this.service.slice(0, 4)}.${this.customApiDomain}/auth/consume/${this.service}/${this.owner}/${ticket_id}`, params?.data || {}, { method: params.method, auth: !!params?.auth });
     return map_ticket_obj(resp);
 }
 
