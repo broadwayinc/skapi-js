@@ -120,5 +120,6 @@ srvc.js
 sandbox_deploy.py
 index.html
 sandbox.html
+sandbox.js
 _sandbox
 sw.js

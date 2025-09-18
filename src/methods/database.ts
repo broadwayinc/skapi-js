@@ -811,7 +811,7 @@ export async function postRecord(
     // callbacks should be removed after checkparams
     delete _config.progress;
 
-    let options: { [key: string]: any } = { auth: true };
+    let options: { [key: string]: any } = { auth: !!this.__user, method: 'post' };
     let postData = null;
     let to_bin = null;
     let extractedForm = extractFormData(form);
