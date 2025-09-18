@@ -312,10 +312,18 @@ export async function request(
         headers.Authorization = token;
     }
 
-    if (headers['Content-Type'] !== 'application/json') {
-        // add service and owner to headers if content type is not json
-        headers['Content-Meta'] = JSON.stringify({ service, owner });
-    }
+    let meta = {
+        public_identifier: this.__public_identifier,
+        service,
+        owner
+    };
+
+    headers['Content-Meta'] = JSON.stringify(meta);
+    
+    // if (headers['Content-Type'] !== 'application/json') {
+    //     // add service and owner to headers if content type is not json
+    //     headers['Content-Meta'] = JSON.stringify(meta);
+    // }
 
     let opt: RequestInit & { responseType?: string | null, headers: Record<string, any>; } = { headers }; // request options
     if (options?.responseType) {
@@ -756,7 +764,7 @@ export async function uploadFiles(
             contentType: f.type || null
         }, getSignedParams);
 
-        let { fields = null, url, cdn } = await request.bind(this)('get-signed-url', signedParams, { auth: true });
+        let { fields = null, url, cdn } = await request.bind(this)('get-signed-url', signedParams, { auth: !!this.__user });
 
         bin_endpoints.push(cdn);
 

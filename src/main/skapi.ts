@@ -296,6 +296,7 @@ export default class Skapi {
     private __authConnection: Promise<void>;
     private __network_logs = false;
     private __endpoint_version = 'v1';
+    private __public_identifier = '';
 
     constructor(service: string, owner: string, options?: {
         autoLogin: boolean;
@@ -417,6 +418,10 @@ export default class Skapi {
             for (let k in restore) {
                 this[k] = restore[k];
             }
+
+            if(!restore.__public_identifier) {
+                this.__public_identifier = `${this.service}:${this.owner}:${generateRandom(16)}`;
+            }
         }
 
         this.__authConnection = (async (): Promise<void> => {
@@ -477,6 +482,7 @@ export default class Skapi {
                         '__disabledAccount', // disabled account : null
                         '__cached_requests', // cached records : {}
                         '__request_signup_confirmation', // for resend signup confirmation : null
+                        '__public_identifier', // public identifier : ''
                         'connection', // service info : null
                     ];
 
