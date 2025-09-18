@@ -62,6 +62,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
         ip: '',
         bin: {}
     };
+    let is_anonymous = false;
     function access_group_set(v) {
         let access_group = v == '**' ? 'private' : parseInt(v);
         access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group == 99 ? 'admin' : access_group;
@@ -81,6 +82,13 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             else {
                 output.readonly = false;
             }
+            // check if the format of the ip is 0-0-0-0, if it is, convert it to 0.0.0.0
+
+            if (/^\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}$/.test(ip)) {
+                ip = ip.split('-').join('.');
+                is_anonymous = true;
+            }
+
             output.ip = ip;
         },
         'rec': (r: string) => {
@@ -234,6 +242,10 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                 await exec;
             }
         }
+    }
+
+    if(is_anonymous) {
+        output.user_id = 'anonymous:' + output.user_id;
     }
 
     return output as RecordData;
@@ -600,9 +612,11 @@ export async function postRecord(
         throw new SkapiError('"config" argument is required.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (!this.__user) {
-        throw new SkapiError('Login is required.', { code: 'INVALID_REQUEST' });
-    }
+    // if (!this.__user) {
+    //     throw new SkapiError('Login is required.', { code: 'INVALID_REQUEST' });
+    // }
+
+    let is_public = !this.__user;
 
     if (typeof config.table === 'string') {
         config.table = {
@@ -807,6 +821,22 @@ export async function postRecord(
     }
     else if (extractedForm.files.length) {
         to_bin = extractedForm.files;
+    }
+
+
+    if (is_public) {
+        if(_config.record_id) {
+            throw new SkapiError('Public users cannot update existing records.', { code: 'INVALID_REQUEST' });
+        }
+        if(_config.table.access_group !== 'public' && _config.table.access_group !== 0){
+            throw new SkapiError('Public users can only post records to public tables.', { code: 'INVALID_REQUEST' });
+        }
+        if(_config.table.subscription) {
+            throw new SkapiError('Public users cannot post subscription records.', { code: 'INVALID_REQUEST' });
+        }
+        if(_config.remove_bin) {
+            throw new SkapiError('Public users cannot remove files from records.', { code: 'INVALID_REQUEST' });
+        }
     }
 
     postData = Object.assign({ data: extractedForm.data }, _config);
