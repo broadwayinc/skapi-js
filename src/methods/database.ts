@@ -837,6 +837,9 @@ export async function postRecord(
         if(_config.remove_bin) {
             throw new SkapiError('Public users cannot remove files from records.', { code: 'INVALID_REQUEST' });
         }
+        if(_config.unique_id) {
+            throw new SkapiError('Public users cannot set unique_id for records.', { code: 'INVALID_REQUEST' });
+        }
     }
 
     postData = Object.assign({ data: extractedForm.data }, _config);
