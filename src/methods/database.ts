@@ -1068,15 +1068,14 @@ export async function getTags(
     );
 
     if (Array.isArray(res?.list)) {
-        for (let i in res.list) {
-            let item = res.list[i];
+        res.list = res.list.map(item => {
             let tSplit = item.tag.split('/');
-            res.list[i] = {
+            return {
                 table: tSplit[1],
                 tag: tSplit[0],
                 number_of_records: item.cnt_rec
             };
-        }
+        });
     }
 
     return res;
