@@ -99,9 +99,24 @@ The response data will be displayed in an alert box.
 #### For more information, check out our [documentation](https://docs.skapi.com).
 
 
-## Updates
+# Version History
 
-**Current version: 1.0.260**
+**Current version: 1.0.265**
+
+- Bug fix: Minor fix for admin purposes.
+
+**1.0.264**
+
+- Anonymous users can now use `skapi.postRecord()`. Only limited to public records.
+- Bug fix: `skapi.getTags()` not resolving proper data.
+
+**1.0.262**
+
+- Corrected the casing of the resolved string returned by [`resendSignupConfirmation()`](/api-reference/authentication/README.md#resendsignupconfirmation) to: `"SUCCESS: Signup confirmation e-mail has been sent."`
+
+- During class initialization, if the constructor arguments are set to `"service_id"` and `"owner_id"`, a browser alert displays: `Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.`
+
+**1.0.260:**
 
 - Service admin user invitations are now supported. [Learn more](https://docs.skapi.com/admin/invite.html)
 - Custom unique ID features have been added to the database. [Learn more](https://docs.skapi.com/database/unique-id.html)
