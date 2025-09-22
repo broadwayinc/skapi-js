@@ -163,8 +163,8 @@ export async function request(
     method = method.toUpperCase();
 
     let __connection = null;
-    let service = this.service;
-    let owner = this.owner;
+    let service = data?.service || this.service;
+    let owner = data?.owner || this.owner;
     let token = null; // idToken
     let endpoint = await getEndpoint.bind(this)(url, !!auth);
 
