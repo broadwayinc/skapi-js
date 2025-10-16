@@ -376,7 +376,8 @@ export async function getNewsletters(
         'timestamp': 'number',
         'read': 'number',
         'complaint': 'number',
-        'subject': 'string'
+        'subject': 'string',
+        'bounced': 'number'
     };
 
     if (!params) {
@@ -393,7 +394,14 @@ export async function getNewsletters(
     };
 
     params = validator.Params(params, {
-        searchFor: ['message_id', 'timestamp', 'read', 'complaint', 'group', 'subject'],
+        searchFor: [
+            "message_id",
+            "timestamp",
+            "subject",
+            "complaint",
+            "read",
+            "bounced",
+        ],
         value: (v: number | string) => {
             if (typeof v !== searchType[params.searchFor]) {
                 throw new SkapiError(`"value" type does not match the type of "${params.searchFor}" index.`, { code: 'INVALID_PARAMETER' });
@@ -450,7 +458,8 @@ export async function getNewsletters(
         'read': 'read',
         'subject': 'subj',
         'bounced': 'bnce',
-        'url': 'url'
+        'url': 'url',
+        'delivered': 'delv'
     };
     let defaults = {
         'message_id': '',
@@ -459,7 +468,8 @@ export async function getNewsletters(
         'read': 0,
         'subject': '',
         'bounced': 0,
-        'url': ''
+        'url': '',
+        'delivered': 0
     };
 
     mails.list = mails.list.map(m => {

@@ -1083,6 +1083,7 @@ export async function getTags(
 
     return res;
 }
+
 export async function getUniqueId(
     query?: Form<{
         /** Unique ID */
@@ -1119,6 +1120,7 @@ export async function getUniqueId(
 
     return res;
 }
+
 export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> {
     await this.__connection;
 
