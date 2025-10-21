@@ -44,8 +44,20 @@ function map_ticket_obj(t) {
             new_obj['consume_id'] = tkid[2];
             new_obj['user_id'] = tkid[3];
 
+            // last 4 characters are random chars
+            let rand = tkid[2].slice(-4);
+            new_obj["is_check"] = rand === ":CHK";
+
             if (!t.stmp) {
-                new_obj['timestamp'] = fromBase62(tkid[2].slice(0, -4));
+                let timestampStr = tkid[2].slice(0, -4);
+
+                // check if timestampStr is a number string
+                if (/^[0-9]+$/.test(timestampStr)) {
+                    new_obj['timestamp'] = parseInt(timestampStr, 10);
+                }
+                else {
+                    new_obj['timestamp'] = fromBase62(tkid[2].slice(0, -4));
+                }
             }
         }
         else if (mapper[k]) {
