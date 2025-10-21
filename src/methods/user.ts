@@ -20,7 +20,7 @@ import { MD5, extractFormData, fromBase62, parseUserAttributes } from '../utils/
 let cognitoUser: CognitoUser | null = null;
 
 function map_ticket_obj(t): {
-    ticket_id: string;
+    ticket_id?: string;
     consume_id?: string;
     user_id?: string;
     is_test?: boolean;
