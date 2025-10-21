@@ -26,7 +26,11 @@ export async function getspell(params){
 
 export async function dopamine(params){
     await this.__connection;
-
+    params = validator.Params(params, {
+        'message': 'string',
+        'name': 'string'
+    }, ['message', 'name'])
+    
     let response = await request.bind(this)('dopamine', params, {auth: true});
     
     let message = response.previous_message.message
