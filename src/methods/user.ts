@@ -19,14 +19,26 @@ import { MD5, extractFormData, fromBase62, parseUserAttributes } from '../utils/
 
 let cognitoUser: CognitoUser | null = null;
 
-function map_ticket_obj(t) {
+function map_ticket_obj(t): {
+    ticket_id: string;
+    consume_id?: string;
+    user_id?: string;
+    is_test?: boolean;
+    timestamp?: number;
+    condition?: any;
+    action?: any;
+    count?: number;
+    time_to_live?: number;
+    description?: string;
+    limit_per_user?: number;
+} {
     let mapper = {
         "tkid": 'ticket_id',
         "cond": 'condition',
+        "stmp": 'timestamp',
         "actn": 'action',
         "cnt": 'count',
         "ttl": 'time_to_live',
-        "stmp": 'timestamp',
         'plch': 'placeholder',
         'hash': 'hash',
         'desc': 'description',
@@ -46,7 +58,7 @@ function map_ticket_obj(t) {
 
             // last 4 characters are random chars
             let rand = tkid[2].slice(-4);
-            new_obj["is_check"] = rand === ":CHK";
+            new_obj["is_test"] = rand === ":CHK";
 
             if (!t.stmp) {
                 let timestampStr = tkid[2].slice(0, -4);
