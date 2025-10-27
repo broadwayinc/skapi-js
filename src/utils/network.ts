@@ -376,9 +376,8 @@ export async function request(
     }
 
     return new Promise((res, rej) => {
-        queue.add(async () => {
+        queue.add([async () => {
             let promise = _fetch.bind(this)(endpoint, opt, progress);
-
             __pendingRequest[requestKey as string] = promise.finally(() => {
                 delete __pendingRequest[requestKey as string];
             });
@@ -399,7 +398,7 @@ export async function request(
                 rej(err);
                 throw err;
             }
-        });
+        }]);
     });
 }
 
@@ -773,7 +772,7 @@ export async function uploadFiles(
     }
 
     return new Promise((res, rej) => {
-        queue.add(async () => {
+        queue.add([async () => {
             let completed = [];
             let failed = [];
             let bin_endpoints = [];
@@ -826,7 +825,7 @@ export async function uploadFiles(
 
             res({ completed, failed, bin_endpoints });
             return { completed, failed, bin_endpoints };
-        });
+        }]);
     });
 }
 

@@ -853,7 +853,7 @@ export async function postRecord(
     if (Object.keys(fetchOptions).length) {
         Object.assign(options, { fetchOptions });
     }
-
+    
     let rec = await request.bind(this)('post-record', postData, options);
     if (to_bin) {
         let bin_formData = new FormData();
