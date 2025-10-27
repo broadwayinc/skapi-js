@@ -191,32 +191,32 @@ export default class Skapi {
         // setting user is bypassed
     }
 
-    private _onLoginListeners: Function[] = [];
+    private _userProfileListeners: Function[] = [];
 
     get onLogin(): Function[] {
-        return this._onLoginListeners;
+        return this._userProfileListeners;
     } // to be depricated
 
     set onLogin(listener: (user: UserProfile) => void) {
         // setting onLogin is bypassed
         if (typeof listener === 'function') {
-            this._onLoginListeners.push(listener);
+            this._userProfileListeners.push(listener);
         }
     } // to be depricated
     
     get onUserUpdate(): Function[] {
-        return this._onLoginListeners;
+        return this._userProfileListeners;
     }
 
     set onUserUpdate(listener: (user: UserProfile) => void) {
         // setting onLogin is bypassed
         if (typeof listener === 'function') {
-            this._onLoginListeners.push(listener);
+            this._userProfileListeners.push(listener);
         }
     }
 
     private _runOnLoginListeners(user: UserProfile) {
-        for (let listener of this._onLoginListeners) {
+        for (let listener of this._userProfileListeners) {
             if (typeof listener === 'function') {
                 listener(user);
             }
