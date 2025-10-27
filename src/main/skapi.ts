@@ -347,11 +347,16 @@ export default class Skapi {
         this.owner = owner;
 
         let autoLogin = true;
-        this.requestBatchSize = options?.requestBatchSize || this.requestBatchSize;
 
         if (options) {
             if (typeof options.autoLogin === 'boolean') {
                 autoLogin = options.autoLogin;
+            }
+            if (typeof options.requestBatchSize === 'number') {
+                if (options.requestBatchSize < 1) {
+                    throw new SkapiError('"requestBatchSize" must be greater than 0.', { code: 'INVALID_PARAMETER' });
+                }
+                this.requestBatchSize = options.requestBatchSize;
             }
         }
 
