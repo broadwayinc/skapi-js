@@ -321,7 +321,7 @@ export function authentication() {
                             this.session = s;
                             getUserProfile();
                             if (!skipEventTrigger) {
-                                this._runOnLoginListeners(this.user);
+                                this._runOnUserUpdateListeners(this.user);
                             }
                             return this.session;
                         });
@@ -330,7 +330,7 @@ export function authentication() {
                     this.session = s;
                     getUserProfile();
                     if (!skipEventTrigger) {
-                        this._runOnLoginListeners(this.user);
+                        this._runOnUserUpdateListeners(this.user);
                     }
                     res(this.session);
                 }
@@ -569,7 +569,7 @@ export async function _out(global: boolean = false) {
         this[k] = to_be_erased[k];
     }
 
-    this._runOnLoginListeners(null);
+    this._runOnUserUpdateListeners(null);
     return toReturn;
 }
 
