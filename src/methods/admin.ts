@@ -107,6 +107,10 @@ export async function inviteUser(
     options?: {
         confirmation_url?: string; // url 없으면 무조건 true
         email_subscription?: boolean;
+        template?: {
+            url: string;
+            subject: string;
+        }
     }
 ): Promise<'SUCCESS: Invitation has been sent.'> {
     let paramRestrictions = {
@@ -189,11 +193,21 @@ export async function inviteUser(
             }
             return v;
         },
+        template: (v: { url: string; subject: string; }) => {
+            if (typeof v !== 'object' || !v.url || !v.subject) {
+                throw new SkapiError('"options.template" should be type: <object> with "url" and "subject".', { code: 'INVALID_PARAMETER' });
+            }
+            return {
+                url: validator.Url(v.url),
+                subject: v.subject,
+            };
+        },
     });
 
     params.signup_confirmation = options?.confirmation_url || true;
     params.email_subscription = options?.email_subscription || false;
-
+    params.template = options?.template || {};
+    
     let isAdmin = await checkAdmin.bind(this)();
 
     if (!isAdmin) {
