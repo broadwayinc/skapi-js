@@ -133,6 +133,7 @@ import {
 import {
     spellcast, dopamine, getspell
 } from '../methods/vivian';
+
 export default class Skapi {
     // current version
     private __version = '1.0.270';
@@ -149,6 +150,7 @@ export default class Skapi {
     private hostDomain = 'skapi.com';
     private target_cdn = 'd3e9syvbtso631';
     private customApiDomain = 'skapi.dev';
+    private requestBatchSize = 50;
 
     // privates
     private __disabledAccount: string | null = null;
@@ -303,7 +305,8 @@ export default class Skapi {
         eventListener?: {
             onLogin: (user: UserProfile) => void; // to be depricated
             onUserUpdate: (user: UserProfile) => void;
-        }
+        },
+        requestBatchSize?: number;
     }, __etc?: any) {
         if (!sessionStorage) {
             throw new SkapiError('Web browser API is not available.', { code: 'NOT_SUPPORTED' });
@@ -344,6 +347,7 @@ export default class Skapi {
         this.owner = owner;
 
         let autoLogin = true;
+        this.requestBatchSize = options?.requestBatchSize || this.requestBatchSize;
 
         if (options) {
             if (typeof options.autoLogin === 'boolean') {
