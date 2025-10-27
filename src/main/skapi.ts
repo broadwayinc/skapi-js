@@ -103,8 +103,7 @@ import {
     registerTicket,
     unregisterTicket,
     _out,
-    openIdLogin,
-    // registerSenderEmail
+    openIdLogin
 } from '../methods/user';
 import {
     extractFormData,
@@ -653,13 +652,6 @@ export default class Skapi {
     }>): Promise<"SUCCESS: Invitation has been canceled."> {
         return cancelInvitation.bind(this)(params);
     }
-
-    // @formHandler()
-    // registerSenderEmail(params: Form<{
-    //     email_alias: string;
-    // }>): Promise<"SUCCESS: Sender e-mail has been registered." | "ERROR: Email contains special characters." | "ERROR: Email is required."> {
-    //     return registerSenderEmail.bind(this)(params);
-    // }
 
     @formHandler()
     getInvitations(params: Form<{
