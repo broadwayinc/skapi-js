@@ -217,7 +217,7 @@ export default class Skapi {
         }
     }
 
-    private _runOnLoginListeners(user: UserProfile) {
+    private _runOnUserUpdateListeners(user: UserProfile) {
         for (let listener of this._userProfileListeners) {
             if (typeof listener === 'function') {
                 listener(user);
