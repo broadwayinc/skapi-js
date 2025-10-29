@@ -369,10 +369,16 @@ export async function request(
     opt.method = method;
 
     if (queue === null) {
-        queue = new Queuecumber({
+        let config = {
             batchSize: this.requestBatchSize,
             breakWhenError: false
-        });
+        };
+
+        if (this.onBatchProcess) {
+            config['onProgress'] = this.onBatchProcess;
+        }
+
+        queue = new Queuecumber(config);
     }
 
     return new Promise((res, rej) => {
