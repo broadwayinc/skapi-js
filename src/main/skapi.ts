@@ -149,7 +149,7 @@ export default class Skapi {
     private hostDomain = 'skapi.com';
     private target_cdn = 'd3e9syvbtso631';
     private customApiDomain = 'skapi.dev';
-    private requestBatchSize = 50;
+    private requestBatchSize = 30;
 
     // privates
     private __disabledAccount: string | null = null;
@@ -227,6 +227,12 @@ export default class Skapi {
     private admin_endpoint: Promise<Record<string, any>>;
     private record_endpoint: Promise<Record<string, any>>;
 
+    private onBatchProcess: (process: {
+        batchToProcess: number;
+        itemsToProcess: number;
+        completed: any[];
+    }) => void;
+
     validate = {
         userId(val: string) {
             try {
@@ -303,7 +309,12 @@ export default class Skapi {
         autoLogin: boolean;
         eventListener?: {
             onLogin: (user: UserProfile) => void; // to be depricated
-            onUserUpdate: (user: UserProfile) => void;
+            onUserUpdate?: (user: UserProfile) => void;
+            onBatchProcess?: (process: {
+                batchToProcess: number;
+                itemsToProcess: number;
+                completed: any[];
+            }) => void;
         },
         requestBatchSize?: number;
     }, __etc?: any) {
@@ -340,6 +351,10 @@ export default class Skapi {
                 alert("Service ID or Owner ID is invalid.");
                 throw err;
             }
+        }
+
+        if (options?.eventListener?.onBatchProcess && typeof options.eventListener.onBatchProcess === 'function') {
+            this.onBatchProcess = options.eventListener.onBatchProcess;
         }
 
         this.service = service;
