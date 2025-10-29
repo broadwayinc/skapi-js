@@ -285,7 +285,7 @@ export function authentication() {
         return user;
     };
 
-    const getSession = (option?: { skipEventTrigger?: boolean; refreshToken?: boolean; _holdLogin?: boolean }): Promise<CognitoUserSession | Function> => {
+    const getSession = (option?: { skipEventTrigger?: boolean; refreshToken?: boolean; _isAutoLogin?: boolean }): Promise<CognitoUserSession | Function> => {
         // fetch session, updates user attributes
         this.log('getSession:option', option);
         let { refreshToken = false, skipEventTrigger = false } = option || {};
@@ -315,8 +315,8 @@ export function authentication() {
                         return;
                     }
 
-                    if (option?._holdLogin) {
-                        // hold login
+                    if (option?._isAutoLogin) {
+                        // hold login (auto login)
                         res(() => {
                             this.session = s;
                             getUserProfile();
@@ -570,6 +570,7 @@ export async function _out(global: boolean = false) {
     }
 
     this._runOnUserUpdateListeners(null);
+    this._runOnLoginListeners(null);
     return toReturn;
 }
 
@@ -646,8 +647,10 @@ export async function login(
         throw new SkapiError('Least one of "username" or "email" is required.', { code: 'INVALID_PARAMETER' });
     }
 
-    return await authentication.bind(this)().authenticateUser(params.username || params.email, params.password);
-
+    const resolved = await authentication.bind(this)().authenticateUser(params.username || params.email, params.password);
+    this._runOnLoginListeners(this.user);
+    
+    return resolved;
     // INVALID_REQUEST: the account has been blacklisted.
     // NOT_EXISTS: the account does not exist.
 }

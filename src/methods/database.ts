@@ -148,18 +148,12 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             output.updated = r;
         },
         'acpt_mrf': (r: boolean) => {
-            // output.reference.allow_multiple_reference = r; // depricated
             output.source.prevent_multiple_referencing = !r;
         },
         'ref_limt': (r: number) => {
-            // output.reference.reference_limit = r; // depricated
             output.source.referencing_limit = r;
         },
-        "alw_gnt": (r: boolean) => {
-            output.source.allow_granted_to_grant_others = r; // depricated. // this is here just for backward compatibility. // now it will have value directly in prv_acs.allow_granted_to_grant_others
-        },
         'rfd': (r: number) => {
-            // output.reference.referenced_count = r; // depricated
             output.referenced_count = r;
         },
         'bin': async (r: string[]) => {
@@ -758,9 +752,7 @@ export async function postRecord(
                         config.reference_private_key = this.__private_access_key[v] || undefined;
                     }
                     return validator.specialChars(v, '"reference.record_id"', false, false);
-                },
-                reference_limit: reference_limit_check, // depricated. this is here just for backward compatibility.
-                allow_multiple_reference: 'boolean', // depricated. this is here just for backward compatibility.
+                }
             });
         },
         index: {

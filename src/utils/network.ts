@@ -371,12 +371,11 @@ export async function request(
     if (queue === null) {
         let config = {
             batchSize: this.requestBatchSize,
-            breakWhenError: false
+            breakWhenError: false,
+            onProgress: () => {
+                this.onBatchProcess.forEach((cb) => cb());
+            }
         };
-
-        if (this.onBatchProcess) {
-            config['onProgress'] = this.onBatchProcess;
-        }
 
         queue = new Queuecumber(config);
     }
@@ -770,7 +769,7 @@ export async function uploadFiles(
         return result;
     }
 
-    if(queue === null) {
+    if (queue === null) {
         queue = new Queuecumber({
             batchSize: this.requestBatchSize,
             breakWhenError: false
@@ -805,7 +804,7 @@ export async function uploadFiles(
                 }
 
                 form.append('file', f);
-                
+
                 try {
                     await fetchProgress(
                         url,
