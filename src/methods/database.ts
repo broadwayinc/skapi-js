@@ -1181,18 +1181,34 @@ export function removePrivateRecordAccess(params: {
 }
 
 export async function listPrivateRecordAccess(params: {
-    record_id: string;
-    user_id: string | string[];
-}): Promise<DatabaseResponse<{ record_id: string; user_id: string; }>> {
-    let list = await recordAccess.bind(this)({
-        record_id: params.record_id,
-        user_id: params.user_id || null,
+    record_id?: string;
+    user_id?: string | string[];
+}, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{ record_id: string; user_id: string; }>> {
+    let params = {
+        record_id: params.record_id || undefined,
+        user_id: params.user_id || undefined,
         execute: 'list'
-    });
+    };
+
+    if (!params.record_id && !params.user_id) {
+        throw new SkapiError(`Either record_id or user_id must be provided.`, { code: 'INVALID_PARAMETER' });
+    }
+
+    let list = await request.bind(this)(
+        'grant-private-access',
+        params,
+        { auth: true, fetchOptions }
+    );
 
     list.list = list.list.map((i: Record<string, any>) => {
-        i.record_id = i.rec_usr.split('/')[0];
-        i.user_id = i.rec_usr.split('/')[1];
+        if(i.rec_usr) {
+            i.record_id = i.rec_usr.split('/')[0];
+            i.user_id = i.rec_usr.split('/')[1];
+        }
+        else if(i.usr_rec) {
+            i.user_id = i.usr_rec.split('/')[0];
+            i.record_id = i.usr_rec.split('/')[1];
+        }
         return i;
     });
 
