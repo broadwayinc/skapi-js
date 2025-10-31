@@ -135,7 +135,7 @@ import {
 
 export default class Skapi {
     // current version
-    private __version = '1.1.2';
+    private __version = '1.1.3';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -334,7 +334,7 @@ export default class Skapi {
         autoLogin: boolean;
         requestBatchSize?: number; // default 30. number of requests to be handled in a batch
         eventListener?: {
-            onLogin: (user: UserProfile | null) => void;
+            onLogin?: (user: UserProfile | null) => void;
             onUserUpdate?: (user: UserProfile | null) => void;
             onBatchProcess?: (process: {
                 batchToProcess: number;
@@ -1078,8 +1078,8 @@ export default class Skapi {
     }
     @formHandler()
     listPrivateRecordAccess(params: {
-        record_id: string;
-        user_id: string | string[];
+        record_id?: string;
+        user_id?: string | string[];
     }): Promise<DatabaseResponse<{ record_id: string; user_id: string; }>> { return listPrivateRecordAccess.bind(this)(params); }
     @formHandler()
     requestPrivateRecordAccessKey(params: { record_id: string; reference_id?: string; }): Promise<string> {
