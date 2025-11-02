@@ -1130,30 +1130,6 @@ export function grantPrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
-    params = validator.Params(params, {
-        record_id: 'string',
-        user_id: (v: string | string[]) => {
-            if (!v) {
-                throw new SkapiError(`User ID is required.`, { code: 'INVALID_PARAMETER' });
-            }
-
-            let id = v;
-            if (typeof id === 'string') {
-                id = [id];
-            }
-
-            if (id.length > 100) {
-                throw new SkapiError(`Cannot process more than 100 users at once.`, { code: 'INVALID_REQUEST' });
-            }
-
-            for (let i of id) {
-                validator.UserId(i, 'User ID in "user_id"');
-            }
-
-            return id;
-        }
-    }, ['record_id', 'user_id'], { ignoreEmpty: true });
-
     return recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id,
@@ -1165,14 +1141,6 @@ export function removePrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
-    if (!params.record_id) {
-        throw new SkapiError(`Record ID is required.`, { code: 'INVALID_PARAMETER' });
-    }
-
-    if (!params.user_id || Array.isArray(params.user_id) && !params.user_id.length) {
-        throw new SkapiError(`User ID is required.`, { code: 'INVALID_PARAMETER' });
-    }
-
     return recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id || null,
@@ -1194,13 +1162,22 @@ export async function listPrivateRecordAccess(params: {
         throw new SkapiError(`Either record_id or user_id must be provided.`, { code: 'INVALID_PARAMETER' });
     }
 
-    let list = await request.bind(this)(
-        'grant-private-access',
-        params,
-        { auth: true, fetchOptions }
-    );
+    if(params.user_id) {
+        if (typeof params.user_id === 'string') {
+            validator.UserId(params.user_id);
+            params.user_id = [params.user_id];
+        }
+        else if (Array.isArray(params.user_id)) {
+            for (let u of params.user_id) {
+                validator.UserId(u);
+            }
+        }
+        else {
+            throw new SkapiError(`user_id should be type: <string | string[]>`, { code: 'INVALID_PARAMETER' });
+        }
+    }
 
-    list.list = list.list.map((i: Record<string, any>) => {
+    let mapper = (i: Record<string, any>) => {
         if(i.rec_usr) {
             i.record_id = i.rec_usr.split('/')[0];
             i.user_id = i.rec_usr.split('/')[1];
@@ -1210,7 +1187,15 @@ export async function listPrivateRecordAccess(params: {
             i.record_id = i.usr_rec.split('/')[1];
         }
         return i;
-    });
+    };
+
+    let list = await request.bind(this)(
+        'grant-private-access',
+        params,
+        { auth: true, fetchOptions }
+    );
+
+    list.list = list.list.map(mapper);
 
     return list;
 }
@@ -1248,7 +1233,7 @@ export function requestPrivateRecordAccessKey(params: { record_id: string, refer
 function recordAccess(params: {
     record_id: string;
     user_id: string | string[];
-    execute: 'add' | 'remove' | 'list';
+    execute: 'add' | 'remove';
 }): Promise<any> {
     let execute = params.execute;
     let req = validator.Params(params,
@@ -1256,10 +1241,6 @@ function recordAccess(params: {
             record_id: 'string',
             user_id: (v: string | string[]) => {
                 if (!v) {
-                    if (execute == 'list') {
-                        return null;
-                    }
-
                     throw new SkapiError(`User ID is required.`, { code: 'INVALID_PARAMETER' });
                 }
 
@@ -1278,7 +1259,7 @@ function recordAccess(params: {
 
                 return id;
             },
-            execute: ['add', 'remove', 'list']
+            execute: ['add', 'remove']
         },
         [
             'execute',
