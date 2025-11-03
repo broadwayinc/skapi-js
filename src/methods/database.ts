@@ -1152,7 +1152,7 @@ export async function listPrivateRecordAccess(params: {
     record_id?: string;
     user_id?: string | string[];
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{ record_id: string; user_id: string; }>> {
-    let params = {
+    params = {
         record_id: params.record_id || undefined,
         user_id: params.user_id || undefined,
         execute: 'list'
