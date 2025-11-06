@@ -504,11 +504,12 @@ export async function getProfile(options?: { refreshToken: boolean; }): Promise<
     }
 }
 
-export async function openIdLogin(params: { token: string; id: string; }): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
+export async function openIdLogin(params: { token: string; id: string; merge?: boolean; }): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
     await this.__connection;
     params = validator.Params(params, {
         token: 'string',
-        id: 'string'
+        id: 'string',
+        merge: 'boolean'
     });
 
     let oplog = await request.bind(this)("openid-logger", params);
