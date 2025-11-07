@@ -1,0 +1,110 @@
+{
+  "app": {
+    "name": "Sypher League 25",
+    "developer": "Sikudi Tech",
+    "category": "Sports",
+    "type": "Football Simulation",
+    "orientation": "Landscape",
+    "platforms": ["Android", "Web"],
+    "language_support": ["English", "Arabic"],
+    "theme": {
+      "primary_color": "#C0C0C0",
+      "accent_color": "#FFD700",
+      "background_style": "night_stadium_lights",
+      "ui_style": "modern_studio"
+    },
+    "branding": {
+      "app_icon": "assets/icons/sypher_league_icon.png",
+      "studio_logo": "assets/branding/powered_by_sikudi_tech.png",
+      "splash_image": "assets/branding/splash_stadium_glow.png",
+      "intro_text": "Powered by Sikudi Tech"
+    }
+  },
+  "scenes": [
+    {
+      "id": "splash_screen",
+      "title": "Splash Screen",
+      "background": "assets/branding/splash_stadium_glow.png",
+      "music": "assets/sounds/intro_theme.mp3",
+      "actions": [
+        {"action": "show_image", "target": "branding/studio_logo", "duration": 3},
+        {"action": "fade_in_title", "text": "Sypher League 25"},
+        {"action": "goto_scene", "target": "main_menu"}
+      ]
+    },
+    {
+      "id": "main_menu",
+      "title": "Main Menu",
+      "background": "assets/stadiums/nighttime_stadium_bg.png",
+      "buttons": [
+        {"label": "Play Match", "action": "goto_scene", "target": "match_scene"},
+        {"label": "Edit Team", "action": "goto_scene", "target": "team_editor"},
+        {"label": "Settings", "action": "goto_scene", "target": "settings"},
+        {"label": "Connect Online", "action": "goto_scene", "target": "multiplayer"},
+        {"label": "Exit", "action": "close_app"}
+      ],
+      "music": "assets/sounds/menu_theme.mp3",
+      "ui_effects": ["hover_glow", "button_click_fx"]
+    },
+    {
+      "id": "match_scene",
+      "title": "Match Scene",
+      "background": "assets/stadiums/nighttime_stadium_bg.png",
+      "camera": "broadcast",
+      "entities": ["players", "ball", "goalposts", "crowd"],
+      "logic": {
+        "on_goal_player": "player_score++",
+        "on_goal_ai": "opponent_score++",
+        "on_timer_end": "goto_scene('match_result')"
+      },
+      "sounds": ["goal_fx.mp3", "crowd_fx.mp3", "whistle_fx.mp3"]
+    },
+    {
+      "id": "team_editor",
+      "title": "Team Editor",
+      "ui": [
+        {"type": "input", "label": "Team Name", "variable": "team_name"},
+        {"type": "color_picker", "label": "Kit Color", "variable": "kit_color"},
+        {"type": "image_upload", "label": "Logo", "variable": "team_logo"}
+      ],
+      "actions": [{"action": "save_variables"}, {"action": "goto_scene", "target": "main_menu"}]
+    },
+    {
+      "id": "settings",
+      "title": "Settings",
+      "ui": [
+        {"type": "toggle", "label": "Music", "variable": "music_on"},
+        {"type": "dropdown", "label": "Language", "options": ["English", "Arabic"], "variable": "commentary_language"}
+      ]
+    },
+    {
+      "id": "multiplayer",
+      "title": "Multiplayer Lobby",
+      "ui": [
+        {"type": "button", "label": "Create Match Code", "action": "generate_code"},
+        {"type": "input", "label": "Enter Code"},
+        {"type": "button", "label": "Join Match", "action": "connect_code"}
+      ]
+    }
+  ],
+  "global_variables": {
+    "team_name": "Default FC",
+    "kit_color": "#FFD700",
+    "commentary_language": "English",
+    "music_on": true,
+    "player_score": 0,
+    "opponent_score": 0
+  },
+  "assets": {
+    "icons": ["assets/icons/sypher_league_icon.png"],
+    "branding": ["assets/branding/powered_by_sikudi_tech.png", "assets/branding/splash_stadium_glow.png"],
+    "stadiums": ["assets/stadiums/nighttime_stadium_bg.png"],
+    "sounds": [
+      "assets/sounds/intro_theme.mp3",
+      "assets/sounds/menu_theme.mp3",
+      "assets/sounds/goal_fx.mp3",
+      "assets/sounds/crowd_fx.mp3",
+      "assets/sounds/whistle_fx.mp3"
+    ]
+  }
+}
