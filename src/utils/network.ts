@@ -338,6 +338,9 @@ export async function request(
             breakWhenError: false,
             onProgress: (progress) => {
                 this.onBatchProcess.forEach((cb) => cb(progress));
+                for(let key in __pendingRequest) {
+                    delete __pendingRequest[key];
+                }
             }
         };
 
@@ -347,9 +350,7 @@ export async function request(
     return new Promise((res, rej) => {
         queue.add([async () => {
             let promise = _fetch.bind(this)(endpoint, opt, progress);
-            __pendingRequest[requestKey as string] = promise.finally(() => {
-                delete __pendingRequest[requestKey as string];
-            });
+            __pendingRequest[requestKey as string] = promise;
 
             try {
                 let result = update_startKey_keys.bind(this)({
