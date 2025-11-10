@@ -105,7 +105,7 @@ export async function deleteAccount(form: Form<{
 export async function inviteUser(
     form: Form<UserAttributes & UserProfilePublicSettings & { email: string; }>,
     options?: {
-        confirmation_url?: string; // url 없으면 무조건 true
+        confirmation_url?: string;
         email_subscription?: boolean;
         template?: {
             url: string;

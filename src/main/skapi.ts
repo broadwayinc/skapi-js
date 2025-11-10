@@ -135,7 +135,7 @@ import {
 
 export default class Skapi {
     // current version
-    private __version = '1.1.5 beta.1';
+    private __version = '1.1.5 beta.2';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -792,6 +792,10 @@ export default class Skapi {
         options?: {
             confirmation_url?: string;
             email_subscription?: boolean;
+            template?: {
+                url: string;
+                subject: string;
+            }
         }
     ): Promise<'SUCCESS: Invitation has been sent.'> {
         return inviteUser.bind(this)(form, options);
