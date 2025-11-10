@@ -19,22 +19,20 @@ import { checkAdmin } from './user';
 import { authentication } from './user';
 import { accessGroup, cannotBeEmptyString, getStruct, indexValue, recordIdOrUniqueId } from './param_restrictions';
 
-
 export async function normalizeRecord(record: Record<string, any>, _called_from?): Promise<RecordData> {
-    if (record?.rec) {
-        if (_called_from !== 'called from postRecord') {
-            let recPost = sessionStorage.getItem(`${this.service}:post:${record.rec}`);
-            if (recPost) {
-                try {
-                    record = JSON.parse(recPost);
-                }
-                catch (err) { }
-                sessionStorage.removeItem(`${this.service}:post:${record.rec}`);
-            }
-        }
-    }
+    // if (record?.rec) {
+    //     if (_called_from !== 'called from postRecord') {
+    //         let recPost = sessionStorage.getItem(`${this.service}:post:${record.rec}`);
+    //         if (recPost) {
+    //             try {
+    //                 record = JSON.parse(recPost);
+    //             }
+    //             catch (err) { }
+    //             sessionStorage.removeItem(`${this.service}:post:${record.rec}`);
+    //         }
+    //     }
+    // }
 
-    this.log('normalizeRecord', record);
     const output: Record<string, any> = {
         user_id: '',
         record_id: '',
@@ -223,7 +221,60 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             output.data = data;
         }
     };
-
+    // [
+    //     {
+    //         "acpt_mrf": true,
+    //         "data": {
+    //             "master_id": "733e6a7d-9474-45c0-8bc3-71576660df81",
+    //             "code": "V27wMo3yWKJ",
+    //             "work_places": [
+    //                 {
+    //                     "name": "본사",
+    //                     "address": "서울 마포구 마포대로 109"
+    //                 }
+    //             ],
+    //             "members": [
+    //                 "733e6a7d-9474-45c0-8bc3-71576660df81"
+    //             ],
+    //             "name": "그룹사4",
+    //             "organizations": [],
+    //             "order": 3
+    //         },
+    //         "ip": "118.33.23.160",
+    //         "prv_acs": {},
+    //         "rec": "V27wN7QR8uprrBoP",
+    //         "ref": "V27wMp4yCkRLrBoP/company_information_settings/ap22zm71ydorjy2moun2/01",
+    //         "rfd": 0,
+    //         "srvc": "ap22zm71ydorjy2moun2/e9de5107-4f07-4541-901d-eab5cda49a56",
+    //         "upd": 1762756915016,
+    //         "usr_tbl": "9d644b6b-ab79-4e83-b678-dcd05962fccc/company_information_settings/ap22zm71ydorjy2moun2/01"
+    //     },
+    //     {
+    //         "acpt_mrf": true,
+    //         "data": {
+    //             "master_id": null,
+    //             "code": "V27wMo3yWKJ",
+    //             "work_places": [
+    //                 {
+    //                     "name": "본사",
+    //                     "address": "서울 마포구 마포대로 109"
+    //                 }
+    //             ],
+    //             "members": [],
+    //             "name": "그룹사4",
+    //             "organizations": [],
+    //             "order": 3
+    //         },
+    //         "ip": "118.33.23.160",
+    //         "prv_acs": {},
+    //         "rec": "V27wMt9M59xurBoP",
+    //         "ref": "V27wMp4yCkRLrBoP/company_information_settings/ap22zm71ydorjy2moun2/01",
+    //         "rfd": 0,
+    //         "srvc": "ap22zm71ydorjy2moun2/e9de5107-4f07-4541-901d-eab5cda49a56",
+    //         "upd": 1762756914131,
+    //         "usr_tbl": "9d644b6b-ab79-4e83-b678-dcd05962fccc/company_information_settings/ap22zm71ydorjy2moun2/01"
+    //     }
+    // ]
     if (record.record_id) {
         // bypass already normalized records
         return record as RecordData;
@@ -872,7 +923,7 @@ export async function postRecord(
         this.__private_access_key[is_reference_post] = rec.reference_private_key;
     }
 
-    sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
+    // sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
 
     let record = await normalizeRecord.bind(this)(rec, 'called from postRecord');
     if (record.unique_id) {
