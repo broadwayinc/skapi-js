@@ -221,64 +221,11 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             output.data = data;
         }
     };
-    // [
-    //     {
-    //         "acpt_mrf": true,
-    //         "data": {
-    //             "master_id": "733e6a7d-9474-45c0-8bc3-71576660df81",
-    //             "code": "V27wMo3yWKJ",
-    //             "work_places": [
-    //                 {
-    //                     "name": "본사",
-    //                     "address": "서울 마포구 마포대로 109"
-    //                 }
-    //             ],
-    //             "members": [
-    //                 "733e6a7d-9474-45c0-8bc3-71576660df81"
-    //             ],
-    //             "name": "그룹사4",
-    //             "organizations": [],
-    //             "order": 3
-    //         },
-    //         "ip": "118.33.23.160",
-    //         "prv_acs": {},
-    //         "rec": "V27wN7QR8uprrBoP",
-    //         "ref": "V27wMp4yCkRLrBoP/company_information_settings/ap22zm71ydorjy2moun2/01",
-    //         "rfd": 0,
-    //         "srvc": "ap22zm71ydorjy2moun2/e9de5107-4f07-4541-901d-eab5cda49a56",
-    //         "upd": 1762756915016,
-    //         "usr_tbl": "9d644b6b-ab79-4e83-b678-dcd05962fccc/company_information_settings/ap22zm71ydorjy2moun2/01"
-    //     },
-    //     {
-    //         "acpt_mrf": true,
-    //         "data": {
-    //             "master_id": null,
-    //             "code": "V27wMo3yWKJ",
-    //             "work_places": [
-    //                 {
-    //                     "name": "본사",
-    //                     "address": "서울 마포구 마포대로 109"
-    //                 }
-    //             ],
-    //             "members": [],
-    //             "name": "그룹사4",
-    //             "organizations": [],
-    //             "order": 3
-    //         },
-    //         "ip": "118.33.23.160",
-    //         "prv_acs": {},
-    //         "rec": "V27wMt9M59xurBoP",
-    //         "ref": "V27wMp4yCkRLrBoP/company_information_settings/ap22zm71ydorjy2moun2/01",
-    //         "rfd": 0,
-    //         "srvc": "ap22zm71ydorjy2moun2/e9de5107-4f07-4541-901d-eab5cda49a56",
-    //         "upd": 1762756914131,
-    //         "usr_tbl": "9d644b6b-ab79-4e83-b678-dcd05962fccc/company_information_settings/ap22zm71ydorjy2moun2/01"
-    //     }
-    // ]
-    if (record.record_id) {
-        // bypass already normalized records
-        return record as RecordData;
-    }
+    
+    // if (record.record_id) { // <- has problem with edge cases
+    //     // bypass already normalized records
+    //     return record as RecordData;
+    // }
 
     for (let k in keys) {
         if (record.hasOwnProperty(k)) {
