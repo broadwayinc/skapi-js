@@ -337,10 +337,10 @@ export async function request(
             batchSize: this.requestBatchSize,
             breakWhenError: false,
             onProgress: (progress) => {
-                this.onBatchProcess.forEach((cb) => cb(progress));
                 for(let key in __pendingRequest) {
                     delete __pendingRequest[key];
                 }
+                this.onBatchProcess.forEach((cb) => cb(progress));
             }
         };
 

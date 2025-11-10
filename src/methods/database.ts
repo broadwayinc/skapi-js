@@ -222,10 +222,10 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
         }
     };
     
-    // if (record.record_id) { // <- has problem with edge cases
-    //     // bypass already normalized records
-    //     return record as RecordData;
-    // }
+    if (record.record_id) { // <- has problem with edge cases
+        // bypass already normalized records
+        return record as RecordData;
+    }
 
     for (let k in keys) {
         if (record.hasOwnProperty(k)) {
@@ -531,18 +531,18 @@ async function prepGetParams(query, isDel = false) {
         let ref: any = query.reference;
         let ref_user = '';
 
-        // if (ref?.record_id || ref?.unique_id) {
-        if (ref?.record_id) {
+        if (ref?.record_id || ref?.unique_id) {
+        // if (ref?.record_id) {
+            // if (ref.unique_id && this.__my_unique_ids[ref.unique_id]) {
+            //     ref.record_id = this.__my_unique_ids[ref.unique_id];
+            //     delete ref.unique_id;
+            // }
+
             is_reference_fetch = ref.record_id || ref.unique_id;
 
             if (is_reference_fetch && typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
                 query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
             }
-
-            // if (this.__my_unique_ids[is_reference_fetch]) {
-            //     // ref.record_id = this.__my_unique_ids[is_reference_fetch];
-            //     // delete ref.unique_id;
-            // }
 
             query.reference = is_reference_fetch;
         }
