@@ -504,12 +504,29 @@ export async function getProfile(options?: { refreshToken: boolean; }): Promise<
     }
 }
 
-export async function openIdLogin(params: { token: string; id: string; }): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
+export async function openIdLogin(params: { token: string; id: string; merge?: boolean | string[]}): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
     await this.__connection;
 
     params = validator.Params(params, {
         token: 'string',
-        id: 'string'
+        id: 'string',
+        merge: v=> {
+            if (v === undefined) return false;
+            if (typeof v === 'string') {
+                return [v]
+            }
+            if(Array.isArray(v)) {
+                for(let item of v) {
+                    if(typeof item !== 'string') {
+                        throw new SkapiError('"merge" array items should be type: <string>.', { code: 'INVALID_PARAMETER' });
+                    }
+                }
+            }
+            if(typeof v !== 'boolean' && !Array.isArray(v)) {
+                throw new SkapiError('"merge" should be type: <boolean | string[]>.', { code: 'INVALID_PARAMETER' });
+            }
+            return v;
+        }
     });
 
     let oplog = await request.bind(this)("openid-logger", params);
