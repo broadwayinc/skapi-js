@@ -222,7 +222,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
         }
     };
     
-    if (record.record_id) { // <- has problem with edge cases
+    if (record.record_id) {
         // bypass already normalized records
         return record as RecordData;
     }
@@ -293,11 +293,12 @@ export async function deleteFiles(params: {
         storage: 'records'
     }, { auth: true, method: 'post' });
 
+    let to_process = [];
     for (let i in updatedRec) {
-        updatedRec[i] = normalizeRecord.bind(this)(updatedRec[i]);
+        to_process.push(normalizeRecord.bind(this)(updatedRec[i]));
     }
 
-    return await Promise.all(updatedRec);
+    return Promise.all(to_process);
 }
 
 export async function getFile(
@@ -582,12 +583,12 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
         this.__private_access_key[is_reference_fetch] = result.reference_private_key;
     }
 
+    let to_process = [];
     for (let i in result.list) {
-        result.list[i] = normalizeRecord.bind(this)(result.list[i]);
-    };
+        to_process.push(normalizeRecord.bind(this)(result.list[i]));
+    }
 
-    result.list = await Promise.all(result.list);
-
+    result.list = await Promise.all(to_process);
     return result;
 }
 
@@ -845,6 +846,7 @@ export async function postRecord(
     }
     
     let rec = await request.bind(this)('post-record', postData, options);
+
     if (to_bin) {
         let bin_formData = new FormData();
         for (let f of to_bin) {
