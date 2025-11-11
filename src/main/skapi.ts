@@ -483,7 +483,8 @@ export default class Skapi {
 
             try {
                 let fireWhenAutoLogin = await authentication.bind(this)().getSession({
-                    _isAutoLogin: true
+                    _isAutoLogin: true,
+                    skipEventTrigger: true
                 });
 
                 if (!restore?.connection && !autoLogin) {
@@ -497,7 +498,7 @@ export default class Skapi {
                 }
                 if(this.user) {
                     // only run login listeners if user is logged in (auto login successful)
-                    this._runOnLoginListeners(this.user);
+                    // this._runOnLoginListeners(this.user);
                 }
             }
             catch (err) {
