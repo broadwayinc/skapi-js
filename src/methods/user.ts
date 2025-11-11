@@ -665,7 +665,6 @@ export async function login(
     }
 
     const resolved = await authentication.bind(this)().authenticateUser(params.username || params.email, params.password);
-    // this._runOnLoginListeners(this.user);
     
     return resolved;
     // INVALID_REQUEST: the account has been blacklisted.
