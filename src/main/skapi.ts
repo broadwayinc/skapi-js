@@ -135,7 +135,7 @@ import {
 
 export default class Skapi {
     // current version
-    private __version = '1.1.6-beta.2';
+    private __version = '1.1.6-beta.4';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -482,23 +482,18 @@ export default class Skapi {
             });
 
             try {
-                let fireWhenAutoLogin = await authentication.bind(this)().getSession({
-                    _isAutoLogin: true,
+                await authentication.bind(this)().getSession({
                     skipEventTrigger: true
                 });
-
-                if (!restore?.connection && !autoLogin) {
-                    _out.bind(this)();
-                }
-                else {
-                    let logFire = (fireWhenAutoLogin as Function)();
-                    if (logFire instanceof Promise) {
-                        await logFire;
-                    }
-                }
                 if(this.user) {
-                    // only run login listeners if user is logged in (auto login successful)
-                    // this._runOnLoginListeners(this.user);
+                    if(!restore?.connection && !autoLogin) {
+                        _out.bind(this)();
+                    }
+                    else {
+                        // only run login listeners if user is logged in (auto login successful)
+                        this._runOnLoginListeners(this.user);
+                        this._runOnUserUpdateListeners(this.user);
+                    }
                 }
             }
             catch (err) {
