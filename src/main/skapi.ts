@@ -135,7 +135,7 @@ import {
 
 export default class Skapi {
     // current version
-    private __version = '1.1.5';
+    private __version = '1.1.6-beta.1';
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -707,7 +707,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    openIdLogin(params: { token: string; id: string; merge?: boolean; }): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
+    openIdLogin(params: { token: string; id: string; merge?: boolean | string[]; }): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
         return openIdLogin.bind(this)(params);
     }
     @formHandler()
