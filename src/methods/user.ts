@@ -387,7 +387,7 @@ export function authentication() {
         };
     };
 
-    const authenticateUser = (email: string, password: string, raw: boolean = false): Promise<UserProfile> => {
+    const authenticateUser = (email: string, password: string, raw: boolean = false, is_openid: boolean = false): Promise<UserProfile> => {
         return new Promise((res, rej) => {
             this.__request_signup_confirmation = null;
             this.__disabledAccount = null;
@@ -403,7 +403,7 @@ export function authentication() {
                 newPasswordRequired: (userAttributes, requiredAttributes) => {
                     this.__disabledAccount = null;
                     this.__request_signup_confirmation = username;
-                    if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER') {
+                    if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER' || userAttributes['custom:signup_ticket'] === 'OIDPASS') {
                         // auto confirm - (setting password from admin created account)
                         initUser.cognitoUser.completeNewPasswordChallenge(password, {}, {
                             onSuccess: _ => {
@@ -434,7 +434,12 @@ export function authentication() {
                         }
 
                         else {
-                            error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
+                            if(is_openid) {
+                                error = ['The account already exists', 'ACCOUNT_EXISTS'];
+                            }
+                            else {
+                                error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];    
+                            }
                         }
                     }
                     else if (err.code === "UserNotFoundException") {
@@ -455,7 +460,7 @@ export function authentication() {
                     // "#INVALID_REQUEST: the account has been blacklisted"
                     // "#NOT_EXISTS: the account does not exist"
                     // "#CONFIRM_REQUIRED": The account signup needs to be confirmed"
-
+                    // "#ACCOUNT_EXISTS": The account already exists"
                     if (customErr.length > 1) {
                         customErr = customErr[customErr.length - 1].split(':');
                         errCode = customErr[0];
@@ -534,7 +539,7 @@ export async function openIdLogin(params: { token: string; id: string; merge?: b
     let username = this.service + '-' + logger[0];
     let password = logger[1];
 
-    return { userProfile: await authentication.bind(this)().authenticateUser(username, password, true), openid: oplog.openid };
+    return { userProfile: await authentication.bind(this)().authenticateUser(username, password, true, true), openid: oplog.openid };
 }
 
 export async function checkAdmin() {
