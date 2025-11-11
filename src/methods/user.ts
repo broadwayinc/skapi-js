@@ -285,7 +285,7 @@ export function authentication() {
         return user;
     };
 
-    const getSession = (option?: { skipEventTrigger?: boolean; refreshToken?: boolean; _isAutoLogin?: boolean }): Promise<CognitoUserSession | Function> => {
+    const getSession = (option?: { skipEventTrigger?: boolean; refreshToken?: boolean; }): Promise<CognitoUserSession | Function> => {
         // fetch session, updates user attributes
         this.log('getSession:option', option);
         let { refreshToken = false, skipEventTrigger = false } = option || {};
@@ -305,28 +305,17 @@ export function authentication() {
                 this.log('getSession:getSessionCallback', { err, session });
 
                 let respond = async (s: CognitoUserSession) => {
+                    console.log('getSession:respond', s, skipEventTrigger, {option});
                     let sessionAttribute = s.getIdToken().payload;
                     this.log('getSession:respond:sessionAttribute', sessionAttribute);
 
                     if (sessionAttribute['custom:service'] !== this.service) {
                         this.log('getSession:respond', 'invalid service, signing out');
-                        _out.bind(this)();
+                        // _out.bind(this)();
                         rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
                         return;
                     }
 
-                    if (option?._isAutoLogin) {
-                        // hold login (auto login)
-                        res(() => {
-                            this.session = s;
-                            getUserProfile();
-                            if (!skipEventTrigger) {
-                                this._runOnUserUpdateListeners(this.user);
-                            }
-                            return this.session;
-                        });
-                        return;
-                    }
                     this.session = s;
                     getUserProfile();
                     if (!skipEventTrigger) {
@@ -369,7 +358,10 @@ export function authentication() {
                     });
                 }
                 else {
-                    respond(session).catch(err => rej(err));
+                    respond(session).catch(err => {
+                        _out.bind(this)();
+                        rej(err)
+                    });
                 }
             });
         });
@@ -420,8 +412,10 @@ export function authentication() {
                         rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
                     }
                 },
-                onSuccess: _ => getSession().then(_ => {
+                onSuccess: _ => getSession({skipEventTrigger: true}).then(_ => {
                     this.__disabledAccount = null;
+                    this._runOnLoginListeners(this.user);
+                    this._runOnUserUpdateListeners(this.user);
                     res(this.user);
                 }),
                 onFailure: (err: any) => {
@@ -671,7 +665,7 @@ export async function login(
     }
 
     const resolved = await authentication.bind(this)().authenticateUser(params.username || params.email, params.password);
-    this._runOnLoginListeners(this.user);
+    // this._runOnLoginListeners(this.user);
     
     return resolved;
     // INVALID_REQUEST: the account has been blacklisted.
