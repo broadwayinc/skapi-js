@@ -136,6 +136,11 @@ async function getEndpoint(dest: string, auth: boolean) {
 
 const __pendingRequest: Record<string, Promise<any>> = {};
 
+export function terminatePendingRequests() {
+    if(queue) {
+        queue.terminate();
+    }
+}
 
 export async function request(
     url: string,

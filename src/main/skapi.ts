@@ -62,7 +62,8 @@ import {
     request,
     getFormResponse,
     formHandler,
-    uploadFiles
+    uploadFiles,
+    terminatePendingRequests
 } from '../utils/network';
 import {
     subscribe,
@@ -629,6 +630,10 @@ export default class Skapi {
                 console.log(`%c${n}:`, 'color: blue;', v);
             }
         }
+    }
+
+    terminatePendingRequests() {
+        return terminatePendingRequests.bind(this)();
     }
 
     @formHandler()

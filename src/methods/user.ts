@@ -14,7 +14,7 @@ import {
     PublicUser
 } from '../Types';
 import validator from '../utils/validator';
-import { request } from '../utils/network';
+import { request, terminatePendingRequests } from '../utils/network';
 import { MD5, extractFormData, fromBase62, parseUserAttributes } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
@@ -535,6 +535,9 @@ export async function checkAdmin() {
 
 export async function _out(global: boolean = false) {
     let toReturn = null;
+    
+    this.terminatePendingRequests();
+    
     if (cognitoUser) {
         if (global) {
             toReturn = new Promise((res, rej) => {
@@ -572,6 +575,7 @@ export async function _out(global: boolean = false) {
 
     this._runOnUserUpdateListeners(null);
     this._runOnLoginListeners(null);
+
     return toReturn;
 }
 
