@@ -298,15 +298,14 @@ export function authentication() {
                 return;
             }
 
-            let respond = async (s: CognitoUserSession) => {
+            let respond = (s: any) => {
                 let sessionAttribute = s.getIdToken().payload;
                 this.log('getSession:respond:sessionAttribute', sessionAttribute);
 
                 if (sessionAttribute['custom:service'] !== this.service) {
                     this.log('getSession:respond', 'invalid service, signing out');
                     _out.bind(this)();
-                    rej(new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' }));
-                    return;
+                    throw new SkapiError('Invalid session.', { code: 'INVALID_REQUEST' });
                 }
 
                 this.session = s;
@@ -314,7 +313,7 @@ export function authentication() {
                 if (!skipUserUpdateEventTrigger) {
                     this._runOnUserUpdateListeners(this.user);
                 }
-                res(this.session);
+                return this.session;
             }
 
             cognitoUser.getSession((err: any, session: CognitoUserSession) => {
@@ -342,7 +341,12 @@ export function authentication() {
                     refreshSession.bind(this)(session, cognitoUser).then(respond).catch(rej);
                 }
                 else {
-                    respond(session).catch(rej);
+                    try {
+                        res(respond(session));
+                    }
+                    catch(err) {
+                        rej(err);
+                    }
                 }
             });
         });
