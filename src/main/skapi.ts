@@ -135,7 +135,7 @@ import {
 
 export default class Skapi {
     // current version
-    private __version = '1.1.6-beta.4';
+    private __version = "1.1.6-beta.5";
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -483,7 +483,7 @@ export default class Skapi {
 
             try {
                 await authentication.bind(this)().getSession({
-                    skipEventTrigger: true
+                    skipUserUpdateEventTrigger: true
                 });
                 if(this.user) {
                     if(!restore?.connection && !autoLogin) {

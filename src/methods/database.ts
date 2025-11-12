@@ -641,7 +641,6 @@ export async function postRecord(
         throw new SkapiError(`"reference_limit" should be type: <number | null>`, { code: 'INVALID_PARAMETER' });
     }
 
-
     if (config.table?.subscription) {
         if (config.table?.subscription?.is_subscription_record) {
             Object.assign(config.table.subscription, { group: 1 });
