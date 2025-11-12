@@ -409,7 +409,7 @@ export function authentication() {
 
                         else {
                             if (is_openid) {
-                                error = ['The account already exists', 'ACCOUNT_EXISTS'];
+                                error = ['The account already exists.', 'ACCOUNT_EXISTS'];
                             }
                             else {
                                 error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];

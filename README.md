@@ -99,9 +99,15 @@ The response data will be displayed in an alert box.
 #### For more information, check out our [documentation](https://docs.skapi.com).
 
 
-# Version History
+## Version History
 
-## Current version: 1.1.5
+### Current version: 1.1.6
+
+- `openidLogin()` now supports the `merge` parameter, allowing users to merge their OpenID account into an existing account.
+- `inviteUser()` now supports custom invitation email templates via a provided HTML URL.
+- Refactored authentication flow for efficiency.
+
+**1.1.5**
 
 - Fixed a bug where multiple `getRecords()` requests sometimes resolve with empty record data.
 
@@ -112,11 +118,11 @@ The response data will be displayed in an alert box.
 **1.1.3**
 
 - Corrected type declarations for the constructor options.
-- Now users can list granted users of private records via `listPrivateRecordAccess()`. See [List Private Access Grants](/database/access-restrictions.html#listing-private-access-grants)
+- Now users can list granted users of private records via `listPrivateRecordAccess()`.
 
 **1.1.2**
 
 - No breaking changes in this release.
 - Skapi now queues requests in batches for efficiency (Default: 30 requests per batch).
-- Skapi now provides more advanced class initialization options, including event listeners for login state, user profile updates, and batch processing. See [Advanced Settings](/introduction/getting-started.html#_4-advanced-settings).
+- Skapi now provides more advanced class initialization options, including event listeners for login state, user profile updates, and batch processing.
 - `getNewsletters()` can now search for bounced emails and display delivery counts per email.
