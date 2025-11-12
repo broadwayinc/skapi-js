@@ -536,8 +536,6 @@ export async function checkAdmin() {
 export async function _out(global: boolean = false) {
     let toReturn = null;
     
-    this.terminatePendingRequests();
-    
     if (cognitoUser) {
         if (global) {
             toReturn = new Promise((res, rej) => {
