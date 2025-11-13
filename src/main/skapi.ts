@@ -633,10 +633,6 @@ export default class Skapi {
         }
     }
 
-    terminatePendingRequests() {
-        return terminatePendingRequests.bind(this)();
-    }
-
     @formHandler()
     getFeed(params?: { access_group?: number; }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
         return getFeed.bind(this)(params, fetchOptions);
