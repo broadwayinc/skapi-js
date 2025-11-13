@@ -101,7 +101,7 @@ The response data will be displayed in an alert box.
 
 ## Version History
 
-### Current version: 1.1.7
+### Current version: 1.1.8
 
 - Added `terminatePendingRequests()` feature.
 
