@@ -101,7 +101,11 @@ The response data will be displayed in an alert box.
 
 ## Version History
 
-### Current version: 1.1.6
+### Current version: 1.1.7
+
+- Added `terminatePendingRequests()` feature.
+
+**1.1.6**
 
 - `openidLogin()` now supports the `merge` parameter, allowing users to merge their OpenID account into an existing account.
 - `inviteUser()` now supports custom invitation email templates via a provided HTML URL.
