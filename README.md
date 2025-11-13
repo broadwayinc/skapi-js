@@ -103,7 +103,7 @@ The response data will be displayed in an alert box.
 
 ### Current version: 1.1.8
 
-- Added `terminatePendingRequests()` feature.
+- Added several utility features.
 
 **1.1.6**
 
