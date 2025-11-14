@@ -325,7 +325,7 @@ export function authentication() {
                 }
 
                 if (err) {
-                    refreshSession.bind(this)(session, cognitoUser).then(respond).catch(rej);
+                    refreshSession.bind(this)(session, cognitoUser).then(r => res(respond(r))).catch(rej);
                     return;
                 }
 
@@ -336,9 +336,11 @@ export function authentication() {
                 this.log('getSession:currentTime', currentTime);
                 this.log('getSession:idTokenExp', idTokenExp);
                 this.log('getSession:isExpired', isExpired);
+                
                 // try refresh when invalid token
+                // when on updateProfile, it will always refreshToken
                 if (isExpired || refreshToken || !session.isValid()) {
-                    refreshSession.bind(this)(session, cognitoUser).then(respond).catch(rej);
+                    refreshSession.bind(this)(session, cognitoUser).then(r => res(respond(r))).catch(rej);
                 }
                 else {
                     try {
