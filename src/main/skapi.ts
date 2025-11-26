@@ -134,9 +134,23 @@ import {
     spellcast, dopamine, getspell
 } from '../methods/vivian';
 
+type Options = {
+    autoLogin: boolean;
+    requestBatchSize?: number; // default 30. number of requests to be handled in a batch
+    eventListener?: {
+        onLogin?: (user: UserProfile | null) => void;
+        onUserUpdate?: (user: UserProfile | null) => void;
+        onBatchProcess?: (process: {
+            batchToProcess: number;
+            itemsToProcess: number;
+            completed: any[];
+        }) => void;
+    },
+}
+
 export default class Skapi {
     // current version
-    private __version = "1.1.10";
+    private __version = "1.1.11";
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -332,19 +346,33 @@ export default class Skapi {
     private __endpoint_version = 'v1';
     private __public_identifier = '';
 
-    constructor(service: string, owner: string, options?: {
-        autoLogin: boolean;
-        requestBatchSize?: number; // default 30. number of requests to be handled in a batch
-        eventListener?: {
-            onLogin?: (user: UserProfile | null) => void;
-            onUserUpdate?: (user: UserProfile | null) => void;
-            onBatchProcess?: (process: {
-                batchToProcess: number;
-                itemsToProcess: number;
-                completed: any[];
-            }) => void;
-        },
-    }, __etc?: any) {
+    constructor(service: string, owner: string | Options, options?: Options | any, __etc?: any) {
+
+        if (service.split("-").length === 7) {
+            if (owner && typeof owner === 'string') {
+                alert("Service ID or Owner ID is invalid.");
+            }
+
+            if (options && typeof options === 'object') {
+                __etc = options;
+            }
+
+            if (owner && typeof owner === 'object') {
+                options = owner;
+            }
+
+            const regionKeys = [
+                "us31", "us72", "ap51", "ap22", "ap41", "eu71", "ap21", "us32", "us71",
+                "af51", "ap31", "ap43", "ap23", "ap42", "ca01", "eu01", "eu72", "eu51",
+                "eu73", "eu11", "me51", "sa31"
+            ];
+
+            const idSplit = service.split("-");
+            const region = regionKeys[fromBase62(idSplit[1][0])];
+            owner = idSplit.slice(2).join("-");
+            service = region + idSplit[0] + idSplit[1].slice(1);
+        }
+
         if (!sessionStorage) {
             throw new SkapiError('Web browser API is not available.', { code: 'NOT_SUPPORTED' });
         }
@@ -487,8 +515,8 @@ export default class Skapi {
                 await authentication.bind(this)().getSession({
                     skipUserUpdateEventTrigger: true
                 });
-                if(this.user) {
-                    if(!restore?.connection && !autoLogin) {
+                if (this.user) {
+                    if (!restore?.connection && !autoLogin) {
                         _out.bind(this)();
                     }
                     else {
