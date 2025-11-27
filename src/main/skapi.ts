@@ -150,7 +150,7 @@ type Options = {
 
 export default class Skapi {
     // current version
-    private __version = "1.1.11";
+    private __version = "1.2.0";
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -347,12 +347,7 @@ export default class Skapi {
     private __public_identifier = '';
 
     constructor(service: string, owner: string | Options, options?: Options | any, __etc?: any) {
-
         if (service.split("-").length === 7) {
-            if (owner && typeof owner === 'string') {
-                alert("Service ID or Owner ID is invalid.");
-            }
-
             if (options && typeof options === 'object') {
                 __etc = options;
             }
@@ -369,7 +364,14 @@ export default class Skapi {
 
             const idSplit = service.split("-");
             const region = regionKeys[fromBase62(idSplit[1][0])];
-            owner = idSplit.slice(2).join("-");
+            const extOwner = idSplit.slice(2).join("-");
+
+            if (owner && typeof owner === 'string' && owner !== extOwner) {
+                alert("Service ID or Owner ID is invalid.");
+                throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
+            }
+
+            owner = extOwner;
             service = region + idSplit[0] + idSplit[1].slice(1);
         }
 
