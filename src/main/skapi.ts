@@ -325,7 +325,7 @@ export default class Skapi {
         toBase62,
         fromBase62,
         extractFormData,
-        terminatePendingRequests: terminatePendingRequests.bind(this),
+        terminatePendingRequests,
         request: (
             url: string,
             data?: Form<any>,
