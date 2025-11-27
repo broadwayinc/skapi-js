@@ -150,7 +150,7 @@ type Options = {
 
 export default class Skapi {
     // current version
-    private __version = "1.2.0";
+    private __version = "1.2.1";
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -348,6 +348,11 @@ export default class Skapi {
 
     constructor(service: string, owner: string | Options, options?: Options | any, __etc?: any) {
         if (service.split("-").length === 7) {
+            if (service === 'xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx') {
+                alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
+                throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
+            }
+
             if (options && typeof options === 'object') {
                 __etc = options;
             }
@@ -356,16 +361,28 @@ export default class Skapi {
                 options = owner;
             }
 
-            const regionKeys = [
-                "us31", "us72", "ap51", "ap22", "ap41", "eu71", "ap21", "us32", "us71",
-                "af51", "ap31", "ap43", "ap23", "ap42", "ca01", "eu01", "eu72", "eu51",
-                "eu73", "eu11", "me51", "sa31"
-            ];
-
             const idSplit = service.split("-");
-            const region = regionKeys[fromBase62(idSplit[1][0])];
-            const extOwner = idSplit.slice(2).join("-");
+            let region;
+            let extOwner;
 
+            try {
+                const regionKeys = [
+                    "us31", "us72", "ap51", "ap22", "ap41", "eu71", "ap21", "us32", "us71",
+                    "af51", "ap31", "ap43", "ap23", "ap42", "ca01", "eu01", "eu72", "eu51",
+                    "eu73", "eu11", "me51", "sa31"
+                ];
+
+                region = regionKeys[fromBase62(idSplit[1][0])];
+                extOwner = idSplit.slice(2).join("-");
+            }
+            catch (err) {
+                alert("Service ID or Owner ID is invalid.");
+                throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
+            }
+            if(!region) {
+                alert("Service ID or Owner ID is invalid.");
+                throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
+            }
             if (owner && typeof owner === 'string' && owner !== extOwner) {
                 alert("Service ID or Owner ID is invalid.");
                 throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
