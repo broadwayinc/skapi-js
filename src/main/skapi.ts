@@ -150,7 +150,7 @@ type Options = {
 
 export default class Skapi {
     // current version
-    private __version = "1.2.1";
+    private __version = "1.2.2";
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -346,7 +346,7 @@ export default class Skapi {
     private __endpoint_version = 'v1';
     private __public_identifier = '';
 
-    constructor(service: string, owner: string | Options, options?: Options | any, __etc?: any) {
+    constructor(service: string, owner?: string | Options, options?: Options | any, __etc?: any) {
         if (service.split("-").length === 7) {
             if (service === 'xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx') {
                 alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
