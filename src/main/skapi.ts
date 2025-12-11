@@ -150,7 +150,7 @@ type Options = {
 
 export default class Skapi {
     // current version
-    private __version = "1.2.3";
+    private __version = "1.2.4";
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -1096,15 +1096,14 @@ export default class Skapi {
         return getNewsletters.bind(this)(params, fetchOptions);
     }
     @formHandler()
-    getNewsletterSubscription(params: {
-        group?: number | 'public' | 'authorized';
-    }): Promise<{
+    getNewsletterSubscription(params: {group?: number | 'public' | 'authorized';},
+    fetchOptions?: FetchOptions): Promise<{
         active: boolean;
         timestamp: number;
         group: number;
         subscribed_email: string;
     }[]> {
-        return getNewsletterSubscription.bind(this)(params);
+        return getNewsletterSubscription.bind(this)(params, fetchOptions);
     }
     @formHandler()
     requestUsernameChange(params: {
