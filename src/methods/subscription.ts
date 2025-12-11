@@ -188,7 +188,8 @@ export async function unblockSubscriber(params: { user_id: string; }): Promise<'
 // requires auth
 export async function getNewsletterSubscription(params: {
     group?: number | 'public' | 'authorized';
-}): Promise<{
+},
+fetchOptions?: FetchOptions): Promise<{
     active: boolean;
     timestamp: number;
     group: number;
@@ -222,7 +223,10 @@ export async function getNewsletterSubscription(params: {
         }
     );
 
-    let list = await request.bind(this)('get-newsletter-subscription', params, { auth: true });
+    let data = await request.bind(this)('get-newsletter-subscription', params, { auth: true, fetchOptions: fetchOptions || null });
+
+    let list = data?.list || data;
+    
     let result = [];
     for (let sub of list) {
         //normalize
@@ -242,6 +246,11 @@ export async function getNewsletterSubscription(params: {
             subscribed_email: subt[1],
             active
         });
+    }
+
+    if(data?.list) {
+        data.list = result;
+        return data;
     }
 
     return result;
