@@ -273,7 +273,12 @@ export async function subscribeNewsletter(
     let params = validator.Params(
         form || {},
         {
-            email: (v: string) => validator.Email(v),
+            email: (v: string) => {
+                if(Array.isArray(v)) {
+                    return v.map(e => validator.Email(e));
+                }
+                return validator.Email(v);
+            },
             group: ['number', 'public', 'authorized', 'admin', (v: string) => {
                 if (typeof v !== 'string' || v.length > 20 || !/^[a-zA-Z0-9]+$/.test(v)) {
                     throw new SkapiError('"group" should be an alphanumeric string without spaces and less than 20 characters.', { code: 'INVALID_PARAMETER' });
