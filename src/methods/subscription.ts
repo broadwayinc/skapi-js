@@ -225,6 +225,9 @@ fetchOptions?: FetchOptions): Promise<{
     let list = data?.list || data;
     
     let result = [];
+    if(!Array.isArray(list)) {
+        list = [];
+    }
     for (let sub of list) {
         let subt = sub['subt'].split('#');
         let active = true;
