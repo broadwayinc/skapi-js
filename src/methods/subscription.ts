@@ -282,8 +282,13 @@ export async function subscribeNewsletter(
         form || {},
         {
             email: (v: string) => {
-                if(Array.isArray(v)) {
-                    return v.map(e => validator.Email(e));
+                if(Array.isArray(v) && v.length > 0) {
+                    if(v.length === 1) {
+                        return validator.Email(v[0]);
+                    }
+                    else {
+                        return v.map(e => validator.Email(e));
+                    }
                 }
                 return validator.Email(v);
             },
