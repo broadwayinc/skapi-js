@@ -541,9 +541,10 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                     catch (err) { }
 
                     if (typeof result === 'string') {
-                        let errMsg = xhr.response.split(':');
+                        let errMsg = result.split(':');
                         let code = errMsg.splice(0, 1)[0].trim();
-                        rej(new SkapiError(errMsg.join(':').trim(), { code: (errCode.includes(code) ? code : 'ERROR') }));
+                        let msg = errMsg.join(':').trim();
+                        rej(new SkapiError(msg, { code: (errCode.includes(code) ? code : 'ERROR') }));
                     }
 
                     else if (typeof result === 'object' && result?.message) {
