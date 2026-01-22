@@ -71,6 +71,30 @@ const skapi = new Skapi('SERVICE_ID');
 export { skapi }
 ```
 
+### 3. Test your connection
+
+After you initialized the Skapi library, you can test your connection by pinging your request with the `mock()` method.
+
+Below is an example of how you can use the `mock()` method in HTML forms.
+
+```html
+<!-- index.html -->
+<!DOCTYPE html>
+<script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
+<script>
+    const skapi = new Skapi('SERVICE_ID');
+</script>
+
+<form onsubmit='skapi.mock(event).then(ping=>alert(ping.msg))'>
+    <input name='msg' placeholder='Test message'>
+    <input type='submit' value='Test Connection'>
+</form>
+```
+
+This will send a request to your Skapi service and ping back the response.
+When the request is resolved, the `mock()` method will return the response data as a `Promise` object.
+The response data will be displayed in an alert box.
+
 
 ## AI-Driven Development
 
@@ -123,29 +147,6 @@ Build me a [describe what you want].
 
 Replace the placeholder service ID with your actual service ID before you run the command.
 
-## Testing your connection
-
-After you initialized the Skapi library, you can test your connection by pinging your request with the `mock()` method.
-
-Below is an example of how you can use the `mock()` method in HTML forms.
-
-```html
-<!-- index.html -->
-<!DOCTYPE html>
-<script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
-<script>
-    const skapi = new Skapi('SERVICE_ID');
-</script>
-
-<form onsubmit='skapi.mock(event).then(ping=>alert(ping.msg))'>
-    <input name='msg' placeholder='Test message'>
-    <input type='submit' value='Test Connection'>
-</form>
-```
-
-This will send a request to your Skapi service and ping back the response.
-When the request is resolved, the `mock()` method will return the response data as a `Promise` object.
-The response data will be displayed in an alert box.
 
 #### For more information, check out our [documentation](https://docs.skapi.com).
 
