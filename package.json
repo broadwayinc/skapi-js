@@ -33,7 +33,7 @@
   "homepage": "https://www.skapi.com",
   "dependencies": {
     "amazon-cognito-identity-js": "^6.3.12",
-    "queuecumber": "^1.0.12"
+    "qpass": "^1.0.0"
   },
   "devDependencies": {
     "basic-node-server": "^1.0.16",
