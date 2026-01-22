@@ -5,7 +5,7 @@ import validator from './validator';
 import { MD5, generateRandom, extractFormData } from './utils';
 // import { authentication, getJwtToken } from '../methods/user';
 import { getJwtToken } from '../methods/user';
-import Queuecumber from "queuecumber";
+import Qpass from "qpass";
 
 let queue = null;
 // Global counters for round-robin
@@ -349,7 +349,7 @@ export async function request(
             }
         };
 
-        queue = new Queuecumber(config);
+        queue = new Qpass(config);
     }
 
     return new Promise((res, rej) => {
@@ -741,7 +741,7 @@ export async function uploadFiles(
     }
 
     if (queue === null) {
-        queue = new Queuecumber({
+        queue = new Qpass({
             batchSize: this.requestBatchSize,
             breakWhenError: false
         });

@@ -14,7 +14,7 @@ import {
     PublicUser
 } from '../Types';
 import validator from '../utils/validator';
-import { request, terminatePendingRequests } from '../utils/network';
+import { request } from '../utils/network';
 import { MD5, extractFormData, fromBase62, parseUserAttributes } from '../utils/utils';
 
 let cognitoUser: CognitoUser | null = null;
@@ -462,7 +462,28 @@ export function authentication() {
         return new Promise((res, rej) => {
             this.userPool.signUp(username, password, attributes, null, (err, result) => {
                 if (err) {
-                    rej(err);
+                    let error: [string, string] = [err?.message || 'Failed to signup.', err?.code || 'ERROR'];
+
+                    if (err.code === 'UsernameExistsException') {
+                        error = ['The account already exists.', 'EXISTS'];
+                    }
+                    else if (err.code === 'InvalidPasswordException') {
+                        error = ['Invalid password. Password must be at least 6 characters.', 'INVALID_PARAMETER'];
+                    }
+                    else if (err.code === 'InvalidParameterException') {
+                        error = [err.message || 'Invalid parameter.', 'INVALID_PARAMETER'];
+                    }
+                    else if (err.code === 'TooManyRequestsException' || err.code === 'LimitExceededException') {
+                        error = ['Too many attempts. Please try again later.', 'REQUEST_EXCEED'];
+                    }
+                    else if (err.code === 'CodeDeliveryFailureException') {
+                        error = ['Failed to deliver verification code.', 'CODE_DELIVERY_FAILURE'];
+                    }
+                    else if (err.code === 'UserLambdaValidationException') {
+                        error = [err.message || 'Signup validation failed.', 'INVALID_REQUEST'];
+                    }
+
+                    rej(new SkapiError(error[0], { code: error[1], cause: err }));
                     return;
                 }
                 res(result);
