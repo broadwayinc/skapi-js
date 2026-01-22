@@ -1,13 +1,12 @@
 # Skapi
 
-### Zero-Setup Backend API for HTML Frontend
+### Zero-Setup Serverless Backend
 
-Skapi is a zero-setup backend API that runs entirely serverless.
-Build full-featured web applications faster with Skapi - No complex installations, No server configurations, No database management required.
+Skapi is a backend API that runs entirely serverless—no complex installations, no server configurations, and no database management required. Build full-featured web applications faster and focus on what matters: your product.
 
-### Compatible with both vanilla HTML and SPA projects
+### Works Everywhere: Vanilla HTML, SPAs, and AI Agents
 
-No fancy framework or complex deployment required. Just focused on the basics, Skapi is a single JavaScript library fully compatible with vanilla HTML, as well as any JS frameworks.
+No fancy frameworks or complex deployments needed. Skapi is a single JavaScript library that works seamlessly with vanilla HTML, modern frameworks like React, Vue, and Angular, and integrates effortlessly with AI-powered development tools.
 
 ### All-in-One Package
 
@@ -45,11 +44,11 @@ For vanilla HTML projects, import Skapi in the script tag, and initialize the li
 <!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
 <script>
-    const skapi = new Skapi('service_id', 'owner_id');
+    const skapi = new Skapi('SERVICE_ID');
 </script>
 ```
 
-**Be sure to replace `'service_id'` and `'owner_id'` with the actual values of your service**
+**Be sure to replace `'SERVICE_ID'` with the actual ID of your service**
 
 For more information, check out our [documentation](https://docs.skapi.com/introduction/getting-started.html).
 
@@ -66,13 +65,65 @@ Then, import the library into your main JavaScript file.
 ```javascript
 // main.js
 import { Skapi } from 'skapi-js';
-const skapi = new Skapi('service_id', 'owner_id');
+const skapi = new Skapi('SERVICE_ID');
 
 // Export the skapi instance, so you can use it in other component files
 export { skapi }
 ```
 
-### 3. Test your connection
+
+## AI-Driven Development
+
+Skapi works seamlessly with AI-powered coding assistants.
+
+To help your assistant understand how to integrate the Skapi API into your project, download and use the system prompt file described below.
+
+### For Chat-Based Platforms (e.g., ChatGPT, Lovable)
+
+#### 1. Download the system prompt file
+
+<a href="https://docs.skapi.com/SKAPI.md" download="SKAPI.md">⬇️ SKAPI.md (Click to Download)</a>
+
+#### 2. Go to your AI website and send a prompt
+
+In your AI chat website or app (for example, ChatGPT at chat.openai.com or Lovable), start a new chat, attach the SKAPI.md file, and paste the following as your first LLM prompt:
+
+```
+Use the file "SKAPI.md" as a system prompt.
+My Skapi service ID is: "xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".
+Build me a [describe what you want].
+```
+
+Replace the placeholder service ID with your actual service ID, and customize the last line with what you want to build.
+
+### For AI Code Generators (e.g., Claude Code, OpenAI Codex, Gemini CLI)
+
+#### 1. Download the system prompt file
+
+<a href="https://docs.skapi.com/SKAPI.md" download="SKAPI.md">⬇️ SKAPI.md (Click to Download)</a>
+
+#### 2. Rename and add it to your project
+
+Rename the downloaded SKAPI.md file to a filename your tool recognizes, then add it to your project folder.
+
+Examples:
+
+- AGENT.md for OpenAI Codex
+- CLAUDE.md for Anthropic Claude
+- GEMINI.md for Gemini CLI
+
+#### 3. Start writing prompts
+
+When you invoke your code generator, include a prompt like:
+
+```
+My Skapi service ID is: "xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".
+Build me a [describe what you want].
+```
+
+Replace the placeholder service ID with your actual service ID before you run the command.
+
+## Testing your connection
 
 After you initialized the Skapi library, you can test your connection by pinging your request with the `mock()` method.
 
@@ -83,7 +134,7 @@ Below is an example of how you can use the `mock()` method in HTML forms.
 <!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
 <script>
-    const skapi = new Skapi('service_id', 'owner_id');
+    const skapi = new Skapi('SERVICE_ID');
 </script>
 
 <form onsubmit='skapi.mock(event).then(ping=>alert(ping.msg))'>
