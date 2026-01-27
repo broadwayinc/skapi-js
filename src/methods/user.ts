@@ -435,20 +435,22 @@ export function authentication() {
 
                     let errCode = error[1];
                     let errMsg = error[0];
-                    let customErr = error[0].split('#');
 
-                    // "#INVALID_REQUEST: the account has been blacklisted"
-                    // "#NOT_EXISTS: the account does not exist"
-                    // "#CONFIRM_REQUIRED": The account signup needs to be confirmed"
-                    // "#ACCOUNT_EXISTS": The account already exists"
-                    if (customErr.length > 1) {
-                        customErr = customErr[customErr.length - 1].split(':');
-                        errCode = customErr[0];
-                        errMsg = customErr[1];
-                        if (errCode === 'CONFIRM_REQUIRED') {
+                    // check if errMsg starts with '#'
+                    if (errMsg.startsWith('#')) {
+                        errMsg = errMsg.substring(1);
+                    
+                        // "#INVALID_REQUEST: The account has been blacklisted."
+                        // "#NOT_EXISTS: The account does not exist."
+                        // "#SIGNUP_CONFIRMATION_NEEDED": The account signup needs to be confirmed."
+                        // "#ACCOUNT_EXISTS": The account already exists."
+                        
+                        let customErr = errMsg.split(':');
+                        errCode = customErr[0].trim();
+                        errMsg = customErr[1].trim();
+                        
+                        if (errCode === 'SIGNUP_CONFIRMATION_NEEDED') {
                             this.__request_signup_confirmation = username;
-                            rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
-                            return;
                         }
                     }
 
@@ -910,7 +912,7 @@ export async function resetPassword(form: Form<{
                 res("SUCCESS: New password has been set.");
             },
             onFailure: (err: any) => {
-                rej(new SkapiError(err?.message || 'Failed to reset password.', { code: err?.code }));
+                rej(new SkapiError(err?.message || 'Failed to reset password.', { code: err?.code || 'ERROR', cause: err }) );
             }
         });
     });
@@ -1012,7 +1014,49 @@ export async function forgotPassword(
                 res("SUCCESS: Verification code has been sent.");
             },
             onFailure: (err: any) => {
-                rej(new SkapiError(err?.message || 'Failed to send verification code.', { code: err?.code || 'ERROR' }));
+                // create SkapiError from err
+                /*
+                UserNotFoundException	User does not exist in the user pool
+                InvalidParameterException	Invalid parameter (e.g., missing required attribute)
+                NotAuthorizedException	User is not authorized (e.g., user is disabled)
+                LimitExceededException	Attempt limit exceeded, try again later
+                TooManyRequestsException	Too many requests made to the API
+                CodeDeliveryFailureException	Failed to deliver the verification code (email/SMS issue)
+                UnexpectedLambdaException	Unexpected exception with Lambda trigger
+                UserLambdaValidationException	User validation exception from Lambda trigger
+                InvalidLambdaResponseException	Invalid response from Lambda trigger
+                InvalidSmsRoleAccessPolicyException	Invalid SMS role access policy
+                InvalidSmsRoleTrustRelationshipException	Invalid SMS role trust relationship
+                InvalidEmailRoleAccessPolicyException	Invalid email role access policy
+                ResourceNotFoundException	Resource not found (user pool doesn't exist)
+                InternalErrorException	Internal server error
+                ForbiddenException	WAF blocked the request
+                */
+
+                let code = 'ERROR';
+
+                switch (err?.code) {
+                    case 'UserNotFoundException':
+                        code = 'NOT_EXISTS';
+                        break;
+                    case 'InvalidParameterException':
+                        code = 'INVALID_PARAMETER';
+                        break;
+                    case 'NotAuthorizedException':
+                        code = 'INVALID_REQUEST';
+                        break;
+                    case 'LimitExceededException':
+                        code = 'REQUEST_EXCEED';
+                        break;
+                    case 'TooManyRequestsException':
+                        code = 'REQUEST_EXCEED';
+                        break;
+                    case 'CodeDeliveryFailureException':
+                        code = 'CODE_DELIVERY_FAILURE';
+                        break;
+                }
+
+                rej(new SkapiError(err?.message || 'Failed to send verification code.', { code, cause: err }));
             }
         });
     });
@@ -1059,7 +1103,7 @@ export async function changePassword(params: {
                         rej(new SkapiError('Too many attempts. Please try again later.', { code: 'REQUEST_EXCEED' }));
                     }
                     else {
-                        rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || err?.name }));
+                        rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || 'ERROR', cause: err }) );
                     }
                 }
 
