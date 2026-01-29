@@ -458,7 +458,7 @@ function load_startKey_keys(option: {
         return this.__cached_requests[url][cache_hashedParams];
     }
 
-    return cache_hashedParams;
+    return hashedParams;
 }
 
 function _fetch(url: string, opt: any, progress?: ProgressCallback) {
