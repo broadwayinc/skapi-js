@@ -254,24 +254,24 @@ export async function request(
         return MD5.hash(url + '/' + this.service);
     })();
 
-    let requestKey = load_startKey_keys.bind(this)({
+    let {requestKey, requestKeyWithStartKey} = load_startKey_keys.bind(this)({
         params: data,
         url,
         fetchMore,
         hashedParams
     }); // returns requrestKey | cached data
 
-    this.log('requestKey', requestKey);
-
     if (!requestKey || requestKey && typeof requestKey === 'object') {
-        // cahced data can be falsy data or object
+        // cached data can be falsy data or object
         return requestKey;
     }
 
+    this.log('requestKey', requestKeyWithStartKey);
+
     // prevent duplicate request
-    if (typeof requestKey === 'string' && __pendingRequest[requestKey] instanceof Promise) {
-        this.log('request:returning pending', requestKey);
-        return __pendingRequest[requestKey as string];
+    if (typeof requestKeyWithStartKey === 'string' && __pendingRequest[requestKeyWithStartKey] instanceof Promise) {
+        this.log('request:returning pending', requestKeyWithStartKey);
+        return __pendingRequest[requestKeyWithStartKey as string];
     }
 
     // new request
@@ -342,9 +342,9 @@ export async function request(
             batchSize: this.requestBatchSize,
             breakWhenError: false,
             onProgress: (progress) => {
-                for(let key in __pendingRequest) {
-                    delete __pendingRequest[key];
-                }
+                // for(let key in __pendingRequest) {
+                //     delete __pendingRequest[key];
+                // }
                 this.onBatchProcess.forEach((cb) => cb(progress));
             }
         };
@@ -355,7 +355,7 @@ export async function request(
     return new Promise((res, rej) => {
         queue.add([async () => {
             let promise = _fetch.bind(this)(endpoint, opt, progress);
-            __pendingRequest[requestKey as string] = promise;
+            __pendingRequest[requestKeyWithStartKey as string] = promise;
 
             try {
                 let result = update_startKey_keys.bind(this)({
@@ -363,12 +363,13 @@ export async function request(
                     url,
                     fetched: await promise
                 });
-
+                delete __pendingRequest[requestKeyWithStartKey];
                 this.log('request:end', result);
                 res(result);
                 return result;
             }
             catch (err) {
+                delete __pendingRequest[requestKeyWithStartKey];
                 this.log('request:err', err);
                 rej(err);
                 throw err;
@@ -382,7 +383,7 @@ function load_startKey_keys(option: {
     url: string;
     fetchMore: boolean;
     hashedParams: string;
-}): string | DatabaseResponse<any> {
+}): {requestKeyWithStartKey: string, requestKey: string | DatabaseResponse<any>} {
     let { params = {}, url, fetchMore = false, hashedParams } = option || {};
 
     if (params.startKey) {
@@ -423,42 +424,43 @@ function load_startKey_keys(option: {
             delete this.__startKeyHistory[url][hashedParams];
         }
 
-        return hashedParams;
+        return {requestKeyWithStartKey: hashedParams, requestKey: hashedParams};
     }
 
     if (!Array.isArray(this.__startKeyHistory?.[url]?.[hashedParams])) {
         // startkey does not exists
-        return hashedParams;
+        return {requestKeyWithStartKey: hashedParams, requestKey: hashedParams};
     }
 
     // hashed params exists
-    let list_of_startKeys = this.__startKeyHistory[url][hashedParams]; // [{<startKey key>}, ...'end']
+    let list_of_startKeys = this.__startKeyHistory[url][hashedParams]; // ["{<startKey key>}", ...'end']
     let last_startKey_key = list_of_startKeys[list_of_startKeys.length - 1];
-    let cache_hashedParams = hashedParams;
+    let requestKeyWithStartKey = hashedParams;
     if (last_startKey_key) {
         // use last start key
 
-        if (last_startKey_key === 'end') { // cached startKeys are stringified
-            return {
-                list: [],
-                startKey: 'end',
-                endOfList: true,
-                startKeyHistory: list_of_startKeys
-            };
-        }
+        // if (last_startKey_key === 'end') { // cached startKeys are stringified
+        //     return {
+        //         list: [],
+        //         startKey: 'end',
+        //         endOfList: true,
+        //         startKeyHistory: list_of_startKeys
+        //     };
+        // }
 
-        else {
-            cache_hashedParams += MD5.hash(last_startKey_key);
+        // else {
+            requestKeyWithStartKey += MD5.hash(last_startKey_key);
             params.startKey = JSON.parse(last_startKey_key);
-        }
+        // }
     }
 
-    if (this.__cached_requests?.[url]?.[cache_hashedParams]) {
+    if (this.__cached_requests?.[url]?.[requestKeyWithStartKey]) {
         // return data if there is cache
-        return this.__cached_requests[url][cache_hashedParams];
+        return {requestKey: this.__cached_requests[url][requestKeyWithStartKey], requestKeyWithStartKey};
     }
 
-    return hashedParams;
+    // return hashedParams;
+    return {requestKeyWithStartKey, requestKey: hashedParams};
 }
 
 function _fetch(url: string, opt: any, progress?: ProgressCallback) {
@@ -625,12 +627,6 @@ function update_startKey_keys(option: Record<string, any>) {
         this.__startKeyHistory[url] = {};
     }
 
-    if (!this.__cached_requests?.[url]) {
-        this.__cached_requests[url] = {};
-    }
-
-    this.__cached_requests[url][hashedParam] = fetched;
-
     if (!this.__startKeyHistory[url].hasOwnProperty(hashedParam)) {
         this.__startKeyHistory[url][hashedParam] = [];
     }
@@ -639,6 +635,13 @@ function update_startKey_keys(option: Record<string, any>) {
     if (!this.__startKeyHistory[url][hashedParam].includes(startKey_string)) {
         this.__startKeyHistory[url][hashedParam].push(startKey_string);
     }
+
+    let hashedParamWithStartKey = hashedParam + MD5.hash(startKey_string);
+
+    if (!this.__cached_requests?.[url]) {
+        this.__cached_requests[url] = {};
+    }
+    this.__cached_requests[url][hashedParamWithStartKey] = fetched;
 
     return Object.assign({ startKeyHistory: this.__startKeyHistory[url][hashedParam] }, fetched);
 }
