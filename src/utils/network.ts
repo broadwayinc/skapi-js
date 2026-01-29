@@ -304,15 +304,15 @@ export async function request(
     if (method === 'GET') {
         if (data) {
             let query = [];
-            if (data instanceof FormData) {
-                for (let [name, value] of data.entries()) {
-                    if (typeof value === 'string') {
-                        value = encodeURIComponent(value);
-                        query.push(`&${name}=${value}`);
-                    }
-                }
-            }
-            else {
+            // if (data instanceof FormData) {
+            //     for (let [name, value] of data.entries()) {
+            //         if (typeof value === 'string') {
+            //             value = encodeURIComponent(value);
+            //             query.push(`&${name}=${value}`);
+            //         }
+            //     }
+            // }
+            // else {
                 query = Object.keys(data)
                     .map(k => {
                         let value = data[k];
@@ -321,7 +321,7 @@ export async function request(
                         }
                         return encodeURIComponent(k) + '=' + encodeURIComponent(value);
                     });
-            }
+            // }
             if (query.length) {
                 if (endpoint.substring(endpoint.length - 1) !== '?') {
                     endpoint = endpoint + '?';
@@ -360,6 +360,7 @@ export async function request(
             try {
                 let result = update_startKey_keys.bind(this)({
                     hashedParam: requestKey,
+                    requestKeyWithStartKey,
                     url,
                     fetched: await promise
                 });
@@ -602,7 +603,7 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
 }
 
 function update_startKey_keys(option: Record<string, any>) {
-    let { hashedParam, url, fetched } = option;
+    let { hashedParam, requestKeyWithStartKey, url, fetched } = option;
 
     if (!fetched?.startKey) {
         // no startkey no caching
@@ -636,12 +637,13 @@ function update_startKey_keys(option: Record<string, any>) {
         this.__startKeyHistory[url][hashedParam].push(startKey_string);
     }
 
-    let hashedParamWithStartKey = hashedParam + MD5.hash(startKey_string);
+    // let hashedParamWithStartKey = hashedParam + MD5.hash(startKey_string);
 
     if (!this.__cached_requests?.[url]) {
         this.__cached_requests[url] = {};
     }
-    this.__cached_requests[url][hashedParamWithStartKey] = fetched;
+    // this.__cached_requests[url][hashedParamWithStartKey] = fetched;
+    this.__cached_requests[url][requestKeyWithStartKey] = fetched;
 
     return Object.assign({ startKeyHistory: this.__startKeyHistory[url][hashedParam] }, fetched);
 }

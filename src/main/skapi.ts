@@ -150,7 +150,7 @@ type Options = {
 
 export default class Skapi {
     // current version
-    private __version = "1.2.11.1";
+    private __version = "1.2.11.2";
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
