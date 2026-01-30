@@ -187,6 +187,9 @@ function generateRandom(length: number = 6): string {
     return result;
 }
 
+// Check if we're in a browser environment
+const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
+
 function extractFormData(
     form: FormData | HTMLFormElement | SubmitEvent | { [key: string]: any } | number | string | boolean | null,
     options?: {
@@ -323,7 +326,7 @@ function extractFormData(
         }
     }
 
-    if (form instanceof HTMLInputElement || form instanceof HTMLSelectElement || form instanceof HTMLTextAreaElement) {
+    if (isBrowser && (form instanceof HTMLInputElement || form instanceof HTMLSelectElement || form instanceof HTMLTextAreaElement)) {
         handleInput(form as HTMLInputElement);
         if (sizeof(data) > 2 * 1024 * 1024) {
             throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
@@ -332,7 +335,7 @@ function extractFormData(
     }
 
     else {
-        if (form instanceof FormData) {
+        if (isBrowser && form instanceof FormData) {
             for (let pair of form.entries()) {
                 let name = pair[0];
                 let v = pair[1];
@@ -360,10 +363,10 @@ function extractFormData(
             }
             return { data, files };
         }
-        if (form instanceof SubmitEvent) {
+        if (isBrowser && form instanceof SubmitEvent) {
             form = form.target;
         }
-        if (form instanceof HTMLFormElement) {
+        if (isBrowser && form instanceof HTMLFormElement) {
             let inputs = form.querySelectorAll('input');
             let selects = form.querySelectorAll('select');
             let textarea = form.querySelectorAll('textarea');

@@ -4,6 +4,7 @@
   "description": "Serverless Backend API for HTML frontend.",
   "main": "js/Main.js",
   "browser": "dist/skapi.js",
+  "module": "dist/skapi.js",
   "types": "js/Main.d.ts",
   "exports": {
     ".": {
