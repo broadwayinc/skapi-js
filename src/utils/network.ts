@@ -829,7 +829,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             if (form instanceof SubmitEvent) {
                 form.preventDefault();
 
-                let currentUrl = location.href;
+                let currentUrl = window.location.href;
                 formEl = form.target as HTMLFormElement;
                 let href = new URL(formEl.action);
                 actionDestination = href.href;
@@ -895,12 +895,12 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
 
                 if (formEl) {
                     if (storeResponseKey) {
-                        sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
+                        window.sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
                         if (refreshPage) {
-                            location.replace(actionDestination);
+                            window.location.replace(actionDestination);
                         }
                         else {
-                            location.href = actionDestination;
+                            window.location.href = actionDestination;
                         }
                     }
                 }
@@ -955,9 +955,9 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
 
 export async function getFormResponse(): Promise<any> {
     await this.__connection;
-    let responseKey = `${this.service}:${MD5.hash(location.href.split('?')[0])}`;
-    let stored = sessionStorage.getItem(responseKey);
-    sessionStorage.removeItem(responseKey);
+    let responseKey = `${this.service}:${MD5.hash(window.location.href.split('?')[0])}`;
+    let stored = window.sessionStorage.getItem(responseKey);
+    window.sessionStorage.removeItem(responseKey);
 
     if (stored !== null) {
         try {

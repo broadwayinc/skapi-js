@@ -200,7 +200,7 @@ async function createMediaStream(media: MediaStream | MediaStreamConstraints): P
         return dummyStream;
     }
 
-    return navigator.mediaDevices.getUserMedia(media);
+    return window.navigator.mediaDevices.getUserMedia(media);
 }
 
 export async function connectRTC(
@@ -244,7 +244,7 @@ export async function connectRTC(
     if (!(params?.media instanceof MediaStream)) {
         if (params?.media?.video || params?.media?.audio) {
             // check if it is localhost or https
-            if (location.hostname !== 'localhost' && location.protocol !== 'https:') {
+            if (window.location.hostname !== 'localhost' && window.location.protocol !== 'https:') {
                 throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
             }
         }
@@ -383,7 +383,7 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
         if (!(params?.media instanceof MediaStream)) {
             if (params?.media?.video || params?.media?.audio) {
                 // check if it is localhost or https
-                if (location.hostname !== 'localhost' && location.protocol !== 'https:') {
+                if (window.location.hostname !== 'localhost' && window.location.protocol !== 'https:') {
                     throw new SkapiError(`Media stream is only supported on either localhost or https.`, { code: 'INVALID_REQUEST' });
                 }
             }

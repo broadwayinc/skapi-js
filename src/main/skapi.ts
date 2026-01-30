@@ -349,7 +349,7 @@ export default class Skapi {
     constructor(service: string, owner?: string | Options, options?: Options | any, __etc?: any) {
         if (service.split("-").length === 7) {
             if (service === 'xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx') {
-                alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
+                window.alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
                 throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
 
@@ -376,15 +376,15 @@ export default class Skapi {
                 extOwner = idSplit.slice(2).join("-");
             }
             catch (err) {
-                alert("Service ID or Owner ID is invalid.");
+                window.alert("Service ID or Owner ID is invalid.");
                 throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
             if(!region) {
-                alert("Service ID or Owner ID is invalid.");
+                window.alert("Service ID or Owner ID is invalid.");
                 throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
             if (owner && typeof owner === 'string' && owner !== extOwner) {
-                alert("Service ID or Owner ID is invalid.");
+                window.alert("Service ID or Owner ID is invalid.");
                 throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
 
@@ -392,29 +392,29 @@ export default class Skapi {
             service = region + idSplit[0] + idSplit[1].slice(1);
         }
 
-        if (!sessionStorage) {
-            throw new SkapiError('Web browser API is not available.', { code: 'NOT_SUPPORTED' });
-        }
-        sessionStorage.setItem('__skapi_kiss', 'kiss');
-        if (sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
-            alert('Session storage is disabled. Please enable session storage.');
-            throw new SkapiError('Session storage is disabled. Please enable session storage.', { code: 'SESSION_STORAGE_DISABLED' });
-        }
+        // if (!window.sessionStorage) {
+        //     throw new SkapiError('Web browser API is not available.', { code: 'NOT_SUPPORTED' });
+        // }
+        // window.sessionStorage.setItem('__skapi_kiss', 'kiss');
+        // if (window.sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
+        //     window.alert('Session storage is disabled. Please enable session storage.');
+        //     throw new SkapiError('Session storage is disabled. Please enable session storage.', { code: 'SESSION_STORAGE_DISABLED' });
+        // }
 
-        sessionStorage.removeItem('__skapi_kiss');
+        // window.sessionStorage.removeItem('__skapi_kiss');
 
         if (typeof service !== 'string' || typeof owner !== 'string') {
-            alert("Service ID or Owner ID is invalid.");
+            window.alert("Service ID or Owner ID is invalid.");
             throw new SkapiError('"service" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
 
         if (!service || !owner) {
-            alert('Service ID and Owner ID are required.');
+            window.alert('Service ID and Owner ID are required.');
             throw new SkapiError('"service" and "owner" are required.', { code: 'INVALID_PARAMETER' });
         }
 
         if (service.toLowerCase() === 'service_id' || owner.toLowerCase() === 'owner_id') {
-            alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
+            window.alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
             throw new SkapiError('"service" and "owner" are required.', { code: 'INVALID_PARAMETER' });
         }
 
@@ -422,7 +422,7 @@ export default class Skapi {
             try {
                 validator.UserId(owner, '"owner"');
             } catch (err: any) {
-                alert("Service ID or Owner ID is invalid.");
+                window.alert("Service ID or Owner ID is invalid.");
                 throw err;
             }
         }
@@ -503,12 +503,12 @@ export default class Skapi {
                 }
             });
 
-        if (!sessionStorage) {
-            alert('This browser is not supported.');
+        if (!window.sessionStorage) {
+            window.alert('This browser is not supported.');
             throw new Error(`This browser is not supported.`);
         }
 
-        const restore = JSON.parse(sessionStorage.getItem(`${service}#${owner}`) || 'null');
+        const restore = JSON.parse(window.sessionStorage.getItem(`${service}#${owner}`) || 'null');
 
         this.log('constructor:restore', restore);
 
@@ -549,7 +549,7 @@ export default class Skapi {
             }
         })()
 
-        let uniqueids = sessionStorage.getItem(`${this.service}:uniqueids`);
+        let uniqueids = window.sessionStorage.getItem(`${this.service}:uniqueids`);
         if (uniqueids) {
             try {
                 this.__my_unique_ids = JSON.parse(uniqueids);
@@ -590,7 +590,7 @@ export default class Skapi {
                             data[k] = this[k];
                         }
 
-                        sessionStorage.setItem(`${service}#${owner}`, JSON.stringify(data));
+                        window.sessionStorage.setItem(`${service}#${owner}`, JSON.stringify(data));
                         this.__class_properties_has_been_cached = true;
                     }
                 };
@@ -599,12 +599,12 @@ export default class Skapi {
             };
 
             // attach event to save session on close
-            addEventListener('beforeunload', () => {
+            window.addEventListener('beforeunload', () => {
                 this.closeRealtime();
                 storeClassProperties();
             });
             // for mobile
-            addEventListener("visibilitychange", () => {
+            window.addEventListener("visibilitychange", () => {
                 storeClassProperties();
             });
 
@@ -629,7 +629,7 @@ export default class Skapi {
     }> {
         let conn = await this.__connection;
         // get browser user-agent info
-        let ua = conn?.user_agent || navigator.userAgent;
+        let ua = conn?.user_agent || window.navigator.userAgent;
         return {
             user_ip: conn.ip,
             user_agent: ua,
@@ -648,7 +648,7 @@ export default class Skapi {
         }
         catch (err: any) {
             this.log('connection fail', err);
-            alert('Service is not available: ' + (err.message || err.toString()));
+            window.alert('Service is not available: ' + (err.message || err.toString()));
 
             this.connection = null;
             throw err;

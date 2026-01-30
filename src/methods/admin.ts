@@ -30,7 +30,7 @@ export async function blockAccount(form: Form<{
             throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
         }
 
-        if (this.__user.access_group !== 99) {
+        if (this.__user.access_group < 90) {
             throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
         }
     }
@@ -62,7 +62,7 @@ export async function unblockAccount(form: Form<{
             throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
         }
 
-        if (this.__user.access_group !== 99) {
+        if (this.__user.access_group < 90) {
             throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
         }
     }
@@ -94,7 +94,7 @@ export async function deleteAccount(form: Form<{
             throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
         }
 
-        if (this.__user.access_group !== 99) {
+        if (this.__user.access_group < 90) {
             throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
         }
     }
@@ -215,7 +215,7 @@ export async function inviteUser(
             throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
         }
 
-        if (this.__user.access_group !== 99) {
+        if (this.__user.access_group < 90) {
             throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
         }
     }
@@ -289,7 +289,7 @@ export async function createAccount(
             throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
         }
 
-        if (this.__user.access_group !== 99) {
+        if (this.__user.access_group < 90) {
             throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
         }
     }
@@ -332,7 +332,7 @@ export async function grantAccess(params: Form<{
             throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
         }
 
-        if (this.__user.access_group !== 99) {
+        if (this.__user.access_group < 90) {
             throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
         }
     }
@@ -356,7 +356,7 @@ export async function getInvitations(params?: Form<{
             throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
         }
 
-        if (this.__user.access_group !== 99) {
+        if (this.__user.access_group < 90) {
             throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
         }
     }
@@ -382,7 +382,7 @@ export async function cancelInvitation(params: Form<{
             throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
         }
 
-        if (this.__user.access_group !== 99) {
+        if (this.__user.access_group < 90) {
             throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
         }
     }
@@ -406,7 +406,7 @@ export async function resendInvitation(params: Form<{
             throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
         }
 
-        if (this.__user.access_group !== 99) {
+        if (this.__user.access_group < 90) {
             throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
         }
     }
