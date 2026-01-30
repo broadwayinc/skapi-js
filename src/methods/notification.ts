@@ -9,6 +9,9 @@ export async function subscribeNotification(params: {
     auth: string;
   };
 }): Promise<"SUCCESS: Subscribed to receive notifications."> {
+  if ((window as any)._runningInNodeJS) {
+    throw new SkapiError('Push Notifications are not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
+  }
   await this.__connection;
 
   if (!params.endpoint) {
@@ -38,6 +41,9 @@ export async function unsubscribeNotification(params: {
     auth: string;
   };
 }): Promise<"SUCCESS: Unsubscribed from notifications."> {
+  if ((window as any)._runningInNodeJS) {
+    throw new SkapiError('Push Notifications are not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
+  }
   await this.__connection;
 
   if (!params.endpoint) {
@@ -61,6 +67,9 @@ export async function unsubscribeNotification(params: {
 
 
 export async function vapidPublicKey() {
+  if ((window as any)._runningInNodeJS) {
+    throw new SkapiError('Push Notifications are not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
+  }
   await this.__connection;
 
   let vapid = await request.bind(this)("get-vapid-public-key", null, {
@@ -76,6 +85,9 @@ export async function pushNotification(
     body: string;
   },
   user_ids?: string | string[]): Promise<"SUCCESS: Notification sent."> {
+  if ((window as any)._runningInNodeJS) {
+    throw new SkapiError('Push Notifications are not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
+  }
   await this.__connection;
 
   let { title, body } = extractFormData(form || {}, { nullIfEmpty: true }).data;

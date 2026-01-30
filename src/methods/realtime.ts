@@ -19,6 +19,10 @@ let closedByIntention = true;
 let reconnectAttempts = 0;
 
 async function prepareWebsocket() {
+    if ((window as any)._runningInNodeJS) {
+        throw new SkapiError('WebSocket is not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
+    }
+
     // Connect to the WebSocket server
     await this.getProfile();
 
@@ -37,11 +41,14 @@ async function prepareWebsocket() {
 let visibilitychange = null;
 
 export async function closeRealtime(): Promise<void> {
+    if ((window as any)._runningInNodeJS) {
+        throw new SkapiError('WebSocket is not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
+    }
     closedByIntention = true;
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
     closeRTC.bind(this)({ close_all: true });
 
-    if(__current_socket_room) {
+    if (__current_socket_room) {
         joinRealtime.bind(this)({ group: null });
     }
 
@@ -66,12 +73,15 @@ export async function closeRealtime(): Promise<void> {
 }
 
 export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnect?: string): Promise<WebSocket> {
+    if ((window as any)._runningInNodeJS) {
+        throw new SkapiError('WebSocket is not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
+    }
     if (typeof cb !== 'function') {
         throw new SkapiError(`Callback must be a function.`, { code: 'INVALID_REQUEST' });
     }
 
-    if(reconnect === 'reconnect') {
-        if(this.__socket instanceof Promise) {
+    if (reconnect === 'reconnect') {
+        if (this.__socket instanceof Promise) {
             let socket = await this.__socket;
             if (socket.readyState !== WebSocket.CLOSED && socket.readyState !== WebSocket.CLOSING) {
                 return this.__socket;
@@ -334,6 +344,9 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
 
 
 export async function postRealtime(message: any, recipient: string, notification?: { config?: { always: boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
+    if ((window as any)._runningInNodeJS) {
+        throw new SkapiError('WebSocket is not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
+    }
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
 
     if (!socket) {
@@ -406,6 +419,9 @@ export async function postRealtime(message: any, recipient: string, notification
 }
 
 export async function joinRealtime(params: { group?: string | null }): Promise<{ type: 'success', message: string }> {
+    if ((window as any)._runningInNodeJS) {
+        throw new SkapiError('WebSocket is not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
+    }
     let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
 
     if (!socket) {
