@@ -206,6 +206,9 @@ export async function unregisterTicket(
 
 export async function getJwtToken() {
     await this.__connection;
+    if(this.bearerToken) {
+        return this.bearerToken;
+    }
     if (this.session) {
         const currentTime = Math.floor(Date.now() / 1000);
         const idToken = this.session.getIdToken();
@@ -223,11 +226,11 @@ export async function getJwtToken() {
             try {
                 await authentication.bind(this)().getSession({ refreshToken: true });
                 this.log('request:received new tokens', {
-                    exp: this.session.idToken.payload.exp,
+                    exp: this.session?.idToken?.payload?.exp,
                     currentTime,
                     expiresIn: idTokenExp - currentTime,
-                    token: this.session.accessToken.jwtToken,
-                    refreshToken: this.session.refreshToken.token
+                    token: this.session?.accessToken?.jwtToken,
+                    refreshToken: this.session?.refreshToken?.token
                 });
             }
             catch (err) {
@@ -504,6 +507,9 @@ export function authentication() {
 
 export async function getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
     await this.__authConnection;
+    if(this.bearerToken) {
+        return this.user;
+    }
     try {
         await authentication.bind(this)().getSession(Object.assign({ skipUserUpdateEventTrigger: true }, options));
         return this.user;
