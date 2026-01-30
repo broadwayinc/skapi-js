@@ -14,10 +14,10 @@ import {
     PublicUser,
     UserProfilePublicSettings,
     FileInfo,
-    RTCEvent,
-    RealtimeCallback,
-    RTCConnectorParams,
-    RTCConnector,
+    // RTCEvent,
+    // RealtimeCallback,
+    // RTCConnectorParams,
+    // RTCConnector,
     DelRecordQuery,
 } from '../Types';
 import {
@@ -40,18 +40,18 @@ import {
     deleteFiles,
     getUniqueId
 } from '../methods/database';
-import {
-    connectRealtime,
-    joinRealtime,
-    postRealtime,
-    closeRealtime,
-    getRealtimeUsers,
-    getRealtimeGroups,
-} from '../methods/realtime';
-import {
-    closeRTC,
-    connectRTC
-} from '../methods/webrtc';
+// import {
+//     connectRealtime,
+//     joinRealtime,
+//     postRealtime,
+//     closeRealtime,
+//     getRealtimeUsers,
+//     getRealtimeGroups,
+// } from '../methods/realtime';
+// import {
+//     closeRTC,
+//     connectRTC
+// } from '../methods/webrtc';
 import {
     secureRequest,
     mock,
@@ -124,12 +124,12 @@ import {
     cancelInvitation,
     resendInvitation
 } from '../methods/admin';
-import {
-    subscribeNotification,
-    vapidPublicKey,
-    pushNotification,
-    unsubscribeNotification
-} from '../methods/notification';
+// import {
+//     subscribeNotification,
+//     vapidPublicKey,
+//     pushNotification,
+//     unsubscribeNotification
+// } from '../methods/notification';
 import {
     spellcast, dopamine, getspell
 } from '../methods/vivian';
@@ -388,15 +388,15 @@ export default class Skapi {
             service = region + idSplit[0] + idSplit[1].slice(1);
         }
 
-        if (!sessionStorage) {
-            throw new SkapiError('Web browser API is not available.', { code: 'NOT_SUPPORTED' });
-        }
-        sessionStorage.setItem('__skapi_kiss', 'kiss');
-        if (sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
-            throw new SkapiError('Session storage is disabled. Please enable session storage.', { code: 'SESSION_STORAGE_DISABLED' });
-        }
+        // if (!sessionStorage) {
+        //     throw new SkapiError('Web browser API is not available.', { code: 'NOT_SUPPORTED' });
+        // }
+        // sessionStorage.setItem('__skapi_kiss', 'kiss');
+        // if (sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
+        //     throw new SkapiError('Session storage is disabled. Please enable session storage.', { code: 'SESSION_STORAGE_DISABLED' });
+        // }
 
-        sessionStorage.removeItem('__skapi_kiss');
+        // sessionStorage.removeItem('__skapi_kiss');
 
         if (typeof service !== 'string' || typeof owner !== 'string') {
             throw new SkapiError('"service" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
@@ -490,24 +490,25 @@ export default class Skapi {
                 }
             });
 
-        if (!sessionStorage) {
-            throw new Error(`This browser is not supported.`);
-        }
+        // if (!sessionStorage) {
+        //     throw new Error(`This browser is not supported.`);
+        // }
 
-        const restore = JSON.parse(sessionStorage.getItem(`${service}#${owner}`) || 'null');
+        // const restore = JSON.parse(sessionStorage.getItem(`${service}#${owner}`) || 'null');
+        const restore = null;
 
-        this.log('constructor:restore', restore);
+        // this.log('constructor:restore', restore);
 
-        if (restore?.connection) {
-            // apply all data to class properties
-            for (let k in restore) {
-                this[k] = restore[k];
-            }
+        // if (restore?.connection) {
+        //     // apply all data to class properties
+        //     for (let k in restore) {
+        //         this[k] = restore[k];
+        //     }
 
-            if (!restore.__public_identifier) {
-                this.__public_identifier = `${this.service}:${this.owner}:${generateRandom(16)}`;
-            }
-        }
+        //     if (!restore.__public_identifier) {
+        //         this.__public_identifier = `${this.service}:${this.owner}:${generateRandom(16)}`;
+        //     }
+        // }
 
         this.__authConnection = (async (): Promise<void> => {
             const admin_endpoint = await this.admin_endpoint;
@@ -521,28 +522,28 @@ export default class Skapi {
                     skipUserUpdateEventTrigger: true
                 });
                 if (this.user) {
-                    if (!restore?.connection && !autoLogin) {
-                        _out.bind(this)();
-                    }
-                    else {
+                    // if (!restore?.connection && !autoLogin) {
+                    //     _out.bind(this)();
+                    // }
+                    // else {
                         // only run login listeners if user is logged in (auto login successful)
                         this._runOnLoginListeners(this.user);
                         this._runOnUserUpdateListeners(this.user);
-                    }
+                    // }
                 }
             }
             catch (err) {
             }
         })()
 
-        let uniqueids = sessionStorage.getItem(`${this.service}:uniqueids`);
-        if (uniqueids) {
-            try {
-                this.__my_unique_ids = JSON.parse(uniqueids);
-            } catch (err) {
-                this.__my_unique_ids = {};
-            }
-        }
+        // let uniqueids = sessionStorage.getItem(`${this.service}:uniqueids`);
+        // if (uniqueids) {
+        //     try {
+        //         this.__my_unique_ids = JSON.parse(uniqueids);
+        //     } catch (err) {
+        //         this.__my_unique_ids = {};
+        //     }
+        // }
 
         // connects to server
         this.__connection = (async (): Promise<Connection> => {
@@ -576,7 +577,7 @@ export default class Skapi {
                             data[k] = this[k];
                         }
 
-                        sessionStorage.setItem(`${service}#${owner}`, JSON.stringify(data));
+                        // sessionStorage.setItem(`${service}#${owner}`, JSON.stringify(data));
                         this.__class_properties_has_been_cached = true;
                     }
                 };
@@ -584,15 +585,15 @@ export default class Skapi {
                 return (connection instanceof Promise) ? connection.then(() => exec()) : exec();
             };
 
-            // attach event to save session on close
-            addEventListener('beforeunload', () => {
-                this.closeRealtime();
-                storeClassProperties();
-            });
-            // for mobile
-            addEventListener("visibilitychange", () => {
-                storeClassProperties();
-            });
+            // // attach event to save session on close
+            // addEventListener('beforeunload', () => {
+            //     this.closeRealtime();
+            //     storeClassProperties();
+            // });
+            // // for mobile
+            // addEventListener("visibilitychange", () => {
+            //     storeClassProperties();
+            // });
 
             await connection;
             await this.__authConnection;
@@ -669,22 +670,22 @@ export default class Skapi {
         return getFeed.bind(this)(params, fetchOptions);
     }
 
-    @formHandler()
-    closeRTC(params: { cid?: string; close_all?: boolean; }): Promise<void> {
-        return closeRTC.bind(this)(params);
-    }
+    // @formHandler()
+    // closeRTC(params: { cid?: string; close_all?: boolean; }): Promise<void> {
+    //     return closeRTC.bind(this)(params);
+    // }
 
-    @formHandler()
-    connectRTC(
-        params: RTCConnectorParams,
-        callback?: RTCEvent
-    ): Promise<RTCConnector> {
-        return connectRTC.bind(this)(params, callback);
-    }
+    // @formHandler()
+    // connectRTC(
+    //     params: RTCConnectorParams,
+    //     callback?: RTCEvent
+    // ): Promise<RTCConnector> {
+    //     return connectRTC.bind(this)(params, callback);
+    // }
 
-    connectRealtime(callback: RealtimeCallback): Promise<WebSocket> {
-        return connectRealtime.bind(this)(callback);
-    }
+    // connectRealtime(callback: RealtimeCallback): Promise<WebSocket> {
+    //     return connectRealtime.bind(this)(callback);
+    // }
 
     @formHandler()
     spellcast(params) {
@@ -780,14 +781,14 @@ export default class Skapi {
         return getTickets.bind(this)(params, fetchOptions);
     }
 
-    closeRealtime(): Promise<void> {
-        return closeRealtime.bind(this)();
-    }
+    // closeRealtime(): Promise<void> {
+    //     return closeRealtime.bind(this)();
+    // }
 
-    @formHandler()
-    getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{ user_id: string; cid: string }[]>> {
-        return getRealtimeUsers.bind(this)(params, fetchOptions);
-    }
+    // @formHandler()
+    // getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{ user_id: string; cid: string }[]>> {
+    //     return getRealtimeUsers.bind(this)(params, fetchOptions);
+    // }
 
     @formHandler()
     sendInquiry(data: Form<{
@@ -845,35 +846,35 @@ export default class Skapi {
         return grantAccess.bind(this)(params);
     }
 
-    @formHandler()
-    getRealtimeGroups(
-        params?: {
-            /** Index name to search. */
-            searchFor: 'group' | 'number_of_users';
-            /** Index value to search. */
-            value: string | number;
-            /** Search condition. */
-            condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
-            /** Range of search. */
-            range?: string | number;
-        } | null,
-        fetchOptions?: FetchOptions
-    ): Promise<DatabaseResponse<{ group: string; number_of_users: number; }>> {
-        return getRealtimeGroups.bind(this)(params, fetchOptions);
-    }
+    // @formHandler()
+    // getRealtimeGroups(
+    //     params?: {
+    //         /** Index name to search. */
+    //         searchFor: 'group' | 'number_of_users';
+    //         /** Index value to search. */
+    //         value: string | number;
+    //         /** Search condition. */
+    //         condition?: '>' | '>=' | '=' | '<' | '<=' | '!=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte' | 'ne';
+    //         /** Range of search. */
+    //         range?: string | number;
+    //     } | null,
+    //     fetchOptions?: FetchOptions
+    // ): Promise<DatabaseResponse<{ group: string; number_of_users: number; }>> {
+    //     return getRealtimeGroups.bind(this)(params, fetchOptions);
+    // }
     @formHandler()
     newsletterGroupEndpoint(params) {
         return newsletterGroupEndpoint.bind(this)(params);
     }
-    @formHandler()
-    postRealtime(message: any, recipient: string, notification?: { config?: { always: boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
-        return postRealtime.bind(this)(message, recipient, notification);
-    }
+    // @formHandler()
+    // postRealtime(message: any, recipient: string, notification?: { config?: { always: boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
+    //     return postRealtime.bind(this)(message, recipient, notification);
+    // }
 
-    @formHandler()
-    joinRealtime(params: { group: string | null }): Promise<{ type: 'success', message: string }> {
-        return joinRealtime.bind(this)(params);
-    }
+    // @formHandler()
+    // joinRealtime(params: { group: string | null }): Promise<{ type: 'success', message: string }> {
+    //     return joinRealtime.bind(this)(params);
+    // }
 
     getConnection(): Promise<Connection> {
         return this.__connection;
@@ -1022,40 +1023,40 @@ export default class Skapi {
     adminNewsletterRequest(params) {
         return adminNewsletterRequest.bind(this)(params);
     }
-    @formHandler()
-    subscribeNotification(
-        endpoint: string,
-        keys: {
-            p256dh: string;
-            auth: string;
-        }
-    ): Promise<'SUCCESS: Subscribed to receive notifications.'> {
-        return subscribeNotification.bind(this)({ endpoint, keys });
-    }
-    @formHandler()
-    unsubscribeNotification(
-        endpoint: string,
-        keys: {
-            p256dh: string;
-            auth: string;
-        }
-    ): Promise<'SUCCESS: Unsubscribed from notifications.'> {
-        return unsubscribeNotification.bind(this)({ endpoint, keys });
-    }
-    @formHandler()
-    vapidPublicKey(): Promise<{ VAPIDPublicKey: string }> {
-        return vapidPublicKey.bind(this)();
-    }
-    @formHandler()
-    pushNotification(
-        form: {
-            title: string,
-            body: string
-        },
-        user_ids?: string | string[]
-    ): Promise<"SUCCESS: Notification sent."> {
-        return pushNotification.bind(this)(form, user_ids);
-    }
+    // @formHandler()
+    // subscribeNotification(
+    //     endpoint: string,
+    //     keys: {
+    //         p256dh: string;
+    //         auth: string;
+    //     }
+    // ): Promise<'SUCCESS: Subscribed to receive notifications.'> {
+    //     return subscribeNotification.bind(this)({ endpoint, keys });
+    // }
+    // @formHandler()
+    // unsubscribeNotification(
+    //     endpoint: string,
+    //     keys: {
+    //         p256dh: string;
+    //         auth: string;
+    //     }
+    // ): Promise<'SUCCESS: Unsubscribed from notifications.'> {
+    //     return unsubscribeNotification.bind(this)({ endpoint, keys });
+    // }
+    // @formHandler()
+    // vapidPublicKey(): Promise<{ VAPIDPublicKey: string }> {
+    //     return vapidPublicKey.bind(this)();
+    // }
+    // @formHandler()
+    // pushNotification(
+    //     form: {
+    //         title: string,
+    //         body: string
+    //     },
+    //     user_ids?: string | string[]
+    // ): Promise<"SUCCESS: Notification sent."> {
+    //     return pushNotification.bind(this)(form, user_ids);
+    // }
 
     @formHandler()
     getNewsletters(

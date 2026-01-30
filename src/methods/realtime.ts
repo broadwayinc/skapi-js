@@ -107,9 +107,9 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                 closedByIntention = false;
                 reconnectAttempts = 0;
 
-                if (reconnect !== 'reconnect') {
-                    window.addEventListener('visibilitychange', visibilitychange);
-                }
+                // if (reconnect !== 'reconnect') {
+                //     window.addEventListener('visibilitychange', visibilitychange);
+                // }
 
                 this.log('realtime onopen', 'Connected to WebSocket server.');
                 cb({ type: 'success', message: 'Connected to WebSocket server.' });

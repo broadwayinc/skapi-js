@@ -895,7 +895,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
 
                 if (formEl) {
                     if (storeResponseKey) {
-                        sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
+                        // sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
                         if (refreshPage) {
                             location.replace(actionDestination);
                         }
@@ -955,17 +955,17 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
 
 export async function getFormResponse(): Promise<any> {
     await this.__connection;
-    let responseKey = `${this.service}:${MD5.hash(location.href.split('?')[0])}`;
-    let stored = sessionStorage.getItem(responseKey);
-    sessionStorage.removeItem(responseKey);
+    // let responseKey = `${this.service}:${MD5.hash(location.href.split('?')[0])}`;
+    // let stored = sessionStorage.getItem(responseKey);
+    // sessionStorage.removeItem(responseKey);
 
-    if (stored !== null) {
-        try {
-            stored = JSON.parse(stored);
-        } catch (err) { }
+    // if (stored !== null) {
+    //     try {
+    //         stored = JSON.parse(stored);
+    //     } catch (err) { }
 
-        return stored;
-    }
+    //     return stored;
+    // }
 
     return null;
 };
