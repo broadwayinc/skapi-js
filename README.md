@@ -71,6 +71,29 @@ const skapi = new Skapi('SERVICE_ID');
 export { skapi }
 ```
 
+### Node.js (CommonJS)
+
+To use Skapi in NodeJS:
+
+```sh
+$ npm i skapi-js
+```
+
+Then, import the library into your main JavaScript file.
+
+```javascript
+// main.js
+const { Skapi } = require('skapi-js');
+const skapi = new Skapi('SERVICE_ID');
+
+// Export the skapi instance, so you can use it in other component files
+module.exports = { skapi };
+```
+
+> **Note:** When running Skapi in Node.js, browser-specific features such as WebSocket, WebRTC, and Notifications are not available.
+
+
+
 ### 3. Test your connection
 
 After you initialized the Skapi library, you can test your connection by pinging your request with the `mock()` method.
