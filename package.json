@@ -2,13 +2,11 @@
   "name": "skapi-node",
   "version": "1.2.11",
   "description": "Serverless Backend API for NodeJS.",
-  "main": "js/Main.js",
-  "browser": "dist/skapi.js",
+  "main": "dist/skapi.cjs",
   "types": "js/Main.d.ts",
   "exports": {
     ".": {
       "require": "./dist/skapi.cjs",
-      "import": "./js/Main.js",
       "types": "./js/Main.d.ts"
     }
   },
@@ -16,6 +14,9 @@
     "js",
     "dist"
   ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "build": "npx tsc --project tsconfig.json && npx webpack --config webpack.config.js",
     "dev": "npx bns 3333"

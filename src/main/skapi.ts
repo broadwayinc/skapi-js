@@ -20,6 +20,10 @@ import {
     // RTCConnector,
     DelRecordQuery,
 } from '../Types';
+import { getUserAgent as getPlatformUserAgent } from '../platform';
+// Platform module for Node.js
+import * as platformModule from '../platform/node';
+
 import {
     CognitoUserPool
 } from 'amazon-cognito-identity-js';
@@ -458,15 +462,10 @@ export default class Skapi {
 
         this.admin_endpoint = fetch(`${cdn_domain}/${sreg}/admin-${this.__endpoint_version}.json`)
             .then(response => response.blob())
-            .then(blob => new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            }))
+            .then(blob => platformModule.blobToBase64(blob))
             .then(data => {
                 try {
-                    return typeof data === 'string' ? JSON.parse(atob(data.split(',')[1])) : null
+                    return typeof data === 'string' ? JSON.parse(platformModule.base64Decode(data)) : null
                 }
                 catch (err) {
                     throw new SkapiError('Service does not exist. Create your service from skapi.com', { code: 'NOT_EXISTS' });
@@ -475,15 +474,10 @@ export default class Skapi {
 
         this.record_endpoint = fetch(`${cdn_domain}/${sreg}/record-${this.__endpoint_version}.json`)
             .then(response => response.blob())
-            .then(blob => new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            }))
+            .then(blob => platformModule.blobToBase64(blob))
             .then(data => {
                 try {
-                    return typeof data === 'string' ? JSON.parse(atob(data.split(',')[1])) : null
+                    return typeof data === 'string' ? JSON.parse(platformModule.base64Decode(data)) : null
                 }
                 catch (err) {
                     throw new SkapiError('Service does not exist. Create your service from skapi.com', { code: 'NOT_EXISTS' });
@@ -615,8 +609,8 @@ export default class Skapi {
         version: string;
     }> {
         let conn = await this.__connection;
-        // get browser user-agent info
-        let ua = conn?.user_agent || navigator.userAgent;
+        // get user-agent info (works in both browser and Node.js)
+        let ua = conn?.user_agent || getPlatformUserAgent();
         return {
             user_ip: conn.ip,
             user_agent: ua,

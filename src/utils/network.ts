@@ -6,6 +6,9 @@ import { MD5, generateRandom, extractFormData } from './utils';
 // import { authentication, getJwtToken } from '../methods/user';
 import { getJwtToken } from '../methods/user';
 import Qpass from "qpass";
+import { isBrowser, isNode } from '../platform';
+// Platform module - webpack will alias this based on target
+import * as platform from '../platform/node';
 
 let queue = null;
 // Global counters for round-robin
@@ -464,26 +467,91 @@ function load_startKey_keys(option: {
     return {requestKeyWithStartKey, requestKey: hashedParams};
 }
 
-function _fetch(url: string, opt: any, progress?: ProgressCallback) {
+/**
+ * Platform-aware fetch function
+ * Uses XMLHttpRequest in browser (for progress support), native fetch in Node.js
+ */
+async function _fetch(url: string, opt: any, progress?: ProgressCallback): Promise<any> {
+    const errCode = [
+        'INVALID_CORS',
+        'INVALID_REQUEST',
+        'SERVICE_DISABLED',
+        'INVALID_PARAMETER',
+        'ERROR',
+        'EXISTS',
+        'NOT_EXISTS'
+    ];
+
+    const handleErrorResponse = (status: number, result: any) => {
+        if (typeof result === 'string') {
+            let errMsg = result.split(':');
+            let code = errMsg.splice(0, 1)[0].trim();
+            let msg = errMsg.join(':').trim();
+            throw new SkapiError(msg, { code: (errCode.includes(code) ? code : 'ERROR') });
+        }
+        else if (typeof result === 'object' && result?.message) {
+            let code = (result?.code || (status ? status.toString() : null) || 'ERROR');
+            let message = result.message;
+            let cause = result?.cause;
+            if (typeof message === 'string') {
+                message = message.trim();
+            }
+            throw new SkapiError(message, { cause, code });
+        }
+        else {
+            throw result;
+        }
+    };
+
+    // Node.js path - use platform httpRequest
+    if (isNode) {
+        let abortController: AbortController | null = null;
+        
+        const response = await platform.httpRequest(url, {
+            method: opt.method || 'GET',
+            headers: opt.headers || {},
+            body: opt.body,
+            onUploadProgress: progress ? (p) => {
+                progress({
+                    status: 'upload',
+                    progress: p.lengthComputable ? (p.loaded / p.total * 100) : 0,
+                    loaded: p.loaded,
+                    total: p.total,
+                    abort: () => abortController?.abort()
+                });
+            } : undefined,
+            onDownloadProgress: progress ? (p) => {
+                progress({
+                    status: 'download',
+                    progress: p.lengthComputable ? (p.loaded / p.total * 100) : 0,
+                    loaded: p.loaded,
+                    total: p.total,
+                    abort: () => abortController?.abort()
+                });
+            } : undefined
+        });
+
+        if (response.status === 429) {
+            // Too many requests - retry after delay
+            const retryAfter = response.headers['retry-after'];
+            if (retryAfter) {
+                await new Promise(resolve => setTimeout(resolve, parseInt(retryAfter) * 1000));
+                return _fetch(url, opt, progress);
+            }
+            throw 'Too many requests';
+        }
+
+        if (!response.ok) {
+            handleErrorResponse(response.status, response.data);
+        }
+
+        return response.data;
+    }
+
+    // Browser path - use XMLHttpRequest for progress support
     return new Promise(
         (res, rej) => {
             let xhr = new XMLHttpRequest();
-
-            // 0: UNSENT - The request is not initialized.
-            // 1: OPENED - The request has been set up.
-            // 2: HEADERS_RECEIVED - The request has sent, and the headers and status are available.
-            // 3: LOADING - The response's body is being received.
-            // 4: DONE - The data transfer has been completed or an error has occurred during the 
-
-            // xhr.onreadystatechange = function () {
-            //     if (xhr.readyState === 4) {   //if complete
-            //         if (xhr.status >= 200 || xhr.status <= 299) {  //check if "OK" (200)
-            //             //success
-            //         } else {
-            //             rej(xhr.status); //otherwise, some other code was returned
-            //         }
-            //     }
-            // };
 
             xhr.open(opt.method || 'GET', url);
 
@@ -527,41 +595,16 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                 else {
                     // Status codes outside the 2xx range indicate errors
                     let status = xhr.status;
-                    let errCode = [
-                        'INVALID_CORS',
-                        'INVALID_REQUEST',
-                        'SERVICE_DISABLED',
-                        'INVALID_PARAMETER',
-                        'ERROR',
-                        'EXISTS',
-                        'NOT_EXISTS'
-                    ];
-
                     let result: any = opt.responseType == 'blob' ? xhr.response : xhr.responseText;
                     try {
                         result = JSON.parse(result);
                     }
                     catch (err) { }
 
-                    if (typeof result === 'string') {
-                        let errMsg = result.split(':');
-                        let code = errMsg.splice(0, 1)[0].trim();
-                        let msg = errMsg.join(':').trim();
-                        rej(new SkapiError(msg, { code: (errCode.includes(code) ? code : 'ERROR') }));
-                    }
-
-                    else if (typeof result === 'object' && result?.message) {
-                        let code = (result?.code || (status ? status.toString() : null) || 'ERROR');
-                        let message = result.message;
-                        let cause = result?.cause;
-                        if (typeof message === 'string') {
-                            message = message.trim();
-                        }
-                        rej(new SkapiError(message, { cause, code }));
-                    }
-
-                    else {
-                        rej(result);
+                    try {
+                        handleErrorResponse(status, result);
+                    } catch (e) {
+                        rej(e);
                     }
                 }
             };
@@ -662,11 +705,11 @@ export async function uploadFiles(
         throw new SkapiError('"record_id" is required.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (fileList instanceof SubmitEvent) {
+    if (isBrowser && fileList instanceof SubmitEvent) {
         fileList = (fileList.target as HTMLFormElement);
     }
 
-    if (fileList instanceof HTMLFormElement) {
+    if (isBrowser && fileList instanceof HTMLFormElement) {
         fileList = new FormData(fileList);
     }
 
@@ -686,15 +729,48 @@ export async function uploadFiles(
         getSignedParams.id = params.record_id;
     }
 
-    let xhr;
+    let abortController: AbortController | null = null;
 
-    let fetchProgress = (
+    let fetchProgress = async (
         url: string,
         body: FormData,
-        progressCallback: (p: ProgressEvent) => void
-    ) => {
+        progressCallback: ((p: ProgressEvent) => void) | null
+    ): Promise<any> => {
+        // Node.js path
+        if (isNode) {
+            const response = await platform.httpRequest(url, {
+                method: 'POST',
+                body: body as any,
+                onUploadProgress: progressCallback ? (p) => {
+                    progressCallback(new ProgressEvent('progress', {
+                        loaded: p.loaded,
+                        total: p.total,
+                        lengthComputable: p.lengthComputable
+                    }));
+                } : undefined
+            });
+
+            if (response.status === 429) {
+                const retryAfter = response.headers['retry-after'];
+                if (retryAfter) {
+                    await new Promise(resolve => setTimeout(resolve, parseInt(retryAfter) * 1000));
+                    return fetchProgress(url, body, progressCallback);
+                }
+                throw 'Too many requests';
+            }
+
+            if (!response.ok) {
+                throw response.data;
+            }
+
+            return response.data;
+        }
+
+        // Browser path - use XMLHttpRequest for progress support
         return new Promise((res, rej) => {
-            xhr = new XMLHttpRequest();
+            let xhr = new XMLHttpRequest();
+            abortController = { abort: () => xhr.abort() } as any;
+            
             xhr.open('POST', url);
             xhr.onload = () => {
                 let result = xhr.responseText;
@@ -725,7 +801,6 @@ export async function uploadFiles(
             xhr.onabort = () => rej('Aborted');
             xhr.ontimeout = () => rej('Timeout');
 
-            // xhr.addEventListener('error', rej);
             if (xhr.upload && typeof progressCallback === 'function') {
                 xhr.upload.onprogress = progressCallback;
             }
@@ -794,7 +869,7 @@ export async function uploadFiles(
                                 failed,
                                 loaded: p.loaded,
                                 total: p.total,
-                                abort: () => xhr.abort()
+                                abort: () => abortController?.abort()
                             }
                         ) : null
                     );
@@ -826,7 +901,9 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             let actionDestination = '';
             let fileBase64String = {};
             let refreshPage = false;
-            if (form instanceof SubmitEvent) {
+            
+            // Browser-specific form handling (SubmitEvent, HTMLFormElement)
+            if (isBrowser && form instanceof SubmitEvent) {
                 form.preventDefault();
 
                 let currentUrl = location.href;
@@ -860,14 +937,13 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                                     fileBase64String[p] = [];
                                 }
 
-                                fileBase64String[p].push(new Promise((res, rej) => {
-                                    let reader = new FileReader();
-                                    reader.onload = function () {
-                                        res(reader.result);
-                                    };
-                                    reader.readAsDataURL(inputElement.files[i]);
-                                    reader.onerror = rej;
-                                }));
+                                // Use platform abstraction for file to base64
+                                fileBase64String[p].push(
+                                    platform.blobToBase64(inputElement.files[i]).then(base64 => {
+                                        const file = inputElement.files[i];
+                                        return `data:${file.type || 'application/octet-stream'};base64,${base64}`;
+                                    })
+                                );
                             }
                         }
                         else {
@@ -893,7 +969,8 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                     }
                 }
 
-                if (formEl) {
+                // Browser-specific redirect handling
+                if (isBrowser && formEl) {
                     if (storeResponseKey) {
                         // sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
                         if (refreshPage) {
