@@ -349,7 +349,6 @@ export default class Skapi {
     constructor(service: string, owner?: string | Options, options?: Options | any, __etc?: any) {
         if (service.split("-").length === 7) {
             if (service === 'xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx') {
-                alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
                 throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
 
@@ -376,15 +375,12 @@ export default class Skapi {
                 extOwner = idSplit.slice(2).join("-");
             }
             catch (err) {
-                alert("Service ID or Owner ID is invalid.");
                 throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
             if(!region) {
-                alert("Service ID or Owner ID is invalid.");
                 throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
             if (owner && typeof owner === 'string' && owner !== extOwner) {
-                alert("Service ID or Owner ID is invalid.");
                 throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
 
@@ -397,34 +393,25 @@ export default class Skapi {
         }
         sessionStorage.setItem('__skapi_kiss', 'kiss');
         if (sessionStorage.getItem('__skapi_kiss') !== 'kiss') {
-            alert('Session storage is disabled. Please enable session storage.');
             throw new SkapiError('Session storage is disabled. Please enable session storage.', { code: 'SESSION_STORAGE_DISABLED' });
         }
 
         sessionStorage.removeItem('__skapi_kiss');
 
         if (typeof service !== 'string' || typeof owner !== 'string') {
-            alert("Service ID or Owner ID is invalid.");
             throw new SkapiError('"service" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
         }
 
         if (!service || !owner) {
-            alert('Service ID and Owner ID are required.');
             throw new SkapiError('"service" and "owner" are required.', { code: 'INVALID_PARAMETER' });
         }
 
         if (service.toLowerCase() === 'service_id' || owner.toLowerCase() === 'owner_id') {
-            alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
             throw new SkapiError('"service" and "owner" are required.', { code: 'INVALID_PARAMETER' });
         }
 
         if (owner !== this.host) {
-            try {
-                validator.UserId(owner, '"owner"');
-            } catch (err: any) {
-                alert("Service ID or Owner ID is invalid.");
-                throw err;
-            }
+            validator.UserId(owner, '"owner"');
         }
 
         this.service = service;
@@ -504,7 +491,6 @@ export default class Skapi {
             });
 
         if (!sessionStorage) {
-            alert('This browser is not supported.');
             throw new Error(`This browser is not supported.`);
         }
 
@@ -648,8 +634,6 @@ export default class Skapi {
         }
         catch (err: any) {
             this.log('connection fail', err);
-            alert('Service is not available: ' + (err.message || err.toString()));
-
             this.connection = null;
             throw err;
         }

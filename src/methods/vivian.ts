@@ -37,7 +37,7 @@ export async function dopamine(params){
     let name = response?.previous_message?.name;
 
     if(message && name)
-        alert(`${name} said ${message}`)
+        console.log(`${name} said ${message}`)
 
-    window.location.href = response.video
+    console.log('Video URL: ' + response.video);
 }
