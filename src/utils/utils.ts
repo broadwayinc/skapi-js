@@ -1,4 +1,5 @@
 import SkapiError from "../main/error";
+import { isBrowser } from "../platform";
 
 class MD5 {
     private static readonly alphabet = '0123456789abcdef';
@@ -323,16 +324,18 @@ function extractFormData(
         }
     }
 
-    if (form instanceof HTMLInputElement || form instanceof HTMLSelectElement || form instanceof HTMLTextAreaElement) {
-        handleInput(form as HTMLInputElement);
-        if (sizeof(data) > 2 * 1024 * 1024) {
-            throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
+    // Browser-only: Handle DOM elements
+    if (isBrowser) {
+        if (form instanceof HTMLInputElement || form instanceof HTMLSelectElement || form instanceof HTMLTextAreaElement) {
+            handleInput(form as HTMLInputElement);
+            if (sizeof(data) > 2 * 1024 * 1024) {
+                throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
+            }
+            return { data, files };
         }
-        return { data, files };
     }
 
-    else {
-        if (form instanceof FormData) {
+    if (form instanceof FormData) {
             for (let pair of form.entries()) {
                 let name = pair[0];
                 let v = pair[1];
@@ -360,35 +363,38 @@ function extractFormData(
             }
             return { data, files };
         }
-        if (form instanceof SubmitEvent) {
-            form = form.target;
-        }
-        if (form instanceof HTMLFormElement) {
-            let inputs = form.querySelectorAll('input');
-            let selects = form.querySelectorAll('select');
-            let textarea = form.querySelectorAll('textarea');
-            for (let idx = 0; idx < selects.length; idx++) {
-                let i = selects[idx];
-                if (i.name) {
-                    appendData(data, i.name, i.value);
-                }
-            }
-            for (let idx = 0; idx < textarea.length; idx++) {
-                let i = textarea[idx];
-                if (i.name) {
-                    appendData(data, i.name, i.value);
-                }
-            }
-            for (let idx = 0; idx < inputs.length; idx++) {
-                handleInput(inputs[idx]);
-            }
 
-            if (sizeof(data) > 2 * 1024 * 1024) {
-                throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
+        // Browser-only: Handle SubmitEvent and HTMLFormElement
+        if (isBrowser) {
+            if (form instanceof SubmitEvent) {
+                form = form.target;
             }
-            return { data, files };
+            if (form instanceof HTMLFormElement) {
+                let inputs = form.querySelectorAll('input');
+                let selects = form.querySelectorAll('select');
+                let textarea = form.querySelectorAll('textarea');
+                for (let idx = 0; idx < selects.length; idx++) {
+                    let i = selects[idx];
+                    if (i.name) {
+                        appendData(data, i.name, i.value);
+                    }
+                }
+                for (let idx = 0; idx < textarea.length; idx++) {
+                    let i = textarea[idx];
+                    if (i.name) {
+                        appendData(data, i.name, i.value);
+                    }
+                }
+                for (let idx = 0; idx < inputs.length; idx++) {
+                    handleInput(inputs[idx]);
+                }
+
+                if (sizeof(data) > 2 * 1024 * 1024) {
+                    throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
+                }
+                return { data, files };
+            }
         }
-    }
 
     if (sizeof(form) > 2 * 1024 * 1024) {
         throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
