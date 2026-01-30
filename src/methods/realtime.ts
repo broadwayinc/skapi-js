@@ -392,7 +392,7 @@ export async function postRealtime(message: any, recipient: string, notification
                 notification: notificationStr,
                 notificationConfig: notification?.config || {},
                 // token: this.session.accessToken.jwtToken
-                token: `IdT:${this.service}:${this.owner}:` + (this.session?.idToken?.jwtToken || 'null')
+                token: `IdT:${this.service}:${this.owner}:` + (this.bearerToken || this.session?.idToken?.jwtToken || 'null')
             }));
 
         } catch (err) {
@@ -408,7 +408,7 @@ export async function postRealtime(message: any, recipient: string, notification
                 notification: notificationStr,
                 notificationConfig: notification?.config || {},
                 // token: this.session.accessToken.jwtToken,
-                token: `IdT:${this.service}:${this.owner}:` + (this.session?.idToken?.jwtToken || 'null')
+                token: `IdT:${this.service}:${this.owner}:` + (this.bearerToken || this.session?.idToken?.jwtToken || 'null')
             }));
         }
 

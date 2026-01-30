@@ -213,13 +213,6 @@ export async function getJwtToken() {
         const currentTime = Math.floor(Date.now() / 1000);
         const idToken = this.session.getIdToken();
         const idTokenExp = idToken.getExpiration();
-        this.log('request:tokens', {
-            exp: this.session.idToken.payload.exp,
-            currentTime,
-            expiresIn: idTokenExp - currentTime,
-            token: this.session.accessToken.jwtToken,
-            refreshToken: this.session.refreshToken.token
-        });
 
         if (idTokenExp < currentTime) {
             this.log('request:requesting new token', null);
@@ -237,6 +230,15 @@ export async function getJwtToken() {
                 this.log('request:new token error', err);
                 throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
             }
+        }
+        else {
+            this.log('request:tokens', {
+                exp: this.session.idToken.payload.exp,
+                currentTime,
+                expiresIn: idTokenExp - currentTime,
+                token: this.session.accessToken.jwtToken,
+                refreshToken: this.session.refreshToken.token
+            });
         }
 
         return this.session?.idToken?.jwtToken;
@@ -549,6 +551,55 @@ export async function openIdLogin(params: { token: string; id: string; merge?: b
     let password = logger[1];
 
     return { userProfile: await authentication.bind(this)().authenticateUser(username, password, true, true), openid: oplog.openid };
+}
+
+// Get user info from base64 encoded token
+function getUserFromToken(accessToken) {
+    // JWT has 3 parts: header.payload.signature
+    const parts = accessToken.split('.');
+    if (parts.length !== 3) {
+        throw new Error('Invalid JWT format');
+    }
+    
+    // Decode the payload (second part) - use base64url decoding
+    const payload = parts[1];
+    // Replace base64url chars with standard base64 chars
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = Buffer.from(base64, 'base64').toString('utf8');
+    const userData = JSON.parse(decoded);
+    return userData;
+}
+
+export function loginWithToken(params: {
+    idToken: string;
+}): Promise<UserProfile> {
+    // await this.__authConnection;
+    params = validator.Params(params, {
+        idToken: 'string'
+    }, ['idToken']);
+
+    // Store the bearer token for authenticated requests
+    this.bearerToken = params.idToken;
+    const idTokenPayload = getUserFromToken(this.bearerToken);
+    
+    // Validate the token belongs to this service
+    if (idTokenPayload['custom:service'] !== this.service) {
+        throw new SkapiError('Token does not belong to this service.', { code: 'INVALID_REQUEST' });
+    }
+
+    // Check if token is expired
+    const currentTime = Math.floor(Date.now() / 1000);
+    if (idTokenPayload.exp && idTokenPayload.exp < currentTime) {
+        throw new SkapiError('Token has expired.', { code: 'INVALID_REQUEST' });
+    }
+
+    // Parse user attributes from the token payload
+    this.__user = parseUserAttributes(idTokenPayload);
+
+    this._runOnLoginListeners(this.user);
+    this._runOnUserUpdateListeners(this.user);
+
+    return this.user;
 }
 
 export async function checkAdmin() {

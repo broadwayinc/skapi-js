@@ -104,7 +104,8 @@ import {
     registerTicket,
     unregisterTicket,
     _out,
-    openIdLogin
+    openIdLogin,
+    loginWithToken
 } from '../methods/user';
 import {
     extractFormData,
@@ -148,24 +149,6 @@ type Options = {
             completed: any[];
         }) => void;
     },
-}
-
-
-// Get user info from base64 encoded token
-function getUserFromToken(accessToken) {
-    // JWT has 3 parts: header.payload.signature
-    const parts = accessToken.split('.');
-    if (parts.length !== 3) {
-        throw new Error('Invalid JWT format');
-    }
-    
-    // Decode the payload (second part) - use base64url decoding
-    const payload = parts[1];
-    // Replace base64url chars with standard base64 chars
-    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const decoded = Buffer.from(base64, 'base64').toString('utf8');
-    const userData = JSON.parse(decoded);
-    return userData;
 }
 
 export default class Skapi {
@@ -366,7 +349,6 @@ export default class Skapi {
     private __endpoint_version = 'v1';
     private __public_identifier = '';
     private bearerToken: string = '';
-    private bearerInfo: { [key: string]: any } = {};
     constructor(service: string, owner?: string | Options, options?: Options | any, __etc?: any) {
         if (service.split("-").length === 7) {
             if (service === 'xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx') {
@@ -464,9 +446,7 @@ export default class Skapi {
                 this.requestBatchSize = options.requestBatchSize;
             }
             if (typeof options.bearerToken === 'string') {
-                this.bearerToken = options.bearerToken;
-                this.bearerInfo = getUserFromToken(this.bearerToken);
-                this.__user = parseUserAttributes(this.bearerInfo);
+                this.loginWithToken({ idToken: this.bearerToken });
             }
         }
 
@@ -782,6 +762,11 @@ export default class Skapi {
     @formHandler()
     openIdLogin(params: { token: string; id: string; merge?: boolean | string[]; }): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
         return openIdLogin.bind(this)(params);
+    }
+
+    @formHandler()
+    loginWithToken(params: { idToken: string; }): Promise<UserProfile> {
+        return loginWithToken.bind(this)(params);
     }
 
     @formHandler()
