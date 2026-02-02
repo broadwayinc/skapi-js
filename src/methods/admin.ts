@@ -103,7 +103,7 @@ export async function deleteAccount(form: Form<{
 }
 
 export async function inviteUser(
-    form: Form<UserAttributes & UserProfilePublicSettings & { email: string; }>,
+    form: Form<UserAttributes & UserProfilePublicSettings & { email: string; service?: string; owner?: string; }>,
     options?: {
         confirmation_url?: string;
         email_subscription?: boolean;
