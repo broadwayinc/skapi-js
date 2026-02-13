@@ -350,10 +350,14 @@ export default class Skapi {
     private __public_identifier = '';
     private bearerToken: string = '';
     constructor(service: string, owner?: string | Options, options?: Options | any, __etc?: any) {
+        if(!service || typeof service !== 'string') {
+            window.alert("Service ID is required.");
+            throw new SkapiError('"service" is required.', { code: 'INVALID_PARAMETER' });
+        }
         if (service.split("-").length === 7) {
             if (service === 'xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx') {
-                window.alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
-                throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
+                window.alert('Replace "service_id" with your actual Service ID.');
+                throw new SkapiError('Service ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
 
             if (options && typeof options === 'object') {
@@ -379,16 +383,12 @@ export default class Skapi {
                 extOwner = idSplit.slice(2).join("-");
             }
             catch (err) {
-                window.alert("Service ID or Owner ID is invalid.");
-                throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
+                window.alert("Service ID is invalid.");
+                throw new SkapiError('Service ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
             if(!region) {
-                window.alert("Service ID or Owner ID is invalid.");
-                throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
-            }
-            if (owner && typeof owner === 'string' && owner !== extOwner) {
-                window.alert("Service ID or Owner ID is invalid.");
-                throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
+                window.alert("Service ID is invalid.");
+                throw new SkapiError('Service ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
 
             owner = extOwner;
@@ -406,27 +406,22 @@ export default class Skapi {
 
         // window.sessionStorage.removeItem('__skapi_kiss');
 
-        if (typeof service !== 'string' || typeof owner !== 'string') {
-            window.alert("Service ID or Owner ID is invalid.");
-            throw new SkapiError('"service" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
+        if (!owner || typeof owner !== 'string') {
+            window.alert("Owner ID is invalid.");
+            throw new SkapiError('Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
         }
 
-        if (!service || !owner) {
-            window.alert('Service ID and Owner ID are required.');
-            throw new SkapiError('"service" and "owner" are required.', { code: 'INVALID_PARAMETER' });
-        }
-
-        if (service.toLowerCase() === 'service_id' || owner.toLowerCase() === 'owner_id') {
-            window.alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
-            throw new SkapiError('"service" and "owner" are required.', { code: 'INVALID_PARAMETER' });
+        if (service.toLowerCase() === 'service_id') {
+            window.alert('Replace "service_id" with your actual Service ID.');
+            throw new SkapiError('"service" is required.', { code: 'INVALID_PARAMETER' });
         }
 
         if (owner !== this.host) {
             try {
                 validator.UserId(owner, '"owner"');
             } catch (err: any) {
-                window.alert("Service ID or Owner ID is invalid.");
-                throw err;
+                window.alert("Owner ID is invalid.");
+                throw new SkapiError('Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
         }
 
