@@ -169,7 +169,7 @@ function specialChars(
         }
         // allowed => [\]^_`:;<=>?@()+,-
         if (/[!#$%&*{};'"|<>\/~]/.test(s)) {
-            throw new SkapiError(`${p} should not have special characters. Allowed special characters are: [ \] ^ _ \` : ; < = > ? @ ( ) + , -`, { code: 'INVALID_PARAMETER' });
+            throw new SkapiError(`${p} should not have special characters. Allowed special characters are: [ \\ ] ^ _ \` : ; < = > ? @ ( ) + , -`, { code: 'INVALID_PARAMETER' });
         }
     };
 
