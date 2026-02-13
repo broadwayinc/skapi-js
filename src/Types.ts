@@ -322,7 +322,7 @@ export type UserProfile = {
     signup_ticket?: string;
 } & UserAttributes & UserProfilePublicSettings;
 
-export type PublicUser = {
+export type UserPublic = {
     /** Service id of the user account. */
     service: string;
     /** User ID of the service owner. */
@@ -384,3 +384,11 @@ export type FileInfo = {
     uploaded: number;
     fileKey: string;
 }
+
+export type ConnectionInfo = {
+    user_ip: string;
+    user_agent: string;
+    user_location: string;
+    service_name: string;
+    version: string;
+};

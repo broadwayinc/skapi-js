@@ -11,7 +11,7 @@ import {
     FetchOptions,
     DatabaseResponse,
     UserAttributes,
-    PublicUser
+    UserPublic
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
@@ -1316,7 +1316,7 @@ export async function getUsers(
         condition?: '>' | '>=' | '=' | '<' | '<=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte';
         range?: string | number | boolean;
     },
-    fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
+    fetchOptions?: FetchOptions): Promise<DatabaseResponse<UserPublic>> {
 
     params = extractFormData(params).data as any;
 

@@ -11,7 +11,7 @@ import {
     Newsletters,
     Form,
     PostRecordConfig,
-    PublicUser,
+    UserPublic,
     UserProfilePublicSettings,
     FileInfo,
     RTCEvent,
@@ -19,6 +19,7 @@ import {
     RTCConnectorParams,
     RTCConnector,
     DelRecordQuery,
+    ConnectionInfo,
 } from '../Types';
 import {
     CognitoUserPool
@@ -623,13 +624,7 @@ export default class Skapi {
         });
     }
 
-    async getConnectionInfo(): Promise<{
-        user_ip: string;
-        user_agent: string;
-        user_location: string;
-        service_name: string;
-        version: string;
-    }> {
+    async getConnectionInfo(): Promise<ConnectionInfo> {
         let conn = await this.__connection;
         // get browser user-agent info
         let ua = conn?.user_agent || window.navigator.userAgent;
@@ -858,7 +853,7 @@ export default class Skapi {
     @formHandler()
     createAccount(
         form: { email: string; password: string; } & UserAttributes & UserProfilePublicSettings
-    ): Promise<UserProfile & PublicUser & { email_admin: string; approved: string; log: number; username: string; }> {
+    ): Promise<UserProfile & UserPublic & { email_admin: string; approved: string; log: number; username: string; }> {
         return createAccount.bind(this)(form);
     }
 
@@ -1024,7 +1019,7 @@ export default class Skapi {
             /** Range of search. */
             range?: string | number | boolean;
         },
-        fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
+        fetchOptions?: FetchOptions): Promise<DatabaseResponse<UserPublic>> {
         return getUsers.bind(this)(params, fetchOptions);
     }
     @formHandler()
