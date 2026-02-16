@@ -439,21 +439,23 @@ function load_startKey_keys(option: {
     let requestKeyWithStartKey = hashedParams;
     if (last_startKey_key) {
         // use last start key
-
-        // if (last_startKey_key === 'end') { // cached startKeys are stringified
-        //     return {
-        //         list: [],
-        //         startKey: 'end',
-        //         endOfList: true,
-        //         startKeyHistory: list_of_startKeys
-        //     };
-        // }
+        requestKeyWithStartKey += MD5.hash(last_startKey_key);
+        
+        if (last_startKey_key === 'end') { // cached startKeys are stringified
+            return {
+                requestKey:{
+                    list: [],
+                    startKey: 'end',
+                    endOfList: true,
+                    startKeyHistory: list_of_startKeys
+                },
+                requestKeyWithStartKey
+            }
+        }
 
         // else {
             requestKeyWithStartKey += MD5.hash(last_startKey_key);
-            let st = last_startKey_key === 'end' ? 'end' : JSON.parse(last_startKey_key);
-            // params.startKey = JSON.parse(last_startKey_key);
-            params.startKey = st;
+            params.startKey = JSON.parse(last_startKey_key);
         // }
     }
 
