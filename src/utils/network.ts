@@ -451,7 +451,9 @@ function load_startKey_keys(option: {
 
         // else {
             requestKeyWithStartKey += MD5.hash(last_startKey_key);
-            params.startKey = JSON.parse(last_startKey_key);
+            let st = last_startKey_key === 'end' ? 'end' : JSON.parse(last_startKey_key);
+            // params.startKey = JSON.parse(last_startKey_key);
+            params.startKey = st;
         // }
     }
 
