@@ -443,7 +443,7 @@ function load_startKey_keys(option: {
         
         if (last_startKey_key === 'end') { // cached startKeys are stringified
             return {
-                requestKey:{
+                requestKey: {
                     list: [],
                     startKey: 'end',
                     endOfList: true,
@@ -454,7 +454,7 @@ function load_startKey_keys(option: {
         }
 
         // else {
-            requestKeyWithStartKey += MD5.hash(last_startKey_key);
+            // requestKeyWithStartKey += MD5.hash(last_startKey_key);
             params.startKey = JSON.parse(last_startKey_key);
         // }
     }
