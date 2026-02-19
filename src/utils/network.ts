@@ -437,9 +437,10 @@ function load_startKey_keys(option: {
     let list_of_startKeys = this.__startKeyHistory[url][hashedParams]; // ["{<startKey key>}", ...'end']
     let last_startKey_key = list_of_startKeys[list_of_startKeys.length - 1];
     let requestKeyWithStartKey = hashedParams;
+    
     if (last_startKey_key) {
         // use last start key
-        requestKeyWithStartKey += MD5.hash(last_startKey_key);
+        // requestKeyWithStartKey += MD5.hash(last_startKey_key);
         
         if (last_startKey_key === 'end') { // cached startKeys are stringified
             return {
@@ -454,7 +455,7 @@ function load_startKey_keys(option: {
         }
 
         // else {
-            // requestKeyWithStartKey += MD5.hash(last_startKey_key);
+            requestKeyWithStartKey += MD5.hash(last_startKey_key);
             params.startKey = JSON.parse(last_startKey_key);
         // }
     }
