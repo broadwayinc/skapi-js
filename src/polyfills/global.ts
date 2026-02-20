@@ -1,12 +1,15 @@
 // Platform-aware global polyfill
-if (typeof window !== 'undefined') {
-    (window as any).global = window;
-    (window as any).global._runningInNodeJS = false;
-} else if (typeof globalThis !== 'undefined') {
-    (globalThis as any).global = globalThis;
+const root = typeof globalThis !== 'undefined' ? (globalThis as any) : undefined;
+const win = root?.window;
+
+if (win) {
+    win.global = win;
+    win.global._runningInNodeJS = false;
+} else if (root) {
+    root.global = root;
     
     // Polyfill browser APIs for Node.js
-    if (typeof (globalThis as any).window === 'undefined') {
+    if (typeof root.window === 'undefined') {
         // FileReader polyfill for Node.js
         class NodeFileReader {
             result: string | ArrayBuffer | null = null;
@@ -51,7 +54,7 @@ if (typeof window !== 'undefined') {
             }
         }
 
-        (globalThis as any).FileReader = NodeFileReader;
+        root.FileReader = NodeFileReader;
 
         // XMLHttpRequest polyfill for Node.js using node-fetch
         class NodeXMLHttpRequest {
@@ -143,9 +146,9 @@ if (typeof window !== 'undefined') {
             }
         }
 
-        (globalThis as any).XMLHttpRequest = NodeXMLHttpRequest;
+        root.XMLHttpRequest = NodeXMLHttpRequest;
 
-        (globalThis as any).window = {
+        root.window = {
             _runningInNodeJS: true,
             alert: (message: string) => console.error('[Alert]', message),
             sessionStorage: {

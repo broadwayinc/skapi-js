@@ -189,6 +189,8 @@ function generateRandom(length: number = 6): string {
 
 // Check if we're in a browser environment
 const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
+const hasSubmitEvent = typeof SubmitEvent !== 'undefined';
+const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
 
 function extractFormData(
     form: FormData | HTMLFormElement | SubmitEvent | { [key: string]: any } | number | string | boolean | null,
@@ -363,10 +365,10 @@ function extractFormData(
             }
             return { data, files };
         }
-        if (isBrowser && form instanceof SubmitEvent) {
+        if (isBrowser && hasSubmitEvent && form instanceof SubmitEvent) {
             form = form.target;
         }
-        if (isBrowser && form instanceof HTMLFormElement) {
+        if (isBrowser && hasHTMLFormElement && form instanceof HTMLFormElement) {
             let inputs = form.querySelectorAll('input');
             let selects = form.querySelectorAll('select');
             let textarea = form.querySelectorAll('textarea');

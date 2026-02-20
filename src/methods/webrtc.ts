@@ -86,7 +86,7 @@ export async function receiveIceCandidate(candidate: any, recipient: string) {
 }
 
 export async function closeRTC(params: { cid?: string; close_all?: boolean }): Promise<void> {
-    if ((window as any)._runningInNodeJS) {
+    if (typeof window === 'undefined' || (window as any)._runningInNodeJS) {
         throw new SkapiError('WebRTC is not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
     }
     validator.Params(params, {
@@ -210,7 +210,7 @@ export async function connectRTC(
     params: RTCConnectorParams,
     callback: RTCEvent
 ): Promise<RTCConnector> {
-    if ((window as any)._runningInNodeJS) {
+    if (typeof window === 'undefined' || (window as any)._runningInNodeJS) {
         throw new SkapiError('WebRTC is not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
     }
     if (typeof callback !== 'function') {

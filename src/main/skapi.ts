@@ -350,14 +350,21 @@ export default class Skapi {
     private __endpoint_version = 'v1';
     private __public_identifier = '';
     private bearerToken: string = '';
+
+    private _alert(message: string) {
+        if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+            window.alert(message);
+        }
+    }
+
     constructor(service: string, owner?: string | Options, options?: Options | any, __etc?: any) {
         if(!service || typeof service !== 'string') {
-            window.alert("Service ID is required.");
+            this._alert("Service ID is required.");
             throw new SkapiError('"service" is required.', { code: 'INVALID_PARAMETER' });
         }
         if (service.split("-").length === 7) {
             if (service === 'xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx') {
-                window.alert('Replace "service_id" with your actual Service ID.');
+                this._alert('Replace "service_id" with your actual Service ID.');
                 throw new SkapiError('Service ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
 
@@ -384,11 +391,11 @@ export default class Skapi {
                 extOwner = idSplit.slice(2).join("-");
             }
             catch (err) {
-                window.alert("Service ID is invalid.");
+                this._alert("Service ID is invalid.");
                 throw new SkapiError('Service ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
             if(!region) {
-                window.alert("Service ID is invalid.");
+                this._alert("Service ID is invalid.");
                 throw new SkapiError('Service ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
 
@@ -408,12 +415,12 @@ export default class Skapi {
         // window.sessionStorage.removeItem('__skapi_kiss');
 
         if (!owner || typeof owner !== 'string') {
-            window.alert("Owner ID is invalid.");
+            this._alert("Owner ID is invalid.");
             throw new SkapiError('Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
         }
 
         if (service.toLowerCase() === 'service_id') {
-            window.alert('Replace "service_id" with your actual Service ID.');
+            this._alert('Replace "service_id" with your actual Service ID.');
             throw new SkapiError('"service" is required.', { code: 'INVALID_PARAMETER' });
         }
 
@@ -421,7 +428,7 @@ export default class Skapi {
             try {
                 validator.UserId(owner, '"owner"');
             } catch (err: any) {
-                window.alert("Owner ID is invalid.");
+                this._alert("Owner ID is invalid.");
                 throw new SkapiError('Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
         }
@@ -505,12 +512,14 @@ export default class Skapi {
                 }
             });
 
-        if (!window.sessionStorage) {
-            window.alert('This browser is not supported.');
+        const hasWindow = typeof window !== 'undefined';
+
+        if (!hasWindow || !window.sessionStorage) {
+            this._alert('This browser is not supported.');
             throw new Error(`This browser is not supported.`);
         }
 
-        const restore = JSON.parse(window.sessionStorage.getItem(`${service}#${owner}`) || 'null');
+        const restore = hasWindow ? JSON.parse(window.sessionStorage.getItem(`${service}#${owner}`) || 'null') : null;
 
         this.log('constructor:restore', restore);
 
@@ -553,7 +562,7 @@ export default class Skapi {
             }
         })()
 
-        let uniqueids = window.sessionStorage.getItem(`${this.service}:uniqueids`);
+        let uniqueids = hasWindow ? window.sessionStorage.getItem(`${this.service}:uniqueids`) : null;
         if (uniqueids) {
             try {
                 this.__my_unique_ids = JSON.parse(uniqueids);
@@ -594,7 +603,9 @@ export default class Skapi {
                             data[k] = this[k];
                         }
 
-                        window.sessionStorage.setItem(`${service}#${owner}`, JSON.stringify(data));
+                        if (hasWindow) {
+                            window.sessionStorage.setItem(`${service}#${owner}`, JSON.stringify(data));
+                        }
                         this.__class_properties_has_been_cached = true;
                     }
                 };
@@ -603,14 +614,16 @@ export default class Skapi {
             };
 
             // attach event to save session on close
-            window.addEventListener('beforeunload', () => {
-                this.closeRealtime();
-                storeClassProperties();
-            });
-            // for mobile
-            window.addEventListener("visibilitychange", () => {
-                storeClassProperties();
-            });
+            if (hasWindow) {
+                window.addEventListener('beforeunload', () => {
+                    this.closeRealtime();
+                    storeClassProperties();
+                });
+                // for mobile
+                window.addEventListener("visibilitychange", () => {
+                    storeClassProperties();
+                });
+            }
 
             await connection;
             await this.__authConnection;
@@ -627,7 +640,7 @@ export default class Skapi {
     async getConnectionInfo(): Promise<ConnectionInfo> {
         let conn = await this.__connection;
         // get browser user-agent info
-        let ua = conn?.user_agent || window.navigator.userAgent;
+        let ua = conn?.user_agent || (typeof window !== 'undefined' ? window.navigator.userAgent : `skapi-node/${(globalThis as any)?.process?.versions?.node || 'unknown'}`);
         return {
             user_ip: conn.ip,
             user_agent: ua,
@@ -646,7 +659,7 @@ export default class Skapi {
         }
         catch (err: any) {
             this.log('connection fail', err);
-            window.alert('Service is not available: ' + (err.message || err.toString()));
+            this._alert('Service is not available: ' + (err.message || err.toString()));
 
             this.connection = null;
             throw err;

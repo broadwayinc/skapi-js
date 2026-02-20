@@ -89,8 +89,9 @@ function Email(email: string, paramName: string = 'email') {
 }
 
 function Url(url: string | string[]) {
+    const hasWindow = typeof window !== 'undefined';
     const baseUrl = (() => {
-        let baseUrl = window.location.origin || null;
+        let baseUrl = hasWindow ? window.location.origin || null : null;
         if (baseUrl && baseUrl.slice(-1) === '/') {
             baseUrl = baseUrl.slice(0, -1);
         }
@@ -114,7 +115,7 @@ function Url(url: string | string[]) {
                     if (baseUrl.slice(0, 5) === 'file:') {
                         throw new SkapiError(`"${c}" is an invalid url. Relative URL does not work on local file system. Use full URL string.`, { code: 'INVALID_PARAMETER' });
                     }
-                    let curr_loc = window.location.href.split('?')[0];
+                    let curr_loc = hasWindow ? window.location.href.split('?')[0] : '';
                     if (curr_loc.slice(-1) !== '/') {
                         curr_loc += '/';
                     }

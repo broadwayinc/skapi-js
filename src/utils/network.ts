@@ -8,6 +8,10 @@ import { getJwtToken } from '../methods/user';
 import Qpass from "qpass";
 
 let queue = null;
+const hasSubmitEvent = typeof SubmitEvent !== 'undefined';
+const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
+const hasFormData = typeof FormData !== 'undefined';
+
 // Global counters for round-robin
 let privateCounter_admin = 0;
 let publicCounter_admin = 0;
@@ -667,15 +671,15 @@ export async function uploadFiles(
         throw new SkapiError('"record_id" is required.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (fileList instanceof SubmitEvent) {
+    if (hasSubmitEvent && fileList instanceof SubmitEvent) {
         fileList = (fileList.target as HTMLFormElement);
     }
 
-    if (fileList instanceof HTMLFormElement) {
+    if (hasHTMLFormElement && fileList instanceof HTMLFormElement) {
         fileList = new FormData(fileList);
     }
 
-    if (!(fileList instanceof FormData)) {
+    if (!hasFormData || !(fileList instanceof FormData)) {
         throw new SkapiError('"fileList" should be a FormData or HTMLFormElement.', { code: 'INVALID_PARAMETER' });
     }
 
@@ -831,7 +835,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             let actionDestination = '';
             let fileBase64String = {};
             let refreshPage = false;
-            if (form instanceof SubmitEvent) {
+            if (hasSubmitEvent && form instanceof SubmitEvent) {
                 form.preventDefault();
 
                 let currentUrl = window.location.href;
