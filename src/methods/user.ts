@@ -554,6 +554,30 @@ export async function openIdLogin(params: { token: string; id: string; merge?: b
 }
 
 // Get user info from base64 encoded token
+function decodeBase64Utf8(base64: string): string {
+    const root = typeof globalThis !== 'undefined' ? (globalThis as any) : undefined;
+
+    if (root?.Buffer) {
+        return root.Buffer.from(base64, 'base64').toString('utf8');
+    }
+
+    if (typeof atob === 'function') {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+
+        if (typeof TextDecoder !== 'undefined') {
+            return new TextDecoder().decode(bytes);
+        }
+
+        return binary;
+    }
+
+    throw new Error('No base64 decoder available in this environment');
+}
+
 function getUserFromToken(accessToken) {
     // JWT has 3 parts: header.payload.signature
     const parts = accessToken.split('.');
@@ -565,7 +589,7 @@ function getUserFromToken(accessToken) {
     const payload = parts[1];
     // Replace base64url chars with standard base64 chars
     const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const decoded = Buffer.from(base64, 'base64').toString('utf8');
+    const decoded = decodeBase64Utf8(base64);
     const userData = JSON.parse(decoded);
     return userData;
 }

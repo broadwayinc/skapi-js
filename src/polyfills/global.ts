@@ -2,6 +2,27 @@
 const root = typeof globalThis !== 'undefined' ? (globalThis as any) : undefined;
 const win = root?.window;
 
+function toBase64(input: ArrayBuffer): string {
+    if (root?.Buffer) {
+        return root.Buffer.from(input).toString('base64');
+    }
+
+    let binary = '';
+    const bytes = new Uint8Array(input);
+    const chunk = 0x8000;
+
+    for (let i = 0; i < bytes.length; i += chunk) {
+        const slice = bytes.subarray(i, i + chunk);
+        binary += String.fromCharCode.apply(null, Array.from(slice));
+    }
+
+    if (typeof btoa === 'function') {
+        return btoa(binary);
+    }
+
+    throw new Error('No base64 encoder available in this environment.');
+}
+
 if (win) {
     win.global = win;
     win.global._runningInNodeJS = false;
@@ -20,7 +41,7 @@ if (win) {
 
             readAsDataURL(blob: Blob) {
                 blob.arrayBuffer().then(buffer => {
-                    const base64 = Buffer.from(buffer).toString('base64');
+                    const base64 = toBase64(buffer);
                     const mimeType = (blob as any).type || 'application/octet-stream';
                     this.result = `data:${mimeType};base64,${base64}`;
                     if (this.onload) this.onload({ target: this });
@@ -164,7 +185,7 @@ if (win) {
                 replace: (url: string) => {} 
             },
             navigator: { 
-                userAgent: `skapi-node/${process.versions?.node || 'unknown'}`,
+                userAgent: `nodejs/${root?.process?.versions?.node || 'unknown'}`,
                 mediaDevices: {
                     getUserMedia: async (constraints: any) => {
                         throw new Error('getUserMedia is not supported in Node.js environment.');
