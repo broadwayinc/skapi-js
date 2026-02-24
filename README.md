@@ -2,7 +2,6 @@
 
 [![Package Compatibility](https://github.com/broadwayinc/skapi-js/actions/workflows/compatibility.yml/badge.svg)](https://github.com/broadwayinc/skapi-js/actions/workflows/compatibility.yml)
 [![npm version](https://img.shields.io/npm/v/skapi-js.svg)](https://www.npmjs.com/package/skapi-js)
-[![npm downloads](https://img.shields.io/npm/dw/skapi-js.svg)](https://www.npmjs.com/package/skapi-js)
 
 ### Zero-Setup Serverless Backend
 

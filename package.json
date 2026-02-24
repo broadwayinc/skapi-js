@@ -1,7 +1,7 @@
 {
   "name": "skapi-js",
   "version": "1.2.13-beta.0",
-  "description": "Serverless Backend API for HTML frontend.",
+  "description": "Serverless Backend API for AI Agents.",
   "main": "dist/skapi.cjs",
   "browser": "dist/skapi.js",
   "module": "dist/skapi.mjs",
