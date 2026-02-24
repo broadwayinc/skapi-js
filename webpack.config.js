@@ -47,6 +47,52 @@ ${license}
         ],
     },
     {
+        // ESM build
+        mode: 'production',
+        target: ['web', 'es2020'],
+        entry: './src/Main.ts',
+        experiments: {
+            outputModule: true
+        },
+        output: {
+            filename: 'skapi.mjs',
+            library: {
+                type: 'module'
+            },
+            module: true
+        },
+        module: {
+            rules: [
+                {
+                    test: /\.tsx?$/,
+                    use: 'ts-loader',
+                    exclude: /node_modules/,
+                },
+            ],
+        },
+        resolve: {
+            extensions: ['.tsx', '.ts', '.js'],
+        },
+        devtool: 'source-map',
+        plugins: [
+            new BundleAnalyzerPlugin({
+                analyzerMode: 'static',
+                reportFilename: 'bundle-report-esm.html',
+                openAnalyzer: false,
+                excludeAssets: [/node_modules/]
+            }),
+            new BannerPlugin({
+                banner: `
+/**
+ * @license
+${license}
+ */
+                `.trim(),
+                raw: true
+            })
+        ],
+    },
+    {
         // CommonJS build
         mode: 'production',
         target: 'node',
@@ -72,6 +118,52 @@ ${license}
             new BundleAnalyzerPlugin({
                 analyzerMode: 'static',
                 reportFilename: 'bundle-report-commonjs.html',
+                openAnalyzer: false,
+                excludeAssets: [/node_modules/]
+            }),
+            new BannerPlugin({
+                banner: `
+/**
+ * @license
+${license}
+ */
+                `.trim(),
+                raw: true
+            })
+        ],
+    },
+    {
+        // Node ESM build
+        mode: 'production',
+        target: 'node',
+        entry: './src/Main.ts',
+        experiments: {
+            outputModule: true
+        },
+        output: {
+            filename: 'skapi.node.mjs',
+            library: {
+                type: 'module'
+            },
+            module: true
+        },
+        module: {
+            rules: [
+                {
+                    test: /\.tsx?$/,
+                    use: 'ts-loader',
+                    exclude: /node_modules/,
+                },
+            ],
+        },
+        resolve: {
+            extensions: ['.tsx', '.ts', '.js'],
+        },
+        devtool: 'source-map',
+        plugins: [
+            new BundleAnalyzerPlugin({
+                analyzerMode: 'static',
+                reportFilename: 'bundle-report-node-esm.html',
                 openAnalyzer: false,
                 excludeAssets: [/node_modules/]
             }),

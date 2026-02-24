@@ -2,15 +2,23 @@
   "name": "skapi-js",
   "version": "1.2.13-beta.0",
   "description": "Serverless Backend API for HTML frontend.",
-  "main": "js/Main.js",
+  "main": "dist/skapi.cjs",
   "browser": "dist/skapi.js",
-  "module": "dist/skapi.js",
+  "module": "dist/skapi.mjs",
+  "unpkg": "dist/skapi.js",
+  "jsdelivr": "dist/skapi.js",
   "types": "js/Main.d.ts",
   "exports": {
     ".": {
+      "types": "./js/Main.d.ts",
+      "browser": "./dist/skapi.js",
+      "node": {
+        "import": "./dist/skapi.node.mjs",
+        "require": "./dist/skapi.cjs"
+      },
+      "import": "./dist/skapi.mjs",
       "require": "./dist/skapi.cjs",
-      "import": "./js/Main.js",
-      "types": "./js/Main.d.ts"
+      "default": "./dist/skapi.cjs"
     }
   },
   "files": [

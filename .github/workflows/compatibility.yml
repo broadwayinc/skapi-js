@@ -1,0 +1,76 @@
+name: Package Compatibility
+
+on:
+  push:
+    branches: [main, hybrid]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  runtime-and-types:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package artifacts
+        run: npm run build
+
+      - name: Pack npm tarball
+        run: |
+          PKG_TGZ=$(npm pack | tail -n 1)
+          echo "PKG_TGZ=$PKG_TGZ" >> "$GITHUB_ENV"
+
+      - name: Create consumer project and install package
+        run: |
+          mkdir -p /tmp/skapi-consumer
+          cd /tmp/skapi-consumer
+          npm init -y
+          npm install "$GITHUB_WORKSPACE/$PKG_TGZ" typescript
+
+      - name: Verify CommonJS require()
+        run: |
+          cd /tmp/skapi-consumer
+          node -e "const { Skapi } = require('skapi-js'); if (typeof Skapi !== 'function') { throw new Error('Skapi export is not a function'); }"
+
+      - name: Verify Node ESM import
+        run: |
+          cd /tmp/skapi-consumer
+          node --input-type=module -e "import { Skapi } from 'skapi-js'; if (typeof Skapi !== 'function') { throw new Error('Skapi export is not a function'); }"
+
+      - name: Verify TypeScript imports and type visibility
+        run: |
+          cd /tmp/skapi-consumer
+          cat > consumer.ts << 'EOF'
+          import { Skapi } from 'skapi-js';
+          import type { UserProfile, DatabaseResponse } from 'skapi-js';
+
+          const sdk = new Skapi('SERVICE_ID');
+          let user: UserProfile | null = null;
+          let response: DatabaseResponse | null = null;
+
+          void sdk;
+          void user;
+          void response;
+          EOF
+
+          npx tsc --noEmit --target ES2020 --module NodeNext --moduleResolution NodeNext consumer.ts
+
+      - name: Verify browser UMD artifact is published
+        run: |
+          cd /tmp/skapi-consumer
+          test -f node_modules/skapi-js/dist/skapi.js
