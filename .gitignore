@@ -115,7 +115,6 @@ playground/
 deploy.py
 test.js
 test.html
-package-lock.json
 srvc.js
 sandbox_deploy.py
 index.html

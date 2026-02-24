@@ -18,14 +18,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node (with npm cache)
+        if: ${{ hashFiles('package-lock.json', 'npm-shrinkwrap.json') != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            npm-shrinkwrap.json
 
-      - name: Install dependencies
+      - name: Setup Node (without cache)
+        if: ${{ hashFiles('package-lock.json', 'npm-shrinkwrap.json') == '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies (locked)
+        if: ${{ hashFiles('package-lock.json', 'npm-shrinkwrap.json') != '' }}
         run: npm ci
+
+      - name: Install dependencies (no lockfile)
+        if: ${{ hashFiles('package-lock.json', 'npm-shrinkwrap.json') == '' }}
+        run: npm install
 
       - name: Build package artifacts
         run: npm run build
