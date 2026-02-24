@@ -34,7 +34,7 @@ export type RTCResolved = {
 }
 
 export type RTCEvent = (e: {
-    type: string;
+    type: 'track' | 'connectionstatechange' | 'close' | 'message' | 'open' | 'bufferedamountlow' | 'error' | 'icecandidate' | 'icecandidateend' | 'icegatheringstatechange' | 'negotiationneeded' | 'signalingstatechange';
     [key: string]: any;
 }) => void
 
@@ -140,13 +140,13 @@ export type PostRecordConfig = {
 }
 
 export type BinaryFile = {
-    access_group: number | 'private' | 'public' | 'authorized';
+    access_group: number | 'private' | 'public' | 'authorized' | 'admin';
     filename: string;
     url: string;
     path: string;
     size: number;
     uploaded: number;
-    getFile: (dataType?: 'base64' | 'endpoint' | 'blob', progress?: ProgressCallback) => Promise<Blob | string | void>;
+    getFile: (dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info', progress?: ProgressCallback) => Promise<Blob | string | void | FileInfo>;
 }
 
 export type RecordData = {
@@ -163,7 +163,6 @@ export type RecordData = {
         access_group: number | 'private' | 'public' | 'authorized' | 'admin';
         /** User ID of subscription */
         subscription?: {
-            is_subscription_record: boolean; // When true, this record is a subscription record.
             upload_to_feed: boolean; // When true, record will be uploaded to the feed of the subscribers.
             notify_subscribers: boolean; // When true, subscribers will receive notification when the record is uploaded.
             feed_referencing_records: boolean; // When true, records referencing this record will be included to the subscribers feed.
@@ -214,7 +213,7 @@ export type Connection = {
 
 export type Form<T> = HTMLFormElement | FormData | SubmitEvent | T;
 
-export type Newsletters = {
+export type Newsletter = {
     /** Newsletter id */
     message_id: string;
     /** Time sent out */
@@ -234,7 +233,11 @@ export type Newsletters = {
      * Url of the message html.
      */
     url: string;
+    /** Number users delivered */
+    delivered: number;
 }
+
+export type Newsletters = Newsletter;
 
 export type UserProfilePublicSettings = {
     /** User's E-Mail is public when true. E-Mail should be verified. */
@@ -314,34 +317,33 @@ export type UserProfile = {
     user_id: string;
     /** Country code of where user first signed up from. */
     locale: string;
+    approved: string;
+    log: number;
     /** Shows true when user has verified their E-Mail. */
     email_verified?: boolean;
     /** Shows true when user has verified their phone number. */
     phone_number_verified?: boolean;
-    /** Shows 'PASS' if the user's account signup was successful. 'MEMBER' if signup confirmation was successful. */
-    signup_ticket?: string;
 } & UserAttributes & UserProfilePublicSettings;
 
 export type UserPublic = {
-    /** Service id of the user account. */
-    service: string;
-    /** User ID of the service owner. */
-    owner: string;
     /** Access level of the user's account. */
     access_group: number;
     /** User's ID. */
     user_id: string;
     /** Country code of where user first signed up from. */
     locale: string;
-    /** Number of the user's subscribers. */
-    subscribers?: number;
-    /** Number of subscription the user has made */
-    subscribed?: number;
-    /** Number of the records the user have created. */
-    records?: number;
-    /** Timestamp of user last login time. */
+    approved: string;
+    /** Account created timestamp(13 digit milliseconds). */
     timestamp: number;
-} & UserAttributes;
+    /** Last login timestamp(13 digit milliseconds). */
+    log: number;
+    /** Number of the user's subscribers. */
+    subscribers: number;
+    /** Number of subscription the user has made */
+    subscribed: number;
+    /** Number of the records the user have created. */
+    records: number;
+} & Omit<UserAttributes, 'misc'>;
 
 export type ProgressCallback = (e: {
     status: 'upload' | 'download';
@@ -369,7 +371,7 @@ export type FetchOptions = {
 
 export type DatabaseResponse<T> = {
     list: T[];
-    startKey: string;
+    startKey: { [key: string]: any; } | 'end';
     endOfList: boolean;
     startKeyHistory: string[];
 }
@@ -392,3 +394,43 @@ export type ConnectionInfo = {
     service_name: string;
     version: string;
 };
+
+export type Table = {
+    table: string;
+    number_of_records: string;
+    size: number;
+}
+
+export type Index = {
+    table: string;
+    index: string;
+    number_of_records: number;
+    string_count: number;
+    number_count: number;
+    boolean_count: number;
+    total_number: number;
+    total_bool: number;
+    average_number: number;
+    average_bool: number;
+}
+
+export type Tag = {
+    table: string;
+    tag: string;
+    number_of_records: number;
+}
+
+export type UniqueId = {
+    unique_id: string;
+    record_id: string;
+}
+
+export type Subscription = {
+    subscriber: string;
+    subscription: string;
+    timestamp: number;
+    blocked: boolean;
+    get_feed: boolean;
+    get_notified: boolean;
+    get_email: boolean;
+}

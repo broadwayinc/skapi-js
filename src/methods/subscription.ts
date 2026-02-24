@@ -2,7 +2,8 @@ import {
     DatabaseResponse,
     FetchOptions,
     Form,
-    Newsletters,
+    Newsletter,
+    Subscription,
     RecordData
 } from '../Types';
 import SkapiError from '../main/error';
@@ -62,15 +63,7 @@ export async function getSubscriptions(
         blocked?: boolean;
     },
     fetchOptions?: FetchOptions,
-): Promise<DatabaseResponse<{
-    subscriber: string; // Subscriber ID
-    subscription: string; // Subscription ID
-    timestamp: number; // Subscribed UNIX timestamp
-    blocked: boolean; // True when subscriber is blocked by subscription
-    get_feed: boolean; // True when subscriber gets feed
-    get_notified: boolean; // True when subscriber gets notified
-    get_email: boolean; // True when subscriber gets email
-}>> {
+): Promise<DatabaseResponse<Subscription>> {
     params = extractFormData(params, { ignoreEmpty: true }).data as any;
     params = validator.Params(params, {
         subscriber: (v: string) => validator.UserId(v, 'User ID in "subscriber"'),
@@ -104,15 +97,7 @@ export async function getSubscriptions(
     return response;
 }
 
-export async function subscribe(params: { user_id: string; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<{
-    subscriber: string; // Subscriber ID
-    subscription: string; // Subscription ID
-    timestamp: number; // Subscribed UNIX timestamp
-    blocked: boolean; // True when subscriber is blocked by subscription
-    get_feed: boolean; // True when subscriber gets feed
-    get_notified: boolean; // True when subscriber gets notified
-    get_email: boolean; // True when subscriber gets email
-}> {
+export async function subscribe(params: { user_id: string; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<Subscription> {
     await this.__connection;
     params = validator.Params(params, {
         user_id: cannotBeSelfId.bind(this),
@@ -384,7 +369,7 @@ export async function getNewsletters(
         condition?: '>' | '>=' | '=' | '<' | '<=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte';
     },
     fetchOptions?: FetchOptions
-): Promise<DatabaseResponse<Newsletters>> {
+): Promise<DatabaseResponse<Newsletter>> {
     let isAdmin = await checkAdmin.bind(this)();
 
     let searchType = {
@@ -483,7 +468,7 @@ export async function getNewsletters(
         'complaint': 0,
         'read': 0,
         'subject': '',
-        'bounced': 0,
+        'bounced': '',
         'url': '',
         'delivered': 0
     };
@@ -493,6 +478,7 @@ export async function getNewsletters(
         for (let k in remap) {
             remapped[k] = m[remap[k]] || defaults[k];
         }
+        remapped['bounced'] = String(remapped['bounced']);
         return remapped;
     });
 

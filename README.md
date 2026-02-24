@@ -78,9 +78,10 @@ export { skapi }
 
 ```typescript
 import { Skapi } from 'skapi-js';
-import type { UserProfile, DatabaseResponse } from 'skapi-js';
+import type { RecordData, DatabaseResponse } from 'skapi-js';
 
 const skapi = new Skapi('SERVICE_ID');
+let databaseRecords: DatabaseResponse<RecordData>;
 ```
 
 ### Node.js (CommonJS)

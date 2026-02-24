@@ -72,15 +72,15 @@ jobs:
           cd /tmp/skapi-consumer
           cat > consumer.ts << 'EOF'
           import { Skapi } from 'skapi-js';
-          import type { UserProfile, DatabaseResponse } from 'skapi-js';
+          import type { RecordData, DatabaseResponse } from 'skapi-js';
 
           const sdk = new Skapi('SERVICE_ID');
-          let user: UserProfile | null = null;
-          let response: DatabaseResponse | null = null;
+          let record: RecordData | null = null;
+          let databaseRecords: DatabaseResponse<RecordData> | null = null;
 
           void sdk;
-          void user;
-          void response;
+          void record;
+          void databaseRecords;
           EOF
 
           npx tsc --noEmit --target ES2020 --module NodeNext --moduleResolution NodeNext consumer.ts

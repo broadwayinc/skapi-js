@@ -23,6 +23,7 @@ export type {
     RecordData,
     Connection,
     Form,
+    Newsletter,
     Newsletters,
     UserProfilePublicSettings,
     UserAttributes,
@@ -31,5 +32,10 @@ export type {
     ProgressCallback,
     FetchOptions,
     DatabaseResponse,
-    FileInfo
+    FileInfo,
+    Table,
+    Index,
+    Tag,
+    UniqueId,
+    Subscription
 } from "./Types";

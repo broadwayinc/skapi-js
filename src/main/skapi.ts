@@ -8,7 +8,7 @@ import {
     Condition,
     UserAttributes,
     UserProfile,
-    Newsletters,
+    Newsletter,
     Form,
     PostRecordConfig,
     UserPublic,
@@ -20,6 +20,11 @@ import {
     RTCConnector,
     DelRecordQuery,
     ConnectionInfo,
+    Table,
+    Index,
+    Tag,
+    UniqueId,
+    Subscription,
 } from '../Types';
 import {
     CognitoUserPool
@@ -733,10 +738,7 @@ export default class Skapi {
         unique_id?: string;
         /** String query condition for tag name. */
         condition?: Condition;
-    }>, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{
-        unique_id: string; // Unique ID
-        record_id: string; // Record ID
-    }>> {
+    }>, fetchOptions?: FetchOptions): Promise<DatabaseResponse<UniqueId>> {
         return getUniqueId.bind(this)(params, fetchOptions);
     }
 
@@ -955,11 +957,7 @@ export default class Skapi {
             condition?: Condition;
         },
         fetchOptions?: FetchOptions
-    ): Promise<DatabaseResponse<{
-        number_of_records: number; // Number of records in the table
-        table: string; // Table name
-        size: number; // Table size
-    }>> {
+    ): Promise<DatabaseResponse<Table>> {
         return getTables.bind(this)(query, fetchOptions);
     }
     @formHandler()
@@ -979,18 +977,7 @@ export default class Skapi {
             };
         },
         fetchOptions?: FetchOptions
-    ): Promise<DatabaseResponse<{
-        table: string; // Table name
-        index: string; // Index name
-        number_of_records: number; // Number of records in the index
-        string_count?: number; // Number of string type value
-        number_count?: number; // Number of number type value
-        boolean_count?: number; // Number of boolean type value
-        total_number?: number; // Sum of all numbers
-        total_bool?: number; // Number of true(boolean) values
-        average_number?: number; // Average of all numbers
-        average_bool?: number; // Percentage of true(boolean) values
-    }>> { return getIndexes.bind(this)(query, fetchOptions); }
+    ): Promise<DatabaseResponse<Index>> { return getIndexes.bind(this)(query, fetchOptions); }
     @formHandler()
     getTags(
         query: {
@@ -1002,11 +989,7 @@ export default class Skapi {
             condition?: Condition;
         },
         fetchOptions?: FetchOptions
-    ): Promise<DatabaseResponse<{
-        table: string; // Table name
-        tag: string; // Tag
-        number_of_records: string; // Number records tagged
-    }>> { return getTags.bind(this)(query, fetchOptions); }
+    ): Promise<DatabaseResponse<Tag>> { return getTags.bind(this)(query, fetchOptions); }
     @formHandler()
     deleteRecords(params: DelRecordQuery, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> { return deleteRecords.bind(this)(params, fetchOptions); }
     @formHandler()
@@ -1109,7 +1092,7 @@ export default class Skapi {
             group: 'public' | 'authorized' | number;
         },
         fetchOptions?: FetchOptions
-    ): Promise<DatabaseResponse<Newsletters>> {
+    ): Promise<DatabaseResponse<Newsletter>> {
         return getNewsletters.bind(this)(params, fetchOptions);
     }
     @formHandler()
@@ -1263,27 +1246,11 @@ export default class Skapi {
             blocked?: boolean;
         },
         fetchOptions?: FetchOptions
-    ): Promise<DatabaseResponse<{
-        subscriber: string; // Subscriber ID
-        subscription: string; // Subscription ID
-        timestamp: number; // Subscribed UNIX timestamp
-        blocked: boolean; // True when subscriber is blocked by subscription
-        get_feed: boolean; // True when subscriber gets feed
-        get_notified: boolean; // True when subscriber gets notified
-        get_email: boolean; // True when subscriber gets email
-    }>> {
+    ): Promise<DatabaseResponse<Subscription>> {
         return getSubscriptions.bind(this)(params, fetchOptions);
     }
     @formHandler()
-    subscribe(params: { user_id: string; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<{
-        subscriber: string; // Subscriber ID
-        subscription: string; // Subscription ID
-        timestamp: number; // Subscribed UNIX timestamp
-        blocked: boolean; // True when subscriber is blocked by subscription
-        get_feed: boolean; // True when subscriber gets feed
-        get_notified: boolean; // True when subscriber gets notified
-        get_email: boolean; // True when subscriber gets email
-    }> {
+    subscribe(params: { user_id: string; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<Subscription> {
         return subscribe.bind(this)(params);
     }
     @formHandler()

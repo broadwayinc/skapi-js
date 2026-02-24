@@ -9,7 +9,11 @@ import {
     ProgressCallback,
     BinaryFile,
     FileInfo,
-    DelRecordQuery
+    DelRecordQuery,
+    Table,
+    Index,
+    Tag,
+    UniqueId
 } from '../Types';
 import SkapiError from '../main/error';
 import { extractFormData, fromBase62 } from '../utils/utils';
@@ -882,11 +886,7 @@ export async function getTables(
         condition?: Condition;
     },
     fetchOptions?: FetchOptions
-): Promise<DatabaseResponse<{
-    number_of_records: number; // Number of records in the table
-    table: string; // Table name
-    size: number; // Table size
-}>> {
+): Promise<DatabaseResponse<Table>> {
     let res = await request.bind(this)('get-table', validator.Params(query || {}, {
         table: 'string',
         condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
@@ -928,18 +928,7 @@ export async function getIndexes(
         };
     },
     fetchOptions?: FetchOptions
-): Promise<DatabaseResponse<{
-    table: string; // Table name
-    index: string; // Index name
-    number_of_records: number; // Number of records in the index
-    string_count?: number; // Number of string type value
-    number_count?: number; // Number of number type value
-    boolean_count?: number; // Number of boolean type value
-    total_number?: number; // Sum of all numbers
-    total_bool?: number; // Number of true(boolean) values
-    average_number?: number; // Average of all numbers
-    average_bool?: number; // Percentage of true(boolean) values
-}>> {
+): Promise<DatabaseResponse<Index>> {
     if (!query?.table) {
         throw new SkapiError('"table" is required.', { code: 'INVALID_PARAMETER' });
     }
@@ -1035,11 +1024,7 @@ export async function getTags(
         condition?: Condition;
     },
     fetchOptions?: FetchOptions
-): Promise<DatabaseResponse<{
-    table: string; // Table name
-    tag: string; // Tag
-    number_of_records: string; // Number records tagged
-}>> {
+): Promise<DatabaseResponse<Tag>> {
 
     let res = await request.bind(this)(
         'get-tag',
@@ -1075,10 +1060,7 @@ export async function getUniqueId(
         condition?: Condition;
     }>,
     fetchOptions?: FetchOptions
-): Promise<DatabaseResponse<{
-    unique_id: string; // Unique ID
-    record_id: string; // Record ID
-}>> {
+): Promise<DatabaseResponse<UniqueId>> {
 
     let res = await request.bind(this)(
         'get-uniqueid',
