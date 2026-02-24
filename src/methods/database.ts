@@ -404,24 +404,16 @@ export async function getFile(
     else if (needAuth) {
         let currTime = Math.floor(Date.now() / 1000);
 
-        this.log('getFile:tokens', {
-            exp: this.session.idToken.payload.exp,
-            currTime,
-            expiresIn: this.session.idToken.payload.exp - currTime,
-            token: this.session.accessToken.jwtToken,
-            refreshToken: this.session.refreshToken.token
-        });
-
-        if (this.session.idToken.payload.exp < currTime) {
+        if (!this.bearerToken && this.session?.idToken?.payload?.exp < currTime) {
             this.log('getFile:requesting new token', null);
             try {
                 await authentication.bind(this)().getSession({ refreshToken: true });
                 this.log('getFile:received new tokens', {
-                    exp: this.session.idToken.payload.exp,
+                    exp: this.session?.idToken?.payload?.exp,
                     currTime,
-                    expiresIn: this.session.idToken.payload.exp - currTime,
-                    token: this.session.accessToken.jwtToken,
-                    refreshToken: this.session.refreshToken.token
+                    expiresIn: this.session?.idToken?.payload?.exp - currTime,
+                    token: this.session?.accessToken?.jwtToken,
+                    refreshToken: this.session?.refreshToken?.token
                 });
             }
             catch (err) {
@@ -430,7 +422,7 @@ export async function getFile(
             }
         }
 
-        let token = this.session?.idToken?.jwtToken; // idToken
+        let token = this.bearerToken || this.session?.idToken?.jwtToken; // idToken
 
         url += `?t=${token}`;
 

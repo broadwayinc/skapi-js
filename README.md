@@ -1,5 +1,8 @@
 # Skapi
 
+[![Package Compatibility](https://github.com/broadwayinc/skapi-js/actions/workflows/compatibility.yml/badge.svg)](https://github.com/broadwayinc/skapi-js/actions/workflows/compatibility.yml)
+[![npm version](https://img.shields.io/npm/v/skapi-js.svg)](https://www.npmjs.com/package/skapi-js)
+
 ### Zero-Setup Serverless Backend
 
 Skapi is a backend API that runs entirely serverless—no complex installations, no server configurations, and no database management required. Build full-featured web applications faster and focus on what matters: your product.
@@ -70,6 +73,35 @@ const skapi = new Skapi('SERVICE_ID');
 // Export the skapi instance, so you can use it in other component files
 export { skapi }
 ```
+
+### TypeScript (React, Vue, etc.)
+
+```typescript
+import { Skapi } from 'skapi-js';
+import type { UserProfile, DatabaseResponse } from 'skapi-js';
+
+const skapi = new Skapi('SERVICE_ID');
+```
+
+### Node.js (CommonJS)
+
+To use Skapi in NodeJS, import the library as shown below:
+
+```javascript
+const { Skapi } = require('skapi-js');
+const skapi = new Skapi('SERVICE_ID');
+```
+
+### Node.js (ESM)
+
+```javascript
+import { Skapi } from 'skapi-js';
+const skapi = new Skapi('SERVICE_ID');
+```
+
+> **Note:** When running Skapi in Node.js, browser-specific features such as WebSocket, WebRTC, and Notifications are not available.
+
+
 
 ### 3. Test your connection
 

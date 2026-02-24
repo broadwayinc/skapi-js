@@ -449,7 +449,7 @@ export async function getNewsletters(
             }
 
             if (typeof x === 'number') {
-                if (!isAdmin && x > parseInt(this.session.idToken.payload.access_group)) {
+                if (!isAdmin && x > parseInt(this.user?.access_group || this.session?.idToken?.payload?.access_group)) {
                     throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
                 }
 

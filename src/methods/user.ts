@@ -11,7 +11,7 @@ import {
     FetchOptions,
     DatabaseResponse,
     UserAttributes,
-    PublicUser
+    UserPublic
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
@@ -206,34 +206,39 @@ export async function unregisterTicket(
 
 export async function getJwtToken() {
     await this.__connection;
+    if(this.bearerToken) {
+        return this.bearerToken;
+    }
     if (this.session) {
         const currentTime = Math.floor(Date.now() / 1000);
         const idToken = this.session.getIdToken();
         const idTokenExp = idToken.getExpiration();
-        this.log('request:tokens', {
-            exp: this.session.idToken.payload.exp,
-            currentTime,
-            expiresIn: idTokenExp - currentTime,
-            token: this.session.accessToken.jwtToken,
-            refreshToken: this.session.refreshToken.token
-        });
 
         if (idTokenExp < currentTime) {
             this.log('request:requesting new token', null);
             try {
                 await authentication.bind(this)().getSession({ refreshToken: true });
                 this.log('request:received new tokens', {
-                    exp: this.session.idToken.payload.exp,
+                    exp: this.session?.idToken?.payload?.exp,
                     currentTime,
                     expiresIn: idTokenExp - currentTime,
-                    token: this.session.accessToken.jwtToken,
-                    refreshToken: this.session.refreshToken.token
+                    token: this.session?.accessToken?.jwtToken,
+                    refreshToken: this.session?.refreshToken?.token
                 });
             }
             catch (err) {
                 this.log('request:new token error', err);
                 throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
             }
+        }
+        else {
+            this.log('request:tokens', {
+                exp: this.session.idToken.payload.exp,
+                currentTime,
+                expiresIn: idTokenExp - currentTime,
+                token: this.session.accessToken.jwtToken,
+                refreshToken: this.session.refreshToken.token
+            });
         }
 
         return this.session?.idToken?.jwtToken;
@@ -504,6 +509,9 @@ export function authentication() {
 
 export async function getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
     await this.__authConnection;
+    if(this.bearerToken) {
+        return this.user;
+    }
     try {
         await authentication.bind(this)().getSession(Object.assign({ skipUserUpdateEventTrigger: true }, options));
         return this.user;
@@ -543,6 +551,79 @@ export async function openIdLogin(params: { token: string; id: string; merge?: b
     let password = logger[1];
 
     return { userProfile: await authentication.bind(this)().authenticateUser(username, password, true, true), openid: oplog.openid };
+}
+
+// Get user info from base64 encoded token
+function decodeBase64Utf8(base64: string): string {
+    const root = typeof globalThis !== 'undefined' ? (globalThis as any) : undefined;
+
+    if (root?.Buffer) {
+        return root.Buffer.from(base64, 'base64').toString('utf8');
+    }
+
+    if (typeof atob === 'function') {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+
+        if (typeof TextDecoder !== 'undefined') {
+            return new TextDecoder().decode(bytes);
+        }
+
+        return binary;
+    }
+
+    throw new Error('No base64 decoder available in this environment');
+}
+
+function getUserFromToken(accessToken) {
+    // JWT has 3 parts: header.payload.signature
+    const parts = accessToken.split('.');
+    if (parts.length !== 3) {
+        throw new Error('Invalid JWT format');
+    }
+    
+    // Decode the payload (second part) - use base64url decoding
+    const payload = parts[1];
+    // Replace base64url chars with standard base64 chars
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = decodeBase64Utf8(base64);
+    const userData = JSON.parse(decoded);
+    return userData;
+}
+
+export function loginWithToken(params: {
+    idToken: string;
+}): Promise<UserProfile> {
+    // await this.__authConnection;
+    params = validator.Params(params, {
+        idToken: 'string'
+    }, ['idToken']);
+
+    // Store the bearer token for authenticated requests
+    this.bearerToken = params.idToken;
+    const idTokenPayload = getUserFromToken(this.bearerToken);
+    
+    // Validate the token belongs to this service
+    if (idTokenPayload['custom:service'] !== this.service) {
+        throw new SkapiError('Token does not belong to this service.', { code: 'INVALID_REQUEST' });
+    }
+
+    // Check if token is expired
+    const currentTime = Math.floor(Date.now() / 1000);
+    if (idTokenPayload.exp && idTokenPayload.exp < currentTime) {
+        throw new SkapiError('Token has expired.', { code: 'INVALID_REQUEST' });
+    }
+
+    // Parse user attributes from the token payload
+    this.__user = parseUserAttributes(idTokenPayload);
+
+    this._runOnLoginListeners(this.user);
+    this._runOnUserUpdateListeners(this.user);
+
+    return this.user;
 }
 
 export async function checkAdmin() {
@@ -1259,7 +1340,7 @@ export async function getUsers(
         condition?: '>' | '>=' | '=' | '<' | '<=' | 'gt' | 'gte' | 'eq' | 'lt' | 'lte';
         range?: string | number | boolean;
     },
-    fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
+    fetchOptions?: FetchOptions): Promise<DatabaseResponse<UserPublic>> {
 
     params = extractFormData(params).data as any;
 

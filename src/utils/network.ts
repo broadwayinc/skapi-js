@@ -8,6 +8,10 @@ import { getJwtToken } from '../methods/user';
 import Qpass from "qpass";
 
 let queue = null;
+const hasSubmitEvent = typeof SubmitEvent !== 'undefined';
+const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
+const hasFormData = typeof FormData !== 'undefined';
+
 // Global counters for round-robin
 let privateCounter_admin = 0;
 let publicCounter_admin = 0;
@@ -437,17 +441,22 @@ function load_startKey_keys(option: {
     let list_of_startKeys = this.__startKeyHistory[url][hashedParams]; // ["{<startKey key>}", ...'end']
     let last_startKey_key = list_of_startKeys[list_of_startKeys.length - 1];
     let requestKeyWithStartKey = hashedParams;
+    
     if (last_startKey_key) {
         // use last start key
-
-        // if (last_startKey_key === 'end') { // cached startKeys are stringified
-        //     return {
-        //         list: [],
-        //         startKey: 'end',
-        //         endOfList: true,
-        //         startKeyHistory: list_of_startKeys
-        //     };
-        // }
+        // requestKeyWithStartKey += MD5.hash(last_startKey_key);
+        
+        if (last_startKey_key === 'end') { // cached startKeys are stringified
+            return {
+                requestKey: {
+                    list: [],
+                    startKey: 'end',
+                    endOfList: true,
+                    startKeyHistory: list_of_startKeys
+                },
+                requestKeyWithStartKey
+            }
+        }
 
         // else {
             requestKeyWithStartKey += MD5.hash(last_startKey_key);
@@ -662,15 +671,15 @@ export async function uploadFiles(
         throw new SkapiError('"record_id" is required.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (fileList instanceof SubmitEvent) {
+    if (hasSubmitEvent && fileList instanceof SubmitEvent) {
         fileList = (fileList.target as HTMLFormElement);
     }
 
-    if (fileList instanceof HTMLFormElement) {
+    if (hasHTMLFormElement && fileList instanceof HTMLFormElement) {
         fileList = new FormData(fileList);
     }
 
-    if (!(fileList instanceof FormData)) {
+    if (!hasFormData || !(fileList instanceof FormData)) {
         throw new SkapiError('"fileList" should be a FormData or HTMLFormElement.', { code: 'INVALID_PARAMETER' });
     }
 
@@ -826,7 +835,7 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             let actionDestination = '';
             let fileBase64String = {};
             let refreshPage = false;
-            if (form instanceof SubmitEvent) {
+            if (hasSubmitEvent && form instanceof SubmitEvent) {
                 form.preventDefault();
 
                 let currentUrl = window.location.href;

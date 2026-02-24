@@ -7,6 +7,10 @@ import validator from '../utils/validator';
 import { request } from '../utils/network';
 import { extractFormData } from '../utils/utils';
 
+const hasFormData = typeof FormData !== 'undefined';
+const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
+const hasSubmitEvent = typeof SubmitEvent !== 'undefined';
+
 export async function clientSecretRequest(params: {
     url: string;
     clientSecretName: string;
@@ -121,7 +125,7 @@ export async function secureRequest<RequestParams = {
 }, Response = { response: any; statusCode: number; url: string; }>(params: RequestParams[] | Form<RequestParams>, url?: string): Promise<Response | Response[]> {
     await this.__connection;
 
-    if ((params instanceof FormData) || (params instanceof HTMLFormElement) || (params instanceof SubmitEvent)) {
+    if ((hasFormData && params instanceof FormData) || (hasHTMLFormElement && params instanceof HTMLFormElement) || (hasSubmitEvent && params instanceof SubmitEvent)) {
         if (!url) {
             throw new SkapiError('Url string as a second argument is required when form is passed.', { code: 'INVALID_PARAMETER' });
         }

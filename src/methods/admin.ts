@@ -1,7 +1,7 @@
 import validator from '../utils/validator';
 import { request } from '../utils/network';
 import { checkAdmin } from './user';
-import { Form, UserAttributes, UserProfilePublicSettings, UserProfile, PublicUser, DatabaseResponse, FetchOptions } from '../Types';
+import { Form, UserAttributes, UserProfilePublicSettings, UserProfile, UserPublic, DatabaseResponse, FetchOptions } from '../Types';
 import SkapiError from '../main/error';
 import { parseUserAttributes } from '../utils/utils';
 
@@ -103,7 +103,7 @@ export async function deleteAccount(form: Form<{
 }
 
 export async function inviteUser(
-    form: Form<UserAttributes & UserProfilePublicSettings & { email: string; }>,
+    form: Form<UserAttributes & UserProfilePublicSettings & { email: string; service?: string; owner?: string; }>,
     options?: {
         confirmation_url?: string;
         email_subscription?: boolean;
@@ -229,7 +229,7 @@ export async function createAccount(
         { email: string; password: string; } &
         { service?: string; owner?: string; }
     >,
-): Promise<UserProfile & PublicUser & { email_admin: string; approved: string; log: number; username: string; }> {
+): Promise<UserProfile & UserPublic & { email_admin: string; approved: string; log: number; username: string; }> {
     let paramRestrictions = {
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v),

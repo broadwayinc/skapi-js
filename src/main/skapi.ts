@@ -11,7 +11,7 @@ import {
     Newsletters,
     Form,
     PostRecordConfig,
-    PublicUser,
+    UserPublic,
     UserProfilePublicSettings,
     FileInfo,
     RTCEvent,
@@ -19,6 +19,7 @@ import {
     RTCConnectorParams,
     RTCConnector,
     DelRecordQuery,
+    ConnectionInfo,
 } from '../Types';
 import {
     CognitoUserPool
@@ -104,14 +105,16 @@ import {
     registerTicket,
     unregisterTicket,
     _out,
-    openIdLogin
+    openIdLogin,
+    loginWithToken
 } from '../methods/user';
 import {
     extractFormData,
     fromBase62,
     generateRandom,
     toBase62,
-    MD5
+    MD5,
+    parseUserAttributes
 } from '../utils/utils';
 import {
     blockAccount,
@@ -137,6 +140,7 @@ import {
 type Options = {
     autoLogin: boolean;
     requestBatchSize?: number; // default 30. number of requests to be handled in a batch
+    bearerToken?: string; // custom bearer token for authentication
     eventListener?: {
         onLogin?: (user: UserProfile | null) => void;
         onUserUpdate?: (user: UserProfile | null) => void;
@@ -150,7 +154,7 @@ type Options = {
 
 export default class Skapi {
     // current version
-    private __version = "1.2.12";
+    private __version = "1.2.13";
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -345,12 +349,23 @@ export default class Skapi {
     private __network_logs = false;
     private __endpoint_version = 'v1';
     private __public_identifier = '';
+    private bearerToken: string = '';
+
+    private _alert(message: string) {
+        if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+            window.alert(message);
+        }
+    }
 
     constructor(service: string, owner?: string | Options, options?: Options | any, __etc?: any) {
+        if(!service || typeof service !== 'string') {
+            this._alert("Service ID is required.");
+            throw new SkapiError('"service" is required.', { code: 'INVALID_PARAMETER' });
+        }
         if (service.split("-").length === 7) {
             if (service === 'xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx') {
-                window.alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
-                throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
+                this._alert('Replace "service_id" with your actual Service ID.');
+                throw new SkapiError('Service ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
 
             if (options && typeof options === 'object') {
@@ -376,16 +391,12 @@ export default class Skapi {
                 extOwner = idSplit.slice(2).join("-");
             }
             catch (err) {
-                window.alert("Service ID or Owner ID is invalid.");
-                throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
+                this._alert("Service ID is invalid.");
+                throw new SkapiError('Service ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
             if(!region) {
-                window.alert("Service ID or Owner ID is invalid.");
-                throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
-            }
-            if (owner && typeof owner === 'string' && owner !== extOwner) {
-                window.alert("Service ID or Owner ID is invalid.");
-                throw new SkapiError('Service ID or Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
+                this._alert("Service ID is invalid.");
+                throw new SkapiError('Service ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
 
             owner = extOwner;
@@ -403,27 +414,22 @@ export default class Skapi {
 
         // window.sessionStorage.removeItem('__skapi_kiss');
 
-        if (typeof service !== 'string' || typeof owner !== 'string') {
-            window.alert("Service ID or Owner ID is invalid.");
-            throw new SkapiError('"service" and "owner" should be type <string>.', { code: 'INVALID_PARAMETER' });
+        if (!owner || typeof owner !== 'string') {
+            this._alert("Owner ID is invalid.");
+            throw new SkapiError('Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
         }
 
-        if (!service || !owner) {
-            window.alert('Service ID and Owner ID are required.');
-            throw new SkapiError('"service" and "owner" are required.', { code: 'INVALID_PARAMETER' });
-        }
-
-        if (service.toLowerCase() === 'service_id' || owner.toLowerCase() === 'owner_id') {
-            window.alert('Replace "service_id" and "owner_id" with your actual Service ID and Owner ID.');
-            throw new SkapiError('"service" and "owner" are required.', { code: 'INVALID_PARAMETER' });
+        if (service.toLowerCase() === 'service_id') {
+            this._alert('Replace "service_id" with your actual Service ID.');
+            throw new SkapiError('"service" is required.', { code: 'INVALID_PARAMETER' });
         }
 
         if (owner !== this.host) {
             try {
                 validator.UserId(owner, '"owner"');
             } catch (err: any) {
-                window.alert("Service ID or Owner ID is invalid.");
-                throw err;
+                this._alert("Owner ID is invalid.");
+                throw new SkapiError('Owner ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
         }
 
@@ -441,6 +447,9 @@ export default class Skapi {
                     throw new SkapiError('"requestBatchSize" must be greater than 0.', { code: 'INVALID_PARAMETER' });
                 }
                 this.requestBatchSize = options.requestBatchSize;
+            }
+            if (typeof options.bearerToken === 'string') {
+                this.loginWithToken({ idToken: this.bearerToken });
             }
         }
 
@@ -503,12 +512,14 @@ export default class Skapi {
                 }
             });
 
-        if (!window.sessionStorage) {
-            window.alert('This browser is not supported.');
+        const hasWindow = typeof window !== 'undefined';
+
+        if (!hasWindow || !window.sessionStorage) {
+            this._alert('This browser is not supported.');
             throw new Error(`This browser is not supported.`);
         }
 
-        const restore = JSON.parse(window.sessionStorage.getItem(`${service}#${owner}`) || 'null');
+        const restore = hasWindow ? JSON.parse(window.sessionStorage.getItem(`${service}#${owner}`) || 'null') : null;
 
         this.log('constructor:restore', restore);
 
@@ -531,9 +542,11 @@ export default class Skapi {
             });
 
             try {
-                await authentication.bind(this)().getSession({
-                    skipUserUpdateEventTrigger: true
-                });
+                if(!this.user) {
+                    await authentication.bind(this)().getSession({
+                        skipUserUpdateEventTrigger: true
+                    });
+                }
                 if (this.user) {
                     if (!restore?.connection && !autoLogin) {
                         _out.bind(this)();
@@ -549,7 +562,7 @@ export default class Skapi {
             }
         })()
 
-        let uniqueids = window.sessionStorage.getItem(`${this.service}:uniqueids`);
+        let uniqueids = hasWindow ? window.sessionStorage.getItem(`${this.service}:uniqueids`) : null;
         if (uniqueids) {
             try {
                 this.__my_unique_ids = JSON.parse(uniqueids);
@@ -590,7 +603,9 @@ export default class Skapi {
                             data[k] = this[k];
                         }
 
-                        window.sessionStorage.setItem(`${service}#${owner}`, JSON.stringify(data));
+                        if (hasWindow) {
+                            window.sessionStorage.setItem(`${service}#${owner}`, JSON.stringify(data));
+                        }
                         this.__class_properties_has_been_cached = true;
                     }
                 };
@@ -599,14 +614,16 @@ export default class Skapi {
             };
 
             // attach event to save session on close
-            window.addEventListener('beforeunload', () => {
-                this.closeRealtime();
-                storeClassProperties();
-            });
-            // for mobile
-            window.addEventListener("visibilitychange", () => {
-                storeClassProperties();
-            });
+            if (hasWindow) {
+                window.addEventListener('beforeunload', () => {
+                    this.closeRealtime();
+                    storeClassProperties();
+                });
+                // for mobile
+                window.addEventListener("visibilitychange", () => {
+                    storeClassProperties();
+                });
+            }
 
             await connection;
             await this.__authConnection;
@@ -620,16 +637,10 @@ export default class Skapi {
         });
     }
 
-    async getConnectionInfo(): Promise<{
-        user_ip: string;
-        user_agent: string;
-        user_location: string;
-        service_name: string;
-        version: string;
-    }> {
+    async getConnectionInfo(): Promise<ConnectionInfo> {
         let conn = await this.__connection;
         // get browser user-agent info
-        let ua = conn?.user_agent || window.navigator.userAgent;
+        let ua = conn?.user_agent || (typeof window !== 'undefined' ? window.navigator.userAgent : `skapi-node/${(globalThis as any)?.process?.versions?.node || 'unknown'}`);
         return {
             user_ip: conn.ip,
             user_agent: ua,
@@ -648,7 +659,7 @@ export default class Skapi {
         }
         catch (err: any) {
             this.log('connection fail', err);
-            window.alert('Service is not available: ' + (err.message || err.toString()));
+            this._alert('Service is not available: ' + (err.message || err.toString()));
 
             this.connection = null;
             throw err;
@@ -755,6 +766,12 @@ export default class Skapi {
     openIdLogin(params: { token: string; id: string; merge?: boolean | string[]; }): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
         return openIdLogin.bind(this)(params);
     }
+
+    @formHandler()
+    loginWithToken(params: { idToken: string; }): Promise<UserProfile> {
+        return loginWithToken.bind(this)(params);
+    }
+
     @formHandler()
     registerNewsletterGroup(params: Form<{
         group: string;
@@ -849,7 +866,7 @@ export default class Skapi {
     @formHandler()
     createAccount(
         form: { email: string; password: string; } & UserAttributes & UserProfilePublicSettings
-    ): Promise<UserProfile & PublicUser & { email_admin: string; approved: string; log: number; username: string; }> {
+    ): Promise<UserProfile & UserPublic & { email_admin: string; approved: string; log: number; username: string; }> {
         return createAccount.bind(this)(form);
     }
 
@@ -1015,7 +1032,7 @@ export default class Skapi {
             /** Range of search. */
             range?: string | number | boolean;
         },
-        fetchOptions?: FetchOptions): Promise<DatabaseResponse<PublicUser>> {
+        fetchOptions?: FetchOptions): Promise<DatabaseResponse<UserPublic>> {
         return getUsers.bind(this)(params, fetchOptions);
     }
     @formHandler()
