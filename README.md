@@ -2,6 +2,12 @@
 
 [![Package Compatibility](https://github.com/broadwayinc/skapi-js/actions/workflows/compatibility.yml/badge.svg)](https://github.com/broadwayinc/skapi-js/actions/workflows/compatibility.yml)
 [![npm version](https://img.shields.io/npm/v/skapi-js.svg)](https://www.npmjs.com/package/skapi-js)
+![Node](https://img.shields.io/badge/node-18%20%7C%2020%20%7C%2022-339933)
+![Module](https://img.shields.io/badge/module-CJS%20%7C%20ESM-blue)
+![Browser](https://img.shields.io/badge/browser-UMD%20bundle-orange)
+![TypeScript](https://img.shields.io/badge/types-TypeScript-3178C6)
+
+**Tested environments:** Node 18/20/22, CommonJS, ESM, TypeScript consumers, Browser UMD bundle.
 
 ### Zero-Setup Serverless Backend
 
