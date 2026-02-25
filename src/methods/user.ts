@@ -3,7 +3,10 @@ import {
     CognitoUserAttribute,
     CognitoUser,
     AuthenticationDetails,
-    CognitoUserSession
+    CognitoUserSession,
+    CognitoIdToken,
+    CognitoAccessToken,
+    CognitoRefreshToken
 } from 'amazon-cognito-identity-js';
 import {
     Form,
@@ -596,10 +599,14 @@ function getUserFromToken(accessToken) {
 
 export function loginWithToken(params: {
     idToken: string;
+    accessToken?: string;
+    refreshToken?: string;
 }): Promise<UserProfile> {
     // await this.__authConnection;
     params = validator.Params(params, {
-        idToken: 'string'
+        idToken: 'string',
+        accessToken: 'string',
+        refreshToken: 'string'
     }, ['idToken']);
 
     // Store the bearer token for authenticated requests
@@ -619,6 +626,20 @@ export function loginWithToken(params: {
 
     // Parse user attributes from the token payload
     this.__user = parseUserAttributes(idTokenPayload);
+
+    this.session = null;
+    if (params.accessToken && params.refreshToken) {
+        try {
+            this.session = new CognitoUserSession({
+                IdToken: new CognitoIdToken({ IdToken: params.idToken }),
+                AccessToken: new CognitoAccessToken({ AccessToken: params.accessToken }),
+                RefreshToken: new CognitoRefreshToken({ RefreshToken: params.refreshToken })
+            });
+        }
+        catch (err) {
+            this.log('loginWithToken:createSessionError', err);
+        }
+    }
 
     this._runOnLoginListeners(this.user);
     this._runOnUserUpdateListeners(this.user);
