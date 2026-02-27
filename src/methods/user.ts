@@ -209,9 +209,9 @@ export async function unregisterTicket(
 
 export async function getJwtToken() {
     await this.__connection;
-    if(this.bearerToken) {
-        return this.bearerToken;
-    }
+    // if (this.bearerToken) {
+    //     return this.bearerToken;
+    // }
     if (this.session) {
         const currentTime = Math.floor(Date.now() / 1000);
         const idToken = this.session.getIdToken();
@@ -243,7 +243,7 @@ export async function getJwtToken() {
                 refreshToken: this.session.refreshToken.token
             });
         }
-
+        // this.bearerToken = this.session?.idToken?.jwtToken;
         return this.session?.idToken?.jwtToken;
     }
     else {
@@ -296,8 +296,9 @@ export function authentication() {
                 skipUserUpdateEventTrigger = false;
             }
 
-            cognitoUser = this.userPool.getCurrentUser();
-
+            // if (!this.bearerToken) {
+                cognitoUser = this.userPool.getCurrentUser();
+            // }
             if (!cognitoUser) {
                 this.log('getSession:cognitoUser', cognitoUser);
                 // no user session. wasn't logged in.
@@ -344,7 +345,10 @@ export function authentication() {
                 this.log('getSession:currentTime', currentTime);
                 this.log('getSession:idTokenExp', idTokenExp);
                 this.log('getSession:isExpired', isExpired);
-                
+                // if(this.bearerToken) {
+                this.log('getSession:existingBearerToken', this.bearerToken);
+                this.bearerToken = idToken.getJwtToken();
+                // }
                 // try refresh when invalid token
                 // when on updateProfile, it will always refreshToken
                 if (isExpired || refreshToken || !session.isValid()) {
@@ -354,7 +358,7 @@ export function authentication() {
                     try {
                         res(respond(session));
                     }
-                    catch(err) {
+                    catch (err) {
                         rej(err);
                     }
                 }
@@ -447,16 +451,16 @@ export function authentication() {
                     // check if errMsg starts with '#'
                     if (errMsg.startsWith('#')) {
                         errMsg = errMsg.substring(1);
-                    
+
                         // "#INVALID_REQUEST: The account has been blacklisted."
                         // "#NOT_EXISTS: The account does not exist."
                         // "#SIGNUP_CONFIRMATION_NEEDED": The account signup needs to be confirmed."
                         // "#ACCOUNT_EXISTS": The account already exists."
-                        
+
                         let customErr = errMsg.split(':');
                         errCode = customErr[0].trim();
                         errMsg = customErr[1].trim();
-                        
+
                         if (errCode === 'SIGNUP_CONFIRMATION_NEEDED') {
                             this.__request_signup_confirmation = username;
                         }
@@ -512,11 +516,13 @@ export function authentication() {
 
 export async function getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
     await this.__authConnection;
-    if(this.bearerToken) {
+    let refreshToken = options?.refreshToken || false;
+    if (!refreshToken) {
         return this.user;
     }
     try {
-        await authentication.bind(this)().getSession(Object.assign({ skipUserUpdateEventTrigger: true }, options));
+        // Always trigger live session refresh if refreshToken is true
+        await authentication.bind(this)().getSession(Object.assign({ skipUserUpdateEventTrigger: !refreshToken, refreshToken }, options));
         return this.user;
     } catch (err) {
         return null;
@@ -587,7 +593,7 @@ function getUserFromToken(accessToken) {
     if (parts.length !== 3) {
         throw new Error('Invalid JWT format');
     }
-    
+
     // Decode the payload (second part) - use base64url decoding
     const payload = parts[1];
     // Replace base64url chars with standard base64 chars
@@ -597,12 +603,13 @@ function getUserFromToken(accessToken) {
     return userData;
 }
 
-export function loginWithToken(params: {
+export async function loginWithToken(params: {
     idToken: string;
     accessToken?: string;
     refreshToken?: string;
 }): Promise<UserProfile> {
-    // await this.__authConnection;
+    await this.__authConnection;
+    this.log('loginWithToken:params', params);
     params = validator.Params(params, {
         idToken: 'string',
         accessToken: 'string',
@@ -610,9 +617,8 @@ export function loginWithToken(params: {
     }, ['idToken']);
 
     // Store the bearer token for authenticated requests
-    this.bearerToken = params.idToken;
-    const idTokenPayload = getUserFromToken(this.bearerToken);
-    
+    const idTokenPayload = getUserFromToken(params.idToken);
+    this.log('loginWithToken:idTokenPayload', idTokenPayload);
     // Validate the token belongs to this service
     if (idTokenPayload['custom:service'] !== this.service) {
         throw new SkapiError('Token does not belong to this service.', { code: 'INVALID_REQUEST' });
@@ -624,10 +630,12 @@ export function loginWithToken(params: {
         throw new SkapiError('Token has expired.', { code: 'INVALID_REQUEST' });
     }
 
+    // this.bearerToken = params.idToken;
     // Parse user attributes from the token payload
     this.__user = parseUserAttributes(idTokenPayload);
 
     this.session = null;
+
     if (params.accessToken && params.refreshToken) {
         try {
             this.session = new CognitoUserSession({
@@ -635,9 +643,43 @@ export function loginWithToken(params: {
                 AccessToken: new CognitoAccessToken({ AccessToken: params.accessToken }),
                 RefreshToken: new CognitoRefreshToken({ RefreshToken: params.refreshToken })
             });
+
+            this.log('loginWithToken:session', this.session);
+            this.log('loginWithToken:CognitoUser', CognitoUser);
+            this.log('loginWithToken:userPool', this.userPool);
+            // Restore cognitoUser in memory for Node.js/server context
+            if (CognitoUser && this.userPool) {
+                this.log('loginWithToken:cognito:username', idTokenPayload['cognito:username']);
+                let up = {
+                    Username: idTokenPayload['cognito:username'],
+                    Pool: this.userPool
+                }
+                this.log('loginWithToken:cognitoUserParams', up);
+                cognitoUser = new CognitoUser(up);
+                cognitoUser.setSignInUserSession(this.session);
+                this.log('loginWithToken:cognitoUserRestored', {
+                    cognitoUserType: typeof cognitoUser,
+                    cognitoUserKeys: Object.keys(cognitoUser || {}),
+                    cognitoUser
+                });
+            }
         }
-        catch (err) {
-            this.log('loginWithToken:createSessionError', err);
+        catch (err: any) {
+            // Enhanced error logging: log all property names, symbols, and descriptors
+            this.log('loginWithToken:err', err);
+            try {
+                this.log('loginWithToken:err:stringified', JSON.stringify(err));
+            } catch (e) {
+                this.log('loginWithToken:err:stringifyFail', String(err));
+            }
+            try {
+                const keys = Object.keys(err || {});
+                const symbols = Object.getOwnPropertySymbols ? Object.getOwnPropertySymbols(err || {}) : [];
+                const descriptors = Object.getOwnPropertyDescriptors ? Object.getOwnPropertyDescriptors(err || {}) : {};
+                this.log('loginWithToken:createSessionError:allKeys', { keys, symbols, descriptors });
+            } catch (e) {
+                this.log('loginWithToken:createSessionError:allKeysFail', String(e));
+            }
         }
     }
 
@@ -662,7 +704,7 @@ export async function checkAdmin() {
 
 export async function _out(global: boolean = false) {
     let toReturn = null;
-    
+
     if (cognitoUser) {
         if (global) {
             toReturn = new Promise((res, rej) => {
@@ -1014,7 +1056,7 @@ export async function resetPassword(form: Form<{
                 res("SUCCESS: New password has been set.");
             },
             onFailure: (err: any) => {
-                rej(new SkapiError(err?.message || 'Failed to reset password.', { code: err?.code || 'ERROR', cause: err }) );
+                rej(new SkapiError(err?.message || 'Failed to reset password.', { code: err?.code || 'ERROR', cause: err }));
             }
         });
     });
@@ -1205,7 +1247,7 @@ export async function changePassword(params: {
                         rej(new SkapiError('Too many attempts. Please try again later.', { code: 'REQUEST_EXCEED' }));
                     }
                     else {
-                        rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || 'ERROR', cause: err }) );
+                        rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || 'ERROR', cause: err }));
                     }
                 }
 

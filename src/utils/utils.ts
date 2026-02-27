@@ -1,5 +1,8 @@
 import SkapiError from "../main/error";
 
+const BASE62_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+const BASE62 = BigInt(BASE62_ALPHABET.length);
+
 class MD5 {
     private static readonly alphabet = '0123456789abcdef';
 
@@ -159,20 +162,18 @@ class MD5 {
 }
 
 function toBase62(num: number): string {
-    const base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    if (num === 0) return base62Chars[0];
+    if (num === 0) return BASE62_ALPHABET[0];
     let result = '';
     while (num > 0) {
-        result = base62Chars[num % 62] + result;
+        result = BASE62_ALPHABET[num % 62] + result;
         num = Math.floor(num / 62);
     }
     return result;
 }
 
 function fromBase62(chars: string): number {
-    let charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
     return chars.split('').reverse().reduce((prev, curr, i) =>
-        prev + (charset.indexOf(curr) * (62 ** i)), 0);
+        prev + (BASE62_ALPHABET.indexOf(curr) * (62 ** i)), 0);
 }
 
 function generateRandom(length: number = 6): string {
@@ -480,11 +481,299 @@ function parseUserAttributes(attr: { [key: string]: any }) {
     return user;
 }
 
+function decodeServiceId(service) {
+    service = decompressCompoundId(service); // validate format and throw if invalid
+    if (service.split("-").length === 7) {
+        const idSplit = service.split("-");
+        let region;
+        let owner;
+
+        try {
+            const regionKeys = [
+                "us31", "us72", "ap51", "ap22", "ap41", "eu71", "ap21", "us32", "us71",
+                "af51", "ap31", "ap43", "ap23", "ap42", "ca01", "eu01", "eu72", "eu51",
+                "eu73", "eu11", "me51", "sa31"
+            ];
+
+            region = regionKeys[fromBase62(idSplit[1][0])];
+            owner = idSplit.slice(2).join("-");
+        }
+        catch (err) {
+            throw new Error('INVALID_PARAMETER: Service ID is invalid.');
+        }
+
+        if (!region) {
+            throw new Error('INVALID_PARAMETER: Service ID is invalid.');
+        }
+
+        return { service: region + idSplit[0] + idSplit[1].slice(1), owner };
+    }
+
+    return { service, owner: "" };
+}
+
+function formatServiceId(serviceId, ownerId) {
+    // format service ID
+    const alphabet = [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "h",
+        "i",
+        "j",
+        "k",
+        "l",
+    ];
+
+    const regionKeys = [
+        "us31",
+        "us72",
+        "ap51",
+        "ap22",
+        "ap41",
+        "eu71",
+        "ap21",
+        "us32",
+        "us71",
+        "af51",
+        "ap31",
+        "ap43",
+        "ap23",
+        "ap42",
+        "ca01",
+        "eu01",
+        "eu72",
+        "eu51",
+        "eu73",
+        "eu11",
+        "me51",
+        "sa31",
+    ];
+
+    const regionIndex = regionKeys.indexOf(serviceId.slice(0, 4));
+    const regionChar = alphabet[regionIndex];
+    const subRegionId = serviceId.slice(4, -4);
+
+    let formattedServiceId = `${subRegionId}-${regionChar}${serviceId.slice(-4)}-${ownerId}`;
+    return compressCompoundId(formattedServiceId);
+}
+
+function b62ToBigInt(str) {
+    let value = 0n;
+
+    for (const ch of str) {
+        const idx = BASE62_ALPHABET.indexOf(ch);
+        if (idx < 0) {
+            throw new Error(`INVALID_PARAMETER: Invalid base62 character: ${ch}`);
+        }
+        value = value * BASE62 + BigInt(idx);
+    }
+
+    return value;
+}
+
+function bigIntToB62(value, minLength = 1) {
+    if (value < 0n) {
+        throw new Error('INVALID_PARAMETER: Negative values are not supported.');
+    }
+
+    if (value === 0n) {
+        return '0'.repeat(Math.max(1, minLength));
+    }
+
+    let output = '';
+    let current = value;
+
+    while (current > 0n) {
+        const remainder = Number(current % BASE62);
+        output = BASE62_ALPHABET[remainder] + output;
+        current /= BASE62;
+    }
+
+    if (output.length < minLength) {
+        output = '0'.repeat(minLength - output.length) + output;
+    }
+
+    return output;
+}
+
+function bigIntToBytes(value) {
+    if (value === 0n) {
+        return Buffer.from([0]);
+    }
+
+    const bytes = [];
+    let current = value;
+
+    while (current > 0n) {
+        bytes.push(Number(current & 0xffn));
+        current >>= 8n;
+    }
+
+    bytes.reverse();
+    return Buffer.from(bytes);
+}
+
+function bytesToBigInt(buf) {
+    let value = 0n;
+
+    for (const b of buf) {
+        value = (value << 8n) + BigInt(b);
+    }
+
+    return value;
+}
+
+function uuidToBytes(uuid) {
+    const hex = String(uuid).replace(/-/g, '');
+
+    if (!/^[0-9a-fA-F]{32}$/.test(hex)) {
+        throw new Error('INVALID_PARAMETER: Invalid UUID format.');
+    }
+
+    return Buffer.from(hex, 'hex');
+}
+
+function bytesToUuid(buf16) {
+    const hex = Buffer.from(buf16).toString('hex');
+    return [
+        hex.slice(0, 8),
+        hex.slice(8, 12),
+        hex.slice(12, 16),
+        hex.slice(16, 20),
+        hex.slice(20)
+    ].join('-');
+}
+
+function toBase64Url(input) {
+    if (Buffer) {
+        return Buffer.from(input).toString('base64');
+    }
+
+    let binary = '';
+    const bytes = new Uint8Array(input);
+    const chunk = 0x8000;
+
+    for (let i = 0; i < bytes.length; i += chunk) {
+        const slice = bytes.subarray(i, i + chunk);
+        binary += String.fromCharCode.apply(null, Array.from(slice));
+    }
+
+    if (typeof btoa === 'function') {
+        return btoa(binary);
+    }
+
+    throw new Error('No base64 encoder available in this environment.');
+}
+
+function fromBase64Url(str, parseJson = false) {
+    const base64 = String(str).replace(/-/g, '+').replace(/_/g, '/');
+    const padding = base64.length % 4 ? '='.repeat(4 - (base64.length % 4)) : '';
+    const decoded = Buffer.from(base64 + padding, 'base64');
+
+    if (parseJson) {
+        return JSON.parse(decoded.toString('utf8'));
+    }
+
+    return decoded;
+}
+
+function compressCompoundId(input) {
+    const match = String(input).match(/^([0-9A-Za-z]+)-([0-9A-Za-z]+)-([0-9a-fA-F-]{36})$/);
+
+    if (!match) {
+        throw new Error('INVALID_PARAMETER: Input must match <base62>-<base62>-<uuid>.');
+    }
+
+    const [, firstPart, secondPart, uuid] = match;
+
+    const firstValue = b62ToBigInt(firstPart);
+    const secondValue = b62ToBigInt(secondPart);
+    const firstBytes = bigIntToBytes(firstValue);
+    const secondBytes = bigIntToBytes(secondValue);
+    const uuidBytes = uuidToBytes(uuid);
+
+    if (
+        firstPart.length > 255 ||
+        secondPart.length > 255 ||
+        firstBytes.length > 255 ||
+        secondBytes.length > 255
+    ) {
+        throw new Error('INVALID_PARAMETER: Input parts are too long to encode.');
+    }
+
+    const payload = Buffer.concat([
+        Buffer.from([1, firstPart.length, secondPart.length, firstBytes.length, secondBytes.length]),
+        firstBytes,
+        secondBytes,
+        uuidBytes
+    ]);
+
+    return `s1_${toBase64Url(payload)}`;
+}
+
+function decompressCompoundId(token) {
+    const tokenString = String(token);
+
+    if (!tokenString.startsWith('s1_')) {
+        return tokenString;
+    }
+
+    const payload = fromBase64Url(tokenString.slice(3));
+    if (payload.length < 21) {
+        throw new Error('INVALID_PARAMETER: Corrupt compressed token.');
+    }
+
+    const version = payload[0];
+    if (version !== 1) {
+        throw new Error(`INVALID_PARAMETER: Unsupported token version: ${version}`);
+    }
+
+    const firstLength = payload[1];
+    const secondLength = payload[2];
+    const firstBytesLength = payload[3];
+    const secondBytesLength = payload[4];
+
+    const firstStart = 5;
+    const secondStart = firstStart + firstBytesLength;
+    const uuidStart = secondStart + secondBytesLength;
+
+    if (payload.length !== uuidStart + 16) {
+        throw new Error('INVALID_PARAMETER: Corrupt compressed token length.');
+    }
+
+    const firstPart = bigIntToB62(bytesToBigInt(payload.subarray(firstStart, secondStart)), firstLength);
+    const secondPart = bigIntToB62(bytesToBigInt(payload.subarray(secondStart, uuidStart)), secondLength);
+    const uuid = bytesToUuid(payload.subarray(uuidStart, uuidStart + 16));
+
+    return `${firstPart}-${secondPart}-${uuid}`;
+}
+
+
 export {
     fromBase62,
     toBase62,
     extractFormData,
     MD5,
     generateRandom,
-    parseUserAttributes
+    parseUserAttributes,
+    compressCompoundId,
+    decompressCompoundId,
+    formatServiceId,
+    decodeServiceId,
+    toBase64Url
 };

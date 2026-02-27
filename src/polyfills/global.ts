@@ -2,9 +2,9 @@
 const root = typeof globalThis !== 'undefined' ? (globalThis as any) : undefined;
 const win = root?.window;
 
-function toBase64(input: ArrayBuffer): string {
-    if (root?.Buffer) {
-        return root.Buffer.from(input).toString('base64');
+function toBase64Url(input) {
+    if (Buffer) {
+        return Buffer.from(input).toString('base64');
     }
 
     let binary = '';
@@ -41,7 +41,7 @@ if (win) {
 
             readAsDataURL(blob: Blob) {
                 blob.arrayBuffer().then(buffer => {
-                    const base64 = toBase64(buffer);
+                    const base64 = toBase64Url(buffer);
                     const mimeType = (blob as any).type || 'application/octet-stream';
                     this.result = `data:${mimeType};base64,${base64}`;
                     if (this.onload) this.onload({ target: this });
@@ -176,6 +176,49 @@ if (win) {
                 getItem: (key: string) => null,
                 setItem: (key: string, value: string) => {},
                 removeItem: (key: string) => {},
+            },
+            localStorage: {
+                getItem: (key: string) => {
+                    const fs = require('fs');
+                    const path = require('path');
+                    // read file "{key}.skapi" in ./states/localStorage/ as string
+                    try {
+                        const filePath = path.resolve(process.cwd(), 'states', 'localStorage', `${key}.skapi`);
+                        if (fs.existsSync(filePath)) {
+                            return fs.readFileSync(filePath, 'utf8');
+                        }
+                        return null;
+                    } catch (e) {
+                        return null;
+                    }
+                },
+                setItem: (key: string, value: string) => {
+                    const fs = require('fs');
+                    const path = require('path');
+                    // write file "{key}.skapi" in ./states/localStorage/ with value as content
+                    try {
+                        const dirPath = path.resolve(process.cwd(), 'states', 'localStorage');
+                        if (!fs.existsSync(dirPath)) {
+                            fs.mkdirSync(dirPath, { recursive: true });
+                        }
+                        const filePath = path.resolve(dirPath, `${key}.skapi`);
+                        fs.writeFileSync(filePath, value, 'utf8');
+                    } catch (e) {
+                        // ignore write errors
+                    }
+                },
+                removeItem: (key: string) => {
+                    const fs = require('fs');
+                    const path = require('path');
+                    try {
+                        const filePath = path.resolve(process.cwd(), 'states', 'localStorage', `${key}.skapi`);
+                        if (fs.existsSync(filePath)) {
+                            fs.unlinkSync(filePath);
+                        }
+                    } catch (e) {
+                        // ignore delete errors
+                    }
+                },
             },
             location: { 
                 href: '', 

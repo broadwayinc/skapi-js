@@ -119,7 +119,8 @@ import {
     generateRandom,
     toBase62,
     MD5,
-    parseUserAttributes
+    decodeServiceId,
+    formatServiceId,
 } from '../utils/utils';
 import {
     blockAccount,
@@ -145,7 +146,7 @@ import {
 type Options = {
     autoLogin: boolean;
     requestBatchSize?: number; // default 30. number of requests to be handled in a batch
-    bearerToken?: string; // custom bearer token for authentication
+    // bearerToken?: string; // custom bearer token for authentication
     eventListener?: {
         onLogin?: (user: UserProfile | null) => void;
         onUserUpdate?: (user: UserProfile | null) => void;
@@ -159,7 +160,7 @@ type Options = {
 
 export default class Skapi {
     // current version
-    private __version = "1.2.13";
+    private __version = "1.2.14";
     service: string;
     owner: string;
     session: Record<string, any> | null = null;
@@ -333,6 +334,8 @@ export default class Skapi {
         generateRandom,
         toBase62,
         fromBase62,
+        decodeServiceId,
+        formatServiceId,
         extractFormData,
         terminatePendingRequests,
         request: (
@@ -363,49 +366,28 @@ export default class Skapi {
     }
 
     constructor(service: string, owner?: string | Options, options?: Options | any, __etc?: any) {
-        if(!service || typeof service !== 'string') {
+        if (!service || typeof service !== 'string') {
             this._alert("Service ID is required.");
-            throw new SkapiError('"service" is required.', { code: 'INVALID_PARAMETER' });
+            throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
         }
-        if (service.split("-").length === 7) {
-            if (service === 'xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx') {
-                this._alert('Replace "service_id" with your actual Service ID.');
-                throw new SkapiError('Service ID is invalid.', { code: 'INVALID_PARAMETER' });
-            }
-
-            if (options && typeof options === 'object') {
-                __etc = options;
-            }
-
-            if (owner && typeof owner === 'object') {
-                options = owner;
-            }
-
-            const idSplit = service.split("-");
-            let region;
-            let extOwner;
-
+        if (service.startsWith('s1_') || service.split("-").length === 7) {
             try {
-                const regionKeys = [
-                    "us31", "us72", "ap51", "ap22", "ap41", "eu71", "ap21", "us32", "us71",
-                    "af51", "ap31", "ap43", "ap23", "ap42", "ca01", "eu01", "eu72", "eu51",
-                    "eu73", "eu11", "me51", "sa31"
-                ];
+                let decoded = decodeServiceId(service);
+                if (options && typeof options === 'object') {
+                    __etc = options;
+                }
 
-                region = regionKeys[fromBase62(idSplit[1][0])];
-                extOwner = idSplit.slice(2).join("-");
+                if (owner && typeof owner === 'object') {
+                    options = owner;
+                }
+
+                owner = decoded.owner;
+                service = decoded.service;
             }
             catch (err) {
                 this._alert("Service ID is invalid.");
                 throw new SkapiError('Service ID is invalid.', { code: 'INVALID_PARAMETER' });
             }
-            if(!region) {
-                this._alert("Service ID is invalid.");
-                throw new SkapiError('Service ID is invalid.', { code: 'INVALID_PARAMETER' });
-            }
-
-            owner = extOwner;
-            service = region + idSplit[0] + idSplit[1].slice(1);
         }
 
         // if (!window.sessionStorage) {
@@ -426,7 +408,7 @@ export default class Skapi {
 
         if (service.toLowerCase() === 'service_id') {
             this._alert('Replace "service_id" with your actual Service ID.');
-            throw new SkapiError('"service" is required.', { code: 'INVALID_PARAMETER' });
+            throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
         }
 
         if (owner !== this.host) {
@@ -452,9 +434,6 @@ export default class Skapi {
                     throw new SkapiError('"requestBatchSize" must be greater than 0.', { code: 'INVALID_PARAMETER' });
                 }
                 this.requestBatchSize = options.requestBatchSize;
-            }
-            if (typeof options.bearerToken === 'string') {
-                this.loginWithToken({ idToken: this.bearerToken });
             }
         }
 
@@ -541,13 +520,23 @@ export default class Skapi {
 
         this.__authConnection = (async (): Promise<void> => {
             const admin_endpoint = await this.admin_endpoint;
-            this.userPool = new CognitoUserPool({
+            const poolSetting = {
                 UserPoolId: admin_endpoint.userpool_id,
                 ClientId: admin_endpoint.userpool_client
-            });
+            } as any;
+            if ((window as any)._runningInNodeJS) {
+                poolSetting.Storage = window.localStorage;
+            }
+            this.userPool = new CognitoUserPool(poolSetting);
 
             try {
-                if(!this.user) {
+                if (!this.user) {
+                    // if (autoLogin && typeof autoLogin === 'object') {
+                    //     let { idToken = '', accessToken = '', refreshToken = '' } = autoLogin || {};
+                    //     if (idToken) {
+                    //         await this.loginWithToken({ idToken, accessToken, refreshToken });
+                    //     }
+                    // }
                     await authentication.bind(this)().getSession({
                         skipUserUpdateEventTrigger: true
                     });
@@ -688,11 +677,20 @@ export default class Skapi {
 
     private log(n: string, v: any) {
         if (this.__network_logs) {
-            try {
-                console.log(`%c${n}:`, 'color: blue;', JSON.parse(JSON.stringify(v)));
-            } catch (err) {
-                console.log(`%c${n}:`, 'color: blue;', v);
+            if(typeof v === 'object') {
+                try {
+                    v = JSON.parse(JSON.stringify(v));
+                }
+                catch(err) {
+                    v = String(v);
+                }
             }
+
+            else if(typeof v === 'string' && v.length > 100) {
+                v = v.substring(0, 100) + '...';
+            }
+            
+            console.log(`%c${n}:`, 'color: blue;', v);
         }
     }
 
@@ -770,7 +768,7 @@ export default class Skapi {
     }
 
     @formHandler()
-    loginWithToken(params: { idToken: string; }): Promise<UserProfile> {
+    loginWithToken(params: { idToken: string; accessToken?: string; refreshToken?: string; }): Promise<UserProfile> {
         return loginWithToken.bind(this)(params);
     }
 
@@ -1096,13 +1094,13 @@ export default class Skapi {
         return getNewsletters.bind(this)(params, fetchOptions);
     }
     @formHandler()
-    getNewsletterSubscription(params: {group?: number | 'public' | 'authorized';},
-    fetchOptions?: FetchOptions): Promise<{
-        active: boolean;
-        timestamp: number;
-        group: number;
-        subscribed_email: string;
-    }[]> {
+    getNewsletterSubscription(params: { group?: number | 'public' | 'authorized'; },
+        fetchOptions?: FetchOptions): Promise<{
+            active: boolean;
+            timestamp: number;
+            group: number;
+            subscribed_email: string;
+        }[]> {
         return getNewsletterSubscription.bind(this)(params, fetchOptions);
     }
     @formHandler()

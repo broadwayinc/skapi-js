@@ -26,6 +26,10 @@ module.exports = [
         },
         resolve: {
             extensions: ['.tsx', '.ts', '.js'],
+            fallback: {
+                fs: false,
+                path: false
+            }
         },
         devtool: 'source-map',
         plugins: [
@@ -72,6 +76,10 @@ ${license}
         },
         resolve: {
             extensions: ['.tsx', '.ts', '.js'],
+            fallback: {
+                fs: false,
+                path: false
+            }
         },
         devtool: 'source-map',
         plugins: [
@@ -112,6 +120,10 @@ ${license}
         },
         resolve: {
             extensions: ['.tsx', '.ts', '.js'],
+            fallback: {
+                fs: false,
+                path: false
+            }
         },
         devtool: 'source-map',
         plugins: [
@@ -158,6 +170,10 @@ ${license}
         },
         resolve: {
             extensions: ['.tsx', '.ts', '.js'],
+            fallback: {
+                fs: false,
+                path: false
+            }
         },
         devtool: 'source-map',
         plugins: [
