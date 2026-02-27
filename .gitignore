@@ -83,7 +83,6 @@ typings/
 # dist
 
 # Gatsby files
-.cache/
 # Comment in the public line in if your project uses Gatsby and *not* Next.js
 # https://nextjs.org/blog/next-9-1#public-directory-support
 # public
@@ -110,7 +109,6 @@ typings/
 js/
 dist/
 esm/
-deploy.py
 playground/
 deploy.py
 test.js
@@ -118,6 +116,7 @@ test.html
 srvc.js
 sandbox_deploy.py
 index.html
+index.js
 sandbox.html
 sandbox.js
 _sandbox
