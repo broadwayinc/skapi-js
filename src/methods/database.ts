@@ -23,6 +23,8 @@ import { checkAdmin } from './user';
 import { authentication } from './user';
 import { accessGroup, cannotBeEmptyString, getStruct, indexValue, recordIdOrUniqueId } from './param_restrictions';
 
+const pendingPrivateAccessKeyRequest: Record<string, Promise<string>> = {};
+
 export async function normalizeRecord(record: Record<string, any>, _called_from?): Promise<RecordData> {
     if (record?.rec) {
         if (_called_from !== 'called from postRecord') {
@@ -159,46 +161,66 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             output.referenced_count = r;
         },
         'bin': async (r: string[]) => {
-            let binObj = {};
+            let binObj: Record<string, any[]> = {};
             let _ref = output?.reference || null;
             if (Array.isArray(r)) {
-                for (let url of r) {
-                    let path = url.split('/').slice(3).join('/');
-                    let splitPath = path.split('/');
-                    let filename = decodeURIComponent(splitPath.slice(-1)[0]);
-                    let pathKey = decodeURIComponent(splitPath[10]);
-                    let size = splitPath[9];
-                    let uploaded = splitPath[8];
-                    let access_group = access_group_set(splitPath[6]);
-                    let url_endpoint = url;
-                    if (access_group !== 'public') {
-                        url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint', _ref }) as string);
-                    }
-                    // auth/serviceid/ownerid/uploaderid/records/recordid/access_group/bin/timestamp_base62/size_base62/form_keyname/filename.ext
+                const parsedBin = await Promise.all(r.map(async (url) => {
+                    try {
+                        let path = url.split('/').slice(3).join('/');
+                        let splitPath = path.split('/');
 
-                    let obj = {
-                        access_group,
-                        filename,
-                        url: url_endpoint,
-                        path,
-                        size: fromBase62(size),
-                        uploaded: fromBase62(uploaded),
-                        getFile: (dataType: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info', progress?: ProgressCallback) => {
-                            let config = {
-                                dataType: dataType || 'download',
-                                progress,
-                                _ref,
-                                _update: obj
-                            };
-                            return getFile.bind(this)(url_endpoint, config);
+                        // Expected path format:
+                        // auth|publ/serviceid/ownerid/uploaderid/records/recordid/access_group/bin/timestamp/size/form_key/filename
+                        if (splitPath.length < 12) {
+                            return null;
                         }
-                    };
-                    if (binObj[pathKey]) {
-                        binObj[pathKey].push(obj);
+
+                        let filename = decodeURIComponent(splitPath[splitPath.length - 1]);
+                        let pathKey = decodeURIComponent(splitPath[10]);
+                        let size = splitPath[9];
+                        let uploaded = splitPath[8];
+                        let access_group = access_group_set(splitPath[6]);
+                        let url_endpoint = url;
+                        if (access_group !== 'public') {
+                            url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint', _ref }) as string);
+                        }
+
+                        let obj = {
+                            access_group,
+                            filename,
+                            url: url_endpoint,
+                            path,
+                            size: fromBase62(size),
+                            uploaded: fromBase62(uploaded),
+                            getFile: (dataType: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info', progress?: ProgressCallback) => {
+                                let config = {
+                                    dataType: dataType || 'download',
+                                    progress,
+                                    _ref,
+                                    _update: obj
+                                };
+                                return getFile.bind(this)(url_endpoint, config);
+                            }
+                        };
+
+                        return { pathKey, obj };
+                    }
+                    catch {
+                        return null;
+                    }
+                }));
+
+                for (let parsed of parsedBin) {
+                    if (!parsed) {
                         continue;
                     }
 
-                    binObj[pathKey] = [obj];
+                    if (binObj[parsed.pathKey]) {
+                        binObj[parsed.pathKey].push(parsed.obj);
+                        continue;
+                    }
+
+                    binObj[parsed.pathKey] = [parsed.obj];
                 }
             }
             output.bin = binObj;
@@ -319,9 +341,15 @@ export async function getFile(
         throw new SkapiError('"url" should be type: string.', { code: 'INVALID_PARAMETER' });
     }
 
-    url = validator.Url(url.split('?')[0]);
+    let splitQuery = url.split('?');
+    let baseUrl = splitQuery.shift() || '';
+    let queryString = splitQuery.length ? '?' + splitQuery.join('?') : '';
+
+    let validatedBaseUrl = validator.Url(baseUrl);
+    url = validatedBaseUrl + queryString;
+
     let isValidEndpoint = false;
-    let splitUrl = url.split('/');
+    let splitUrl = validatedBaseUrl.split('/');
     let host = splitUrl[2];
     let splitHost = host.split('.');
     let subdomain = null;
@@ -408,7 +436,7 @@ export async function getFile(
     else if (needAuth) {
         let currTime = Math.floor(Date.now() / 1000);
 
-        if (!this.bearerToken && this.session?.idToken?.payload?.exp < currTime) {
+        if (!this.bearerToken && (!this.session?.idToken?.payload?.exp || this.session.idToken.payload.exp < currTime)) {
             this.log('getFile:requesting new token', null);
             try {
                 await authentication.bind(this)().getSession({ refreshToken: true });
@@ -428,19 +456,24 @@ export async function getFile(
 
         let token = this.bearerToken || this.session?.idToken?.jwtToken; // idToken
 
-        url += `?t=${token}`;
+        if (!token || !this.user?.user_id) {
+            throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+        }
+
+        url += `${url.includes('?') ? '&' : '?'}t=${encodeURIComponent(token)}`;
 
         let access_group = target_key[6] === '**' ? '**' : parseInt(target_key[6]);
+        let user_access_group = this.user?.access_group ?? -1;
 
-        if (this.user.user_id !== target_key[3] && (access_group === '**' || this.user?.access_group < access_group)) {
+        if (this.user.user_id !== target_key[3] && (access_group === '**' || user_access_group < access_group)) {
             let record_id = target_key[5];
             if (this.__private_access_key[record_id] && typeof this.__private_access_key[record_id] === 'string') {
-                url += '&p=' + this.__private_access_key[record_id];
+                url += `&p=${encodeURIComponent(this.__private_access_key[record_id])}`;
             }
             else if (this.owner !== this.host) {
                 try {
                     let p = await this.requestPrivateRecordAccessKey({ record_id, reference_id: config?._ref });
-                    url += '&p=' + p;
+                    url += `&p=${encodeURIComponent(p)}`;
                 } catch (err) { }
             }
         }
@@ -466,7 +499,7 @@ export async function getFile(
         return null;
     }
 
-    let blob: Promise<string> = new Promise(async (res, rej) => {
+    let blob: Promise<Blob | string> = new Promise(async (res, rej) => {
         try {
             let b = await request.bind(this)(
                 url,
@@ -491,7 +524,7 @@ export async function getFile(
 }
 
 async function prepGetParams(query, isDel = false) {
-    query = extractFormData(query, { ignoreEmpty: true }).data;
+    query = extractFormData(query, { ignoreEmpty: true }).data || {};
 
     if (typeof query?.table === 'string') {
         query.table = {
@@ -525,7 +558,7 @@ async function prepGetParams(query, isDel = false) {
     }
     else {
         let isAdmin = await checkAdmin.bind(this)();
-        let ref: any = query.reference;
+        let ref: any = query?.reference;
         let ref_user = '';
 
         if (ref?.record_id || ref?.unique_id) {
@@ -613,8 +646,14 @@ export async function postRecord(
         };
     }
 
-    if (!config.record_id && !config.table.hasOwnProperty('access_group')) {
-        config.table.access_group = 0;
+    if (!config.record_id) {
+        if (!config.table || typeof config.table !== 'object') {
+            throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
+        }
+
+        if (!Object.prototype.hasOwnProperty.call(config.table, 'access_group')) {
+            config.table.access_group = 0;
+        }
     }
 
     let reference_limit_check = (v: number) => {
@@ -1009,7 +1048,7 @@ export async function getIndexes(
             };
 
             for (let k in convert) {
-                if (i?.[k]) {
+                if (Object.prototype.hasOwnProperty.call(i, k)) {
                     resolved[convert[k]] = i[k];
                 }
             }
@@ -1195,17 +1234,34 @@ export function requestPrivateRecordAccessKey(params: { record_id: string, refer
         throw new SkapiError(`Reference ID should be type: <string>`, { code: 'INVALID_PARAMETER' });
     }
 
-    if (this.__private_access_key[record_id]) {
-        return this.__private_access_key[record_id];
+    if (typeof this.__private_access_key[record_id] === 'string') {
+        return Promise.resolve(this.__private_access_key[record_id]);
     }
 
-    let res = request.bind(this)(
-        'request-private-access-key',
-        { record_id, reference_id },
-        { auth: true }
-    );
+    if (pendingPrivateAccessKeyRequest[record_id]) {
+        return pendingPrivateAccessKeyRequest[record_id];
+    }
 
-    this.__private_access_key[record_id] = res;
+    let res = request
+        .bind(this)(
+            'request-private-access-key',
+            { record_id, reference_id },
+            { auth: true }
+        )
+        .then((r: any) => {
+            let privateKey = typeof r === 'string' ? r : r?.private_key;
+            if (typeof privateKey !== 'string') {
+                throw new SkapiError('Invalid private access key response.', { code: 'ERROR' });
+            }
+
+            this.__private_access_key[record_id] = privateKey;
+            return privateKey;
+        })
+        .finally(() => {
+            delete pendingPrivateAccessKeyRequest[record_id];
+        });
+
+    pendingPrivateAccessKeyRequest[record_id] = res;
 
     return res;
 }

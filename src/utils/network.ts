@@ -13,11 +13,29 @@ const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
 const hasFormData = typeof FormData !== 'undefined';
 
 // Global counters for round-robin
-let privateCounter_admin = 0;
-let publicCounter_admin = 0;
-let privateCounter_record = 0;
-let publicCounter_record = 0;
 let request_counter = 0;
+
+function getRetryDelayMs(retryAfter: string | null): number | null {
+    if (!retryAfter) {
+        return null;
+    }
+
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds)) {
+        return Math.max(0, seconds * 1000);
+    }
+
+    const dateMs = Date.parse(retryAfter);
+    if (!Number.isNaN(dateMs)) {
+        return Math.max(0, dateMs - Date.now());
+    }
+
+    return null;
+}
+
+function toPercent(loaded: number, total: number): number {
+    return total > 0 ? (loaded / total) * 100 : 0;
+}
 
 let selectGateway = (params: { auth: boolean, type: string, endpoints: {[key:string]: string}[] }) => {
     const { auth, type, endpoints } = params;
@@ -54,13 +72,29 @@ let selectGateway = (params: { auth: boolean, type: string, endpoints: {[key:str
     request_counter++;
 
     if (type === 'admin') {
-        const gateways_admin_round_robin = Object.values(admin).filter(v => v.includes(auth ? '_private' : '_public'))
+        const gateways_admin_round_robin = Object.entries(admin)
+            .filter(([k, v]) => k.includes(auth ? '_private' : '_public') && typeof v === 'string')
+            .map(([, v]) => v);
+
+        if (!gateways_admin_round_robin.length) {
+            throw new SkapiError('No available admin gateways.', { code: 'INVALID_REQUEST' });
+        }
+
         return gateways_admin_round_robin[request_counter % gateways_admin_round_robin.length];
     }
     if (type === 'record') {
-        const gateways_admin = Object.values(admin).filter(v => v.includes(auth ? 'record_private' : 'record_public'))
-        return gateways_admin[request_counter % gateways_admin.length];
+        const gateways_record_round_robin = Object.entries(record)
+            .filter(([k, v]) => k.includes(auth ? 'record_private' : 'record_public') && typeof v === 'string')
+            .map(([, v]) => v);
+
+        if (!gateways_record_round_robin.length) {
+            throw new SkapiError('No available record gateways.', { code: 'INVALID_REQUEST' });
+        }
+
+        return gateways_record_round_robin[request_counter % gateways_record_round_robin.length];
     }
+
+    throw new SkapiError('Invalid gateway type.', { code: 'INVALID_REQUEST' });
 }
 
 async function getEndpoint(dest: string, auth: boolean) {
@@ -142,7 +176,6 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'castspell':
         case 'dopamine':
         case 'getspell':
-            // Round-robin
             return selectGateway.bind(this)({ auth, type: 'record', endpoints }) + dest + query;
 
         default:
@@ -155,6 +188,7 @@ const __pendingRequest: Record<string, Promise<any>> = {};
 export function terminatePendingRequests() {
     if (queue) {
         queue.terminate();
+        queue = null;
     }
 }
 
@@ -244,6 +278,8 @@ export async function request(
         data = Object.assign(required, data);
     }
 
+    let requestFingerprint = `${method}:${auth ? 'auth' : 'public'}:${url}`;
+
     let hashedParams = (() => {
         if (data && typeof data === 'object' && Object.keys(data).length && !(data instanceof FormData)) {
             // hash request parameters
@@ -264,10 +300,10 @@ export async function request(
                 return obj;
             };
 
-            return MD5.hash(url + '/' + JSON.stringify(sortObject(data)));
+            return MD5.hash(requestFingerprint + '/' + JSON.stringify(sortObject(data)));
         }
 
-        return MD5.hash(url + '/' + this.service);
+        return MD5.hash(requestFingerprint + '/' + this.service);
     })();
 
     let { requestKey, requestKeyWithStartKey } = load_startKey_keys.bind(this)({
@@ -292,9 +328,20 @@ export async function request(
 
     // new request
     let headers: Record<string, any> = {
-        'Accept': '*/*',
-        "Content-Type": options.hasOwnProperty('contentType') ? options.contentType === null ? 'application/x-www-form-urlencoded' : options.contentType || 'application/json' : 'application/json'
+        'Accept': '*/*'
     };
+
+    const hasCustomContentType = Object.prototype.hasOwnProperty.call(options, 'contentType');
+    if (hasCustomContentType) {
+        const configuredContentType = options.contentType === null ? 'application/x-www-form-urlencoded' : options.contentType;
+        if (configuredContentType) {
+            headers['Content-Type'] = configuredContentType;
+        }
+    }
+    else if (!(hasFormData && data instanceof FormData)) {
+        headers['Content-Type'] = 'application/json';
+    }
+
     if (token) {
         headers.Authorization = token;
     }
@@ -320,35 +367,50 @@ export async function request(
     if (method === 'GET') {
         if (data) {
             let query = [];
-            // if (data instanceof FormData) {
-            //     for (let [name, value] of data.entries()) {
-            //         if (typeof value === 'string') {
-            //             value = encodeURIComponent(value);
-            //             query.push(`&${name}=${value}`);
-            //         }
-            //     }
-            // }
-            // else {
-            query = Object.keys(data)
-                .map(k => {
-                    let value = data[k];
-                    if (typeof value !== 'string') {
-                        value = JSON.stringify(value);
-                    }
-                    return encodeURIComponent(k) + '=' + encodeURIComponent(value);
+            if (data instanceof FormData) {
+                query = Array.from(data.entries()).map(([k, value]) => {
+                    const stringValue = typeof value === 'string' ? value : value.name;
+                    return encodeURIComponent(k) + '=' + encodeURIComponent(stringValue);
                 });
-            // }
+            }
+            else {
+                query = Object.keys(data)
+                    .map(k => {
+                        let value = data[k];
+                        if (typeof value !== 'string') {
+                            value = JSON.stringify(value);
+                        }
+                        return encodeURIComponent(k) + '=' + encodeURIComponent(value);
+                    });
+            }
+
             if (query.length) {
-                if (endpoint.substring(endpoint.length - 1) !== '?') {
-                    endpoint = endpoint + '?';
-                }
-                endpoint += query.join('&');
+                const separator = endpoint.includes('?')
+                    ? (endpoint.endsWith('?') || endpoint.endsWith('&') ? '' : '&')
+                    : '?';
+                endpoint += separator + query.join('&');
             }
         }
         opt.body = null;
     }
     else {
-        opt.body = data ? JSON.stringify(data) : null;
+        if (data instanceof FormData) {
+            opt.body = data;
+        }
+        else if (headers['Content-Type'] === 'application/x-www-form-urlencoded' && data && typeof data === 'object') {
+            const encoded = new URLSearchParams();
+            for (let key of Object.keys(data)) {
+                const value = data[key];
+                encoded.append(key, typeof value === 'string' ? value : JSON.stringify(value));
+            }
+            opt.body = encoded.toString();
+        }
+        else if (typeof data === 'string') {
+            opt.body = data;
+        }
+        else {
+            opt.body = data ? JSON.stringify(data) : null;
+        }
     }
 
     opt.method = method;
@@ -535,10 +597,11 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                 else if (xhr.status === 429) {
                     // too many requests
                     let retryAfter = xhr.getResponseHeader('Retry-After');
-                    if (retryAfter) {
+                    let retryDelayMs = getRetryDelayMs(retryAfter);
+                    if (retryDelayMs !== null) {
                         setTimeout(() => {
                             _fetch(url, opt, progress).then(res, rej);
-                        }, parseInt(retryAfter) * 1000);
+                        }, retryDelayMs);
                     }
                     else {
                         rej('Too many requests');
@@ -596,7 +659,7 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                     progress(
                         {
                             status: 'download',
-                            progress: p.loaded / p.total * 100,
+                            progress: toPercent(p.loaded, p.total),
                             loaded: p.loaded,
                             total: p.total,
                             abort: () => xhr.abort()
@@ -608,7 +671,7 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                         progress(
                             {
                                 status: 'upload',
-                                progress: p.loaded / p.total * 100,
+                                progress: toPercent(p.loaded, p.total),
                                 loaded: p.loaded,
                                 total: p.total,
                                 abort: () => xhr.abort()
@@ -729,10 +792,11 @@ export async function uploadFiles(
                 else if (xhr.status === 429) {
                     // too many requests
                     let retryAfter = xhr.getResponseHeader('Retry-After');
-                    if (retryAfter) {
+                    let retryDelayMs = getRetryDelayMs(retryAfter);
+                    if (retryDelayMs !== null) {
                         setTimeout(() => {
                             fetchProgress(url, body, progressCallback).then(res, rej);
-                        }, parseInt(retryAfter) * 1000);
+                        }, retryDelayMs);
                     }
                     else {
                         rej('Too many requests');
@@ -809,7 +873,7 @@ export async function uploadFiles(
                         typeof progress === 'function' ? (p: ProgressEvent) => progress(
                             {
                                 status: 'upload',
-                                progress: p.loaded / p.total * 100,
+                                progress: toPercent(p.loaded, p.total),
                                 currentFile: f,
                                 completed,
                                 failed,
@@ -950,9 +1014,10 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
                     if (response instanceof Promise) {
                         // handle promise
                         let resolved = await response;
-                        await handleResponse(resolved);
-                        return response;
+                        return handleResponse(resolved);
                     }
+
+                    return handleResponse(response);
                 }
                 catch (err) {
                     throw handleError(err);
@@ -960,13 +1025,15 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
             };
 
             if (preventMultipleCalls) {
-                if (!pendPromise?.[propertyKey]) {
-                    pendPromise[propertyKey] = executeMethod().finally(() => {
-                        delete pendPromise[propertyKey];
+                let pendingKey = `${propertyKey}:${this?.__public_identifier || ''}:${this?.service || ''}:${this?.owner || ''}`;
+
+                if (!pendPromise?.[pendingKey]) {
+                    pendPromise[pendingKey] = executeMethod().finally(() => {
+                        delete pendPromise[pendingKey];
                     });
                 }
 
-                return pendPromise[propertyKey];
+                return pendPromise[pendingKey];
             }
 
             return executeMethod();
