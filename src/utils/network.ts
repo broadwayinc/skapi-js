@@ -73,7 +73,7 @@ let selectGateway = (params: { auth: boolean, type: string, endpoints: {[key:str
 
     if (type === 'admin') {
         const gateways_admin_round_robin = Object.entries(admin)
-            .filter(([k, v]) => k.includes(auth ? '_private' : '_public') && typeof v === 'string')
+            .filter(([k, v]) => k.includes(auth ? '_private' : '_public') && k !== 'get_users_private' && k !== 'service_public' && typeof v === 'string')
             .map(([, v]) => v);
 
         if (!gateways_admin_round_robin.length) {
