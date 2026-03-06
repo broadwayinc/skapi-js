@@ -19,7 +19,7 @@ let privateCounter_record = 0;
 let publicCounter_record = 0;
 let request_counter = 0;
 
-let selectGateway = (params: { auth: boolean, type: string, endpoints: string[] }) => {
+let selectGateway = (params: { auth: boolean, type: string, endpoints: {[key:string]: string}[] }) => {
     const { auth, type, endpoints } = params;
 
     const admin = endpoints[0];
