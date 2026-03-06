@@ -82,7 +82,7 @@ export async function clientSecretRequest(params: {
     await this.__connection;
     let auth = !!this.__user;
 
-    return request.bind(this)("client-secret-request" + (!auth ? '' : '-public'), params, { auth });
+    return request.bind(this)("csr" + (!auth ? '' : '-public'), params, { auth });
 }
 
 export async function sendInquiry(data: Form<{

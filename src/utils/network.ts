@@ -23,22 +23,42 @@ let selectGateway = (params: { auth: boolean, type: string, endpoints: {[key:str
     const { auth, type, endpoints } = params;
 
     const admin = endpoints[0];
+    // {
+    //     "admin_public": "https://nty2bxrol1.execute-api.eu-west-1.amazonaws.com/api/",
+    //     "admin_private": "https://4250a1g3bd.execute-api.eu-west-1.amazonaws.com/api/",
+    //     "admin_public_2": "https://of8ur90ix1.execute-api.eu-west-1.amazonaws.com/api/",
+    //     "admin_private_2": "https://gge4qiyqv2.execute-api.eu-west-1.amazonaws.com/api/",
+    //     "get_users_private": "https://eztrfvyq49.execute-api.eu-west-1.amazonaws.com/api/",
+    //     "service_public": "https://pg695jr002.execute-api.eu-west-1.amazonaws.com/api/",
+    //     "extra_public": "https://8zpb401kr3.execute-api.eu-west-1.amazonaws.com/api/",
+    //     "extra_private": "https://o5vqmktoa4.execute-api.eu-west-1.amazonaws.com/api/",
+    //     "extra_public_2": "https://u3c0pt5v7a.execute-api.eu-west-1.amazonaws.com/api/",
+    //     "extra_private_2": "https://dr6glk4kz8.execute-api.eu-west-1.amazonaws.com/api/",
+    //     "userpool_id": "eu-west-1_vq4rt05un",
+    //     "userpool_client": "76uku0vqmkko2os1s8sh8dmpar"
+    // }
     const record = endpoints[1];
+    // {
+    //     "record_public": "https://9zxjxkrczi.execute-api.ap-northeast-1.amazonaws.com/api/",
+    //     "record_private": "https://luvgxcgpwd.execute-api.ap-northeast-1.amazonaws.com/api/",
+    //     "record_public_2": "https://ekhpyuchg6.execute-api.ap-northeast-1.amazonaws.com/api/",
+    //     "record_private_2": "https://nprhgj1xkj.execute-api.ap-northeast-1.amazonaws.com/api/",
+    //     "post_public": "https://cbzajunw33.execute-api.ap-northeast-1.amazonaws.com/api/",
+    //     "post_private": "https://j51bbrnqb7.execute-api.ap-northeast-1.amazonaws.com/api/",
+    //     "get_public": "https://nmnczc41wg.execute-api.ap-northeast-1.amazonaws.com/api/",
+    //     "get_private": "https://0zpwltd5yh.execute-api.ap-northeast-1.amazonaws.com/api/",
+    //     "del_private": "https://w7grra2h6k.execute-api.ap-northeast-1.amazonaws.com/api/",
+    //     "websocket_private": "wss://t47k8wdn19.execute-api.ap-northeast-1.amazonaws.com/api"
+    // }
 
     request_counter++;
 
     if (type === 'admin') {
-        const gateways_admin_round_robin = auth
-            ? [admin.admin_private, admin.admin_private_2, admin.extra_private]
-            : [admin.admin_public, admin.admin_public_2, admin.extra_public];
-
+        const gateways_admin_round_robin = Object.values(admin).filter(v => v.includes(auth ? '_private' : '_public'))
         return gateways_admin_round_robin[request_counter % gateways_admin_round_robin.length];
     }
     if (type === 'record') {
-        const gateways_admin = auth
-            ? [admin.admin_private, admin.admin_private_2]
-            : [admin.admin_public, admin.admin_public_2];
-
+        const gateways_admin = Object.values(admin).filter(v => v.includes(auth ? 'record_private' : 'record_public'))
         return gateways_admin[request_counter % gateways_admin.length];
     }
 }
@@ -61,22 +81,17 @@ async function getEndpoint(dest: string, auth: boolean) {
             return admin.get_users_private + dest + query;
         case 'service': ////
             return admin.service_public + dest + query;
-        case 'get-newsletters': //
-        case 'get-public-newsletters': //
-        case 'subscribe-newsletter': //
-        case 'subscribe-public-newsletter': //
-        case 'signupkey': //
+        case 'get-newsletters':
+        case 'get-public-newsletters':
+        case 'subscribe-newsletter':
+        case 'subscribe-public-newsletter':
+        case 'signupkey':
         case 'admin-newsletter-request':
-            return (auth ? admin.extra_private : admin.extra_public) + dest + query;
-        case 'admin-signup': //
-        case 'confirm-signup': //
-        case 'client-secret-request': // to be depricated
-        case 'client-secret-request-public': // to be depricated
-        case 'openid-logger': //
-            return (auth ? admin.extra_private_2 : admin.extra_public_2) + dest + query;
+        case 'admin-signup':
+        case 'confirm-signup':
+        case 'openid-logger':
         case 'block-account':
         case 'admin-edit-profile':
-            return admin.admin_private + dest + query;
         case 'remove-account':
         case 'post-secure':
         case 'recover-account':
@@ -91,22 +106,6 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'register-newsletter-group':
         case 'newsletter-group-endpoint':
         case 'invitation-list':
-            const gateways_admin = auth
-                ? [admin.admin_private, admin.admin_private_2]
-                : [admin.admin_public, admin.admin_public_2];
-
-            const counter_admin = auth ? privateCounter_admin : publicCounter_admin;
-            const selectedGateway_admin = gateways_admin[counter_admin % gateways_admin.length];
-
-            if (auth) {
-                privateCounter_admin++;
-            } else {
-                publicCounter_admin++;
-            }
-
-            return selectedGateway_admin + dest + query
-        
-        // full admin round robin
         case 'csr':
             return selectGateway.bind(this)({ auth, type: 'admin', endpoints }) + dest + query;
 
@@ -144,20 +143,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'dopamine':
         case 'getspell':
             // Round-robin
-            const gateways_record = auth
-                ? [record.record_private, record.record_private_2]
-                : [record.record_public, record.record_public_2];
-
-            const counter_record = auth ? privateCounter_record : publicCounter_record;
-            const selectedGateway_record = gateways_record[counter_record % gateways_record.length];
-
-            if (auth) {
-                privateCounter_record++;
-            } else {
-                publicCounter_record++;
-            }
-
-            return selectedGateway_record + dest + query
+            return selectGateway.bind(this)({ auth, type: 'record', endpoints }) + dest + query;
 
         default:
             return validator.Url(dest) + query;
