@@ -208,7 +208,7 @@ async function createMediaStream(media: MediaStream | MediaStreamConstraints): P
 
 export async function connectRTC(
     params: RTCConnectorParams,
-    callback: RTCEvent
+    callback: (e: RTCEvent) => void
 ): Promise<RTCConnector> {
     if (typeof window === 'undefined' || (window as any)._runningInNodeJS) {
         throw new SkapiError('WebRTC is not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
@@ -370,8 +370,8 @@ export async function connectRTC(
     }
 }
 
-export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, callback: RTCEvent) => Promise<RTCResolved> {
-    return async (params: RTCReceiverParams, callback: RTCEvent): Promise<RTCResolved> => {
+export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, callback: (e: RTCEvent) => void) => Promise<RTCResolved> {
+    return async (params: RTCReceiverParams, callback: (e: RTCEvent) => void): Promise<RTCResolved> => {
         params = params || {};
         params = extractFormData(params).data;
 

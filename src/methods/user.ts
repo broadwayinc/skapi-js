@@ -297,7 +297,7 @@ export function authentication() {
             }
 
             // if (!this.bearerToken) {
-                cognitoUser = this.userPool.getCurrentUser();
+            cognitoUser = this.userPool.getCurrentUser();
             // }
             if (!cognitoUser) {
                 this.log('getSession:cognitoUser', cognitoUser);
@@ -417,10 +417,12 @@ export function authentication() {
                     res(this.user);
                 }),
                 onFailure: (err: any) => {
-                    let error: [string, string] = [err.message || 'Failed to authenticate user.', err?.code || 'INVALID_REQUEST'];
+                    let error = [];
+                    let { parsed, code } = cognitoErrorParser(err);
+                    let cognitoMessage = typeof err?.message === 'string' ? err.message : '';
 
-                    if (err.code === "NotAuthorizedException") {
-                        if (err.message === "User is disabled.") {
+                    if (code === "NotAuthorizedException") {
+                        if (cognitoMessage.includes("User is disabled.")) {
                             this.__disabledAccount = username;
                             error = ['This account is disabled.', 'USER_IS_DISABLED'];
                         }
@@ -434,39 +436,37 @@ export function authentication() {
                             }
                         }
                     }
-                    else if (err.code === "UserNotFoundException") {
+                    else if (code === "UserNotFoundException") {
                         error = ['Incorrect username or password.', 'INCORRECT_USERNAME_OR_PASSWORD'];
                     }
-                    else if (err.code === "UserNotConfirmedException") {
+                    else if (code === "UserNotConfirmedException") {
                         this.__request_signup_confirmation = username;
                         error = ["User's signup confirmation is required.", 'SIGNUP_CONFIRMATION_NEEDED'];
                     }
-                    else if (err.code === "TooManyRequestsException" || err.code === "LimitExceededException") {
+                    else if (code === "TooManyRequestsException" || code === "LimitExceededException") {
                         error = ['Too many attempts. Please try again later.', 'REQUEST_EXCEED'];
                     }
 
-                    let errCode = error[1];
-                    let errMsg = error[0];
+                    if (parsed.code === 'SIGNUP_CONFIRMATION_NEEDED') {
+                        this.__request_signup_confirmation = username;
+                    }
 
-                    // check if errMsg starts with '#'
-                    if (errMsg.startsWith('#')) {
-                        errMsg = errMsg.substring(1);
+                    if (error.length) {
+                        let errCode = error[1];
+                        let errMsg = error[0];
 
                         // "#INVALID_REQUEST: The account has been blacklisted."
                         // "#NOT_EXISTS: The account does not exist."
                         // "#SIGNUP_CONFIRMATION_NEEDED": The account signup needs to be confirmed."
                         // "#ACCOUNT_EXISTS": The account already exists."
 
-                        let customErr = errMsg.split(':');
-                        errCode = customErr[0].trim();
-                        errMsg = customErr[1].trim();
-
-                        if (errCode === 'SIGNUP_CONFIRMATION_NEEDED') {
-                            this.__request_signup_confirmation = username;
-                        }
+                        rej(new SkapiError(errMsg, { code: errCode, cause: err }));
+                    }
+                    else {
+                        rej(parsed);
                     }
 
-                    rej(new SkapiError(errMsg, { code: errCode, cause: err }));
+                    return;
                 }
             });
         });
@@ -476,28 +476,33 @@ export function authentication() {
         return new Promise((res, rej) => {
             this.userPool.signUp(username, password, attributes, null, (err, result) => {
                 if (err) {
-                    let error: [string, string] = [err?.message || 'Failed to signup.', err?.code || 'ERROR'];
-
-                    if (err.code === 'UsernameExistsException') {
+                    let { parsed, code } = cognitoErrorParser(err);
+                    let error = [];
+                    if (code === 'UsernameExistsException') {
                         error = ['The account already exists.', 'EXISTS'];
                     }
-                    else if (err.code === 'InvalidPasswordException') {
+                    else if (code === 'InvalidPasswordException') {
                         error = ['Invalid password. Password must be at least 6 characters.', 'INVALID_PARAMETER'];
                     }
-                    else if (err.code === 'InvalidParameterException') {
-                        error = [err.message || 'Invalid parameter.', 'INVALID_PARAMETER'];
+                    else if (code === 'InvalidParameterException') {
+                        error = [parsed.message || 'Invalid parameter.', 'INVALID_PARAMETER'];
                     }
-                    else if (err.code === 'TooManyRequestsException' || err.code === 'LimitExceededException') {
+                    else if (code === 'TooManyRequestsException' || code === 'LimitExceededException') {
                         error = ['Too many attempts. Please try again later.', 'REQUEST_EXCEED'];
                     }
-                    else if (err.code === 'CodeDeliveryFailureException') {
+                    else if (code === 'CodeDeliveryFailureException') {
                         error = ['Failed to deliver verification code.', 'CODE_DELIVERY_FAILURE'];
                     }
-                    else if (err.code === 'UserLambdaValidationException') {
-                        error = [err.message || 'Signup validation failed.', 'INVALID_REQUEST'];
+                    else if (code === 'UserLambdaValidationException') {
+                        error = [parsed.message || 'Signup validation failed.', 'INVALID_REQUEST'];
                     }
 
-                    rej(new SkapiError(error[0], { code: error[1], cause: err }));
+                    if (error.length) {
+                        rej(new SkapiError(error[0], { code: error[1], cause: err }));
+                    } else {
+                        rej(parsed);
+                    }
+
                     return;
                 }
                 res(result);
@@ -513,7 +518,29 @@ export function authentication() {
         signup
     };
 }
+function cognitoErrorParser(err) {
+    let original_code = typeof err?.code === 'string' && err.code.trim() ? err.code.trim() : 'ERROR';
 
+    let raw_message =
+        typeof err?.message === 'string'
+            ? err.message
+            : (typeof err === 'string' ? err : 'An error occurred.');
+
+    let err_msg = (raw_message || 'An error occurred.').trim();
+    if (!err_msg) {
+        err_msg = 'An error occurred.';
+    }
+
+    // format: random text, #ERROR_CODE: Error message.
+    let custom = err_msg.match(/#([A-Za-z0-9_]+)\s*:\s*([\s\S]+)/);
+    let err_code = custom?.[1]?.trim() || original_code;
+    let err_msg_custom = custom?.[2]?.trim() || err_msg;
+
+    return {
+        parsed: new SkapiError(err_msg_custom, { code: err_code, cause: err }),
+        code: original_code,
+    }
+}
 export async function getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
     await this.__authConnection;
     let refreshToken = options?.refreshToken || false;
@@ -1177,30 +1204,18 @@ export async function forgotPassword(
                 ForbiddenException	WAF blocked the request
                 */
 
-                let code = 'ERROR';
+                let { parsed, code } = cognitoErrorParser(err);
 
-                switch (err?.code) {
-                    case 'UserNotFoundException':
-                        code = 'NOT_EXISTS';
-                        break;
-                    case 'InvalidParameterException':
-                        code = 'INVALID_PARAMETER';
-                        break;
-                    case 'NotAuthorizedException':
-                        code = 'INVALID_REQUEST';
-                        break;
-                    case 'LimitExceededException':
-                        code = 'REQUEST_EXCEED';
-                        break;
-                    case 'TooManyRequestsException':
-                        code = 'REQUEST_EXCEED';
-                        break;
-                    case 'CodeDeliveryFailureException':
-                        code = 'CODE_DELIVERY_FAILURE';
-                        break;
-                }
+                let mappedCode = {
+                    UserNotFoundException: 'NOT_EXISTS',
+                    InvalidParameterException: 'INVALID_PARAMETER',
+                    NotAuthorizedException: 'INVALID_REQUEST',
+                    LimitExceededException: 'REQUEST_EXCEED',
+                    TooManyRequestsException: 'REQUEST_EXCEED',
+                    CodeDeliveryFailureException: 'CODE_DELIVERY_FAILURE'
+                }[code] || parsed.code || code || 'ERROR';
 
-                rej(new SkapiError(err?.message || 'Failed to send verification code.', { code, cause: err }));
+                rej(new SkapiError(parsed.message, { code: mappedCode, cause: err }));
             }
         });
     });
@@ -1247,8 +1262,10 @@ export async function changePassword(params: {
                         rej(new SkapiError('Too many attempts. Please try again later.', { code: 'REQUEST_EXCEED' }));
                     }
                     else {
-                        rej(new SkapiError(err?.message || 'Failed to change user password.', { code: err?.code || 'ERROR', cause: err }));
+                        let { parsed, code } = cognitoErrorParser(err);
+                        rej(parsed);
                     }
+                    return;
                 }
 
                 res('SUCCESS: Password has been changed.');

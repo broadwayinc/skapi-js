@@ -33,15 +33,15 @@ export type RTCResolved = {
     media: MediaStream;
 }
 
-export type RTCEvent = (e: {
+export type RTCEvent = {
     type: 'track' | 'connectionstatechange' | 'close' | 'message' | 'open' | 'bufferedamountlow' | 'error' | 'icecandidate' | 'icecandidateend' | 'icegatheringstatechange' | 'negotiationneeded' | 'signalingstatechange';
     [key: string]: any;
-}) => void
+}
 
 export type WebSocketMessage = {
     type: 'message' | 'error' | 'success' | 'close' | 'notice' | 'private' | 'reconnect' | 'rtc:incoming' | 'rtc:closed';
     message?: any;
-    connectRTC?: (params: RTCReceiverParams, callback: RTCEvent) => Promise<RTCResolved>;
+    connectRTC?: (params: RTCReceiverParams, callback: (e: RTCEvent) => void) => Promise<RTCResolved>;
     hangup?: () => void; // Reject incoming RTC connection.
     sender?: string; // user_id of the sender
     sender_cid?: string; // scid of the sender

@@ -17,6 +17,31 @@ let privateCounter_admin = 0;
 let publicCounter_admin = 0;
 let privateCounter_record = 0;
 let publicCounter_record = 0;
+let request_counter = 0;
+
+let selectGateway = (params: { auth: boolean, type: string, endpoints: string[] }) => {
+    const { auth, type, endpoints } = params;
+
+    const admin = endpoints[0];
+    const record = endpoints[1];
+
+    request_counter++;
+
+    if (type === 'admin') {
+        const gateways_admin_round_robin = auth
+            ? [admin.admin_private, admin.admin_private_2, admin.extra_private]
+            : [admin.admin_public, admin.admin_public_2, admin.extra_public];
+
+        return gateways_admin_round_robin[request_counter % gateways_admin_round_robin.length];
+    }
+    if (type === 'record') {
+        const gateways_admin = auth
+            ? [admin.admin_private, admin.admin_private_2]
+            : [admin.admin_public, admin.admin_public_2];
+
+        return gateways_admin[request_counter % gateways_admin.length];
+    }
+}
 
 async function getEndpoint(dest: string, auth: boolean) {
     const endpoints = await Promise.all([
@@ -38,7 +63,6 @@ async function getEndpoint(dest: string, auth: boolean) {
             return admin.service_public + dest + query;
         case 'get-newsletters': //
         case 'get-public-newsletters': //
-        // case 'post-userdata': //
         case 'subscribe-newsletter': //
         case 'subscribe-public-newsletter': //
         case 'signupkey': //
@@ -46,8 +70,8 @@ async function getEndpoint(dest: string, auth: boolean) {
             return (auth ? admin.extra_private : admin.extra_public) + dest + query;
         case 'admin-signup': //
         case 'confirm-signup': //
-        case 'client-secret-request': //
-        case 'client-secret-request-public': //
+        case 'client-secret-request': // to be depricated
+        case 'client-secret-request-public': // to be depricated
         case 'openid-logger': //
             return (auth ? admin.extra_private_2 : admin.extra_public_2) + dest + query;
         case 'block-account':
@@ -63,12 +87,10 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'register-ticket':
         case 'get-newsletter-subscription':
         case 'request-username-change':
-        // case 'jwt-login':
         case 'send-inquiry':
         case 'register-newsletter-group':
         case 'newsletter-group-endpoint':
         case 'invitation-list':
-            // case 'register-sender-email':
             const gateways_admin = auth
                 ? [admin.admin_private, admin.admin_private_2]
                 : [admin.admin_public, admin.admin_public_2];
@@ -83,6 +105,10 @@ async function getEndpoint(dest: string, auth: boolean) {
             }
 
             return selectedGateway_admin + dest + query
+        
+        // full admin round robin
+        case 'csr':
+            return selectGateway.bind(this)({ auth, type: 'admin', endpoints }) + dest + query;
 
         // Records
         case 'post-record': ////
@@ -141,7 +167,7 @@ async function getEndpoint(dest: string, auth: boolean) {
 const __pendingRequest: Record<string, Promise<any>> = {};
 
 export function terminatePendingRequests() {
-    if(queue) {
+    if (queue) {
         queue.terminate();
     }
 }
@@ -258,7 +284,7 @@ export async function request(
         return MD5.hash(url + '/' + this.service);
     })();
 
-    let {requestKey, requestKeyWithStartKey} = load_startKey_keys.bind(this)({
+    let { requestKey, requestKeyWithStartKey } = load_startKey_keys.bind(this)({
         params: data,
         url,
         fetchMore,
@@ -317,14 +343,14 @@ export async function request(
             //     }
             // }
             // else {
-                query = Object.keys(data)
-                    .map(k => {
-                        let value = data[k];
-                        if (typeof value !== 'string') {
-                            value = JSON.stringify(value);
-                        }
-                        return encodeURIComponent(k) + '=' + encodeURIComponent(value);
-                    });
+            query = Object.keys(data)
+                .map(k => {
+                    let value = data[k];
+                    if (typeof value !== 'string') {
+                        value = JSON.stringify(value);
+                    }
+                    return encodeURIComponent(k) + '=' + encodeURIComponent(value);
+                });
             // }
             if (query.length) {
                 if (endpoint.substring(endpoint.length - 1) !== '?') {
@@ -388,7 +414,7 @@ function load_startKey_keys(option: {
     url: string;
     fetchMore: boolean;
     hashedParams: string;
-}): {requestKeyWithStartKey: string, requestKey: string | DatabaseResponse<any>} {
+}): { requestKeyWithStartKey: string, requestKey: string | DatabaseResponse<any> } {
     let { params = {}, url, fetchMore = false, hashedParams } = option || {};
 
     if (params.startKey) {
@@ -429,23 +455,23 @@ function load_startKey_keys(option: {
             delete this.__startKeyHistory[url][hashedParams];
         }
 
-        return {requestKeyWithStartKey: hashedParams, requestKey: hashedParams};
+        return { requestKeyWithStartKey: hashedParams, requestKey: hashedParams };
     }
 
     if (!Array.isArray(this.__startKeyHistory?.[url]?.[hashedParams])) {
         // startkey does not exists
-        return {requestKeyWithStartKey: hashedParams, requestKey: hashedParams};
+        return { requestKeyWithStartKey: hashedParams, requestKey: hashedParams };
     }
 
     // hashed params exists
     let list_of_startKeys = this.__startKeyHistory[url][hashedParams]; // ["{<startKey key>}", ...'end']
     let last_startKey_key = list_of_startKeys[list_of_startKeys.length - 1];
     let requestKeyWithStartKey = hashedParams;
-    
+
     if (last_startKey_key) {
         // use last start key
         // requestKeyWithStartKey += MD5.hash(last_startKey_key);
-        
+
         if (last_startKey_key === 'end') { // cached startKeys are stringified
             return {
                 requestKey: {
@@ -459,18 +485,18 @@ function load_startKey_keys(option: {
         }
 
         // else {
-            requestKeyWithStartKey += MD5.hash(last_startKey_key);
-            params.startKey = JSON.parse(last_startKey_key);
+        requestKeyWithStartKey += MD5.hash(last_startKey_key);
+        params.startKey = JSON.parse(last_startKey_key);
         // }
     }
 
     if (this.__cached_requests?.[url]?.[requestKeyWithStartKey]) {
         // return data if there is cache
-        return {requestKey: this.__cached_requests[url][requestKeyWithStartKey], requestKeyWithStartKey};
+        return { requestKey: this.__cached_requests[url][requestKeyWithStartKey], requestKeyWithStartKey };
     }
 
     // return hashedParams;
-    return {requestKeyWithStartKey, requestKey: hashedParams};
+    return { requestKeyWithStartKey, requestKey: hashedParams };
 }
 
 function _fetch(url: string, opt: any, progress?: ProgressCallback) {

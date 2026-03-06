@@ -708,7 +708,7 @@ export default class Skapi {
     @formHandler()
     connectRTC(
         params: RTCConnectorParams,
-        callback?: RTCEvent
+        callback?: (e: RTCEvent) => void
     ): Promise<RTCConnector> {
         return connectRTC.bind(this)(params, callback);
     }

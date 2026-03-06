@@ -105,7 +105,7 @@ export function indexRange(v, query) {
 }
 
 export function getStruct(query) {
-    return {
+    let q = {
         table: {
             name: [v => cannotBeEmptyString(v, 'table.name', true, true)],
             access_group: [accessGroup.bind(this)],
@@ -167,4 +167,10 @@ export function getStruct(query) {
         },
         private_key: 'string'
     }
+    if (q.index) {
+        if (q.index.hasOwnProperty('range') && q.index.hasOwnProperty('condition')) {
+            delete q.index.range;
+        }
+    }
+    return q;
 }

@@ -703,9 +703,6 @@ export async function postRecord(
                         if (!v.hasOwnProperty('value')) {
                             throw new SkapiError('Index restriction "value" is required.', { code: 'INVALID_PARAMETER' });
                         }
-                        if (v.condition && (v.condition !== 'eq' || v.condition !== '=')) {
-                            throw new SkapiError('Index restriction "condition" cannot be used with "range".', { code: 'INVALID_PARAMETER' });
-                        }
                         return val;
                     }
                 }
@@ -714,7 +711,15 @@ export async function postRecord(
                     v = [v];
                 }
 
-                return v.map(vv => validator.Params(vv, p));
+                let qq = v.map(vv => validator.Params(vv, p));
+                if (qq.length) {
+                    for (let q of qq) {
+                        if (q.condition && q.hasOwnProperty('range')) {
+                            delete q.range;
+                        }
+                    }
+                }
+                return qq;
             },
         },
         reference: v => {
@@ -799,14 +804,16 @@ export async function postRecord(
 
     let options: { [key: string]: any } = { auth: !!this.__user, method: 'post' };
     let postData = null;
-    let to_bin = null;
+    let to_bin: { name: string, file: File }[] = [];
     let extractedForm = extractFormData(form);
 
-    if (files) {
-        to_bin = files;
+    if (files && Array.isArray(files) && files.length) {
+        // { name: string, file: File }[]
+        to_bin = to_bin.concat(files);
     }
-    else if (extractedForm.files.length) {
-        to_bin = extractedForm.files;
+    if (extractedForm.files && Array.isArray(extractedForm.files) && extractedForm.files.length) {
+        // { name: string, file: File }[]
+        to_bin = to_bin.concat(extractedForm.files);
     }
 
 
@@ -842,7 +849,7 @@ export async function postRecord(
     
     let rec = await request.bind(this)('post-record', postData, options);
 
-    if (to_bin) {
+    if (to_bin.length) {
         let bin_formData = new FormData();
         for (let f of to_bin) {
             bin_formData.append(f.name, f.file, f.file.name);
