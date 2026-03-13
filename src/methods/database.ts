@@ -16,7 +16,7 @@ import {
     UniqueId
 } from '../Types';
 import SkapiError from '../main/error';
-import { extractFormData, fromBase62 } from '../utils/utils';
+import { extractFormData, fromBase62, isBrowserRuntime } from '../utils/utils';
 import validator from '../utils/validator';
 import { request, uploadFiles } from '../utils/network';
 import { checkAdmin } from './user';
@@ -888,7 +888,7 @@ export async function postRecord(
     
     let rec = await request.bind(this)('post-record', postData, options);
 
-    if (to_bin.length) {
+    if (isBrowserRuntime() && to_bin.length) {
         let bin_formData = new FormData();
         for (let f of to_bin) {
             bin_formData.append(f.name, f.file, f.file.name);

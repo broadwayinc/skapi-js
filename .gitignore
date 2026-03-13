@@ -121,3 +121,6 @@ sandbox.html
 sandbox.js
 _sandbox
 sw.js
+
+src/main/ref/
+SKAPI.md

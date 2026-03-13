@@ -2,7 +2,7 @@
 import SkapiError from '../main/error';
 import { Form, FetchOptions, DatabaseResponse, ProgressCallback } from '../Types';
 import validator from './validator';
-import { MD5, generateRandom, extractFormData } from './utils';
+import { MD5, generateRandom, extractFormData, isBrowserRuntime } from './utils';
 // import { authentication, getJwtToken } from '../methods/user';
 import { getJwtToken } from '../methods/user';
 import Qpass from "qpass";
@@ -10,8 +10,7 @@ import Qpass from "qpass";
 let queue = null;
 const hasSubmitEvent = typeof SubmitEvent !== 'undefined';
 const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
-const hasFormData = typeof FormData !== 'undefined';
-
+const isBrowser = isBrowserRuntime();
 // Global counters for round-robin
 let request_counter = 0;
 
@@ -281,7 +280,7 @@ export async function request(
     let requestFingerprint = `${method}:${auth ? 'auth' : 'public'}:${url}`;
 
     let hashedParams = (() => {
-        if (data && typeof data === 'object' && Object.keys(data).length && !(data instanceof FormData)) {
+        if (data && typeof data === 'object' && Object.keys(data).length && !(isBrowser && data instanceof FormData)) {
             // hash request parameters
             function sortObject(obj: Record<string, any>): Record<string, any> {
                 if (typeof obj === 'object' && obj !== null) {
@@ -303,7 +302,7 @@ export async function request(
             return MD5.hash(requestFingerprint + '/' + JSON.stringify(sortObject(data)));
         }
 
-        return MD5.hash(requestFingerprint + '/' + this.service);
+        return MD5.hash(requestFingerprint + '/' + service);
     })();
 
     let { requestKey, requestKeyWithStartKey } = load_startKey_keys.bind(this)({
@@ -331,14 +330,17 @@ export async function request(
         'Accept': '*/*'
     };
 
-    const hasCustomContentType = Object.prototype.hasOwnProperty.call(options, 'contentType');
+    const hasCustomContentType = Object.prototype.hasOwnProperty.call(options, 'contentType') && options.contentType !== undefined;
     if (hasCustomContentType) {
         const configuredContentType = options.contentType === null ? 'application/x-www-form-urlencoded' : options.contentType;
         if (configuredContentType) {
             headers['Content-Type'] = configuredContentType;
         }
     }
-    else if (!(hasFormData && data instanceof FormData)) {
+    else if (isBrowser && !(data instanceof FormData)) {
+        headers['Content-Type'] = 'application/json';
+    }
+    else {
         headers['Content-Type'] = 'application/json';
     }
 
@@ -367,7 +369,7 @@ export async function request(
     if (method === 'GET') {
         if (data) {
             let query = [];
-            if (data instanceof FormData) {
+            if (isBrowser && data instanceof FormData) {
                 query = Array.from(data.entries()).map(([k, value]) => {
                     const stringValue = typeof value === 'string' ? value : value.name;
                     return encodeURIComponent(k) + '=' + encodeURIComponent(stringValue);
@@ -394,7 +396,7 @@ export async function request(
         opt.body = null;
     }
     else {
-        if (data instanceof FormData) {
+        if (isBrowser && data instanceof FormData) {
             opt.body = data;
         }
         else if (headers['Content-Type'] === 'application/x-www-form-urlencoded' && data && typeof data === 'object') {
@@ -429,6 +431,8 @@ export async function request(
 
         queue = new Qpass(config);
     }
+
+    this.log('request-opt', opt);
 
     return new Promise((res, rej) => {
         queue.add([async () => {
@@ -626,12 +630,12 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                         result = JSON.parse(result);
                     }
                     catch (err) { }
-
+                        
                     if (typeof result === 'string') {
                         let errMsg = result.split(':');
                         let code = errMsg.splice(0, 1)[0].trim();
                         let msg = errMsg.join(':').trim();
-                        rej(new SkapiError(msg, { code: (errCode.includes(code) ? code : 'ERROR') }));
+                        rej(new SkapiError(msg || result, { code: (errCode.includes(code) ? code : 'ERROR') }));
                     }
 
                     else if (typeof result === 'object' && result?.message) {
@@ -754,7 +758,7 @@ export async function uploadFiles(
         fileList = new FormData(fileList);
     }
 
-    if (!hasFormData || !(fileList instanceof FormData)) {
+    if (!isBrowser || !(fileList instanceof FormData)) {
         throw new SkapiError('"fileList" should be a FormData or HTMLFormElement.', { code: 'INVALID_PARAMETER' });
     }
 

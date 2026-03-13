@@ -188,8 +188,18 @@ function generateRandom(length: number = 6): string {
     return result;
 }
 
+function isNodeRuntime(): boolean {
+    return typeof window === 'undefined' || !!(window as any)?._runningInNodeJS;
+}
+
+function isBrowserRuntime(): boolean {
+    return !isNodeRuntime()
+        && typeof document !== 'undefined'
+        && typeof document.createElement === 'function';
+}
+
 // Check if we're in a browser environment
-const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
+const isBrowser = isBrowserRuntime();
 const hasSubmitEvent = typeof SubmitEvent !== 'undefined';
 const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
 
@@ -723,7 +733,12 @@ function compressCompoundId(input) {
         uuidBytes
     ]);
 
-    return `s1_${toBase64Url(payload)}`;
+    const encodedPayload = toBase64Url(payload)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+
+    return `s1_${encodedPayload}`;
 }
 
 function decompressCompoundId(token) {
@@ -767,6 +782,8 @@ function decompressCompoundId(token) {
 export {
     fromBase62,
     toBase62,
+    isNodeRuntime,
+    isBrowserRuntime,
     extractFormData,
     MD5,
     generateRandom,

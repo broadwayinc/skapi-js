@@ -119,6 +119,8 @@ import {
     generateRandom,
     toBase62,
     MD5,
+    isBrowserRuntime,
+    isNodeRuntime,
     decodeServiceId,
     formatServiceId,
 } from '../utils/utils';
@@ -361,7 +363,7 @@ export default class Skapi {
     private bearerToken: string = '';
 
     private _alert(message: string) {
-        if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        if (isBrowserRuntime() && typeof window.alert === 'function') {
             window.alert(message);
         }
     }
@@ -497,9 +499,9 @@ export default class Skapi {
                 }
             });
 
-        const hasWindow = typeof window !== 'undefined';
+        const hasWindow = isBrowserRuntime();
 
-        if (!hasWindow || !window.sessionStorage) {
+        if (hasWindow && !window.sessionStorage) {
             this._alert('This browser is not supported.');
             throw new Error(`This browser is not supported.`);
         }
@@ -525,7 +527,7 @@ export default class Skapi {
                 UserPoolId: admin_endpoint.userpool_id,
                 ClientId: admin_endpoint.userpool_client
             } as any;
-            if ((window as any)._runningInNodeJS) {
+            if (isNodeRuntime()) {
                 poolSetting.Storage = window.localStorage;
             }
             this.userPool = new CognitoUserPool(poolSetting);
@@ -632,10 +634,16 @@ export default class Skapi {
         });
     }
 
+    /**
+     * Returns current connection metadata such as service name, client IP, user agent, locale, and SDK version.
+     * @returns A promise that resolves to Promise<ConnectionInfo>.
+     */
     async getConnectionInfo(): Promise<ConnectionInfo> {
         let conn = await this.__connection;
         // get browser user-agent info
-        let ua = conn?.user_agent || (typeof window !== 'undefined' ? window.navigator.userAgent : `skapi-node/${(globalThis as any)?.process?.versions?.node || 'unknown'}`);
+        let ua = conn?.user_agent || (isBrowserRuntime() && typeof window.navigator?.userAgent === 'string'
+            ? window.navigator.userAgent
+            : `skapi-node/${(globalThis as any)?.process?.versions?.node || 'unknown'}`);
         return {
             user_ip: conn.ip,
             user_agent: ua,
@@ -665,46 +673,70 @@ export default class Skapi {
     private registerTicket = registerTicket.bind(this);
     private unregisterTicket = unregisterTicket.bind(this);
 
+    /**
+     * Returns the current SDK version and prints runtime version details in browser environments.
+     * @returns A promise that resolves to Promise<string>.
+     */
     async version(): Promise<string> {
         await this.__connection;
 
-        let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
-        console.log(`Built with:\n${skapi}Version: ${this.__version}\n\nFull Documentation: https://docs.skapi.com/skapi.md`, `font-family: monospace; color:blue;`);
-        if (this.connection.group === 1) {
-            console.log(`%cSKAPI: THE SERVICE IS IN TRIAL MODE. ALL THE USERS AND DATA WILL BE INITIALIZED EVERY 30 DAYS.`, `font-family: monospace; color:red;`);
+        if (isBrowserRuntime()) {
+            let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
+            let message = `Built with:\n${skapi}Version: ${this.__version}\n\nFull Documentation: https://docs.skapi.com/skapi.md`;
+            console.log(message, `font-family: monospace; color:blue;`);
+            if (this.connection.group === 1) {
+                console.log(`%cSKAPI: THE SERVICE IS IN TRIAL MODE.`, `font-family: monospace; color:red;`);
+            }
         }
         return this.__version;
     }
 
     private log(n: string, v: any) {
         if (this.__network_logs) {
-            if(typeof v === 'object') {
+            if (typeof v === 'object') {
                 try {
                     v = JSON.parse(JSON.stringify(v));
                 }
-                catch(err) {
+                catch (err) {
                     v = String(v);
                 }
             }
 
-            else if(typeof v === 'string' && v.length > 100) {
+            else if (typeof v === 'string' && v.length > 100) {
                 v = v.substring(0, 100) + '...';
             }
-            
+
             console.log(`%c${n}:`, 'color: blue;', v);
         }
     }
 
+    /**
+     * Fetches feed records visible to the current user with optional access-group filtering and pagination.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<RecordData>>.
+     */
     @formHandler()
     getFeed(params?: { access_group?: number; }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
         return getFeed.bind(this)(params, fetchOptions);
     }
 
+    /**
+     * Closes an active WebRTC connection by cid or closes all active RTC connections.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<void>.
+     */
     @formHandler()
     closeRTC(params: { cid?: string; close_all?: boolean; }): Promise<void> {
         return closeRTC.bind(this)(params);
     }
 
+    /**
+     * Creates or joins a WebRTC session and returns an RTC connector for streaming events and controls.
+     * @param params Request parameters.
+     * @param callback Callback invoked for events or updates.
+     * @returns A promise that resolves to Promise<RTCConnector>.
+     */
     @formHandler()
     connectRTC(
         params: RTCConnectorParams,
@@ -713,24 +745,64 @@ export default class Skapi {
         return connectRTC.bind(this)(params, callback);
     }
 
+    /**
+     * Opens a realtime WebSocket connection and registers a callback for incoming realtime messages.
+     * @param callback Callback invoked for events or updates.
+     * @returns A promise that resolves to Promise<WebSocket>.
+     */
     connectRealtime(callback: RealtimeCallback): Promise<WebSocket> {
         return connectRealtime.bind(this)(callback);
     }
 
+    /**
+     * Runs a spellcast operation and stores or returns generated spell data.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<string>.
+     */
     @formHandler()
-    spellcast(params) {
+    spellcast(params: {
+        spell: string,
+        name: string,
+        magic?: any
+    }): Promise<string> {
         return spellcast.bind(this)(params)
     }
 
+    /**
+     * Searches previously stored spell records by spell text or name. Defaults to 'spell' search if no search type is specified.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<DatabaseResponse<{ spell: string; magic?: any; name: string; }>>.
+     */
     @formHandler()
-    getspell(params) {
+    getspell(params?: {
+        search?: 'spell' | 'name',
+        value?: string,
+    }): Promise<DatabaseResponse<{
+        spell: string;
+        name: string;
+        magic?: any;
+    }>> {
         return getspell.bind(this)(params)
     }
 
+    /**
+     * Sends a dopamine message payload and returns the previous message.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<string>.
+     */
     @formHandler()
-    dopamine(params) {
+    dopamine(params: {
+        message: string,
+        name: string
+    }): Promise<string> {
         return dopamine.bind(this)(params)
     }
+    /**
+     * Queries unique ID records by unique_id or condition filters.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<UniqueId>>.
+     */
     @formHandler()
     getUniqueId(params: Form<{
         /** Unique ID */
@@ -741,6 +813,11 @@ export default class Skapi {
         return getUniqueId.bind(this)(params, fetchOptions);
     }
 
+    /**
+     * Resends an existing user invitation email to the target address.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<"SUCCESS: Invitation has been re-sent. (User ID: xxx...)">.
+     */
     @formHandler()
     resendInvitation(params: Form<{
         email: string;
@@ -749,6 +826,11 @@ export default class Skapi {
         return resendInvitation.bind(this)(params);
     }
 
+    /**
+     * Cancels a pending invitation for the target email address.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<"SUCCESS: Invitation has been canceled.">.
+     */
     @formHandler()
     cancelInvitation(params: Form<{
         email: string;
@@ -756,6 +838,12 @@ export default class Skapi {
         return cancelInvitation.bind(this)(params);
     }
 
+    /**
+     * Lists invitation records with optional email filtering and pagination.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<UserProfile>>.
+     */
     @formHandler()
     getInvitations(params: Form<{
         email?: string;
@@ -763,16 +851,31 @@ export default class Skapi {
         return getInvitations.bind(this)(params, fetchOptions);
     }
 
+    /**
+     * Completes OpenID login and optionally merges the OpenID identity with an existing account.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }>.
+     */
     @formHandler()
     openIdLogin(params: { token: string; id: string; merge?: boolean | string[]; }): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
         return openIdLogin.bind(this)(params);
     }
 
+    /**
+     * Logs in a user with externally issued id/access/refresh tokens.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<UserProfile>.
+     */
     @formHandler()
     loginWithToken(params: { idToken: string; accessToken?: string; refreshToken?: string; }): Promise<UserProfile> {
         return loginWithToken.bind(this)(params);
     }
 
+    /**
+     * Creates or updates a newsletter group with its delivery restriction settings.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<"SUCCESS: Your newsletter group has been registered.">.
+     */
     @formHandler()
     registerNewsletterGroup(params: Form<{
         group: string;
@@ -780,6 +883,11 @@ export default class Skapi {
     }>): Promise<"SUCCESS: Your newsletter group has been registered."> {
         return registerNewsletterGroup.bind(this)(params) as Promise<"SUCCESS: Your newsletter group has been registered.">;
     }
+    /**
+     * Sends a secure outbound request using a Skapi client secret key.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<any>.
+     */
     @formHandler()
     clientSecretRequest(params: {
         url: string;
@@ -792,6 +900,11 @@ export default class Skapi {
         return clientSecretRequest.bind(this)(params);
     }
 
+    /**
+     * Consumes a one-time ticket and executes the ticketed request payload.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<any>.
+     */
     @formHandler()
     consumeTicket(params: {
         ticket_id: string;
@@ -804,54 +917,102 @@ export default class Skapi {
         return consumeTicket.bind(this)(params);
     }
 
+    /**
+     * Lists consumed tickets with optional filters and pagination.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<any[]>>.
+     */
     @formHandler()
     getConsumedTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any[]>> {
         return getConsumedTickets.bind(this)(params, fetchOptions);
     }
 
+    /**
+     * Lists issued tickets with optional filters and pagination.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<any[]>>.
+     */
     @formHandler()
     getTickets(params: { ticket_id?: string; }, fetchOptions: FetchOptions): Promise<DatabaseResponse<any[]>> {
         return getTickets.bind(this)(params, fetchOptions);
     }
 
+    /**
+     * Closes the active realtime WebSocket connection.
+     * @returns A promise that resolves to Promise<void>.
+     */
     closeRealtime(): Promise<void> {
         return closeRealtime.bind(this)();
     }
 
+    /**
+     * Fetches currently connected users in a realtime group.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<{ user_id: string; cid: string }[]>>.
+     */
     @formHandler()
     getRealtimeUsers(params: { group: string, user_id?: string }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<{ user_id: string; cid: string }[]>> {
         return getRealtimeUsers.bind(this)(params, fetchOptions);
     }
 
+    /**
+     * Sends an inquiry email payload to the service contact channel.
+     * @param params Payload for the request.
+     * @returns A promise that resolves to Promise<"SUCCESS: Inquiry has been sent.">.
+     */
     @formHandler()
-    sendInquiry(data: Form<{
+    sendInquiry(params: Form<{
         name: string;
         email: string;
         subject: string;
         message: string;
     }>): Promise<"SUCCESS: Inquiry has been sent."> {
-        return sendInquiry.bind(this)(data);
+        return sendInquiry.bind(this)(params);
     }
 
+    /**
+     * Blocks a user account by user_id.
+     * @param params Payload for the request.
+     * @returns A promise that resolves to Promise<"SUCCESS: The user has been blocked.">.
+     */
     @formHandler()
-    blockAccount(form: { user_id: string }): Promise<"SUCCESS: The user has been blocked."> {
-        return blockAccount.bind(this)(form);
+    blockAccount(params: { user_id: string }): Promise<"SUCCESS: The user has been blocked."> {
+        return blockAccount.bind(this)(params);
     }
 
+    /**
+     * Unblocks a previously blocked user account by user_id.
+     * @param params Payload for the request.
+     * @returns A promise that resolves to Promise<"SUCCESS: The user has been unblocked.">.
+     */
     @formHandler()
-    unblockAccount(form: { user_id: string }): Promise<"SUCCESS: The user has been unblocked."> {
-        return unblockAccount.bind(this)(form);
+    unblockAccount(params: { user_id: string }): Promise<"SUCCESS: The user has been unblocked."> {
+        return unblockAccount.bind(this)(params);
     }
 
+    /**
+     * Deletes a user account by user_id.
+     * @param params Payload for the request.
+     * @returns A promise that resolves to Promise<"SUCCESS: Account has been deleted.">.
+     */
     @formHandler()
-    deleteAccount(form: { user_id: string }): Promise<"SUCCESS: Account has been deleted."> {
-        return deleteAccount.bind(this)(form);
+    deleteAccount(params: { user_id: string }): Promise<"SUCCESS: Account has been deleted."> {
+        return deleteAccount.bind(this)(params);
     }
 
 
+    /**
+     * Invites a user by email with optional attributes and invitation email options.
+     * @param params Payload for the request.
+     * @param options Optional behavior configuration.
+     * @returns A promise that resolves to Promise<'SUCCESS: Invitation has been sent.'>.
+     */
     @formHandler()
     inviteUser(
-        form: { email: string; } & UserAttributes & UserProfilePublicSettings,
+        params: { email: string; } & UserAttributes & UserProfilePublicSettings,
         options?: {
             confirmation_url?: string;
             email_subscription?: boolean;
@@ -861,16 +1022,26 @@ export default class Skapi {
             }
         }
     ): Promise<'SUCCESS: Invitation has been sent.'> {
-        return inviteUser.bind(this)(form, options);
+        return inviteUser.bind(this)(params, options);
     }
 
+    /**
+     * Creates a user account directly from admin context.
+     * @param params Payload for the request.
+     * @returns A promise that resolves to Promise<UserProfile & UserPublic & { email_admin: string; approved: string; log: number; username: string; }>.
+     */
     @formHandler()
     createAccount(
-        form: { email: string; password: string; } & UserAttributes & UserProfilePublicSettings
+        params: { email: string; password: string; } & UserAttributes & UserProfilePublicSettings
     ): Promise<UserProfile & UserPublic & { email_admin: string; approved: string; log: number; username: string; }> {
-        return createAccount.bind(this)(form);
+        return createAccount.bind(this)(params);
     }
 
+    /**
+     * Updates a user's access_group level.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<'SUCCESS: Access has been granted to the user.'>.
+     */
     @formHandler()
     grantAccess(params: {
         user_id: string;
@@ -879,6 +1050,12 @@ export default class Skapi {
         return grantAccess.bind(this)(params);
     }
 
+    /**
+     * Lists realtime groups with optional search conditions and pagination.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<{ group: string; number_of_users: number; }>>.
+     */
     @formHandler()
     getRealtimeGroups(
         params?: {
@@ -895,28 +1072,59 @@ export default class Skapi {
     ): Promise<DatabaseResponse<{ group: string; number_of_users: number; }>> {
         return getRealtimeGroups.bind(this)(params, fetchOptions);
     }
+    /**
+     * Calls the newsletter group endpoint for administrative group operations.
+     * @param params Request parameters.
+     */
     @formHandler()
     newsletterGroupEndpoint(params) {
         return newsletterGroupEndpoint.bind(this)(params);
     }
+    /**
+     * Sends realtime data to a user or group with optional push notification metadata.
+     * @param message Message payload to send.
+     * @param recipient Recipient user or group target.
+     * @param notification Optional notification payload.
+     * @returns A promise that resolves to Promise<{ type: 'success', message: 'Message sent.' }>.
+     */
     @formHandler()
     postRealtime(message: any, recipient: string, notification?: { config?: { always: boolean; }; title: string; body: string; }): Promise<{ type: 'success', message: 'Message sent.' }> {
         return postRealtime.bind(this)(message, recipient, notification);
     }
 
+    /**
+     * Joins the current connection to a realtime group or leaves group membership when null.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<{ type: 'success', message: string }>.
+     */
     @formHandler()
     joinRealtime(params: { group: string | null }): Promise<{ type: 'success', message: string }> {
         return joinRealtime.bind(this)(params);
     }
 
+    /**
+     * Returns the active service connection object after initialization.
+     * @returns A promise that resolves to Promise<Connection>.
+     */
     getConnection(): Promise<Connection> {
         return this.__connection;
     }
 
+    /**
+     * Retrieves the currently authenticated user profile, optionally refreshing token/session state.
+     * @param options Optional behavior configuration.
+     * @returns A promise that resolves to Promise<UserProfile | null>.
+     */
     @formHandler()
     getProfile(options?: { refreshToken: boolean; }): Promise<UserProfile | null> {
         return getProfile.bind(this)(options);
     }
+    /**
+     * Retrieves a file by URL with optional conversion mode, expiration, and progress handling.
+     * @param url Target URL.
+     * @param config Additional configuration options.
+     * @returns A promise that resolves to Promise<Blob | string | void | FileInfo>.
+     */
     @formHandler()
     getFile(
         url: string, // cdn endpoint url https://xxxx.cloudfront.net/path/file
@@ -928,6 +1136,12 @@ export default class Skapi {
     ): Promise<Blob | string | void | FileInfo> {
         return getFile.bind(this)(url, config);
     }
+    /**
+     * Executes authenticated secure API requests in single or batch mode.
+     * @param params Request parameters.
+     * @param url Target URL.
+     * @returns A promise that resolves to Promise<Response | Response[]>.
+     */
     @formHandler()
     secureRequest<Params = {
         /** Request url */
@@ -939,14 +1153,30 @@ export default class Skapi {
     }, Response = { response: any; statusCode: number; url: string; }>(params: Params[] | Form<Params>, url?: string): Promise<Response | Response[]> {
         return secureRequest.bind(this)(params, url);
     }
+    /**
+     * Returns a normalized response object for form-based handler flows.
+     * @returns A promise that resolves to Promise<any>.
+     */
     @formHandler()
     getFormResponse(): Promise<any> {
         return getFormResponse.bind(this)();
     }
+    /**
+     * Queries database records with filtering, sorting, and pagination options.
+     * @param query Query object used to filter results.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<RecordData>>.
+     */
     @formHandler()
     getRecords(query: GetRecordQuery, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
         return getRecords.bind(this)(query, fetchOptions);
     }
+    /**
+     * Lists table metadata with optional table-name filters.
+     * @param query Query object used to filter results.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<Table>>.
+     */
     @formHandler()
     getTables(
         /** If null fetch all list of tables. */
@@ -959,6 +1189,12 @@ export default class Skapi {
     ): Promise<DatabaseResponse<Table>> {
         return getTables.bind(this)(query, fetchOptions);
     }
+    /**
+     * Lists index metadata and aggregated index statistics for a table.
+     * @param query Query object used to filter results.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<Index>>.
+     */
     @formHandler()
     getIndexes(
         query: {
@@ -977,6 +1213,12 @@ export default class Skapi {
         },
         fetchOptions?: FetchOptions
     ): Promise<DatabaseResponse<Index>> { return getIndexes.bind(this)(query, fetchOptions); }
+    /**
+     * Lists tags used in a table with optional tag-name filtering.
+     * @param query Query object used to filter results.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<Tag>>.
+     */
     @formHandler()
     getTags(
         query: {
@@ -989,12 +1231,27 @@ export default class Skapi {
         },
         fetchOptions?: FetchOptions
     ): Promise<DatabaseResponse<Tag>> { return getTags.bind(this)(query, fetchOptions); }
+    /**
+     * Deletes records by query or record_id and returns deletion results.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<string | DatabaseResponse<RecordData>>.
+     */
     @formHandler()
     deleteRecords(params: DelRecordQuery, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> { return deleteRecords.bind(this)(params, fetchOptions); }
+    /**
+     * Resends the signup confirmation email for the current pending account.
+     * @returns A promise that resolves to Promise<'SUCCESS: Signup confirmation e-mail has been sent.'>.
+     */
     @formHandler()
     resendSignupConfirmation(): Promise<'SUCCESS: Signup confirmation e-mail has been sent.'> {
         return resendSignupConfirmation.bind(this)();
     }
+    /**
+     * Sends an account recovery email and optionally sets a recovery redirect URL.
+     * @param redirect Redirect URL or false to disable redirect.
+     * @returns A promise that resolves to Promise<"SUCCESS: Recovery e-mail has been sent.">.
+     */
     @formHandler()
     recoverAccount(
         /** Redirect url on confirmation success. */
@@ -1002,6 +1259,12 @@ export default class Skapi {
     ): Promise<"SUCCESS: Recovery e-mail has been sent."> {
         return recoverAccount.bind(this)(redirect);
     }
+    /**
+     * Queries users by supported profile/search fields with pagination.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<UserPublic>>.
+     */
     @formHandler()
     getUsers(
         params?: {
@@ -1017,26 +1280,50 @@ export default class Skapi {
         fetchOptions?: FetchOptions): Promise<DatabaseResponse<UserPublic>> {
         return getUsers.bind(this)(params, fetchOptions);
     }
+    /**
+     * Disables the currently logged-in user account.
+     * @returns A promise that resolves to Promise<'SUCCESS: account has been disabled.'>.
+     */
     @formHandler()
     disableAccount(): Promise<'SUCCESS: account has been disabled.'> {
         return disableAccount.bind(this)();
     }
+    /**
+     * Returns the last verified email or reverts to it when revert is requested.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<string | UserProfile>.
+     */
     @formHandler()
     lastVerifiedEmail(params?: {
         revert: boolean; // Reverts to last verified e-mail when true.
     }): Promise<string | UserProfile> {
         return lastVerifiedEmail.bind(this)(params);
     }
+    /**
+     * Unsubscribes the user from a newsletter group.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<string>.
+     */
     @formHandler()
     unsubscribeNewsletter(
         params: { group: number | 'public' | 'authorized' | null; }
     ): Promise<string> {
         return unsubscribeNewsletter.bind(this)(params);
     }
+    /**
+     * Sends an administrative newsletter request payload.
+     * @param params Request parameters.
+     */
     @formHandler()
     adminNewsletterRequest(params) {
         return adminNewsletterRequest.bind(this)(params);
     }
+    /**
+     * Registers a web push subscription endpoint for notifications.
+     * @param endpoint Push subscription endpoint URL.
+     * @param keys Web Push key pair values.
+     * @returns A promise that resolves to Promise<'SUCCESS: Subscribed to receive notifications.'>.
+     */
     @formHandler()
     subscribeNotification(
         endpoint: string,
@@ -1047,6 +1334,12 @@ export default class Skapi {
     ): Promise<'SUCCESS: Subscribed to receive notifications.'> {
         return subscribeNotification.bind(this)({ endpoint, keys });
     }
+    /**
+     * Removes a registered web push subscription endpoint.
+     * @param endpoint Push subscription endpoint URL.
+     * @param keys Web Push key pair values.
+     * @returns A promise that resolves to Promise<'SUCCESS: Unsubscribed from notifications.'>.
+     */
     @formHandler()
     unsubscribeNotification(
         endpoint: string,
@@ -1057,21 +1350,37 @@ export default class Skapi {
     ): Promise<'SUCCESS: Unsubscribed from notifications.'> {
         return unsubscribeNotification.bind(this)({ endpoint, keys });
     }
+    /**
+     * Returns the VAPID public key required for browser push subscription setup.
+     * @returns A promise that resolves to Promise<{ VAPIDPublicKey: string }>.
+     */
     @formHandler()
     vapidPublicKey(): Promise<{ VAPIDPublicKey: string }> {
         return vapidPublicKey.bind(this)();
     }
+    /**
+     * Sends push notifications to one or more users.
+     * @param params Payload for the request.
+     * @param user_ids Parameter for this operation.
+     * @returns A promise that resolves to Promise<"SUCCESS: Notification sent.">.
+     */
     @formHandler()
     pushNotification(
-        form: {
+        params: {
             title: string,
             body: string
         },
         user_ids?: string | string[]
     ): Promise<"SUCCESS: Notification sent."> {
-        return pushNotification.bind(this)(form, user_ids);
+        return pushNotification.bind(this)(params, user_ids);
     }
 
+    /**
+     * Fetches newsletter delivery records with filters and pagination.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<Newsletter>>.
+     */
     @formHandler()
     getNewsletters(
         params?: {
@@ -1094,6 +1403,12 @@ export default class Skapi {
     ): Promise<DatabaseResponse<Newsletter>> {
         return getNewsletters.bind(this)(params, fetchOptions);
     }
+    /**
+     * Gets newsletter subscription status for the requested groups.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<{ active: boolean; timestamp: number; group: number; subscribed_email: string; }[]>.
+     */
     @formHandler()
     getNewsletterSubscription(params: { group?: number | 'public' | 'authorized'; },
         fetchOptions?: FetchOptions): Promise<{
@@ -1104,6 +1419,11 @@ export default class Skapi {
         }[]> {
         return getNewsletterSubscription.bind(this)(params, fetchOptions);
     }
+    /**
+     * Requests a username change confirmation flow for the current user.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<'SUCCESS: confirmation e-mail has been sent.'>.
+     */
     @formHandler()
     requestUsernameChange(params: {
         /** Redirect URL when user clicks on the link. */
@@ -1111,11 +1431,21 @@ export default class Skapi {
         /** username(e-mail) user wish to change to. */
         username: string;
     }): Promise<'SUCCESS: confirmation e-mail has been sent.'> { return requestUsernameChange.bind(this)(params); }
+    /**
+     * Grants users access to a private record.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<string>.
+     */
     @formHandler()
     grantPrivateRecordAccess(params: {
         record_id: string;
         user_id: string | string[];
     }): Promise<string> { return grantPrivateRecordAccess.bind(this)(params); }
+    /**
+     * Removes previously granted private record access.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<string>.
+     */
     @formHandler()
     removePrivateRecordAccess(params: {
         record_id: string;
@@ -1123,21 +1453,42 @@ export default class Skapi {
     }): Promise<string> {
         return removePrivateRecordAccess.bind(this)(params);
     }
+    /**
+     * Lists current private record access grants.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<DatabaseResponse<{ record_id: string; user_id: string; }>>.
+     */
     @formHandler()
     listPrivateRecordAccess(params: {
         record_id?: string;
         user_id?: string | string[];
     }): Promise<DatabaseResponse<{ record_id: string; user_id: string; }>> { return listPrivateRecordAccess.bind(this)(params); }
+    /**
+     * Requests a temporary access key for reading a private record.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<string>.
+     */
     @formHandler()
     requestPrivateRecordAccessKey(params: { record_id: string; reference_id?: string; }): Promise<string> {
         return requestPrivateRecordAccessKey.bind(this)(params);
     }
+    /**
+     * Deletes uploaded files by endpoint list.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<RecordData[]>.
+     */
     @formHandler()
     deleteFiles(params: {
         endpoints: string | string[], // bin file endpoints
     }): Promise<RecordData[]> {
         return deleteFiles.bind(this)(params);
     }
+    /**
+     * Uploads files to an existing record and returns completed and failed results.
+     * @param fileList Files or form event containing files.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<{ completed: File[], failed: File[], bin_endpoints: string[] }>.
+     */
     @formHandler()
     uploadFiles(
         fileList: FormData | HTMLFormElement | SubmitEvent,
@@ -1146,6 +1497,12 @@ export default class Skapi {
             progress?: ProgressCallback;
         }
     ): Promise<{ completed: File[], failed: File[], bin_endpoints: string[] }> { return uploadFiles.bind(this)(fileList, params); }
+    /**
+     * Calls the mock endpoint for testing request and error handling flows.
+     * @param data Data payload for the request.
+     * @param options Optional behavior configuration.
+     * @returns A promise that resolves to Promise<{ [key: string]: any }>.
+     */
     @formHandler()
     mock(
         data: Form<any | { raise: 'ERR_INVALID_REQUEST' | 'ERR_INVALID_PARAMETER' | 'SOMETHING_WENT_WRONG' | 'ERR_EXISTS' | 'ERR_NOT_EXISTS'; }>,
@@ -1156,22 +1513,38 @@ export default class Skapi {
             contentType?: string;
             progress?: ProgressCallback;
         }): Promise<{ [key: string]: any }> { return mock.bind(this)(data, options); }
+    /**
+     * Authenticates a user with email/username and password.
+     * @param params Payload for the request.
+     * @returns A promise that resolves to Promise<UserProfile>.
+     */
     @formHandler({ preventMultipleCalls: true })
     login(
-        form: Form<{
+        params: Form<{
             /** if given, username will be used instead of email. */
             username?: string;
             /** E-Mail for signin. 64 character max. */
             email: string;
             /** Password for signin. Should be at least 6 characters. */
             password: string;
-        }>): Promise<UserProfile> { return login.bind(this)(form); }
+        }>): Promise<UserProfile> { return login.bind(this)(params); }
+    /**
+     * Logs out the current user session (optionally globally).
+     * @param params Payload for the request.
+     * @returns A promise that resolves to Promise<'SUCCESS: The user has been logged out.'>.
+     */
     @formHandler()
-    logout(form?: Form<{ global: boolean; }>): Promise<'SUCCESS: The user has been logged out.'> { return logout.bind(this)(form); }
+    logout(params?: Form<{ global: boolean; }>): Promise<'SUCCESS: The user has been logged out.'> { return logout.bind(this)(params); }
 
+    /**
+     * Creates a new user account with optional signup and login behavior settings.
+     * @param params Payload for the request.
+     * @param option Optional behavior configuration.
+     * @returns A promise that resolves to Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'>.
+     */
     @formHandler({ preventMultipleCalls: true })
     signup(
-        form: Form<{ email: String, password: String; username?: string; } & UserAttributes>,
+        params: Form<{ email: String, password: String; username?: string; } & UserAttributes>,
         option?: {
             /**
              * When true, the service will send out confirmation E-Mail.
@@ -1191,49 +1564,92 @@ export default class Skapi {
              */
             login?: boolean;
         }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
-        return signup.bind(this)(form, option);
+        return signup.bind(this)(params, option);
     }
 
+    /**
+     * Resets a password using email, verification code, and new password.
+     * @param params Payload for the request.
+     * @returns A promise that resolves to Promise<"SUCCESS: New password has been set.">.
+     */
     @formHandler({ preventMultipleCalls: true })
-    resetPassword(form: Form<{
+    resetPassword(params: Form<{
         /** Signin E-Mail */
         email: string;
         /** The verification code user has received. */
         code: string | number;
         /** New password to set. Verification code is required. */
         new_password: string;
-    }>): Promise<"SUCCESS: New password has been set."> { return resetPassword.bind(this)(form); }
+    }>): Promise<"SUCCESS: New password has been set."> { return resetPassword.bind(this)(params); }
+    /**
+     * Verifies the user email address with a confirmation code.
+     * @param params Payload for the request.
+     * @returns A promise that resolves to Promise<string>.
+     */
     @formHandler({ preventMultipleCalls: true })
-    verifyEmail(form?: Form<{ code: string; }>): Promise<string> {
+    verifyEmail(params?: Form<{ code: string; }>): Promise<string> {
         // 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'
-        return verifyEmail.bind(this)(form);
+        return verifyEmail.bind(this)(params);
     }
+    /**
+     * Verifies the user phone number with a confirmation code.
+     * @param params Payload for the request.
+     * @returns A promise that resolves to Promise<string>.
+     */
     @formHandler({ preventMultipleCalls: true })
-    verifyPhoneNumber(form?: Form<{ code: string; }>): Promise<string> {
+    verifyPhoneNumber(params?: Form<{ code: string; }>): Promise<string> {
         // 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'
-        return verifyPhoneNumber.bind(this)(form);
+        return verifyPhoneNumber.bind(this)(params);
     }
+    /**
+     * Sends a password reset verification code to the user email.
+     * @param params Payload for the request.
+     * @returns A promise that resolves to Promise<"SUCCESS: Verification code has been sent.">.
+     */
     @formHandler({ preventMultipleCalls: true })
     forgotPassword(
-        form: Form<{
+        params: Form<{
             /** Signin E-Mail. */
             email: string;
         }>): Promise<"SUCCESS: Verification code has been sent."> {
-        return forgotPassword.bind(this)(form);
+        return forgotPassword.bind(this)(params);
     }
+    /**
+     * Changes password for the authenticated user.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<'SUCCESS: Password has been changed.'>.
+     */
     @formHandler({ preventMultipleCalls: true })
     changePassword(params: {
         new_password: string;
         current_password: string;
     }): Promise<'SUCCESS: Password has been changed.'> { return changePassword.bind(this)(params); }
+    /**
+     * Updates profile attributes for the authenticated user.
+     * @param params Payload for the request.
+     * @returns A promise that resolves to Promise<UserProfile>.
+     */
     @formHandler({ preventMultipleCalls: true })
-    updateProfile(form: Form<UserAttributes>): Promise<UserProfile> { return updateProfile.bind(this)(form); }
+    updateProfile(params: Form<UserAttributes>): Promise<UserProfile> { return updateProfile.bind(this)(params); }
+    /**
+     * Creates or updates a database record with optional file uploads.
+     * @param params Payload for the request.
+     * @param config Additional configuration options.
+     * @param files File list to process.
+     * @returns A promise that resolves to Promise<RecordData>.
+     */
     @formHandler()
     postRecord(
-        form: Form<Record<string, any>> | null | undefined,
+        params: Form<Record<string, any>> | null | undefined,
         config: PostRecordConfig,
         files?: { name: string, file: File }[]
-    ): Promise<RecordData> { return postRecord.bind(this)(form, config, files); }
+    ): Promise<RecordData> { return postRecord.bind(this)(params, config, files); }
+    /**
+     * Fetches subscriber/subscription relationships with filters and pagination.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<DatabaseResponse<Subscription>>.
+     */
     @formHandler()
     getSubscriptions(
         params: {
@@ -1248,22 +1664,47 @@ export default class Skapi {
     ): Promise<DatabaseResponse<Subscription>> {
         return getSubscriptions.bind(this)(params, fetchOptions);
     }
+    /**
+     * Subscribes to another user with optional feed/notification/email preferences.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<Subscription>.
+     */
     @formHandler()
     subscribe(params: { user_id: string; get_feed?: boolean; get_notified?: boolean; get_email?: boolean; }): Promise<Subscription> {
         return subscribe.bind(this)(params);
     }
+    /**
+     * Unsubscribes from another user.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<'SUCCESS: The user has unsubscribed.'>.
+     */
     @formHandler()
     unsubscribe(params: { user_id: string; }): Promise<'SUCCESS: The user has unsubscribed.'> {
         return unsubscribe.bind(this)(params);
     }
+    /**
+     * Blocks a subscriber user_id.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<'SUCCESS: Blocked user ID "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'>.
+     */
     @formHandler()
     blockSubscriber(params: { user_id: string; }): Promise<'SUCCESS: Blocked user ID "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
         return blockSubscriber.bind(this)(params);
     }
+    /**
+     * Unblocks a previously blocked subscriber user_id.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<'SUCCESS: Unblocked user ID "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'>.
+     */
     @formHandler()
     unblockSubscriber(params: { user_id: string; }): Promise<'SUCCESS: Unblocked user ID "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".'> {
         return unblockSubscriber.bind(this)(params);
     }
+    /**
+     * Subscribes an email/user to a newsletter group with optional redirect flow.
+     * @param params Request parameters.
+     * @returns A promise that resolves to Promise<string>.
+     */
     @formHandler()
     subscribeNewsletter(
         params: Form<{

@@ -317,13 +317,92 @@ export type UserProfile = {
     user_id: string;
     /** Country code of where user first signed up from. */
     locale: string;
+    /**
+    Account approval info and timestamp.
+    Comes with string with the following format: "{approver}:{approved | suspended}:{approved_timestamp}"
+    
+    {approver} is who approved the account:
+        [by_master] is when account approval is done manually from skapi admin panel,
+        [by_admin] is when approval is done by the admin account with api call within your service.
+        [by_skapi] is when account approval is automatically done.
+        Open ID logger ID will be the value if the user is logged with openIdLogin()
+        This timestamp is generated when the user confirms their signup, or recovers their disabled account.
+    
+    {approved | suspended}
+        [approved] is when the account is approved.
+        [suspended] is when the account is blocked by the admin or the master.
+    
+    {approved_timestamp} is the timestamp when the account is approved or suspended.
+
+     */
     approved: string;
+    /** Last login timestamp(Seconds). */
     log: number;
     /** Shows true when user has verified their E-Mail. */
     email_verified?: boolean;
     /** Shows true when user has verified their phone number. */
     phone_number_verified?: boolean;
-} & UserAttributes & UserProfilePublicSettings;
+        /** User's E-Mail is public when true. E-Mail should be verified. */
+    email_public?: boolean;
+    /** User's phone number is public when true. Phone number should be verified. */
+    phone_number_public?: boolean;
+    /** User's address is public when true. */
+    address_public?: boolean;
+    /** User's gender is public when true. */
+    gender_public?: boolean;
+    /** User's birthdate is public when true. */
+    birthdate_public?: boolean;
+
+    /** User's name */
+    name?: string;
+    /**
+     * User's E-Mail for signin.<br>
+     * 64 character max.<br>
+     * When E-Mail is changed, E-Mail verified state will be changed to false.
+     * E-Mail is only visible to others when set to public.
+     * E-Mail should be verified to set to public.
+     * */
+    email?: string;
+    /**
+     * User's phone number. Format: "+0012341234"<br>
+     * When phone number is changed, phone number verified state will be changed to false.
+     * Phone number is only visible to others when set to public.
+     * Phone number should be verified to set to public.
+     */
+    phone_number?: string;
+    /** User's address, only visible to others when set to public. */
+    address?: string | {
+        /**
+         * Full mailing address, formatted for display or use on a mailing label. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+         * street_address
+         * Full street address component, which MAY include house number, street name, Post Office Box, and multi-line extended street address information. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+        */
+        formatted: string;
+        // City or locality component.
+        locality: string;
+        // State, province, prefecture, or region component.
+        region: string;
+        // Zip code or postal code component.
+        postal_code: string;
+        // Country name component.
+        country: string;
+    };
+    /**
+     * User's gender. Can be "female" and "male".
+     * Other values may be used when neither of the defined values are applicable.
+     * Only visible to others when set to public.
+     */
+    gender?: string;
+    /** User's birthdate. String format: "1969-07-16", only visible to others when set to public.*/
+    birthdate?: string;
+
+    /** Additional string value that can be used freely. This is only accessible to the owner of the account and the admins. */
+    misc?: string;
+    picture?: string;
+    profile?: string;
+    website?: string;
+    nickname?: string;
+};
 
 export type UserPublic = {
     /** Access level of the user's account. */
@@ -332,10 +411,28 @@ export type UserPublic = {
     user_id: string;
     /** Country code of where user first signed up from. */
     locale: string;
+    /**
+    Account approval info and timestamp.
+    Comes with string with the following format: "{approver}:{approved | suspended}:{approved_timestamp}"
+    
+    {approver} is who approved the account:
+        [by_master] is when account approval is done manually from skapi admin panel,
+        [by_admin] is when approval is done by the admin account with api call within your service.
+        [by_skapi] is when account approval is automatically done.
+        Open ID logger ID will be the value if the user is logged with openIdLogin()
+        This timestamp is generated when the user confirms their signup, or recovers their disabled account.
+    
+    {approved | suspended}
+        [approved] is when the account is approved.
+        [suspended] is when the account is blocked by the admin or the master.
+    
+    {approved_timestamp} is the timestamp when the account is approved or suspended.
+
+     */
     approved: string;
     /** Account created timestamp(13 digit milliseconds). */
     timestamp: number;
-    /** Last login timestamp(13 digit milliseconds). */
+    /** Last login timestamp(Seconds). */
     log: number;
     /** Number of the user's subscribers. */
     subscribers: number;
