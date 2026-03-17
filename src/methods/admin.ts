@@ -229,7 +229,7 @@ export async function createAccount(
         { email: string; password: string; } &
         { service?: string; owner?: string; }
     >,
-): Promise<UserProfile & UserPublic & { email_admin: string; approved: string; log: number; username: string; }> {
+): Promise<UserProfile & { email_admin: string; username: string; }> {
     let paramRestrictions = {
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v),

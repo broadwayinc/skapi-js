@@ -440,7 +440,55 @@ export type UserPublic = {
     subscribed: number;
     /** Number of the records the user have created. */
     records: number;
-} & Omit<UserAttributes, 'misc'>;
+
+    /** User's name */
+    name?: string;
+    /**
+     * User's E-Mail for signin.<br>
+     * 64 character max.<br>
+     * When E-Mail is changed, E-Mail verified state will be changed to false.
+     * E-Mail is only visible to others when set to public.
+     * E-Mail should be verified to set to public.
+     * */
+    email?: string;
+    /**
+     * User's phone number. Format: "+0012341234"<br>
+     * When phone number is changed, phone number verified state will be changed to false.
+     * Phone number is only visible to others when set to public.
+     * Phone number should be verified to set to public.
+     */
+    phone_number?: string;
+    /** User's address, only visible to others when set to public. */
+    address?: string | {
+        /**
+         * Full mailing address, formatted for display or use on a mailing label. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+         * street_address
+         * Full street address component, which MAY include house number, street name, Post Office Box, and multi-line extended street address information. This field MAY contain multiple lines, separated by newlines. Newlines can be represented either as a carriage return/line feed pair ("\r\n") or as a single line feed character ("\n").
+        */
+        formatted: string;
+        // City or locality component.
+        locality: string;
+        // State, province, prefecture, or region component.
+        region: string;
+        // Zip code or postal code component.
+        postal_code: string;
+        // Country name component.
+        country: string;
+    };
+    /**
+     * User's gender. Can be "female" and "male".
+     * Other values may be used when neither of the defined values are applicable.
+     * Only visible to others when set to public.
+     */
+    gender?: string;
+    /** User's birthdate. String format: "1969-07-16", only visible to others when set to public.*/
+    birthdate?: string;
+
+    picture?: string;
+    profile?: string;
+    website?: string;
+    nickname?: string;
+};
 
 export type ProgressCallback = (e: {
     status: 'upload' | 'download';

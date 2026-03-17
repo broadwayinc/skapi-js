@@ -80,11 +80,11 @@ import {
     subscribeNewsletter,
     getNewsletters,
     unsubscribeNewsletter,
-    adminNewsletterRequest,
     getNewsletterSubscription,
     getFeed,
-    registerNewsletterGroup,
-    newsletterGroupEndpoint,
+    // adminNewsletterRequest,
+    // registerNewsletterGroup,
+    // newsletterGroupEndpoint,
 } from '../methods/subscription';
 import {
     getProfile,
@@ -871,18 +871,18 @@ export default class Skapi {
         return loginWithToken.bind(this)(params);
     }
 
-    /**
-     * Creates or updates a newsletter group with its delivery restriction settings.
-     * @param params Request parameters.
-     * @returns A promise that resolves to Promise<"SUCCESS: Your newsletter group has been registered.">.
-     */
-    @formHandler()
-    registerNewsletterGroup(params: Form<{
-        group: string;
-        restriction: number;
-    }>): Promise<"SUCCESS: Your newsletter group has been registered."> {
-        return registerNewsletterGroup.bind(this)(params) as Promise<"SUCCESS: Your newsletter group has been registered.">;
-    }
+    // /**
+    //  * Creates or updates a newsletter group with its delivery restriction settings.
+    //  * @param params Request parameters.
+    //  * @returns A promise that resolves to Promise<"SUCCESS: Your newsletter group has been registered.">.
+    //  */
+    // @formHandler()
+    // registerNewsletterGroup(params: Form<{
+    //     group: string;
+    //     restriction: number;
+    // }>): Promise<"SUCCESS: Your newsletter group has been registered."> {
+    //     return registerNewsletterGroup.bind(this)(params) as Promise<"SUCCESS: Your newsletter group has been registered.">;
+    // }
     /**
      * Sends a secure outbound request using a Skapi client secret key.
      * @param params Request parameters.
@@ -1028,12 +1028,12 @@ export default class Skapi {
     /**
      * Creates a user account directly from admin context.
      * @param params Payload for the request.
-     * @returns A promise that resolves to Promise<UserProfile & UserPublic & { email_admin: string; approved: string; log: number; username: string; }>.
+     * @returns A promise that resolves to Promise<UserProfile & { email_admin: string; username: string; }>.
      */
     @formHandler()
     createAccount(
         params: { email: string; password: string; } & UserAttributes & UserProfilePublicSettings
-    ): Promise<UserProfile & UserPublic & { email_admin: string; approved: string; log: number; username: string; }> {
+    ): Promise<UserProfile & { email_admin: string; username: string; }> {
         return createAccount.bind(this)(params);
     }
 
@@ -1072,14 +1072,14 @@ export default class Skapi {
     ): Promise<DatabaseResponse<{ group: string; number_of_users: number; }>> {
         return getRealtimeGroups.bind(this)(params, fetchOptions);
     }
-    /**
-     * Calls the newsletter group endpoint for administrative group operations.
-     * @param params Request parameters.
-     */
-    @formHandler()
-    newsletterGroupEndpoint(params) {
-        return newsletterGroupEndpoint.bind(this)(params);
-    }
+    // /**
+    //  * Calls the newsletter group endpoint for administrative group operations.
+    //  * @param params Request parameters.
+    //  */
+    // @formHandler()
+    // newsletterGroupEndpoint(params) {
+    //     return newsletterGroupEndpoint.bind(this)(params);
+    // }
     /**
      * Sends realtime data to a user or group with optional push notification metadata.
      * @param message Message payload to send.
@@ -1102,13 +1102,13 @@ export default class Skapi {
         return joinRealtime.bind(this)(params);
     }
 
-    /**
-     * Returns the active service connection object after initialization.
-     * @returns A promise that resolves to Promise<Connection>.
-     */
-    getConnection(): Promise<Connection> {
-        return this.__connection;
-    }
+    // /**
+    //  * Returns the active service connection object after initialization.
+    //  * @returns A promise that resolves to Promise<Connection>.
+    //  */
+    // private _getConnection(): Promise<Connection> {
+    //     return this.__connection;
+    // }
 
     /**
      * Retrieves the currently authenticated user profile, optionally refreshing token/session state.
@@ -1310,14 +1310,14 @@ export default class Skapi {
     ): Promise<string> {
         return unsubscribeNewsletter.bind(this)(params);
     }
-    /**
-     * Sends an administrative newsletter request payload.
-     * @param params Request parameters.
-     */
-    @formHandler()
-    adminNewsletterRequest(params) {
-        return adminNewsletterRequest.bind(this)(params);
-    }
+    // /**
+    //  * Sends an administrative newsletter request payload.
+    //  * @param params Request parameters.
+    //  */
+    // @formHandler()
+    // adminNewsletterRequest(params) {
+    //     return adminNewsletterRequest.bind(this)(params);
+    // }
     /**
      * Registers a web push subscription endpoint for notifications.
      * @param endpoint Push subscription endpoint URL.
