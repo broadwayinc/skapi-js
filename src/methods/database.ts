@@ -21,7 +21,7 @@ import validator from '../utils/validator';
 import { request, uploadFiles } from '../utils/network';
 import { checkAdmin } from './user';
 import { authentication } from './user';
-import { accessGroup, cannotBeEmptyString, getStruct, indexValue, recordIdOrUniqueId } from './param_restrictions';
+import { accessGroup, getStruct, indexValue, recordIdOrUniqueId, validateCustomIndexName, validateTableName, validateTag } from './param_restrictions';
 
 const pendingPrivateAccessKeyRequest: Record<string, Promise<string>> = {};
 
@@ -697,7 +697,7 @@ export async function postRecord(
         unique_id: 'string',
         readonly: 'boolean',
         table: {
-            name: v => cannotBeEmptyString(v, 'table name', true, true),
+            name: v => validateTableName(v, 'table.name'),
             subscription: {
                 group: v => {
                     if (v === 1) {
@@ -732,7 +732,7 @@ export async function postRecord(
                 }
 
                 let p = {
-                    name: [v => cannotBeEmptyString(v, '"name" in "index_restrictions"', true, false)],
+                    name: [v => validateCustomIndexName(v, '"name" in "index_restrictions"')],
                     value: v => indexValue(v),
                     condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne', () => null],
                     range: val => {
@@ -794,7 +794,7 @@ export async function postRecord(
             });
         },
         index: {
-            name: v => cannotBeEmptyString(v, 'index.name', true, false),
+            name: v => validateCustomIndexName(v, 'index.name'),
             value: v => indexValue(v)
         },
         tags: (v: string | string[]) => {
@@ -804,7 +804,10 @@ export async function postRecord(
             if (typeof v === 'string') {
                 v = v.split(',').map(t => t.trim());
             }
-            return validator.specialChars(v, 'tag', false, true);
+            if (!Array.isArray(v)) {
+                throw new SkapiError('"tag" should be type: <string | string[]>.', { code: 'INVALID_PARAMETER' });
+            }
+            return v.map(t => validateTag(t, 'tag'));
         },
         remove_bin: (v: string[] | BinaryFile[] | null) => {
             if (!v) {
@@ -926,6 +929,7 @@ export async function postRecord(
 
 export async function bulkPostRecords(
     params: Array<PostRecordConfig & { reference_private_key?: string; } & { data?: Record<string, any> }>,
+    _opt?: any
 ): Promise<RecordData[] | { code: string; message: string; }> {
     await this.__connection;
 
@@ -1002,7 +1006,7 @@ export async function bulkPostRecords(
             readonly: 'boolean',
             data: (v: Record<string, any>) => v,
             table: {
-                name: v => cannotBeEmptyString(v, 'table name', true, true),
+                name: v => validateTableName(v, 'table.name'),
                 subscription: {
                     group: v => {
                         if (v === 1) {
@@ -1037,7 +1041,7 @@ export async function bulkPostRecords(
                     }
 
                     let p = {
-                        name: [v => cannotBeEmptyString(v, '"name" in "index_restrictions"', true, false)],
+                        name: [v => validateCustomIndexName(v, '"name" in "index_restrictions"')],
                         value: v => indexValue(v),
                         condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne', () => null],
                         range: val => {
@@ -1099,7 +1103,7 @@ export async function bulkPostRecords(
                 });
             },
             index: {
-                name: v => cannotBeEmptyString(v, 'index.name', true, false),
+                name: v => validateCustomIndexName(v, 'index.name'),
                 value: v => indexValue(v)
             },
             tags: (v: string | string[]) => {
@@ -1109,7 +1113,10 @@ export async function bulkPostRecords(
                 if (typeof v === 'string') {
                     v = v.split(',').map(t => t.trim());
                 }
-                return validator.specialChars(v, 'tag', false, true);
+                if (!Array.isArray(v)) {
+                    throw new SkapiError('"tag" should be type: <string | string[]>.', { code: 'INVALID_PARAMETER' });
+                }
+                return v.map(t => validateTag(t, 'tag'));
             },
             remove_bin: (v: string[] | BinaryFile[] | null) => {
                 if (!v) {
@@ -1211,8 +1218,8 @@ export async function bulkPostRecords(
         Object.assign(options, { fetchOptions });
     }
 
-    let result = await request.bind(this)('bulk-records', postData, options);
-    let recList = Array.isArray(result?.list) ? result.list : Array.isArray(result) ? result : [result];
+    let recList = await request.bind(this)('bulk-records', postData, options);
+    // let recList = Array.isArray(result?.list) ? result.list : Array.isArray(result) ? result : [result];
 
     let records = await Promise.all(recList.map((rec: any) => normalizeRecord.bind(this)(rec, 'called from postRecord')));
 
@@ -1224,6 +1231,12 @@ export async function bulkPostRecords(
             window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
         }
 
+        if (typeof rec?.reference_private_key === 'string') {
+            for (let ref of reference_posts) {
+                this.__private_access_key[ref] = rec.reference_private_key;
+            }
+        }
+
         if (record?.unique_id) {
             this.__my_unique_ids[record.unique_id] = record.record_id;
         }
@@ -1233,11 +1246,6 @@ export async function bulkPostRecords(
         window.sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids));
     }
 
-    if (typeof result?.reference_private_key === 'string') {
-        for (let ref of reference_posts) {
-            this.__private_access_key[ref] = result.reference_private_key;
-        }
-    }
 
     return records;
 }
@@ -1301,7 +1309,7 @@ export async function getIndexes(
         query || {},
         {
             table: 'string',
-            index: (v: string) => validator.specialChars(v, 'index name', true, false),
+            index: (v: string) => validateCustomIndexName(v, 'index.name'),
             order: {
                 by: [
                     'average_number',

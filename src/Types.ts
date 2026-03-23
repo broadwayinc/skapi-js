@@ -62,7 +62,7 @@ export type GetRecordQuery = {
 
     /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
     table?: string | {
-        /** Not allowed: Special characters. Allowed: White space. periods.*/
+        /** Max 128 chars. Blocks: / ! * #, control chars, and sentinel 􏿿. */
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
@@ -74,9 +74,9 @@ export type GetRecordQuery = {
 
     /** Index condition and range cannot be used simultaneously.*/
     index?: {
-        /** Not allowed: White space, special characters. Allowed: Periods. */
+        /** Custom names: max 128 chars, cannot start with "$", blocks / ! * #, control chars, and sentinel 􏿿. Reserved names: $uploaded, $updated, $referenced_count, $user_id. */
         name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
-        /** Not allowed: Periods, special characters. Allowed: White space. */
+        /** String value max 256 chars. Allows punctuation (including / ! * #). Blocks control chars and sentinel 􏿿. */
         value: string | number | boolean;
         condition?: Condition;
         range?: string | number | boolean;
@@ -91,7 +91,7 @@ export type PostRecordConfig = {
 
     /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
     table?: {
-        /** Not allowed: Special characters. Allowed: White space. periods.*/
+        /** Max 128 chars. Blocks: / ! * #, control chars, and sentinel 􏿿. */
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
@@ -128,13 +128,13 @@ export type PostRecordConfig = {
 
     /** null removes index */
     index?: {
-        /** Not allowed: White space, special characters. Allowed: Periods. */
+        /** Max 128 chars, cannot start with "$", blocks / ! * #, control chars, and sentinel 􏿿. */
         name: string;
-        /** Not allowed: Periods, special characters. Allowed: White space. */
+        /** String value max 256 chars. Allows punctuation (including / ! * #). Blocks control chars and sentinel 􏿿. */
         value: string | number | boolean;
     } | null;
 
-    tags?: string[] | null; // null removes all tags
+    tags?: string[] | null; // null removes all tags. each tag max 64 chars, blocks / ! * #, control chars, and sentinel 􏿿.
     remove_bin?: BinaryFile[] | string[] | null; // Removes bin data from the record. When null, it will remove all bin data.
     progress?: ProgressCallback; // Callback for database request progress. Useful when building progress bar.
 }
