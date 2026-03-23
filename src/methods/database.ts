@@ -924,6 +924,324 @@ export async function postRecord(
     return record;
 }
 
+export async function bulkPostRecords(
+    params: Array<PostRecordConfig & { reference_private_key?: string; } & { data?: Record<string, any> }>,
+): Promise<RecordData[] | { code: string; message: string; }> {
+    await this.__connection;
+
+    if (!Array.isArray(params) || !params.length) {
+        throw new SkapiError('"params" should be a non-empty array.', { code: 'INVALID_PARAMETER' });
+    }
+
+    let is_public = !this.__user;
+    let reference_posts: string[] = [];
+    let service: string | undefined = undefined;
+    let owner: string | undefined = undefined;
+    let progress: ProgressCallback | null = null;
+
+    let reference_limit_check = (v: number) => {
+        if (v === null) {
+            return null;
+        }
+
+        else if (typeof v === 'number') {
+            if (0 > v) {
+                throw new SkapiError(`"reference_limit" should be >= 0`, { code: 'INVALID_PARAMETER' });
+            }
+
+            if (v > 4503599627370546) {
+                throw new SkapiError(`"reference_limit" should be <= 4503599627370546`, { code: 'INVALID_PARAMETER' });
+            }
+
+            return v;
+        }
+
+        throw new SkapiError(`"reference_limit" should be type: <number | null>`, { code: 'INVALID_PARAMETER' });
+    }
+
+    let validatedBulk = params.map((config, idx) => {
+        if (!config || typeof config !== 'object' || Array.isArray(config)) {
+            throw new SkapiError(`"params[${idx}]" should be type: <object>.`, { code: 'INVALID_PARAMETER' });
+        }
+
+        if (typeof config.table === 'string') {
+            config.table = {
+                name: config.table
+            } as any;
+        }
+
+        if (!config.record_id) {
+            if (!config.table || typeof config.table !== 'object') {
+                throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
+            }
+
+            if (!Object.prototype.hasOwnProperty.call(config.table, 'access_group')) {
+                config.table.access_group = 0;
+            }
+        }
+
+        if (config.table?.subscription) {
+            if (config.table?.subscription?.is_subscription_record) {
+                Object.assign(config.table.subscription, { group: 1 });
+            }
+
+            else if (config.table?.subscription?.is_subscription_record === false || !config.record_id && !config.table.subscription?.is_subscription_record) {
+                Object.assign(config.table.subscription, { group: null });
+            }
+
+            delete config.table.subscription?.is_subscription_record;
+        }
+
+        let _config = validator.Params(config || {}, {
+            record_id: ['string', () => {
+                if (!config.table || !config.table.name) {
+                    throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
+                }
+            }],
+            unique_id: 'string',
+            readonly: 'boolean',
+            data: (v: Record<string, any>) => v,
+            table: {
+                name: v => cannotBeEmptyString(v, 'table name', true, true),
+                subscription: {
+                    group: v => {
+                        if (v === 1) {
+                            return 1
+                        }
+                        return null;
+                    },
+                    upload_to_feed: 'boolean',
+                    notify_subscribers: 'boolean',
+                    feed_referencing_records: 'boolean',
+                    notify_referencing_records: 'boolean',
+                },
+                access_group: accessGroup.bind(this),
+            },
+            source: {
+                referencing_limit: reference_limit_check,
+                prevent_multiple_referencing: 'boolean',
+                can_remove_referencing_records: 'boolean',
+                only_granted_can_reference: 'boolean',
+                allow_granted_to_grant_others: 'boolean',
+                referencing_index_restrictions: v => {
+                    if (v === undefined) {
+                        return undefined;
+                    }
+
+                    if (!v) {
+                        return null;
+                    }
+
+                    if (Array.isArray(v) && !v.length) {
+                        return null;
+                    }
+
+                    let p = {
+                        name: [v => cannotBeEmptyString(v, '"name" in "index_restrictions"', true, false)],
+                        value: v => indexValue(v),
+                        condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne', () => null],
+                        range: val => {
+                            if (val !== null && typeof v.value !== typeof val) {
+                                throw new SkapiError('Index restriction "range" type should match the type of "value".', { code: 'INVALID_PARAMETER' });
+                            }
+                            if (!v.hasOwnProperty('value')) {
+                                throw new SkapiError('Index restriction "value" is required.', { code: 'INVALID_PARAMETER' });
+                            }
+                            return val;
+                        }
+                    }
+
+                    if (!Array.isArray(v)) {
+                        v = [v];
+                    }
+
+                    let qq = v.map(vv => validator.Params(vv, p));
+                    if (qq.length) {
+                        for (let q of qq) {
+                            if (q.condition && q.hasOwnProperty('range')) {
+                                delete q.range;
+                            }
+                        }
+                    }
+                    return qq;
+                },
+            },
+            reference: v => {
+                if (v === null) {
+                    return { record_id: null };
+                }
+                if (!v) {
+                    return undefined;
+                }
+                if (typeof v === 'string') {
+                    if (this.__my_unique_ids[v]) {
+                        return this.__my_unique_ids[v];
+                    }
+                    reference_posts.push(v);
+                    return v;
+                }
+                if (typeof v !== 'object') {
+                    throw new SkapiError('"reference" should be type: <string | object>.', { code: 'INVALID_PARAMETER' });
+                }
+
+                return validator.Params(v, {
+                    unique_id: 'string',
+                    record_id: v => {
+                        if (v === null || v === undefined) {
+                            return v;
+                        }
+                        reference_posts.push(v);
+                        if (typeof this.__private_access_key?.[v] === 'string') {
+                            config.reference_private_key = this.__private_access_key[v] || undefined;
+                        }
+                        return validator.specialChars(v, '"reference.record_id"', false, false);
+                    }
+                });
+            },
+            index: {
+                name: v => cannotBeEmptyString(v, 'index.name', true, false),
+                value: v => indexValue(v)
+            },
+            tags: (v: string | string[]) => {
+                if (v === null || v === undefined) {
+                    return v;
+                }
+                if (typeof v === 'string') {
+                    v = v.split(',').map(t => t.trim());
+                }
+                return validator.specialChars(v, 'tag', false, true);
+            },
+            remove_bin: (v: string[] | BinaryFile[] | null) => {
+                if (!v) {
+                    return null;
+                }
+
+                let arr = []
+                if (Array.isArray(v)) {
+                    for (let i of v) {
+                        if (typeof i === 'string') {
+                            arr.push(decodeURIComponent(i.split('?')[0]));
+                        }
+                        else if (i.url && i.size && i.filename) {
+                            let hostUrl = i.url.split('/').slice(0, 3).join('/');
+                            let url = hostUrl + '/' + i.path;
+                            arr.push(url);
+                        }
+                        else {
+                            throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[] | null>`, { code: 'INVALID_PARAMETER' });
+                        }
+                    }
+                }
+                else {
+                    throw new SkapiError(`"remove_bin" should be type: <string[] | BinaryFile[] | null>`, { code: 'INVALID_PARAMETER' });
+                }
+
+                return arr;
+            },
+            progress: 'function',
+        });
+
+        if (is_public) {
+            if (_config.record_id) {
+                throw new SkapiError('Public users cannot update existing records.', { code: 'INVALID_REQUEST' });
+            }
+            if (_config.table.access_group !== 'public' && _config.table.access_group !== 0) {
+                throw new SkapiError('Public users can only post records to public tables.', { code: 'INVALID_REQUEST' });
+            }
+            if (_config.table.subscription) {
+                throw new SkapiError('Public users cannot post subscription records.', { code: 'INVALID_REQUEST' });
+            }
+            if (_config.remove_bin) {
+                throw new SkapiError('Public users cannot remove files from records.', { code: 'INVALID_REQUEST' });
+            }
+            if (_config.unique_id) {
+                throw new SkapiError('Public users cannot set unique_id for records.', { code: 'INVALID_REQUEST' });
+            }
+        }
+
+        if (typeof _config.progress === 'function' && progress === null) {
+            progress = _config.progress;
+        }
+
+        if (_config.service !== undefined) {
+            if (service === undefined) {
+                service = _config.service;
+            }
+            else if (service !== _config.service) {
+                throw new SkapiError('All bulk params should share the same "service" value.', { code: 'INVALID_PARAMETER' });
+            }
+        }
+
+        if (_config.owner !== undefined) {
+            if (owner === undefined) {
+                owner = _config.owner;
+            }
+            else if (owner !== _config.owner) {
+                throw new SkapiError('All bulk params should share the same "owner" value.', { code: 'INVALID_PARAMETER' });
+            }
+        }
+
+        delete _config.progress;
+        delete _config.service;
+        delete _config.owner;
+
+        return _config;
+    });
+
+    let postData: Record<string, any> = {
+        _is_bulk_: validatedBulk
+    };
+
+    if (service !== undefined) {
+        postData.service = service;
+    }
+
+    if (owner !== undefined) {
+        postData.owner = owner;
+    }
+
+    let options: { [key: string]: any } = { auth: !!this.__user, method: 'post' };
+    let fetchOptions: { [key: string]: any } = {};
+
+    if (typeof progress === 'function') {
+        fetchOptions.progress = progress;
+    }
+
+    if (Object.keys(fetchOptions).length) {
+        Object.assign(options, { fetchOptions });
+    }
+
+    let result = await request.bind(this)('bulk-records', postData, options);
+    let recList = Array.isArray(result?.list) ? result.list : Array.isArray(result) ? result : [result];
+
+    let records = await Promise.all(recList.map((rec: any) => normalizeRecord.bind(this)(rec, 'called from postRecord')));
+
+    for (let i = 0; i < recList.length; i++) {
+        let rec = recList[i];
+        let record = records[i];
+
+        if (rec?.rec) {
+            window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
+        }
+
+        if (record?.unique_id) {
+            this.__my_unique_ids[record.unique_id] = record.record_id;
+        }
+    }
+
+    if (Object.keys(this.__my_unique_ids).length) {
+        window.sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids));
+    }
+
+    if (typeof result?.reference_private_key === 'string') {
+        for (let ref of reference_posts) {
+            this.__private_access_key[ref] = result.reference_private_key;
+        }
+    }
+
+    return records;
+}
+
 export async function getTables(
     /** If null fetch all list of tables. */
     query: {

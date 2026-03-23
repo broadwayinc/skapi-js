@@ -144,6 +144,7 @@ async function getEndpoint(dest: string, auth: boolean) {
 
         // Records
         case 'post-record': ////
+        case 'bulk-records':
             // Dedicated gateway api for post-record
             return (auth ? record.post_private : record.post_public) + dest + query;
 
