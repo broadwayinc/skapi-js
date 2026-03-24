@@ -594,6 +594,7 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
     let q = await prepGetParams.bind(this)(query);
     let is_reference_fetch = q.is_reference_fetch;
 
+    // TODO: THINK ABOUT HOW TO HANDLE PRIVATE KEY FOR REFERENCE FETCH.
     // if (is_reference_fetch && typeof this.__private_access_key[is_reference_fetch] === 'string') {
     //     q.query.private_key = this.__private_access_key[is_reference_fetch] || undefined;
     // }
@@ -928,8 +929,7 @@ export async function postRecord(
 }
 
 export async function bulkPostRecords(
-    params: Array<PostRecordConfig & { reference_private_key?: string; } & { data?: Record<string, any> }>,
-    _opt?: any
+    params: Array<PostRecordConfig & { reference_private_key?: string; } & { data?: Record<string, any> }>
 ): Promise<RecordData[] | { code: string; message: string; }> {
     await this.__connection;
 

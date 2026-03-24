@@ -414,9 +414,7 @@ function extractFormData(
 }
 
 function parseUserAttributes(attr: { [key: string]: any }) {
-
     let user: any = {};
-
     // parse attribute structure: [ { Name, Value }, ... ]
     for (let name in attr) {
         let value = attr[name];
