@@ -45,31 +45,48 @@ jobs:
       - name: Build package artifacts
         run: npm run build
 
+      - name: Verify build artifacts exist
+        run: |
+          test -f js/src/Main.d.ts
+          test -f dist/skapi.cjs
+          test -f dist/skapi.mjs
+          test -f dist/skapi.js
+
       - name: Pack npm tarball
         run: |
           PKG_TGZ=$(npm pack | tail -n 1)
           echo "PKG_TGZ=$PKG_TGZ" >> "$GITHUB_ENV"
 
+      - name: Verify packed artifact contents
+        run: |
+          tar -tzf "$PKG_TGZ" | grep -E 'package/(js/src/Main.d.ts|dist/skapi.cjs|dist/skapi.mjs|dist/skapi.js|package.json)$'
+
       - name: Create consumer project and install package
         run: |
-          mkdir -p /tmp/skapi-consumer
-          cd /tmp/skapi-consumer
+          CONSUMER_DIR=$(mktemp -d /tmp/skapi-consumer-XXXX)
+          echo "CONSUMER_DIR=$CONSUMER_DIR" >> "$GITHUB_ENV"
+          cd "$CONSUMER_DIR"
           npm init -y
-          npm install "$GITHUB_WORKSPACE/$PKG_TGZ" typescript
+          npm install "$GITHUB_WORKSPACE/$PKG_TGZ" typescript@5.9.3
+
+      - name: Verify declaration files are published
+        run: |
+          cd "$CONSUMER_DIR"
+          test -f node_modules/skapi-js/js/src/Main.d.ts
 
       - name: Verify CommonJS require()
         run: |
-          cd /tmp/skapi-consumer
+          cd "$CONSUMER_DIR"
           node -e "const { Skapi } = require('skapi-js'); if (typeof Skapi !== 'function') { throw new Error('Skapi export is not a function'); }"
 
       - name: Verify Node ESM import
         run: |
-          cd /tmp/skapi-consumer
+          cd "$CONSUMER_DIR"
           node --input-type=module -e "import { Skapi } from 'skapi-js'; if (typeof Skapi !== 'function') { throw new Error('Skapi export is not a function'); }"
 
       - name: Verify TypeScript imports and type visibility
         run: |
-          cd /tmp/skapi-consumer
+          cd "$CONSUMER_DIR"
           cat > consumer.ts << 'EOF'
           import { Skapi } from 'skapi-js';
           import type { RecordData, DatabaseResponse } from 'skapi-js';
@@ -83,9 +100,12 @@ jobs:
           void databaseRecords;
           EOF
 
-          npx tsc --noEmit --target ES2020 --module NodeNext --moduleResolution NodeNext consumer.ts
+          if ! npx tsc --noEmit --target ES2020 --module NodeNext --moduleResolution NodeNext consumer.ts; then
+            npx tsc --traceResolution --noEmit --target ES2020 --module NodeNext --moduleResolution NodeNext consumer.ts || true
+            exit 1
+          fi
 
       - name: Verify browser UMD artifact is published
         run: |
-          cd /tmp/skapi-consumer
+          cd "$CONSUMER_DIR"
           test -f node_modules/skapi-js/dist/skapi.js
