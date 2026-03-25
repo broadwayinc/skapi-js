@@ -13,7 +13,9 @@ module.exports = [
         entry: './src/Main.ts',
         output: {
             filename: 'skapi.js',
-            libraryTarget: 'umd'
+            path: path.resolve(__dirname, 'dist'),
+            libraryTarget: 'umd',
+            globalObject: 'self'
         },
         module: {
             rules: [
@@ -60,6 +62,7 @@ ${license}
         },
         output: {
             filename: 'skapi.mjs',
+            path: path.resolve(__dirname, 'dist'),
             library: {
                 type: 'module'
             },
@@ -107,6 +110,7 @@ ${license}
         entry: './src/Main.ts',
         output: {
             filename: 'skapi.cjs',
+            path: path.resolve(__dirname, 'dist'),
             libraryTarget: 'commonjs2'
         },
         module: {
@@ -154,6 +158,7 @@ ${license}
         },
         output: {
             filename: 'skapi.node.mjs',
+            path: path.resolve(__dirname, 'dist'),
             library: {
                 type: 'module'
             },

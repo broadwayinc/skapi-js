@@ -47,23 +47,10 @@ jobs:
 
       - name: Verify build artifacts exist
         run: |
-          pwd
-          echo "--- js directory ---"
-          ls -la js || true
-          echo "--- dist directory ---"
-          ls -la dist || true
-
-          if [ ! -f js/Main.d.ts ]; then
-            echo "Missing build artifact: js/Main.d.ts"
-            find js -maxdepth 3 -type f | sort || true
-            exit 1
-          fi
-
-          if [ ! -f dist/skapi.cjs ]; then
-            echo "Missing build artifact: dist/skapi.cjs"
-            find dist -maxdepth 2 -type f | sort || true
-            exit 1
-          fi
+          test -f js/src/Main.d.ts
+          test -f dist/skapi.cjs
+          test -f dist/skapi.mjs
+          test -f dist/skapi.js
 
       - name: Pack npm tarball
         run: |
@@ -71,6 +58,10 @@ jobs:
           echo "PKG_TGZ=$PKG_TGZ" >> "$GITHUB_ENV"
           echo "--- packed contents ---"
           tar -tzf "$PKG_TGZ" | sort | grep -E 'package/(js/Main.d.ts|dist/skapi.cjs|dist/skapi.js|package.json)$' || true
+
+      - name: Verify packed artifact contents
+        run: |
+          tar -tzf "$PKG_TGZ" | grep -E 'package/(js/src/Main.d.ts|dist/skapi.cjs|dist/skapi.mjs|dist/skapi.js|package.json)$'
 
       - name: Create consumer project and install package
         run: |
@@ -83,14 +74,7 @@ jobs:
       - name: Verify declaration files are published
         run: |
           cd "$CONSUMER_DIR"
-          if [ ! -f node_modules/skapi-js/js/Main.d.ts ]; then
-            echo "Installed package is missing node_modules/skapi-js/js/Main.d.ts"
-            echo "--- installed skapi-js package.json ---"
-            cat node_modules/skapi-js/package.json || true
-            echo "--- installed skapi-js top-level files ---"
-            find node_modules/skapi-js -maxdepth 2 -type f | sort | sed -n '1,200p'
-            exit 1
-          fi
+          test -f node_modules/skapi-js/js/src/Main.d.ts
 
       - name: Verify CommonJS require()
         run: |

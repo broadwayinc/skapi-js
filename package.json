@@ -7,10 +7,10 @@
   "module": "dist/skapi.mjs",
   "unpkg": "dist/skapi.js",
   "jsdelivr": "dist/skapi.js",
-  "types": "js/Main.d.ts",
+  "types": "js/src/Main.d.ts",
   "exports": {
     ".": {
-      "types": "./js/Main.d.ts",
+      "types": "./js/src/Main.d.ts",
       "browser": "./dist/skapi.mjs",
       "node": {
         "import": "./dist/skapi.node.mjs",
@@ -19,7 +19,8 @@
       "import": "./dist/skapi.mjs",
       "require": "./dist/skapi.cjs",
       "default": "./dist/skapi.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "js",
