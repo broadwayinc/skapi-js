@@ -26,7 +26,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "npx tsc --project tsconfig.json && npx webpack --config webpack.config.js; node ./src/main/typedoc.js",
+    "build": "npx tsc --project tsconfig.json && npx webpack --config webpack.config.js && node ./src/main/typedoc.js",
     "dev": "npx bns 3333"
   },
   "repository": {

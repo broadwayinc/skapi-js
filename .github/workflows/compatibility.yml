@@ -45,6 +45,11 @@ jobs:
       - name: Build package artifacts
         run: npm run build
 
+      - name: Verify build artifacts exist
+        run: |
+          test -f js/Main.d.ts
+          test -f dist/skapi.cjs
+
       - name: Pack npm tarball
         run: |
           PKG_TGZ=$(npm pack | tail -n 1)
