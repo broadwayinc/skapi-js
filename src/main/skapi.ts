@@ -1653,7 +1653,7 @@ export default class Skapi {
      */
     @formHandler()
     async bulkPostRecords(
-        params: Array<PostRecordConfig & { reference_private_key?: string; } & { data?: Record<string, any> }>,
+        params: Array<PostRecordConfig & { reference_private_key?: string; data?: Record<string, any> }>,
     ): Promise<RecordData[] | { code: string; message: string; }> { return bulkPostRecords.bind(this)(params); }
     /**
      * Fetches subscriber/subscription relationships with filters and pagination.
