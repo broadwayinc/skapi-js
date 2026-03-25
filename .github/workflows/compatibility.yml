@@ -55,7 +55,12 @@ jobs:
           mkdir -p /tmp/skapi-consumer
           cd /tmp/skapi-consumer
           npm init -y
-          npm install "$GITHUB_WORKSPACE/$PKG_TGZ" typescript
+          npm install "$GITHUB_WORKSPACE/$PKG_TGZ" typescript@5.9.3
+
+      - name: Verify declaration files are published
+        run: |
+          cd /tmp/skapi-consumer
+          test -f node_modules/skapi-js/js/Main.d.ts
 
       - name: Verify CommonJS require()
         run: |
@@ -83,7 +88,10 @@ jobs:
           void databaseRecords;
           EOF
 
-          npx tsc --noEmit --target ES2020 --module NodeNext --moduleResolution NodeNext consumer.ts
+          if ! npx tsc --noEmit --target ES2020 --module NodeNext --moduleResolution NodeNext consumer.ts; then
+            npx tsc --traceResolution --noEmit --target ES2020 --module NodeNext --moduleResolution NodeNext consumer.ts || true
+            exit 1
+          fi
 
       - name: Verify browser UMD artifact is published
         run: |
