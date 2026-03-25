@@ -52,29 +52,30 @@ jobs:
 
       - name: Create consumer project and install package
         run: |
-          mkdir -p /tmp/skapi-consumer
-          cd /tmp/skapi-consumer
+          CONSUMER_DIR=$(mktemp -d /tmp/skapi-consumer-XXXX)
+          echo "CONSUMER_DIR=$CONSUMER_DIR" >> "$GITHUB_ENV"
+          cd "$CONSUMER_DIR"
           npm init -y
           npm install "$GITHUB_WORKSPACE/$PKG_TGZ" typescript@5.9.3
 
       - name: Verify declaration files are published
         run: |
-          cd /tmp/skapi-consumer
+          cd "$CONSUMER_DIR"
           test -f node_modules/skapi-js/js/Main.d.ts
 
       - name: Verify CommonJS require()
         run: |
-          cd /tmp/skapi-consumer
+          cd "$CONSUMER_DIR"
           node -e "const { Skapi } = require('skapi-js'); if (typeof Skapi !== 'function') { throw new Error('Skapi export is not a function'); }"
 
       - name: Verify Node ESM import
         run: |
-          cd /tmp/skapi-consumer
+          cd "$CONSUMER_DIR"
           node --input-type=module -e "import { Skapi } from 'skapi-js'; if (typeof Skapi !== 'function') { throw new Error('Skapi export is not a function'); }"
 
       - name: Verify TypeScript imports and type visibility
         run: |
-          cd /tmp/skapi-consumer
+          cd "$CONSUMER_DIR"
           cat > consumer.ts << 'EOF'
           import { Skapi } from 'skapi-js';
           import type { RecordData, DatabaseResponse } from 'skapi-js';
@@ -95,5 +96,5 @@ jobs:
 
       - name: Verify browser UMD artifact is published
         run: |
-          cd /tmp/skapi-consumer
+          cd "$CONSUMER_DIR"
           test -f node_modules/skapi-js/dist/skapi.js
