@@ -1651,7 +1651,7 @@ export default class Skapi {
      * @param params Payload for the request and configuration options.
      * @returns A promise that resolves to Promise<RecordData[] | { code: string; message: string; }>.
      */
-    @formHandler()
+    @formHandler({ preventMultipleCalls: true })
     async bulkPostRecords(
         params: Array<PostRecordConfig & { reference_private_key?: string; data?: Record<string, any> }>,
     ): Promise<RecordData[] | { code: string; message: string; }> { return bulkPostRecords.bind(this)(params); }
