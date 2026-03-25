@@ -284,7 +284,6 @@ export async function subscribeNewsletter(
     return request.bind(this)(`subscribe-${this.__user ? '' : 'public-'}newsletter`, params, { auth: !!this.__user });
 }
 
-
 // /* depricate from the user api */
 // export async function adminNewsletterRequest(params) {
 //     await this.__connection;
