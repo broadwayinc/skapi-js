@@ -137,6 +137,7 @@ export type PostRecordConfig = {
     tags?: string[] | null; // null removes all tags. each tag max 64 chars, blocks / ! * #, control chars, and sentinel 􏿿.
     remove_bin?: BinaryFile[] | string[] | null; // Removes bin data from the record. When null, it will remove all bin data.
     progress?: ProgressCallback; // Callback for database request progress. Useful when building progress bar.
+    reference_private_key?: string; // When referencing a record that has private access, you can provide the private key of the referenced record to pass the access check. This is only required when the referenced record has private access and the user does not have access to the record through subscription or granted access.
 }
 
 export type BinaryFile = {

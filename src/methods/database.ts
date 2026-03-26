@@ -21,7 +21,7 @@ import validator from '../utils/validator';
 import { request, uploadFiles } from '../utils/network';
 import { checkAdmin } from './user';
 import { authentication } from './user';
-import { accessGroup, getStruct, indexValue, recordIdOrUniqueId, validateCustomIndexName, validateTableName, validateTag } from './param_restrictions';
+import { accessGroup, indexValue, recordIdOrUniqueId, validateCustomIndexName, validateTableName, validateTag, validateStringByPolicy, indexRange } from './param_restrictions';
 
 const pendingPrivateAccessKeyRequest: Record<string, Promise<string>> = {};
 
@@ -523,18 +523,10 @@ export async function getFile(
     return blob;
 }
 
-async function prepGetParams(query, isDel = false) {
+async function getQuery(query, isDel = false) {
     query = extractFormData(query, { ignoreEmpty: true }).data || {};
 
-    if (typeof query?.table === 'string') {
-        query.table = {
-            name: query.table,
-            access_group: 0
-        };
-    }
-
     let is_reference_fetch = '';
-
     let rec_or_uniq = recordIdOrUniqueId(query);
 
     if (rec_or_uniq) {
@@ -580,7 +572,78 @@ async function prepGetParams(query, isDel = false) {
             ref_user = ref.user_id;
             query.reference = ref_user;
         }
-        query = validator.Params(query || {}, getStruct.bind(this)(query), ref_user || isAdmin ? [] : ['table'], { ignoreEmpty: true });
+
+        if (typeof query?.table === 'string') {
+            query.table = {
+                name: query.table,
+                access_group: 0
+            };
+        }
+        if (query.index) {
+            if (query.index.hasOwnProperty('range') && query.index.hasOwnProperty('condition')) {
+                delete query.index.range;
+            }
+        }
+
+        const buildStruct = (query) => {
+            return {
+                table: {
+                    name: [v => validateTableName(v, 'table.name')],
+                    access_group: accessGroup.bind(this),
+                    subscription: (v: any) => validator.UserId(v, 'User ID in "subscription"')
+                },
+                reference: 'string',
+                index: {
+                    name: ['$updated', '$uploaded', '$referenced_count', '$user_id', (v: string) => {
+                        return validateCustomIndexName(v, 'index.name');
+                    }],
+                    value: (v: number | boolean | string) => {
+                        const indexTypes = {
+                            '$updated': 'number',
+                            '$uploaded': 'number',
+                            '$referenced_count': 'number',
+                            '$user_id': validator.UserId
+                        };
+
+                        if (indexTypes.hasOwnProperty(query.index.name)) {
+                            let tp = indexTypes[query.index.name];
+
+                            if (typeof tp === 'function') {
+                                return tp(v);
+                            }
+
+                            if (tp !== typeof v) {
+                                throw new SkapiError(`"index.value" should be type: ${tp}.`, { code: 'INVALID_PARAMETER' });
+                            }
+
+                            return v;
+                        }
+
+                        if (typeof v === 'string' && !v) {
+                            return "";
+                        }
+
+                        return indexValue(v);
+                    },
+                    condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq'],
+                    range: (v: number | boolean | string) => indexRange(v, query)
+                },
+                tag: (v: string) => {
+                    if (v === null || v === undefined) {
+                        return v;
+                    }
+                    if (typeof v === 'string') {
+                        return validateTag(v, 'tag');
+                    }
+                    else {
+                        throw new SkapiError('"tag" should be type: string.', { code: 'INVALID_PARAMETER' });
+                    }
+                },
+                private_key: 'string'
+            }
+        }
+
+        query = validator.Params(query || {}, buildStruct(query), ref_user || isAdmin ? [] : ['table'], { ignoreEmpty: true });
     }
     return {
         query,
@@ -591,7 +654,7 @@ async function prepGetParams(query, isDel = false) {
 export async function getRecords(query: GetRecordQuery & { private_key?: string; }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
     await this.__connection;
 
-    let q = await prepGetParams.bind(this)(query);
+    let q = await getQuery.bind(this)(query);
     let is_reference_fetch = q.is_reference_fetch;
 
     // TODO: THINK ABOUT HOW TO HANDLE PRIVATE KEY FOR REFERENCE FETCH.
@@ -622,16 +685,19 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
     return result;
 }
 
-function mangleRecordConfig(config: PostRecordConfig & { reference_private_key?: string; }) {
+function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
     let is_reference_post = "";
-
+    let files = [];
     let _config = validator.Params(config || {}, {
         record_id: (v) => {
             if (!v && !config.table) {
                 throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
             }
             if (v) {
-                return validator.specialChars(v, 'record_id', false, false);
+                return validateStringByPolicy(v, 'record_id', {
+                    allowEmpty: false,
+                    onlyAlphanumeric: true,
+                });
             }
         },
         unique_id: 'string',
@@ -742,7 +808,10 @@ function mangleRecordConfig(config: PostRecordConfig & { reference_private_key?:
                     if (typeof this.__private_access_key?.[v] === 'string') {
                         config.reference_private_key = this.__private_access_key[v] || undefined;
                     }
-                    return validator.specialChars(v, '"reference.record_id"', false, false);
+                    return validateStringByPolicy(v, 'reference.record_id', {
+                        allowEmpty: false,
+                        onlyAlphanumeric: true,
+                    });
                 }
             });
         },
@@ -791,11 +860,17 @@ function mangleRecordConfig(config: PostRecordConfig & { reference_private_key?:
         },
         progress: 'function',
         data: v => v
+    }, [], {
+        precall: (pc) => {
+            if (pc.files) {
+                files = pc.files;
+            }
+        }
     });
 
     let progress = config.progress || null;
 
-    // callbacks should be removed after checkparams
+    // callbacks should be removed after cocochex
     delete _config.progress;
 
     if (!this.__user) {
@@ -823,27 +898,24 @@ function mangleRecordConfig(config: PostRecordConfig & { reference_private_key?:
             throw new SkapiError('Public users cannot set unique_id for records.', { code: 'INVALID_REQUEST' });
         }
     }
-    return { config: _config, progress, is_reference_post };
+    return { config: _config, progress, is_reference_post, files };
 }
 
 export async function postRecord(
     form: Form<Record<string, any>> | null | undefined,
-    config: PostRecordConfig & { reference_private_key?: string; },
+    config: PostRecordConfig,
     files?: { name: string, file: File }[],
 ): Promise<RecordData> {
     await this.__connection;
 
-    // TODO: WORK FOR BUIK UPLOAD
     if (!config) {
         throw new SkapiError('"config" argument is required.', { code: 'INVALID_PARAMETER' });
     }
 
-    let is_bulk = Array.isArray(form?._is_bulk_);
-
-    let mangledConf = mangleRecordConfig.bind(this)(config);
-    let _config = mangledConf.config;
-    let progress = mangledConf.progress;
-    let is_reference_post = mangledConf.is_reference_post;
+    let postConf = setupPostRecordConfig.bind(this)(config);
+    let _config = postConf.config;
+    let progress = postConf.progress;
+    let is_reference_post = postConf.is_reference_post;
 
     let options: { [key: string]: any } = { auth: !!this.__user, method: 'post' };
 
@@ -911,7 +983,7 @@ export async function postRecord(
 }
 
 export async function bulkPostRecords(
-    params: Array<PostRecordConfig & { reference_private_key?: string; } & { data?: Record<string, any> }>
+    params: Array<PostRecordConfig & { data?: Record<string, any> }>
 ): Promise<RecordData[] | { code: string; message: string; }> {
     await this.__connection;
 
@@ -930,7 +1002,7 @@ export async function bulkPostRecords(
             throw new SkapiError(`"params[${idx}]" should be type: <object>.`, { code: 'INVALID_PARAMETER' });
         }
 
-        let mangled = mangleRecordConfig.bind(this)(config);
+        let mangled = setupPostRecordConfig.bind(this)(config);
         let _config = mangled.config;
         if (mangled.is_reference_post) {
             reference_posts.push(mangled.is_reference_post);
@@ -1227,7 +1299,7 @@ export async function getUniqueId(
 export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> {
     await this.__connection;
 
-    let q = await prepGetParams.bind(this)(query, true);
+    let q = await getQuery.bind(this)(query, true);
     let is_reference_fetch = q.is_reference_fetch;
     let result = await request.bind(this)('del-records', q.query, { auth: true, fetchOptions });
     if (is_reference_fetch && typeof result?.reference_private_key === 'string') {

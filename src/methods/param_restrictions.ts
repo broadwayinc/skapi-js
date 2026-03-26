@@ -9,10 +9,11 @@ const SENTINEL_CHAR = '\u{10FFFF}';
 const CONTROL_OR_SENTINEL_REGEX = /[\u0000-\u001F\u007F]|\u{10FFFF}/u;
 const BLOCKED_KEY_SEGMENT_DELIMITER_REGEX = /[\/!*#]/;
 
-function validateStringByPolicy(
+export function validateStringByPolicy(
     value: any,
     fieldName: string,
     options: {
+        onlyAlphanumeric?: boolean;
         allowEmpty?: boolean;
         maxLength?: number;
         blockKeyDelimiters?: boolean;
@@ -24,10 +25,15 @@ function validateStringByPolicy(
         maxLength,
         blockKeyDelimiters = false,
         disallowLeadingDollar = false,
+        onlyAlphanumeric = false
     } = options;
 
     if (typeof value !== 'string') {
         throw new SkapiError(`"${fieldName}" should be type: <string>.`, { code: 'INVALID_PARAMETER' });
+    }
+
+    if (onlyAlphanumeric && /[^a-zA-Z0-9]/.test(value)) {
+        throw new SkapiError(`"${fieldName}" should only contain alphanumeric characters.`, { code: 'INVALID_PARAMETER' });
     }
 
     if (!allowEmpty && value.length === 0) {
@@ -98,33 +104,16 @@ export function recordIdOrUniqueId(query) {
         outputObj.owner = query.owner;
     }
     if (query?.record_id) {
-        outputObj.record_id = validator.specialChars(query.record_id, 'record_id', false, false);
+        outputObj.record_id = validateStringByPolicy(query.record_id, 'record_id', {
+            allowEmpty: false,
+            onlyAlphanumeric: true,
+        });
     }
     else if (query?.unique_id) {
         outputObj.unique_id = query.unique_id;
     }
 
     return outputObj;
-}
-
-export function cannotBeEmptyString(v, paramName = 'parameter', allowPeriods = false, allowWhiteSpace = false) {
-    if (!v) {
-        throw new SkapiError(`"${paramName}" is required.`, { code: 'INVALID_PARAMETER' });
-    }
-
-    if (paramName === 'table.name' || paramName === 'table name') {
-        return validateTableName(v, paramName);
-    }
-
-    if (paramName === 'index.name' || paramName === '"name" in "index_restrictions"') {
-        return validateCustomIndexName(v, paramName);
-    }
-
-    if (paramName === 'tag' || paramName === 'tags') {
-        return validateTag(v, paramName);
-    }
-
-    return validator.specialChars(v, paramName, allowPeriods, allowWhiteSpace);
 }
 
 export function accessGroup(v) {
@@ -150,6 +139,7 @@ export function accessGroup(v) {
             throw new SkapiError('"table.access_group" is invalid.', { code: 'INVALID_PARAMETER' });
         }
     }
+
     else {
         throw new SkapiError('"table.access_group" should be type: <number | string>.', { code: 'INVALID_PARAMETER' });
     }
@@ -199,75 +189,4 @@ export function indexRange(v, query) {
     }
 
     return v;
-}
-
-export function getStruct(query) {
-    let q = {
-        table: {
-            name: [v => validateTableName(v, 'table.name')],
-            access_group: [accessGroup.bind(this)],
-            subscription: (v: any) => {
-                if (typeof v === 'string') {
-                    validator.UserId(v, 'User ID in "subscription"');
-                    return v
-                }
-
-                return undefined;
-            }
-        },
-        reference: 'string',
-        index: {
-            name: ['$updated', '$uploaded', '$referenced_count', '$user_id', (v: string) => {
-                return validateCustomIndexName(v, 'index.name');
-            }],
-            value: (v: number | boolean | string) => {
-                const indexTypes = {
-                    '$updated': 'number',
-                    '$uploaded': 'number',
-                    '$referenced_count': 'number',
-                    '$user_id': validator.UserId
-                };
-
-                if (indexTypes.hasOwnProperty(query.index.name)) {
-                    let tp = indexTypes[query.index.name];
-
-                    if (typeof tp === 'function') {
-                        return tp(v);
-                    }
-
-                    if (tp !== typeof v) {
-                        throw new SkapiError(`"index.value" should be type: ${tp}.`, { code: 'INVALID_PARAMETER' });
-                    }
-
-                    return v;
-                }
-
-                if (typeof v === 'string' && !v) {
-                    return "";
-                }
-
-                return indexValue(v);
-            },
-            condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq'],
-            range: (v: number | boolean | string) => indexRange(v, query)
-        },
-        tag: (v: string) => {
-            if (v === null || v === undefined) {
-                return v;
-            }
-            if (typeof v === 'string') {
-                return validateTag(v, 'tag');
-            }
-            else {
-                throw new SkapiError('"tag" should be type: string.', { code: 'INVALID_PARAMETER' });
-            }
-        },
-        private_key: 'string'
-    }
-    if (q.index) {
-        if (q.index.hasOwnProperty('range') && q.index.hasOwnProperty('condition')) {
-            delete q.index.range;
-        }
-    }
-    return q;
 }
