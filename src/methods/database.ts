@@ -789,7 +789,7 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
                 }
                 return v;
             }
-            
+
             if (typeof v !== 'object') {
                 throw new SkapiError('"reference" should be type: <string | object>.', { code: 'INVALID_PARAMETER' });
             }
@@ -858,15 +858,19 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
         data: v => v
     }, [], {
         precall: (pc) => {
-            if (!pc?.record_id && !config.table) {
+            const data = pc?.data || {};
+
+            if (!data?.record_id && !data.table) {
                 throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
             }
-            if (typeof pc.table === 'string') {
-                pc.table = {
-                    name: pc.table,
+
+            if (typeof data.table === 'string') {
+                data.table = {
+                    name: data.table,
                     access_group: 0
                 };
             }
+
             if (pc.files) {
                 files = pc.files;
             }
