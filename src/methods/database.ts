@@ -551,26 +551,28 @@ async function getQuery(query, isDel = false) {
     else {
         let isAdmin = await checkAdmin.bind(this)();
         let ref: any = query?.reference;
-        let ref_user = '';
+        let ref_user_is_me = false;
 
-        if (ref?.record_id || ref?.unique_id) {
-            // if (ref?.record_id) {
-            // if (ref.unique_id && this.__my_unique_ids[ref.unique_id]) {
-            //     ref.record_id = this.__my_unique_ids[ref.unique_id];
-            //     delete ref.unique_id;
-            // }
+        if (typeof ref === 'object' && Object.keys(ref).length) {
+            if (ref?.record_id || ref?.unique_id) {
+                // if (ref?.record_id) {
+                // if (ref.unique_id && this.__my_unique_ids[ref.unique_id]) {
+                //     ref.record_id = this.__my_unique_ids[ref.unique_id];
+                //     delete ref.unique_id;
+                // }
 
-            is_reference_fetch = ref.record_id || ref.unique_id;
+                is_reference_fetch = ref.record_id || ref.unique_id;
 
-            if (is_reference_fetch && typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
-                query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+                if (is_reference_fetch && typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
+                    query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+                }
+
+                query.reference = is_reference_fetch;
             }
-
-            query.reference = is_reference_fetch;
-        }
-        else if (ref?.user_id) {
-            ref_user = ref.user_id;
-            query.reference = ref_user;
+            else if (ref?.user_id) {
+                ref_user_is_me = ref.user_id === this.user?.user_id;
+                query.reference = ref.user_id;
+            }
         }
 
         if (typeof query?.table === 'string') {
@@ -643,7 +645,7 @@ async function getQuery(query, isDel = false) {
             }
         }
 
-        query = validator.Params(query || {}, buildStruct(query), ref_user || isAdmin ? [] : ['table'], { ignoreEmpty: true });
+        query = validator.Params(query || {}, buildStruct(query), ref_user_is_me || isAdmin ? [] : ['table'], { ignoreEmpty: true });
     }
     return {
         query,
@@ -689,17 +691,10 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
     let is_reference_post = "";
     let files = [];
     let _config = validator.Params(config || {}, {
-        record_id: (v) => {
-            if (!v && !config.table) {
-                throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
-            }
-            if (v) {
-                return validateStringByPolicy(v, 'record_id', {
-                    allowEmpty: false,
-                    onlyAlphanumeric: true,
-                });
-            }
-        },
+        record_id: (v) => validateStringByPolicy(v, 'record_id', {
+            allowEmpty: false,
+            onlyAlphanumeric: true,
+        }),
         unique_id: 'string',
         readonly: 'boolean',
         table: {
@@ -862,6 +857,15 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
         data: v => v
     }, [], {
         precall: (pc) => {
+            if (!pc?.record_id && !config.table) {
+                throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
+            }
+            if (typeof config.table === 'string') {
+                config.table = {
+                    name: config.table,
+                    access_group: 0
+                }
+            }
             if (pc.files) {
                 files = pc.files;
             }

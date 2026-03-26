@@ -5,7 +5,22 @@ const ts = require('typescript');
 const SKAPI_FILE = path.resolve(__dirname, 'skapi.ts');
 const OUTPUT_DIR = path.resolve(path.dirname(SKAPI_FILE), 'ref');
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const TSCONFIG_PATH = path.resolve(PROJECT_ROOT, 'tsconfig.json');
+const TYPEDOC_COMPILER_OPTIONS = {
+	target: ts.ScriptTarget.ES2020,
+	module: ts.ModuleKind.ES2020,
+	moduleResolution: ts.ModuleResolutionKind.NodeJs,
+	rootDir: PROJECT_ROOT,
+	resolveJsonModule: true,
+	experimentalDecorators: true,
+	esModuleInterop: true,
+	strict: true,
+	noImplicitAny: false,
+	strictNullChecks: false,
+	noImplicitThis: false,
+	forceConsistentCasingInFileNames: true,
+	skipLibCheck: true,
+	allowJs: false
+};
 
 console.log(`[typedoc] Generating MD file(s) in ${OUTPUT_DIR}/...`);
 
@@ -37,29 +52,6 @@ function getNameText(nameNode) {
 
 function hasModifier(node, kind) {
 	return !!(node.modifiers && node.modifiers.some(modifier => modifier.kind === kind));
-}
-
-function loadTsConfig(configPath) {
-	const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
-	if (configFile.error) {
-		const msg = ts.flattenDiagnosticMessageText(configFile.error.messageText, '\n');
-		fail(`Unable to read tsconfig: ${msg}`);
-	}
-
-	const parsed = ts.parseJsonConfigFileContent(
-		configFile.config,
-		ts.sys,
-		path.dirname(configPath)
-	);
-
-	if (parsed.errors && parsed.errors.length) {
-		const msg = parsed.errors
-			.map(e => ts.flattenDiagnosticMessageText(e.messageText, '\n'))
-			.join('\n');
-		fail(`Invalid tsconfig: ${msg}`);
-	}
-
-	return parsed;
 }
 
 function findSkapiClass(sourceFile) {
@@ -279,10 +271,9 @@ function main() {
 		fail(`Cannot find skapi.ts at ${SKAPI_FILE}`);
 	}
 
-	const parsed = loadTsConfig(TSCONFIG_PATH);
 	const program = ts.createProgram({
-		rootNames: parsed.fileNames,
-		options: parsed.options
+		rootNames: [SKAPI_FILE],
+		options: TYPEDOC_COMPILER_OPTIONS
 	});
 	const checker = program.getTypeChecker();
 

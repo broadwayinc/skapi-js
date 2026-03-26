@@ -22,7 +22,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "npx tsc --noEmit && npx tsup && node ./src/main/typedoc.js",
+    "build": "npx tsup && node ./src/main/typedoc.js",
     "test:node-imports": "node ./tests/node-import-compatibility.cjs",
     "dev": "npx bns 3333"
   },
@@ -39,7 +39,6 @@
   "homepage": "https://www.skapi.com",
   "dependencies": {
     "amazon-cognito-identity-js": "^6.3.16",
-    "cocochex": "^1.0.1",
     "qpass": "^1.1.0"
   },
   "devDependencies": {
