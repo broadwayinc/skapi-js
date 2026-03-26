@@ -580,6 +580,7 @@ async function getQuery(query, isDel = false) {
                 access_group: 0
             };
         }
+
         if (query.index) {
             if (query.index.hasOwnProperty('range') && query.index.hasOwnProperty('condition')) {
                 delete query.index.range;
@@ -788,6 +789,7 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
                 }
                 return v;
             }
+            
             if (typeof v !== 'object') {
                 throw new SkapiError('"reference" should be type: <string | object>.', { code: 'INVALID_PARAMETER' });
             }
@@ -859,11 +861,11 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
             if (!pc?.record_id && !config.table) {
                 throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
             }
-            if (typeof config.table === 'string') {
-                config.table = {
-                    name: config.table,
+            if (typeof pc.table === 'string') {
+                pc.table = {
+                    name: pc.table,
                     access_group: 0
-                }
+                };
             }
             if (pc.files) {
                 files = pc.files;
