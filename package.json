@@ -7,15 +7,11 @@
   "module": "dist/skapi.mjs",
   "unpkg": "dist/skapi.js",
   "jsdelivr": "dist/skapi.js",
-  "types": "js/src/Main.d.ts",
+  "types": "dist/skapi.d.ts",
   "exports": {
     ".": {
-      "types": "./js/src/Main.d.ts",
+      "types": "./dist/skapi.d.ts",
       "browser": "./dist/skapi.mjs",
-      "node": {
-        "import": "./dist/skapi.node.mjs",
-        "require": "./dist/skapi.cjs"
-      },
       "import": "./dist/skapi.mjs",
       "require": "./dist/skapi.cjs",
       "default": "./dist/skapi.cjs"
@@ -23,11 +19,11 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "js",
     "dist"
   ],
   "scripts": {
-    "build": "npx tsc --project tsconfig.json && npx webpack --config webpack.config.js && node ./src/main/typedoc.js",
+    "build": "npx tsc --noEmit && npx tsup && node ./src/main/typedoc.js",
+    "test:node-imports": "node ./tests/node-import-compatibility.cjs",
     "dev": "npx bns 3333"
   },
   "repository": {
@@ -43,16 +39,14 @@
   "homepage": "https://www.skapi.com",
   "dependencies": {
     "amazon-cognito-identity-js": "^6.3.16",
-    "cocochex": "^1.0.0",
+    "cocochex": "^1.0.1",
     "qpass": "^1.1.0"
   },
   "devDependencies": {
+    "@types/node": "^25.5.0",
     "basic-node-server": "^1.0.16",
-    "ts-loader": "^9.5.4",
-    "typescript": "^5.9.3",
-    "webpack": "^5.105.2",
-    "webpack-bundle-analyzer": "^5.2.0",
-    "webpack-cli": "^6.0.1"
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
   },
   "keywords": [
     "backend",
