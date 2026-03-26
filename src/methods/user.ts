@@ -1107,7 +1107,7 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>)
         }
 
         code = (form ? validator.Params(form, {
-            code: ['string']
+            code: 'string'
         }) : {}).code || '';
     }
     else {

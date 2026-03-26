@@ -60,8 +60,8 @@ export type GetRecordQuery = {
     unique_id?: string; // When unique_id is given, it will fetch the record with the given unique_id.
     record_id?: string; // When record_id is given, it will fetch the record with the given record_id. This overrides all other parameters.
 
-    /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
-    table?: string | {
+    /** Table name not required when "record_id" is given.*/
+    table?: {
         /** Max 128 chars. Blocks: / ! * #, control chars, and sentinel 􏿿. */
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
@@ -89,7 +89,7 @@ export type PostRecordConfig = {
     unique_id?: string; // You can set unique_id to the record with the given unique_id.
     readonly?: boolean; // When true, record cannot be updated or deleted.
 
-    /** Table name not required when "record_id" is given. If string is given, "table.name" will be set with default settings. */
+    /** Table name not required when "record_id" is given.*/
     table?: {
         /** Max 128 chars. Blocks: / ! * #, control chars, and sentinel 􏿿. */
         name: string;

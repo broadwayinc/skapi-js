@@ -232,118 +232,308 @@ function Params(
     }
 }
 
+
+// def schema_check(data, schema={}, CustomError=CustomError, _parent_key="", _err_tag=os.environ.get("ERR_INVALID_PARAMETER", "") + ": " if os.environ.get("ERR_INVALID_PARAMETER", "") else ""):
+//     """
+
+//     Data schema checker.
+
+//     schema={
+//         'type': type,
+//         'multi type': [type1, type2, ...],
+//         'list of single type values': [type], 
+//         'lambda returned value when key exists': lambda x: 'conditional' if x == 'condition' else None,
+//         'default value set by lambda when there is no matching value or key does not exist': [int, str, list, dict, lambda x='default': x]
+//         'you can': {
+//             'nest the schema': int
+//         },
+//         'multi type with nested structure': [
+//             {
+//                 'whole dict or list that matches the stucture': {
+//                     'nested2': str,
+//                     'nested3': [str, int]
+//                 }
+//             },
+//             'solid value'
+//         ]
+//     }
+
+//     """
+
+//     if callable(schema) and not isinstance(schema, type):
+//         return schema(data)
+
+//     elif isinstance(schema, dict):
+//         # run checks
+//         if not isinstance(data, dict):
+//             raise CustomError(
+//                 _err_tag + "Data schema does not match."
+//             )
+
+//         for k in list(schema):
+//             if k in data:
+//                 data[k] = schema_check(data[k], schema=schema[k], _parent_key=k, _err_tag=_err_tag, CustomError=CustomError)
+//             else:
+//                 c = schema[k]
+//                 if not isinstance(c, type):
+//                     if (
+//                         isinstance(c, list)
+//                         and not isinstance(c[-1], type)
+//                         and callable(c[-1])
+//                     ):
+//                         data[k] = c[-1]()
+
+//         return data
+    
+//     elif isinstance(schema, list):
+//         passed = False
+//         if len(schema) == 1 and not isinstance(schema[0], list) and not isinstance(schema[0], dict):
+//             # list of single type values check
+//             is_type = isinstance(schema[0], type)
+//             is_callable = callable(schema[0])
+
+//             if isinstance(data, list):
+//                 for k in range(len(data)):
+//                     if is_type:
+//                         if not isinstance(data[k], schema[0]):
+//                             raise CustomError(_err_tag + 'Type <{}> is invalid in "{}". Expected a list of Type <{}>.'.format(
+//                                     type(data[k]).__name__, _parent_key, schema[0].__name__
+//                                 ))
+                    
+//                     elif is_callable:
+//                         data[k] = schema[0](data[k])
+
+//                     else:
+//                         if data[k] != schema[0]:
+//                             raise CustomError(_err_tag + 'Value {} is invalid in "{}". Expected a list of {}.'.format(
+//                                     json.dumps(data[k]), _parent_key, json.dumps(schema[0])
+//                                 ))
+//             else:
+//                 raise CustomError(
+//                     _err_tag + 'Type <{}> is invalid in "{}". Expected a list.'.format(
+//                         type(data).__name__, _parent_key
+//                     )
+//                 )
+            
+//             passed = True
+        
+//         else:
+//             for c in schema:
+//                 # matches each item in schema list
+//                 try:
+//                     data = schema_check(data, schema=c, _parent_key=_parent_key, _err_tag=_err_tag, CustomError=CustomError)
+//                     passed = True
+//                     break
+//                 except:
+//                     pass
+
+//         if not passed:
+//             types_n_values = []
+//             for c in schema:
+//                 if isinstance(c, type):
+//                     types_n_values.append("<{}>".format(c.__name__))
+//                 else:
+//                     if isinstance(c, list) or isinstance(c, dict):
+//                         types_n_values.append(json.dumps(c, default=lambda o: f"Type <{o.__name__}>" if isinstance(o, type) else str(o)))
+//                     else:
+//                         try:
+//                             types_n_values.append(json.dumps(c))
+//                         except:
+//                             types_n_values.append(str(c))
+
+//             raise CustomError(
+//                 _err_tag + '{} is invalid in "{}". allowed types or values are: {}.'.format(
+//                     json.dumps(data), _parent_key, ", ".join(types_n_values)
+//                 )
+//             )
+
+//     elif (
+//         not isinstance(schema, type) and schema != data
+//         or isinstance(schema, type) and not isinstance(data, schema)
+//     ):
+//         types_n_values = "<{}>".format(schema.__name__) if isinstance(schema, type) else json.dumps(schema)
+//         raise CustomError(
+//             _err_tag + '{} is invalid in "{}". allowed type or value is: {}.'.format(
+//                 json.dumps(data), _parent_key, types_n_values
+//             )
+//         )
+
+//     return data
+
 function checkParams(params: any, struct: any, required: string[] = [], _parentKey = null) {
-    function isObjectWithKeys(obj) {
-        return obj && typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length;
+    const typeTokens = ['string', 'number', 'boolean', 'object', 'array'];
+
+    function isPlainObject(value: any) {
+        return value !== null && typeof value === 'object' && !Array.isArray(value);
     }
-    function isArrayWithValues(arr) {
-        return Array.isArray(arr) && arr.length;
+
+    function isSchemaObject(value: any) {
+        return isPlainObject(value);
     }
-    if (_parentKey === null && !isObjectWithKeys(struct)) {
+
+    function isSchemaList(value: any) {
+        return Array.isArray(value);
+    }
+
+    function isTypeToken(value: any) {
+        return typeof value === 'string' && typeTokens.includes(value);
+    }
+
+    function getValueType(value: any) {
+        if (Array.isArray(value)) {
+            return 'array';
+        }
+
+        if (value === null) {
+            return 'null';
+        }
+
+        return typeof value;
+    }
+
+    function stringifyValue(value: any) {
+        try {
+            return JSON.stringify(value);
+        }
+        catch (err) {
+            return String(value);
+        }
+    }
+
+    function describeSchema(schema: any): string {
+        if (isTypeToken(schema)) {
+            return `Type<${schema}>`;
+        }
+
+        if (typeof schema === 'function') {
+            return 'custom validator';
+        }
+
+        try {
+            return JSON.stringify(schema, (_key, value) => {
+                if (typeof value === 'function') {
+                    return 'custom validator';
+                }
+                return value;
+            });
+        }
+        catch (err) {
+            return String(schema);
+        }
+    }
+
+    function matchesType(value: any, schema: string) {
+        if (schema === 'array') {
+            return Array.isArray(value);
+        }
+
+        if (schema === 'object') {
+            return isPlainObject(value);
+        }
+
+        return typeof value === schema;
+    }
+
+    function getKeyPath(key: string) {
+        return _parentKey === null ? key : `${_parentKey}[${key}]`;
+    }
+
+    if (typeof struct === 'undefined') {
         throw 'Argument "struct" is required.';
     }
-    let invalid_in = _parentKey !== null ? ` in key "${_parentKey}" is invalid.` : '. Parameter should be type <object>.';
 
-    if (isArrayWithValues(struct)) {
-        let should_be = ''
-        struct.forEach(s => {
-            if (['string', 'number', 'boolean', 'object', 'array'].includes(s)) {
-                should_be += `Type<${s}>, `
-            }
-            else if (typeof s !== 'function') {
-                should_be += JSON.stringify(s, null, 2) + ', '
-            }
-        });
-
-        should_be = should_be ? ' Should be: ' + should_be.slice(0, -2) : '';
-
-        let pass = false;
-        let val;
-        let err_msg = ''
-        for (let s of struct) {
-            try {
-                val = checkParams(params, s, required, _parentKey);
-                pass = true;
-                break;
-            }
-            catch (err: any) {
-                if (typeof s === 'function') {
-                    err_msg = err?.message || err;
-                }
-                else {
-                    err_msg = '';
-                }
-                pass = false;
-            }
-        }
-        if (!pass) {
-            throw err_msg || `Invalid type "${typeof params}"${invalid_in}${should_be}.`
-        }
-        return val;
-    }
-    if (isObjectWithKeys(params)) {
-        if (isObjectWithKeys(struct)) {
-            for (let k in struct) {
-                // scan defaults
-                let key = (_parentKey === null ? '' : _parentKey) + (_parentKey !== null ? '[' + k + ']' : k);
-
-                if (!params.hasOwnProperty(k)) {
-                    if (required.includes(key)) {
-                        throw `Key "${key}" is required.`;
-                    }
-
-                    if (isArrayWithValues(struct[k]) && typeof struct[k][struct[k].length - 1] === 'function') {
-                        params[k] = struct[k][struct[k].length - 1]();
-                    }
-                }
-            }
-        }
-
-        if ('object' === struct) {
-            return params;
-        }
-
-        else if (typeof struct === 'function') {
-            return struct(params);
-        }
-
-        for (let k in params) {
-            let parentKey = (_parentKey === null ? '' : _parentKey) + (_parentKey !== null ? '[' + k + ']' : k);
-            if (!isArrayWithValues(struct) && !struct.hasOwnProperty(k)) {
-                // throw `Key name "${parentKey}" is invalid in parameter.`;
-                continue;
-            }
-            if (isArrayWithValues(params[k])) {
-                if (struct[k] === 'array') {
-                    continue;
-                }
-                if (typeof struct[k] === 'function') {
-                    params[k] = struct[k](params[k]);
-                    continue;
-                }
-                for (let i = 0; i < params[k].length; i++) {
-                    params[k][i] = checkParams(params[k][i], struct[k], required, parentKey + `[${i}]`);
-                }
-            }
-            else {
-                params[k] = checkParams(params[k], struct[k], required, parentKey);
-            }
-        }
-        return params;
-    }
     if (typeof struct === 'function') {
         return struct(params);
     }
-    if (struct === 'array' && Array.isArray(params) || struct === typeof params || params === struct) {
+
+    if (isSchemaObject(struct)) {
+        if (!isPlainObject(params)) {
+            throw 'Data schema does not match.';
+        }
+
+        for (let key of Object.keys(struct)) {
+            const keyPath = getKeyPath(key);
+
+            if (Object.prototype.hasOwnProperty.call(params, key)) {
+                params[key] = checkParams(params[key], struct[key], required, keyPath);
+            }
+            else {
+                if (required.includes(keyPath)) {
+                    throw `Key "${keyPath}" is required.`;
+                }
+
+                const schema = struct[key];
+                if (isSchemaList(schema) && schema.length && typeof schema[schema.length - 1] === 'function') {
+                    params[key] = schema[schema.length - 1]();
+                }
+            }
+        }
+
         return params;
     }
-    function isEmptyObject(obj) {
-        return obj && typeof obj === 'object' && !Array.isArray(obj) && !Object.keys(obj).length;
-    }
-    if (params === null || params === undefined || isEmptyObject(params)) {
+
+    if (isSchemaList(struct)) {
+        let passed = false;
+
+        if (struct.length === 1 && !isSchemaList(struct[0]) && !isSchemaObject(struct[0])) {
+            const itemSchema = struct[0];
+
+            if (!Array.isArray(params)) {
+                throw `Type <${getValueType(params)}> is invalid in "${_parentKey}". Expected a list.`;
+            }
+
+            for (let index = 0; index < params.length; index++) {
+                const item = params[index];
+
+                if (isTypeToken(itemSchema)) {
+                    if (!matchesType(item, itemSchema)) {
+                        throw `Type <${getValueType(item)}> is invalid in "${_parentKey}". Expected a list of Type <${itemSchema}>.`;
+                    }
+                }
+                else if (typeof itemSchema === 'function') {
+                    params[index] = itemSchema(item);
+                }
+                else if (item !== itemSchema) {
+                    throw `Value ${stringifyValue(item)} is invalid in "${_parentKey}". Expected a list of ${stringifyValue(itemSchema)}.`;
+                }
+            }
+
+            passed = true;
+        }
+        else {
+            let lastFunctionError = '';
+
+            for (let schema of struct) {
+                try {
+                    params = checkParams(params, schema, required, _parentKey);
+                    passed = true;
+                    break;
+                }
+                catch (err: any) {
+                    if (typeof schema === 'function') {
+                        lastFunctionError = err?.message || String(err);
+                    }
+                }
+            }
+
+            if (!passed && lastFunctionError) {
+                throw lastFunctionError;
+            }
+        }
+
+        if (!passed) {
+            const allowed = struct.map(describeSchema).join(', ');
+            throw `${stringifyValue(params)} is invalid in "${_parentKey}". allowed types or values are: ${allowed}.`;
+        }
+
         return params;
     }
-    throw `Invalid type "${typeof params}"${invalid_in} Should be: ${(['string', 'number', 'boolean', 'object', 'array'].includes(struct) ? `Type<${struct}>` : JSON.stringify(struct, null, 2))}`;
+
+    if ((isTypeToken(struct) && matchesType(params, struct)) || params === struct) {
+        return params;
+    }
+
+    throw `${stringifyValue(params)} is invalid in "${_parentKey}". allowed type or value is: ${describeSchema(struct)}.`;
 }
 
 export default {

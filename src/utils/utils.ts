@@ -2,6 +2,21 @@ import SkapiError from "../main/error";
 
 const BASE62_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 const BASE62 = BigInt(BASE62_ALPHABET.length);
+const MAX_FORM_DATA_SIZE = 2 * 1024 * 1024;
+const USER_ATTRIBUTE_EXCLUDES = ['aud', 'cognito:username', 'event_id', 'exp', 'iat', 'iss', 'jti', 'origin_jti', 'secret_key', 'token_use'];
+const USER_ATTRIBUTE_CONVERTS = {
+    auth_time: 'log',
+    sub: 'user_id'
+};
+const SERVICE_REGION_ALPHABET = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a',
+    'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'
+];
+const SERVICE_REGION_KEYS = [
+    'us31', 'us72', 'ap51', 'ap22', 'ap41', 'eu71', 'ap21', 'us32', 'us71',
+    'af51', 'ap31', 'ap43', 'ap23', 'ap42', 'ca01', 'eu01', 'eu72', 'eu51',
+    'eu73', 'eu11', 'me51', 'sa31'
+];
 
 class MD5 {
     private static readonly alphabet = '0123456789abcdef';
@@ -198,6 +213,39 @@ function isBrowserRuntime(): boolean {
         && typeof document.createElement === 'function';
 }
 
+function assertMaxFormDataSize(value: any): void {
+    let serialized: string;
+
+    try {
+        serialized = JSON.stringify(value);
+    }
+    catch (e) {
+        throw new SkapiError('Invalid data type.', { code: 'INVALID_REQUEST' });
+    }
+
+    if (new Blob([serialized]).size > MAX_FORM_DATA_SIZE) {
+        throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
+    }
+}
+
+function isDefaultTruthyInputValue(value: string): boolean {
+    return value === '' || value === 'on' || value === 'true';
+}
+
+function isDefaultFalsyInputValue(value: string): boolean {
+    return value === 'false';
+}
+
+function appendNamedElementValue(
+    data: Record<string, any>,
+    element: { name: string; value: string },
+    appendData: (data: Record<string, any>, key: string, value: any) => void
+): void {
+    if (element.name) {
+        appendData(data, element.name, element.value);
+    }
+}
+
 // Check if we're in a browser environment
 const isBrowser = isBrowserRuntime();
 const hasSubmitEvent = typeof SubmitEvent !== 'undefined';
@@ -213,17 +261,6 @@ function extractFormData(
 ): { data: any, files: { name: string, file: File }[] } {
     let data = {};
     let files = [];
-
-    function sizeof(object: any) {
-        let str: string;
-        try {
-            str = JSON.stringify(object);
-        }
-        catch (e) {
-            throw new SkapiError('Invalid data type.', { code: 'INVALID_REQUEST' });
-        }
-        return new Blob([str]).size;
-    }
 
     function appendData(data, key, val) {
         if (options?.ignoreEmpty && val === '') {
@@ -309,10 +346,10 @@ function extractFormData(
             }
             else if (i.type === 'checkbox' || i.type === 'radio') {
                 if (i.checked) {
-                    if (i.value === '' && i.type === 'checkbox' || i.value === 'on' || i.value === 'true') {
+                    if ((i.type === 'checkbox' && i.value === '') || isDefaultTruthyInputValue(i.value)) {
                         appendData(data, i.name, true);
                     }
-                    else if (i.value === 'false') {
+                    else if (isDefaultFalsyInputValue(i.value)) {
                         appendData(data, i.name, false);
                     }
                     else if (i.value) {
@@ -320,10 +357,10 @@ function extractFormData(
                     }
                 }
                 else if (i.type === 'checkbox') {
-                    if (i.value === '' || i.value === 'on' || i.value === 'true') {
+                    if (isDefaultTruthyInputValue(i.value)) {
                         appendData(data, i.name, false);
                     }
-                    else if (i.value === 'false') {
+                    else if (isDefaultFalsyInputValue(i.value)) {
                         appendData(data, i.name, true);
                     }
                 }
@@ -341,9 +378,7 @@ function extractFormData(
 
     if (isBrowser && (form instanceof HTMLInputElement || form instanceof HTMLSelectElement || form instanceof HTMLTextAreaElement)) {
         handleInput(form as HTMLInputElement);
-        if (sizeof(data) > 2 * 1024 * 1024) {
-            throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
-        }
+        assertMaxFormDataSize(data);
         return { data, files };
     }
 
@@ -371,9 +406,7 @@ function extractFormData(
                     appendData(data, name, v);
                 }
             }
-            if (sizeof(data) > 2 * 1024 * 1024) {
-                throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
-            }
+            assertMaxFormDataSize(data);
             return { data, files };
         }
         if (isBrowser && hasSubmitEvent && form instanceof SubmitEvent) {
@@ -384,31 +417,21 @@ function extractFormData(
             let selects = form.querySelectorAll('select');
             let textarea = form.querySelectorAll('textarea');
             for (let idx = 0; idx < selects.length; idx++) {
-                let i = selects[idx];
-                if (i.name) {
-                    appendData(data, i.name, i.value);
-                }
+                appendNamedElementValue(data, selects[idx], appendData);
             }
             for (let idx = 0; idx < textarea.length; idx++) {
-                let i = textarea[idx];
-                if (i.name) {
-                    appendData(data, i.name, i.value);
-                }
+                appendNamedElementValue(data, textarea[idx], appendData);
             }
             for (let idx = 0; idx < inputs.length; idx++) {
                 handleInput(inputs[idx]);
             }
 
-            if (sizeof(data) > 2 * 1024 * 1024) {
-                throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
-            }
+            assertMaxFormDataSize(data);
             return { data, files };
         }
     }
 
-    if (sizeof(form) > 2 * 1024 * 1024) {
-        throw new SkapiError('Data should not exceed 2MB', { code: 'INVALID_REQUEST' });
-    }
+    assertMaxFormDataSize(form);
 
     return { data: form, files };
 }
@@ -419,16 +442,10 @@ function parseUserAttributes(attr: { [key: string]: any }) {
     for (let name in attr) {
         let value = attr[name];
 
-        let excludes = ['aud', 'cognito:username', 'event_id', 'exp', 'iat', 'iss', 'jti', 'origin_jti', 'secret_key', 'token_use'];
-        let converts = {
-            auth_time: 'log',
-            sub: 'user_id'
-        }
+        if (USER_ATTRIBUTE_EXCLUDES.includes(name)) continue;
 
-        if (excludes.includes(name)) continue;
-
-        if (converts[name]) {
-            user[converts[name]] = value;
+        if (USER_ATTRIBUTE_CONVERTS[name]) {
+            user[USER_ATTRIBUTE_CONVERTS[name]] = value;
         }
 
         else if (name.includes('custom:')) {
@@ -497,13 +514,7 @@ function decodeServiceId(service) {
         let owner;
 
         try {
-            const regionKeys = [
-                "us31", "us72", "ap51", "ap22", "ap41", "eu71", "ap21", "us32", "us71",
-                "af51", "ap31", "ap43", "ap23", "ap42", "ca01", "eu01", "eu72", "eu51",
-                "eu73", "eu11", "me51", "sa31"
-            ];
-
-            region = regionKeys[fromBase62(idSplit[1][0])];
+            region = SERVICE_REGION_KEYS[fromBase62(idSplit[1][0])];
             owner = idSplit.slice(2).join("-");
         }
         catch (err) {
@@ -522,58 +533,8 @@ function decodeServiceId(service) {
 
 function formatServiceId(serviceId, ownerId) {
     // format service ID
-    const alphabet = [
-        "0",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-        "a",
-        "b",
-        "c",
-        "d",
-        "e",
-        "f",
-        "g",
-        "h",
-        "i",
-        "j",
-        "k",
-        "l",
-    ];
-
-    const regionKeys = [
-        "us31",
-        "us72",
-        "ap51",
-        "ap22",
-        "ap41",
-        "eu71",
-        "ap21",
-        "us32",
-        "us71",
-        "af51",
-        "ap31",
-        "ap43",
-        "ap23",
-        "ap42",
-        "ca01",
-        "eu01",
-        "eu72",
-        "eu51",
-        "eu73",
-        "eu11",
-        "me51",
-        "sa31",
-    ];
-
-    const regionIndex = regionKeys.indexOf(serviceId.slice(0, 4));
-    const regionChar = alphabet[regionIndex];
+    const regionIndex = SERVICE_REGION_KEYS.indexOf(serviceId.slice(0, 4));
+    const regionChar = SERVICE_REGION_ALPHABET[regionIndex];
     const subRegionId = serviceId.slice(4, -4);
 
     let formattedServiceId = `${subRegionId}-${regionChar}${serviceId.slice(-4)}-${ownerId}`;
