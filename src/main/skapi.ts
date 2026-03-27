@@ -34,7 +34,6 @@ import validator from '../utils/validator';
 import {
     getRecords,
     postRecord,
-    bulkPostRecords,
     deleteRecords,
     getTables,
     getIndexes,
@@ -1646,16 +1645,6 @@ export default class Skapi {
         config: PostRecordConfig,
         files?: { name: string, file: File }[]
     ): Promise<RecordData> { return postRecord.bind(this)(params, config, files); }
-
-    /**
-     * Creates or updates a database record in bulk.
-     * @param params Payload for the request and configuration options.
-     * @returns A promise that resolves to Promise<RecordData[] | { code: string; message: string; }>.
-     */
-    @formHandler({ preventMultipleCalls: true })
-    async bulkPostRecords(
-        params: Array<PostRecordConfig & { data?: Record<string, any> }>,
-    ): Promise<RecordData[] | { code: string; message: string; }> { return bulkPostRecords.bind(this)(params); }
     /**
      * Fetches subscriber/subscription relationships with filters and pagination.
      * @param params Request parameters.

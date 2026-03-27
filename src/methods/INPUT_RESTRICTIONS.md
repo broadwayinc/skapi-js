@@ -4,7 +4,6 @@ This document describes the current input validation policy for record upload an
 
 It reflects the field-specific validators used by:
 - `postRecord`
-- `bulkPostRecords`
 - `getRecords`
 
 ## Design Goal
