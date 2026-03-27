@@ -26,18 +26,18 @@ import { accessGroup, indexValue, recordIdOrUniqueId, validateCustomIndexName, v
 const pendingPrivateAccessKeyRequest: Record<string, Promise<string>> = {};
 
 export async function normalizeRecord(record: Record<string, any>, _called_from?): Promise<RecordData> {
-    if (record?.rec) {
-        if (_called_from !== 'called from postRecord') {
-            let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
-            if (recPost) {
-                try {
-                    record = JSON.parse(recPost);
-                }
-                catch (err) { }
-                window.sessionStorage.removeItem(`${this.service}:post:${record.rec}`);
-            }
-        }
-    }
+    // if (record?.rec) {
+    //     if (_called_from !== 'called from postRecord') {
+    //         let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
+    //         if (recPost) {
+    //             try {
+    //                 record = JSON.parse(recPost);
+    //             }
+    //             catch (err) { }
+    //             window.sessionStorage.removeItem(`${this.service}:post:${record.rec}`);
+    //         }
+    //     }
+    // }
 
     const output: Record<string, any> = {
         user_id: '',
@@ -980,7 +980,7 @@ export async function postRecord(
         this.__private_access_key[is_reference_post] = rec.reference_private_key;
     }
 
-    window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
+    // window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
 
     let record = await normalizeRecord.bind(this)(rec, 'called from postRecord');
     if (record.unique_id) {
@@ -1068,16 +1068,16 @@ export async function bulkPostRecords(
         Object.assign(options, { fetchOptions });
     }
 
-    let recList = await request.bind(this)('bulk-records', postData, options);
+    let recList = await request.bind(this)('post-record', postData, options);
     let records = await Promise.all(recList.map((rec: any) => normalizeRecord.bind(this)(rec, 'called from postRecord')));
 
     for (let i = 0; i < recList.length; i++) {
         let rec = recList[i];
         let record = records[i];
 
-        if (rec?.rec) {
-            window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
-        }
+        // if (rec?.rec) {
+        //     window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
+        // }
 
         if (typeof rec?.reference_private_key === 'string') {
             for (let ref of reference_posts) {
