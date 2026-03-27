@@ -12,7 +12,6 @@ import {
     Form,
     PostRecordConfig,
     UserPublic,
-    UserProfilePublicSettings,
     FileInfo,
     RTCEvent,
     RealtimeCallback,
@@ -1013,7 +1012,7 @@ export default class Skapi {
      */
     @formHandler()
     inviteUser(
-        params: { email: string; } & UserAttributes & UserProfilePublicSettings,
+        params: UserAttributes & { openid_id: string; access_group: number; },
         options?: {
             confirmation_url?: string;
             email_subscription?: boolean;
@@ -1033,7 +1032,7 @@ export default class Skapi {
      */
     @formHandler()
     createAccount(
-        params: { email: string; password: string; } & UserAttributes & UserProfilePublicSettings
+        params: UserAttributes & { password: string; access_group: number; }
     ): Promise<UserProfile & { email_admin: string; username: string; }> {
         return createAccount.bind(this)(params);
     }
@@ -1545,7 +1544,7 @@ export default class Skapi {
      */
     @formHandler({ preventMultipleCalls: true })
     signup(
-        params: Form<{ email: String, password: String; username?: string; } & UserAttributes>,
+        params: Form<UserAttributes & { password: String; username?: string; }>,
         option?: {
             /**
              * When true, the service will send out confirmation E-Mail.

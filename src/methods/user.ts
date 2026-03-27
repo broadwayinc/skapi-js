@@ -854,7 +854,7 @@ export async function login(
 }
 
 export async function signup(
-    form: Form<UserAttributes & { email: String; password: String; username?: string; }>,
+    form: Form<UserAttributes & { password: String; username?: string; }>,
     option?: {
         signup_confirmation?: boolean | string;
         email_subscription?: boolean;

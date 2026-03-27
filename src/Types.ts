@@ -238,21 +238,6 @@ export type Newsletter = {
     delivered: number;
 }
 
-export type Newsletters = Newsletter;
-
-export type UserProfilePublicSettings = {
-    /** User's E-Mail is public when true. E-Mail should be verified. */
-    email_public?: boolean;
-    /** User's phone number is public when true. Phone number should be verified. */
-    phone_number_public?: boolean;
-    /** User's address is public when true. */
-    address_public?: boolean;
-    /** User's gender is public when true. */
-    gender_public?: boolean;
-    /** User's birthdate is public when true. */
-    birthdate_public?: boolean;
-}
-
 export type UserAttributes = {
     user_id?: string; // User ID
 
@@ -305,6 +290,17 @@ export type UserAttributes = {
     profile?: string;
     website?: string;
     nickname?: string;
+
+    /** User's E-Mail is public when true. E-Mail should be verified. */
+    email_public?: boolean;
+    /** User's phone number is public when true. Phone number should be verified. */
+    phone_number_public?: boolean;
+    /** User's address is public when true. */
+    address_public?: boolean;
+    /** User's gender is public when true. */
+    gender_public?: boolean;
+    /** User's birthdate is public when true. */
+    birthdate_public?: boolean;
 }
 
 export type UserProfile = {

@@ -24,8 +24,6 @@ export type {
     Connection,
     Form,
     Newsletter,
-    Newsletters,
-    UserProfilePublicSettings,
     UserAttributes,
     UserProfile,
     UserPublic,
