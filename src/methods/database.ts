@@ -26,18 +26,18 @@ import { accessGroup, indexValue, recordIdOrUniqueId, validateCustomIndexName, v
 const pendingPrivateAccessKeyRequest: Record<string, Promise<string>> = {};
 
 export async function normalizeRecord(record: Record<string, any>, _called_from?): Promise<RecordData> {
-    if (record?.rec) {
-        if (_called_from !== 'called from postRecord') {
-            let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
-            if (recPost) {
-                try {
-                    record = JSON.parse(recPost);
-                }
-                catch (err) { }
-                window.sessionStorage.removeItem(`${this.service}:post:${record.rec}`);
-            }
-        }
-    }
+    // if (record?.rec) {
+    //     if (_called_from !== 'called from postRecord') {
+    //         let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
+    //         if (recPost) {
+    //             try {
+    //                 record = JSON.parse(recPost);
+    //             }
+    //             catch (err) { }
+    //             window.sessionStorage.removeItem(`${this.service}:post:${record.rec}`);
+    //         }
+    //     }
+    // }
 
     const output: Record<string, any> = {
         user_id: '',
@@ -551,26 +551,27 @@ async function getQuery(query, isDel = false) {
     else {
         let isAdmin = await checkAdmin.bind(this)();
         let ref: any = query?.reference;
-        let ref_user = '';
+        let ref_user_is_me = false;
 
-        if (ref?.record_id || ref?.unique_id) {
-            // if (ref?.record_id) {
-            // if (ref.unique_id && this.__my_unique_ids[ref.unique_id]) {
-            //     ref.record_id = this.__my_unique_ids[ref.unique_id];
-            //     delete ref.unique_id;
-            // }
+        if (typeof ref === 'object' && Object.keys(ref).length) {
+            if (ref?.record_id || ref?.unique_id) {
+                // if (ref.unique_id && this.__my_unique_ids[ref.unique_id]) {
+                //     ref.record_id = this.__my_unique_ids[ref.unique_id];
+                //     delete ref.unique_id;
+                // }
 
-            is_reference_fetch = ref.record_id || ref.unique_id;
+                is_reference_fetch = ref.record_id || ref.unique_id;
 
-            if (is_reference_fetch && typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
-                query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+                if (is_reference_fetch && typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
+                    query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+                }
+
+                query.reference = is_reference_fetch;
             }
-
-            query.reference = is_reference_fetch;
-        }
-        else if (ref?.user_id) {
-            ref_user = ref.user_id;
-            query.reference = ref_user;
+            else if (ref?.user_id) {
+                ref_user_is_me = ref.user_id === this.user?.user_id;
+                query.reference = ref.user_id;
+            }
         }
 
         if (typeof query?.table === 'string') {
@@ -579,6 +580,7 @@ async function getQuery(query, isDel = false) {
                 access_group: 0
             };
         }
+
         if (query.index) {
             if (query.index.hasOwnProperty('range') && query.index.hasOwnProperty('condition')) {
                 delete query.index.range;
@@ -643,7 +645,7 @@ async function getQuery(query, isDel = false) {
             }
         }
 
-        query = validator.Params(query || {}, buildStruct(query), ref_user || isAdmin ? [] : ['table'], { ignoreEmpty: true });
+        query = validator.Params(query || {}, buildStruct(query), ref_user_is_me || isAdmin ? [] : ['table'], { ignoreEmpty: true });
     }
     return {
         query,
@@ -689,17 +691,10 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
     let is_reference_post = "";
     let files = [];
     let _config = validator.Params(config || {}, {
-        record_id: (v) => {
-            if (!v && !config.table) {
-                throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
-            }
-            if (v) {
-                return validateStringByPolicy(v, 'record_id', {
-                    allowEmpty: false,
-                    onlyAlphanumeric: true,
-                });
-            }
-        },
+        record_id: (v) => validateStringByPolicy(v, 'record_id', {
+            allowEmpty: false,
+            onlyAlphanumeric: true,
+        }),
         unique_id: 'string',
         readonly: 'boolean',
         table: {
@@ -794,6 +789,7 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
                 }
                 return v;
             }
+
             if (typeof v !== 'object') {
                 throw new SkapiError('"reference" should be type: <string | object>.', { code: 'INVALID_PARAMETER' });
             }
@@ -862,6 +858,19 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
         data: v => v
     }, [], {
         precall: (pc) => {
+            const data = pc?.data || {};
+
+            if (!data?.record_id && !data.table) {
+                throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
+            }
+
+            if (typeof data.table === 'string') {
+                data.table = {
+                    name: data.table,
+                    access_group: 0
+                };
+            }
+
             if (pc.files) {
                 files = pc.files;
             }
@@ -971,7 +980,7 @@ export async function postRecord(
         this.__private_access_key[is_reference_post] = rec.reference_private_key;
     }
 
-    window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
+    // window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
 
     let record = await normalizeRecord.bind(this)(rec, 'called from postRecord');
     if (record.unique_id) {
@@ -1059,16 +1068,16 @@ export async function bulkPostRecords(
         Object.assign(options, { fetchOptions });
     }
 
-    let recList = await request.bind(this)('bulk-records', postData, options);
+    let recList = await request.bind(this)('post-record', postData, options);
     let records = await Promise.all(recList.map((rec: any) => normalizeRecord.bind(this)(rec, 'called from postRecord')));
 
     for (let i = 0; i < recList.length; i++) {
         let rec = recList[i];
         let record = records[i];
 
-        if (rec?.rec) {
-            window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
-        }
+        // if (rec?.rec) {
+        //     window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
+        // }
 
         if (typeof rec?.reference_private_key === 'string') {
             for (let ref of reference_posts) {

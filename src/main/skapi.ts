@@ -145,7 +145,8 @@ import {
 import {
     spellcast, dopamine, getspell
 } from '../methods/vivian';
-import packageJson from '../../package.json';
+
+declare const __SKAPI_VERSION__: string;
 
 type Options = {
     autoLogin: boolean;
@@ -164,7 +165,7 @@ type Options = {
 
 export default class Skapi {
     // current version
-    private __version = packageJson.version;
+    private __version = __SKAPI_VERSION__;
     service: string;
     owner: string;
     session: Record<string, any> | null = null;

@@ -3,9 +3,9 @@
 This document describes the current input validation policy for record upload and fetch APIs.
 
 It reflects the field-specific validators used by:
-- `post_record`
-- `bulk_post`
-- `get_records`
+- `postRecord`
+- `bulkPostRecords`
+- `getRecords`
 
 ## Design Goal
 
@@ -26,7 +26,7 @@ Control characters are blocked for all validated string fields.
 |---|---:|---:|---|---|
 | `table.name` | 128 | No | `/ ! * #` + control chars + `􏿿` | Used as key segment in composite keys. |
 | `tags[]` item | 64 | No | `/ ! * #` + control chars + `􏿿` | Used in tag anchor key patterns. |
-| `tag` (get_records filter) | 64 | No | `/ ! * #` + control chars + `􏿿` | Same constraints as upload tags. |
+| `tag` (getRecords filter) | 64 | No | `/ ! * #` + control chars + `􏿿` | Same constraints as upload tags. |
 | `index.name` (custom) | 128 | No | `/ ! * #` + control chars + `􏿿` | Also cannot start with `$` (reserved namespace). |
 | `index.name` (reserved) | N/A | N/A | N/A | Allowed values: `$uploaded`, `$updated`, `$referenced_count`, `$user_id`. |
 | `index.value` (string) | 256 | Yes | control chars + `􏿿` | Much looser: punctuation such as `%`, `/`, `!`, `*`, `#` is allowed for string values. |
@@ -57,13 +57,3 @@ Control characters are blocked for all validated string fields.
 - `index.name` (custom): `$custom` (reserved `$` prefix)
 - Any validated string containing control characters
 - Any validated string containing sentinel `􏿿`
-
-## Implementation Reference
-
-Validators are implemented in:
-- `eu-west-1/layer/database_interface/python/database_interface.py`
-
-And used in:
-- `eu-west-1/record/record/post_record/index.py`
-- `eu-west-1/record/record/bulk_post/index.py`
-- `eu-west-1/record/record/get_records/index.py`
