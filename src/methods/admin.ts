@@ -112,7 +112,7 @@ export async function inviteUser(
             subject: string;
         }
     }
-): Promise<'SUCCESS: Invitation has been sent.'> {
+): Promise<'SUCCESS: Invitation has been sent. (User ID: xxx...)'> {
     let paramRestrictions = {
         email: (v: string) => validator.Email(v),
         password: (v: string) => validator.Password(v),
@@ -207,7 +207,7 @@ export async function inviteUser(
     params.signup_confirmation = options?.confirmation_url || true;
     params.email_subscription = options?.email_subscription || false;
     params.template = options?.template || {};
-    
+
     let isAdmin = await checkAdmin.bind(this)();
 
     if (!isAdmin) {

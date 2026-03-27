@@ -92,7 +92,7 @@ export type PostRecordConfig = {
     /** Table name not required when "record_id" is given.*/
     table?: {
         /** Max 128 chars. Blocks: / ! * #, control chars, and sentinel 􏿿. */
-        name: string;
+        name?: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
 
@@ -239,8 +239,6 @@ export type Newsletter = {
 }
 
 export type UserAttributes = {
-    user_id?: string; // User ID
-
     /** User's name */
     name?: string;
     /**

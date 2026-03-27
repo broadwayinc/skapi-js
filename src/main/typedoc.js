@@ -37,6 +37,11 @@ function sanitizeFileName(name) {
 	return name.replace(/[^A-Za-z0-9_$.-]/g, '_');
 }
 
+function resetOutputDir(dirPath) {
+	fs.rmSync(dirPath, { recursive: true, force: true });
+	fs.mkdirSync(dirPath, { recursive: true });
+}
+
 function getNameText(nameNode) {
 	if (!nameNode) {
 		return null;
@@ -287,7 +292,7 @@ function main() {
 		fail('Could not find class Skapi in skapi.ts.');
 	}
 
-	fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+	resetOutputDir(OUTPUT_DIR);
 
 	const methods = skapiClass.members.filter(member => {
 		if (!ts.isMethodDeclaration(member)) {
