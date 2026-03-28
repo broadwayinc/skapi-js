@@ -377,7 +377,7 @@ export async function getFile(
 
     let service = subdomain ? null : target_key[1];
 
-    config = validator.Params(config, {
+    config = validator.Params<NonNullable<typeof config>>(config, {
         expires: ['number', () => 0],
         dataType: ['base64', 'blob', 'endpoint', 'text', 'info', () => 'download'],
         progress: 'function',
@@ -590,7 +590,7 @@ async function getQuery(query, isDel = false) {
         const buildStruct = (query) => {
             return {
                 table: {
-                    name: [v => validateTableName(v, 'table.name')],
+                    name: v => validateTableName(v, 'table.name'),
                     access_group: accessGroup.bind(this),
                     subscription: (v: any) => validator.UserId(v, 'User ID in "subscription"')
                 },

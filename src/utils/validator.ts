@@ -151,8 +151,8 @@ function Url(url: string | string[]) {
     }
 }
 
-function Params(
-    params: any,
+function Params<T = any>(
+    params: T,
     struct: Record<string, any>,
     required: string[] = [],
     options?: {
@@ -160,7 +160,7 @@ function Params(
         nullIfEmpty?: boolean;
         precall?: (pre: { data: any, files: any }) => void
     }
-): any {
+): T {
     // struct = {
     //     a: 'type or value',
     //     b: ['number', 'boolean', 'string', 'array', 'function', 'custom value', () => 'default value when none match, or is missing'],
@@ -197,7 +197,7 @@ function Params(
     }
 
     try {
-        return cocochex(toCheck, struct, required);
+        return cocochex(toCheck, struct, required) as T;
     }
     catch (err: any) {
         throw new SkapiError(err.message, { code: 'INVALID_PARAMETER' });
