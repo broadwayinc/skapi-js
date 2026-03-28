@@ -7,18 +7,6 @@ const packageJson = JSON.parse(readFileSync(path.resolve(__dirname, 'package.jso
 const banner = `/**\n * @license\n${license}\n */`;
 const browserShim = path.resolve(__dirname, 'src/shims/empty-node.ts');
 const externalDependencies = ['amazon-cognito-identity-js', 'cocochex', 'qpass'];
-const sharedTsCompilerOptions = {
-    target: 'ES2020',
-    module: 'ES2020',
-    moduleResolution: 'node',
-    experimentalDecorators: true,
-    esModuleInterop: true,
-    strict: true,
-    noImplicitAny: false,
-    strictNullChecks: false,
-    noImplicitThis: false,
-    skipLibCheck: true
-};
 
 export default defineConfig([
     {
@@ -56,11 +44,6 @@ export default defineConfig([
         },
         define: {
             __SKAPI_VERSION__: JSON.stringify(packageJson.version)
-        },
-        esbuildOptions(options) {
-            options.tsconfigRaw = {
-                compilerOptions: sharedTsCompilerOptions
-            };
         }
     },
     {
@@ -91,9 +74,6 @@ export default defineConfig([
             __SKAPI_VERSION__: JSON.stringify(packageJson.version)
         },
         esbuildOptions(options) {
-            options.tsconfigRaw = {
-                compilerOptions: sharedTsCompilerOptions
-            };
             options.alias = {
                 ...(options.alias || {}),
                 fs: browserShim,
