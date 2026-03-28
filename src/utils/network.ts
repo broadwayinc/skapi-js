@@ -7,7 +7,7 @@ import { MD5, generateRandom, extractFormData, isBrowserRuntime } from './utils'
 import { getJwtToken } from '../methods/user';
 import Qpass from "qpass";
 
-let queue = null;
+let requestQueue = null;
 const hasSubmitEvent = typeof SubmitEvent !== 'undefined';
 const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
 const isBrowser = isBrowserRuntime();
@@ -185,9 +185,9 @@ async function getEndpoint(dest: string, auth: boolean) {
 const __pendingRequest: Record<string, Promise<any>> = {};
 
 export function terminatePendingRequests() {
-    if (queue) {
-        queue.terminate();
-        queue = null;
+    if (requestQueue) {
+        requestQueue.terminate();
+        requestQueue = null;
     }
 }
 
@@ -417,7 +417,7 @@ export async function request(
 
     opt.method = method;
 
-    if (queue === null) {
+    if (requestQueue === null) {
         let config = {
             batchSize: this.requestBatchSize,
             breakWhenError: false,
@@ -429,13 +429,13 @@ export async function request(
             }
         };
 
-        queue = new Qpass(config);
+        requestQueue = new Qpass(config);
     }
 
     this.log('request-opt', opt);
 
     return new Promise((res, rej) => {
-        queue.add([async () => {
+        requestQueue.add([async () => {
             let promise = _fetch.bind(this)(endpoint, opt, progress);
             __pendingRequest[requestKeyWithStartKey as string] = promise;
 
@@ -834,69 +834,55 @@ export async function uploadFiles(
         return result;
     }
 
-    if (queue === null) {
-        queue = new Qpass({
-            batchSize: this.requestBatchSize,
-            breakWhenError: false
-        });
+    let completed = [];
+    let failed = [];
+    let bin_endpoints = [];
+
+    for (let [key, f] of (fileList as any).entries()) {
+        if (!(f instanceof File)) {
+            continue;
+        }
+
+        let signedParams = Object.assign({
+            key: key + '/' + f.name,
+            sizeKey: toBase62(f.size),
+            contentType: f.type || null
+        }, getSignedParams);
+
+        let { fields = null, url, cdn } = await request.bind(this)('get-signed-url', signedParams, { auth: !!this.__user });
+        bin_endpoints.push(cdn);
+        
+        let form = new FormData();
+        for (let name in fields) {
+            form.append(name, fields[name]);
+        }
+
+        form.append('file', f);
+
+        try {
+            await fetchProgress(
+                url,
+                form,
+                typeof progress === 'function' ? (p: ProgressEvent) => progress(
+                    {
+                        status: 'upload',
+                        progress: toPercent(p.loaded, p.total),
+                        currentFile: f,
+                        completed,
+                        failed,
+                        loaded: p.loaded,
+                        total: p.total,
+                        abort: () => xhr.abort()
+                    }
+                ) : null
+            );
+            completed.push(f);
+        } catch (err) {
+            failed.push(f);
+        }
     }
 
-    return new Promise((res, rej) => {
-        queue.add([async () => {
-            let completed = [];
-            let failed = [];
-            let bin_endpoints = [];
-
-            for (let [key, f] of (fileList as any).entries()) {
-                if (!(f instanceof File)) {
-                    continue;
-                }
-
-                let signedParams = Object.assign({
-                    key: key + '/' + f.name,
-                    sizeKey: toBase62(f.size),
-                    contentType: f.type || null
-                }, getSignedParams);
-
-                let { fields = null, url, cdn } = await request.bind(this)('get-signed-url', signedParams, { auth: !!this.__user });
-
-                bin_endpoints.push(cdn);
-
-                let form = new FormData();
-
-                for (let name in fields) {
-                    form.append(name, fields[name]);
-                }
-
-                form.append('file', f);
-
-                try {
-                    await fetchProgress(
-                        url,
-                        form,
-                        typeof progress === 'function' ? (p: ProgressEvent) => progress(
-                            {
-                                status: 'upload',
-                                progress: toPercent(p.loaded, p.total),
-                                currentFile: f,
-                                completed,
-                                failed,
-                                loaded: p.loaded,
-                                total: p.total,
-                                abort: () => xhr.abort()
-                            }
-                        ) : null
-                    );
-                    completed.push(f);
-                } catch (err) {
-                    failed.push(f);
-                }
-            }
-
-            res({ completed, failed, bin_endpoints });
-            return { completed, failed, bin_endpoints };
-        }]);
-    });
+    return { completed, failed, bin_endpoints };
 }
 
 const pendPromise: Record<string, Promise<any> | null> = {};

@@ -38,7 +38,6 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
     //         }
     //     }
     // }
-
     const output: Record<string, any> = {
         user_id: '',
         record_id: '',
@@ -182,7 +181,14 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                         let access_group = access_group_set(splitPath[6]);
                         let url_endpoint = url;
                         if (access_group !== 'public') {
-                            url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint', _ref }) as string);
+                            try {
+                                url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint', _ref }) as string);
+                            }
+                            catch(err) {
+                                console.error('Error getting signed url for private file:', err);
+                                // Keep the original CDN URL when signed endpoint resolution is unavailable.
+                                url_endpoint = url;
+                            }
                         }
 
                         let obj = {
@@ -381,7 +387,7 @@ export async function getFile(
         expires: ['number', () => 0],
         dataType: ['base64', 'blob', 'endpoint', 'text', 'info', () => 'download'],
         progress: 'function',
-        _ref: 'string',
+        _ref: [null, 'string'],
         _update: v => v
     });
 
@@ -930,7 +936,6 @@ export async function postRecord(
 
     let to_bin: { name: string, file: File }[] = [];
     let extractedForm = extractFormData(form);
-
     if (files && Array.isArray(files) && files.length) {
         // { name: string, file: File }[]
         to_bin = to_bin.concat(files);
@@ -952,9 +957,7 @@ export async function postRecord(
     if (Object.keys(fetchOptions).length) {
         Object.assign(options, { fetchOptions });
     }
-
     let rec = await request.bind(this)('post-record', postData, options);
-
     if (isBrowserRuntime() && to_bin.length) {
         let bin_formData = new FormData();
         for (let f of to_bin) {
@@ -985,7 +988,9 @@ export async function postRecord(
     let record = await normalizeRecord.bind(this)(rec, 'called from postRecord');
     if (record.unique_id) {
         this.__my_unique_ids[record.unique_id] = record.record_id;
-        window.sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids));
+        if (isBrowserRuntime()) {
+            window.sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids));
+        }
     }
 
     return record;
