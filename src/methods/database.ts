@@ -184,7 +184,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                             try {
                                 url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint', _ref }) as string);
                             }
-                            catch(err) {
+                            catch (err) {
                                 console.error('Error getting signed url for private file:', err);
                                 // Keep the original CDN URL when signed endpoint resolution is unavailable.
                                 url_endpoint = url;
@@ -915,6 +915,113 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
     }
     return { config: _config, progress, is_reference_post, files };
 }
+
+export async function bulkPostRecords(params) {
+    await this.__connection;
+
+    if (!Array.isArray(params) || !params.length) {
+        throw new SkapiError('"params" should be a non-empty array.', { code: 'INVALID_PARAMETER' });
+    }
+
+    let is_public = !this.__user;
+    let reference_posts = [];
+    let service = undefined;
+    let owner = undefined;
+    let progress = null;
+
+    let validatedBulk = params.map((config, idx) => {
+        if (!config || typeof config !== 'object' || Array.isArray(config)) {
+            throw new SkapiError(`"params[${idx}]" should be type: <object>.`, { code: 'INVALID_PARAMETER' });
+        }
+
+        let mangled = setupPostRecordConfig.bind(this)(config) as {config: PostRecordConfig & { service?: string; owner?: string;  }; is_reference_post?: string;};
+        let _config = mangled.config;
+        if (mangled.is_reference_post) {
+            reference_posts.push(mangled.is_reference_post);
+        }
+        if (typeof _config.progress === 'function' && progress === null) {
+            progress = _config.progress;
+        }
+
+        if (_config.service !== undefined) {
+            if (service === undefined) {
+                service = _config.service;
+            }
+            else if (service !== _config.service) {
+                throw new SkapiError('All bulk params should share the same "service" value.', { code: 'INVALID_PARAMETER' });
+            }
+        }
+
+        if (_config.owner !== undefined) {
+            if (owner === undefined) {
+                owner = _config.owner;
+            }
+            else if (owner !== _config.owner) {
+                throw new SkapiError('All bulk params should share the same "owner" value.', { code: 'INVALID_PARAMETER' });
+            }
+        }
+
+        delete _config.progress;
+        delete _config.service;
+        delete _config.owner;
+
+        return _config;
+    });
+
+    let postData = {
+        _is_bulk_: validatedBulk,
+        service: "",
+        owner: ""
+    };
+
+    if (service !== undefined) {
+        postData.service = service;
+    }
+
+    if (owner !== undefined) {
+        postData.owner = owner;
+    }
+
+    let options = { auth: !!this.__user, method: 'post' };
+    let fetchOptions = {};
+
+    // if (typeof progress === 'function') {
+    //     fetchOptions.progress = progress;
+    // }
+
+    if (Object.keys(fetchOptions).length) {
+        Object.assign(options, { fetchOptions });
+    }
+
+    let recList = await request.bind(this)('post-record', postData, options);
+    let records = await Promise.all(recList.map((rec) => normalizeRecord.bind(this)(rec, 'called from postRecord')));
+
+    for (let i = 0; i < recList.length; i++) {
+        let rec = recList[i];
+        let record = records[i];
+
+        // if (rec?.rec) {
+        //     window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
+        // }
+
+        if (typeof rec?.reference_private_key === 'string') {
+            for (let ref of reference_posts) {
+                this.__private_access_key[ref] = rec.reference_private_key;
+            }
+        }
+
+        if (record?.unique_id) {
+            this.__my_unique_ids[record.unique_id] = record.record_id;
+        }
+    }
+
+    // if (Object.keys(this.__my_unique_ids).length) {
+    //     window.sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids));
+    // }
+
+    return records;
+}
+
 
 export async function postRecord(
     form: Form<Record<string, any>> | null | undefined,

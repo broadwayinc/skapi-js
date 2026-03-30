@@ -43,7 +43,8 @@ import {
     listPrivateRecordAccess,
     requestPrivateRecordAccessKey,
     deleteFiles,
-    getUniqueId
+    getUniqueId,
+    bulkPostRecords
 } from '../methods/database';
 import {
     connectRealtime,
@@ -1714,5 +1715,9 @@ export default class Skapi {
         }>
     ): Promise<string> {
         return subscribeNewsletter.bind(this)(params);
+    }
+
+    bulkPostRecords(config: PostRecordConfig): Promise<RecordData[]> {
+        return bulkPostRecords.bind(this)(config);
     }
 }
