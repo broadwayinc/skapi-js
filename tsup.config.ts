@@ -50,7 +50,7 @@ export default defineConfig([
         entry: {
             skapi: 'src/browser.ts'
         },
-        format: ['iife'],
+        format: ['esm', 'iife'],
         platform: 'browser',
         globalName: '__SKAPI_BUNDLE__',
         dts: false,
@@ -62,16 +62,17 @@ export default defineConfig([
         outDir: 'dist',
         treeshake: true,
         noExternal: externalDependencies,
-        outExtension() {
+        outExtension({ format }) {
             return {
-                js: '.js'
+                js: format === 'esm' ? '.browser.mjs' : '.js'
             };
         },
         banner: {
             js: banner
         },
         define: {
-            __SKAPI_VERSION__: JSON.stringify(packageJson.version)
+            __SKAPI_VERSION__: JSON.stringify(packageJson.version),
+            global: 'globalThis'
         },
         esbuildOptions(options) {
             options.alias = {

@@ -1,9 +1,9 @@
 {
   "name": "skapi-js",
-  "version": "1.5.0-beta.8",
+  "version": "1.5.0-beta.9",
   "description": "Serverless Backend API for AI Agents.",
   "main": "dist/skapi.cjs",
-  "browser": "dist/skapi.mjs",
+  "browser": "dist/skapi.browser.mjs",
   "module": "dist/skapi.mjs",
   "unpkg": "dist/skapi.js",
   "jsdelivr": "dist/skapi.js",
@@ -11,7 +11,7 @@
   "exports": {
     ".": {
       "types": "./dist/skapi.d.ts",
-      "browser": "./dist/skapi.mjs",
+      "browser": "./dist/skapi.browser.mjs",
       "import": "./dist/skapi.mjs",
       "require": "./dist/skapi.cjs",
       "default": "./dist/skapi.cjs"
