@@ -18,6 +18,83 @@ const SERVICE_REGION_KEYS = [
     'eu73', 'eu11', 'me51', 'sa31'
 ];
 
+const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
+
+function getGlobalBuffer() {
+    if (typeof globalThis !== 'undefined') {
+        return (globalThis as any).Buffer;
+    }
+    return undefined;
+}
+
+function encodeUtf8(value: string): Uint8Array {
+    if (textEncoder) {
+        return textEncoder.encode(value);
+    }
+
+    const binary = unescape(encodeURIComponent(value));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+}
+
+function decodeUtf8(bytes: Uint8Array): string {
+    if (textDecoder) {
+        return textDecoder.decode(bytes);
+    }
+
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return decodeURIComponent(escape(binary));
+}
+
+function toUint8Array(input: any): Uint8Array {
+    if (input instanceof Uint8Array) {
+        return input;
+    }
+    if (typeof input === 'string') {
+        return encodeUtf8(input);
+    }
+    if (typeof ArrayBuffer !== 'undefined' && input instanceof ArrayBuffer) {
+        return new Uint8Array(input);
+    }
+    if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(input)) {
+        return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+    }
+    if (Array.isArray(input)) {
+        return Uint8Array.from(input);
+    }
+
+    const BufferCtor = getGlobalBuffer();
+    if (BufferCtor) {
+        return new Uint8Array(BufferCtor.from(input));
+    }
+
+    throw new Error('No byte conversion available in this environment.');
+}
+
+function concatUint8Arrays(parts: Uint8Array[]): Uint8Array {
+    let length = 0;
+    for (const part of parts) {
+        length += part.length;
+    }
+
+    const output = new Uint8Array(length);
+    let offset = 0;
+
+    for (const part of parts) {
+        output.set(part, offset);
+        offset += part.length;
+    }
+
+    return output;
+}
+
 class MD5 {
     private static readonly alphabet = '0123456789abcdef';
 
@@ -582,7 +659,7 @@ function bigIntToB62(value, minLength = 1) {
 
 function bigIntToBytes(value) {
     if (value === 0n) {
-        return Buffer.from([0]);
+        return Uint8Array.from([0]);
     }
 
     const bytes = [];
@@ -594,7 +671,7 @@ function bigIntToBytes(value) {
     }
 
     bytes.reverse();
-    return Buffer.from(bytes);
+    return Uint8Array.from(bytes);
 }
 
 function bytesToBigInt(buf) {
@@ -614,11 +691,16 @@ function uuidToBytes(uuid) {
         throw new Error('INVALID_PARAMETER: Invalid UUID format.');
     }
 
-    return Buffer.from(hex, 'hex');
+    const bytes = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+        bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    }
+
+    return bytes;
 }
 
 function bytesToUuid(buf16) {
-    const hex = Buffer.from(buf16).toString('hex');
+    const hex = Array.from(toUint8Array(buf16), b => b.toString(16).padStart(2, '0')).join('');
     return [
         hex.slice(0, 8),
         hex.slice(8, 12),
@@ -629,12 +711,14 @@ function bytesToUuid(buf16) {
 }
 
 function toBase64Url(input) {
-    if (Buffer) {
-        return Buffer.from(input).toString('base64');
+    const bytes = toUint8Array(input);
+    const BufferCtor = getGlobalBuffer();
+
+    if (BufferCtor) {
+        return BufferCtor.from(bytes).toString('base64');
     }
 
     let binary = '';
-    const bytes = new Uint8Array(input);
     const chunk = 0x8000;
 
     for (let i = 0; i < bytes.length; i += chunk) {
@@ -652,10 +736,26 @@ function toBase64Url(input) {
 function fromBase64Url(str, parseJson = false) {
     const base64 = String(str).replace(/-/g, '+').replace(/_/g, '/');
     const padding = base64.length % 4 ? '='.repeat(4 - (base64.length % 4)) : '';
-    const decoded = Buffer.from(base64 + padding, 'base64');
+    const BufferCtor = getGlobalBuffer();
+
+    let decoded: Uint8Array;
+
+    if (BufferCtor) {
+        decoded = new Uint8Array(BufferCtor.from(base64 + padding, 'base64'));
+    }
+    else if (typeof atob === 'function') {
+        const binary = atob(base64 + padding);
+        decoded = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            decoded[i] = binary.charCodeAt(i);
+        }
+    }
+    else {
+        throw new Error('No base64 decoder available in this environment.');
+    }
 
     if (parseJson) {
-        return JSON.parse(decoded.toString('utf8'));
+        return JSON.parse(decodeUtf8(decoded));
     }
 
     return decoded;
@@ -685,8 +785,8 @@ function compressCompoundId(input) {
         throw new Error('INVALID_PARAMETER: Input parts are too long to encode.');
     }
 
-    const payload = Buffer.concat([
-        Buffer.from([1, firstPart.length, secondPart.length, firstBytes.length, secondBytes.length]),
+    const payload = concatUint8Arrays([
+        Uint8Array.from([1, firstPart.length, secondPart.length, firstBytes.length, secondBytes.length]),
         firstBytes,
         secondBytes,
         uuidBytes
