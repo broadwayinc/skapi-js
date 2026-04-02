@@ -19,7 +19,6 @@ const SERVICE_REGION_KEYS = [
 ];
 
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
-const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
 
 function getGlobalBuffer() {
     if (typeof globalThis !== 'undefined') {
@@ -39,18 +38,6 @@ function encodeUtf8(value: string): Uint8Array {
         bytes[i] = binary.charCodeAt(i);
     }
     return bytes;
-}
-
-function decodeUtf8(bytes: Uint8Array): string {
-    if (textDecoder) {
-        return textDecoder.decode(bytes);
-    }
-
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return decodeURIComponent(escape(binary));
 }
 
 function toUint8Array(input: any): Uint8Array {
@@ -76,23 +63,6 @@ function toUint8Array(input: any): Uint8Array {
     }
 
     throw new Error('No byte conversion available in this environment.');
-}
-
-function concatUint8Arrays(parts: Uint8Array[]): Uint8Array {
-    let length = 0;
-    for (const part of parts) {
-        length += part.length;
-    }
-
-    const output = new Uint8Array(length);
-    let offset = 0;
-
-    for (const part of parts) {
-        output.set(part, offset);
-        offset += part.length;
-    }
-
-    return output;
 }
 
 class MD5 {
@@ -710,59 +680,15 @@ function bytesToUuid(buf16) {
     ].join('-');
 }
 
-function toBase64Url(input) {
-    const bytes = toUint8Array(input);
-    const BufferCtor = getGlobalBuffer();
-
-    if (BufferCtor) {
-        return BufferCtor.from(bytes).toString('base64');
-    }
-
-    let binary = '';
-    const chunk = 0x8000;
-
-    for (let i = 0; i < bytes.length; i += chunk) {
-        const slice = bytes.subarray(i, i + chunk);
-        binary += String.fromCharCode.apply(null, Array.from(slice));
-    }
-
-    if (typeof btoa === 'function') {
-        return btoa(binary);
-    }
-
-    throw new Error('No base64 encoder available in this environment.');
-}
-
-function fromBase64Url(str, parseJson = false) {
-    const base64 = String(str).replace(/-/g, '+').replace(/_/g, '/');
-    const padding = base64.length % 4 ? '='.repeat(4 - (base64.length % 4)) : '';
-    const BufferCtor = getGlobalBuffer();
-
-    let decoded: Uint8Array;
-
-    if (BufferCtor) {
-        decoded = new Uint8Array(BufferCtor.from(base64 + padding, 'base64'));
-    }
-    else if (typeof atob === 'function') {
-        const binary = atob(base64 + padding);
-        decoded = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-            decoded[i] = binary.charCodeAt(i);
-        }
-    }
-    else {
-        throw new Error('No base64 decoder available in this environment.');
-    }
-
-    if (parseJson) {
-        return JSON.parse(decodeUtf8(decoded));
-    }
-
-    return decoded;
-}
 
 function compressCompoundId(input) {
-    const match = String(input).match(/^([0-9A-Za-z]+)-([0-9A-Za-z]+)-([0-9a-fA-F-]{36})$/);
+    const inputString = String(input);
+
+    if (inputString.split('-').length === 2) {
+        return inputString;
+    }
+
+    const match = inputString.match(/^([0-9A-Za-z]+)-([0-9A-Za-z]+)-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/);
 
     if (!match) {
         throw new Error('INVALID_PARAMETER: Input must match <base62>-<base62>-<uuid>.');
@@ -770,69 +696,75 @@ function compressCompoundId(input) {
 
     const [, firstPart, secondPart, uuid] = match;
 
-    const firstValue = b62ToBigInt(firstPart);
-    const secondValue = b62ToBigInt(secondPart);
-    const firstBytes = bigIntToBytes(firstValue);
-    const secondBytes = bigIntToBytes(secondValue);
-    const uuidBytes = uuidToBytes(uuid);
-
-    if (
-        firstPart.length > 255 ||
-        secondPart.length > 255 ||
-        firstBytes.length > 255 ||
-        secondBytes.length > 255
-    ) {
-        throw new Error('INVALID_PARAMETER: Input parts are too long to encode.');
+    if (firstPart.length < 2) {
+        throw new Error('INVALID_PARAMETER: The first part must contain at least 2 characters.');
     }
 
-    const payload = concatUint8Arrays([
-        Uint8Array.from([1, firstPart.length, secondPart.length, firstBytes.length, secondBytes.length]),
-        firstBytes,
-        secondBytes,
-        uuidBytes
-    ]);
+    if (secondPart.length >= BASE62_ALPHABET.length) {
+        throw new Error('INVALID_PARAMETER: The middle section is too long to encode.');
+    }
 
-    const encodedPayload = toBase64Url(payload)
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/g, '');
+    const movedPrefix = firstPart.slice(0, 2);
+    const movedFirstPart = firstPart.slice(2);
+    const movedMiddlePart = secondPart + movedPrefix;
 
-    return `s1_${encodedPayload}`;
+    // Part1 token format: [secondPartLength(base62:1char)][movedFirstPart][movedMiddlePart]
+    const part1 = BASE62_ALPHABET[secondPart.length] + movedFirstPart + movedMiddlePart;
+
+    const uuidBytes = uuidToBytes(uuid);
+    const part2 = bigIntToB62(bytesToBigInt(uuidBytes));
+
+    return `${part1}-${part2}`;
 }
 
 function decompressCompoundId(token) {
     const tokenString = String(token);
 
-    if (!tokenString.startsWith('s1_')) {
+    if (tokenString.split('-').length !== 2) {
         return tokenString;
     }
 
-    const payload = fromBase64Url(tokenString.slice(3));
-    if (payload.length < 21) {
+    const split = tokenString.split('-');
+
+    if (split.length !== 2 || !split[0] || !split[1]) {
         throw new Error('INVALID_PARAMETER: Corrupt compressed token.');
     }
 
-    const version = payload[0];
-    if (version !== 1) {
-        throw new Error(`INVALID_PARAMETER: Unsupported token version: ${version}`);
+    const [part1, part2] = split;
+    const secondLength = BASE62_ALPHABET.indexOf(part1[0]);
+
+    if (secondLength < 0) {
+        throw new Error('INVALID_PARAMETER: Corrupt compressed token.');
     }
 
-    const firstLength = payload[1];
-    const secondLength = payload[2];
-    const firstBytesLength = payload[3];
-    const secondBytesLength = payload[4];
+    const compacted = part1.slice(1);
+    const movedMiddleLength = secondLength + 2;
 
-    const firstStart = 5;
-    const secondStart = firstStart + firstBytesLength;
-    const uuidStart = secondStart + secondBytesLength;
-
-    if (payload.length !== uuidStart + 16) {
-        throw new Error('INVALID_PARAMETER: Corrupt compressed token length.');
+    if (compacted.length < movedMiddleLength) {
+        throw new Error('INVALID_PARAMETER: Corrupt compressed token.');
     }
 
-    const firstPart = bigIntToB62(bytesToBigInt(payload.subarray(firstStart, secondStart)), firstLength);
-    const secondPart = bigIntToB62(bytesToBigInt(payload.subarray(secondStart, uuidStart)), secondLength);
-    const uuid = bytesToUuid(payload.subarray(uuidStart, uuidStart + 16));
+    const movedFirstPart = compacted.slice(0, compacted.length - movedMiddleLength);
+    const movedMiddlePart = compacted.slice(compacted.length - movedMiddleLength);
+
+    const movedPrefix = movedMiddlePart.slice(secondLength);
+    const secondPart = movedMiddlePart.slice(0, secondLength);
+    const firstPart = movedPrefix + movedFirstPart;
+
+    if (!/^[0-9A-Za-z]+$/.test(firstPart) || !/^[0-9A-Za-z]+$/.test(secondPart)) {
+        throw new Error('INVALID_PARAMETER: Corrupt compressed token.');
+    }
+
+    const uuidValue = b62ToBigInt(part2);
+    const uuidRaw = bigIntToBytes(uuidValue);
+
+    if (uuidRaw.length > 16) {
+        throw new Error('INVALID_PARAMETER: Corrupt compressed token.');
+    }
+
+    const uuidBytes = new Uint8Array(16);
+    uuidBytes.set(uuidRaw, 16 - uuidRaw.length);
+    const uuid = bytesToUuid(uuidBytes);
 
     return `${firstPart}-${secondPart}-${uuid}`;
 }
@@ -850,6 +782,5 @@ export {
     compressCompoundId,
     decompressCompoundId,
     formatServiceId,
-    decodeServiceId,
-    toBase64Url
+    decodeServiceId
 };

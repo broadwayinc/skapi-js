@@ -824,7 +824,8 @@ export async function login(
         /** Password for signin. Should be at least 6 characters. */
         password: string;
     }>): Promise<UserProfile> {
-    let params = validator.Params(form, {
+        
+    let params:any = validator.Params(form, {
         username: 'string',
         email: 'string',
         password: 'string'

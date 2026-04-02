@@ -374,7 +374,10 @@ export default class Skapi {
             this._alert("Service ID is required.");
             throw new SkapiError('Service ID is required.', { code: 'INVALID_PARAMETER' });
         }
-        if (service.startsWith('s1_') || service.split("-").length === 7) {
+        let idSplitLen = service.split("-").length;
+        let isV2 = idSplitLen === 2;
+        let isV1 = idSplitLen === 7;
+        if (isV2 || isV1) {
             try {
                 let decoded = decodeServiceId(service);
                 if (options && typeof options === 'object') {
