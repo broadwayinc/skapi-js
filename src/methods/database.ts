@@ -1158,7 +1158,7 @@ export async function getIndexes(
         throw new SkapiError('"table" is required.', { code: 'INVALID_PARAMETER' });
     }
 
-    let p = validator.Params(
+    let p:any = validator.Params(
         query || {},
         {
             table: 'string',
