@@ -86,7 +86,7 @@ export type GetRecordQuery = {
 
 export type PostRecordConfig = {
     record_id?: string; // when record_id is given, it will update the record with the given record_id. If record_id is not given, it will create a new record.
-    unique_id?: string; // You can set unique_id to the record with the given unique_id.
+    unique_id?: string | null; // You can set unique_id to the record with the given unique_id. Null will remove unique_id from the record.
     readonly?: boolean; // When true, record cannot be updated or deleted.
 
     /** Table name not required when "record_id" is given.*/
@@ -103,7 +103,7 @@ export type PostRecordConfig = {
             notify_subscribers?: boolean; // When true, subscribers will receive notification when the record is uploaded.
             feed_referencing_records?: boolean; // When true, records referencing this record will be included to the subscribers feed.
             notify_referencing_records?: boolean; // When true, records referencing this record will be notified to subscribers.
-        };
+        } | null; // When null, it will remove all subscription settings from the record.
     };
 
     source?: {
@@ -124,7 +124,7 @@ export type PostRecordConfig = {
     };
 
     /** Can be record ID or unique ID */
-    reference?: string;
+    reference?: string | null; // When null, it will remove reference from the record.
 
     /** null removes index */
     index?: {

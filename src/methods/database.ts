@@ -701,17 +701,17 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
             allowEmpty: false,
             onlyAlphanumeric: true,
         }),
-        unique_id: 'string',
+        unique_id: ['string', null],
         readonly: 'boolean',
         table: {
             name: v => validateTableName(v, 'table.name'),
-            subscription: {
+            subscription: [null, {
                 is_subscription_record: 'boolean',
                 upload_to_feed: 'boolean',
                 notify_subscribers: 'boolean',
                 feed_referencing_records: 'boolean',
                 notify_referencing_records: 'boolean',
-            },
+            }],
             access_group: accessGroup.bind(this),
         },
         source: {
@@ -817,10 +817,10 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
                 }
             });
         },
-        index: {
+        index: [null, {
             name: v => validateCustomIndexName(v, 'index.name'),
             value: v => indexValue(v)
-        },
+        }],
         tags: (v: string | string[]) => {
             if (v === null || v === undefined) {
                 return v;
