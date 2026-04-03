@@ -1022,7 +1022,6 @@ export async function bulkPostRecords(params) {
     return records;
 }
 
-
 export async function postRecord(
     form: Form<Record<string, any>> | null | undefined,
     config: PostRecordConfig,
