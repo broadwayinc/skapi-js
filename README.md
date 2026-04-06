@@ -153,7 +153,7 @@ In your AI chat website or app (for example, ChatGPT at chat.openai.com or Lovab
 
 ```
 Use the file "SKAPI.md" as a system prompt.
-My Skapi service ID is: "xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".
+My Skapi service ID is: "xxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxx".
 Build me a [describe what you want].
 ```
 
@@ -180,7 +180,7 @@ Examples:
 When you invoke your code generator, include a prompt like:
 
 ```
-My Skapi service ID is: "xxxxxxxxxxxx-xxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".
+My Skapi service ID is: "xxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxx".
 Build me a [describe what you want].
 ```
 
