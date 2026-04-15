@@ -697,9 +697,15 @@ export default class Skapi {
 
     private log(n: string, v: any) {
         if (this.__network_logs) {
-            if (typeof v === 'object') {
+            if (v !== null && typeof v === 'object') {
                 try {
-                    v = JSON.parse(JSON.stringify(v));
+                    // if it's not a browser runtime, print as a string to avoid [Object object] issue
+                    if (!isBrowserRuntime()) {
+                        v = JSON.stringify(v, null, 2);
+                    }
+                    else {
+                        v = JSON.parse(JSON.stringify(v));
+                    }
                 }
                 catch (err) {
                     v = String(v);
