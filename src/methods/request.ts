@@ -98,9 +98,9 @@ export async function clientSecretRequest(params: {
                         if(result.id === res.poll_id && result.status === 'pending') {
                             return;
                         }
-                        else if (result) {
+                        else if (result?.[0]) {
                             clearInterval(interval);
-                            resolve(result);
+                            resolve(result[0]);
                         }
                     } catch (e) {
                         clearInterval(interval);
@@ -112,6 +112,22 @@ export async function clientSecretRequest(params: {
             return res;
         }
     });
+}
+
+export async function clientSecretRequestHistory(params: {
+    url: string;
+    method: 'GET' | 'POST' | 'DELETE' | 'PUT';
+}, fetchOptions?: FetchOptions):Promise<any[]> {
+    await this.__connection;
+    
+    params = validator.Params(params, {
+        url: 'string',
+        method: ['GET', 'POST', 'DELETE', 'PUT']
+    });
+
+    let auth = !!this.__user;
+
+    return request.bind(this)("csr-poll", {id: params.url.toLowerCase() + ':' + params.method.toLowerCase() + ':' }, { auth, fetchOptions});
 }
 
 export async function sendInquiry(data: Form<{
