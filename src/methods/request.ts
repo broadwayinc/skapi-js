@@ -18,9 +18,12 @@ export async function clientSecretRequest(params: {
     headers?: { [key: string]: string };
     data?: { [key: string]: any };
     params?: { [key: string]: string };
-    poll: boolean;
+    poll?: boolean | number;
 }) {
     let hasSecret = false;
+
+    let latency = typeof params.poll === 'number' ? params.poll : 1000;
+    params.poll = !!params.poll;
 
     let checkClientSecretPlaceholder = (v: any) => {
         for (let k in v) {
@@ -103,7 +106,7 @@ export async function clientSecretRequest(params: {
                         clearInterval(interval);
                         reject(e);
                     }
-                }, 1000);
+                }, latency);
             });
         } else {
             return res;
