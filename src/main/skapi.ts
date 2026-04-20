@@ -352,6 +352,10 @@ export default class Skapi {
                 bypassAwaitConnection?: boolean;
                 responseType?: 'json' | 'blob' | 'text' | 'arrayBuffer' | 'formData' | 'document';
                 contentType?: string;
+                tokenHeaders?: {
+                    accessToken?: boolean | string;
+                    idToken?: boolean | string;
+                };
             }
         ) => request.bind(this)(url, data, options, { ignoreService: true })
     }
@@ -1521,6 +1525,10 @@ export default class Skapi {
             method?: string;
             responseType?: 'blob' | 'json' | 'text' | 'arrayBuffer' | 'formData' | 'document';
             contentType?: string;
+            tokenHeaders?: {
+                accessToken?: boolean | string;
+                idToken?: boolean | string;
+            };
             progress?: ProgressCallback;
         }): Promise<{ [key: string]: any }> { return mock.bind(this)(data, options); }
     /**

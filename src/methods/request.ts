@@ -82,7 +82,9 @@ export async function clientSecretRequest(params: {
     await this.__connection;
     let auth = !!this.__user;
 
-    return request.bind(this)("csr", params, { auth });
+    return request.bind(this)("csr", params, { auth, tokenHeaders: {
+        accessToken: !!auth
+    }});
 }
 
 export async function sendInquiry(data: Form<{
@@ -167,13 +169,17 @@ export async function mock(
         method?: string;
         responseType?: 'blob' | 'json' | 'text' | 'arrayBuffer' | 'formData' | 'document';
         contentType?: string;
+        tokenHeaders?: {
+            accessToken?: boolean | string;
+            idToken?: boolean | string;
+        };
         progress?: ProgressCallback;
     }): Promise<{ [key:string]:any; }> {
     await this.__connection;
-    let { auth = false, method = 'POST', bypassAwaitConnection = false, responseType, contentType, progress } = (options as any) || {};
+    let { auth = false, method = 'POST', bypassAwaitConnection = false, responseType, contentType, tokenHeaders, progress } = (options as any) || {};
 
     options = Object.assign(
-        { auth, method, bypassAwaitConnection, responseType, contentType },
+        { auth, method, bypassAwaitConnection, responseType, contentType, tokenHeaders },
         {
             fetchOptions: { progress }
         }

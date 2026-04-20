@@ -201,6 +201,10 @@ export async function request(
         bypassAwaitConnection?: boolean;
         responseType?: 'json' | 'blob' | 'text' | 'arrayBuffer' | 'formData' | 'document';
         contentType?: string;
+        tokenHeaders?: {
+            accessToken?: boolean | string;
+            idToken?: boolean | string;
+        };
     },
     _etc?: {
         ignoreService: boolean;
@@ -231,7 +235,9 @@ export async function request(
         }
     }
 
-    if (auth) {
+    const wantsIdTokenHeader = options?.tokenHeaders?.idToken === true;
+
+    if (auth || wantsIdTokenHeader) {
         token = await getJwtToken.bind(this)();
     }
 
@@ -346,6 +352,31 @@ export async function request(
 
     if (token) {
         headers.Authorization = token;
+    }
+
+    if (options?.tokenHeaders) {
+        const resolveTokenValue = (configuredValue: boolean | string | undefined, fallbackValue: string | null) => {
+            if (typeof configuredValue === 'string') {
+                return configuredValue;
+            }
+
+            if (configuredValue === true) {
+                return fallbackValue;
+            }
+
+            return null;
+        };
+
+        const accessToken = resolveTokenValue(options.tokenHeaders.accessToken, this.session?.accessToken?.jwtToken || null);
+        const idToken = resolveTokenValue(options.tokenHeaders.idToken, this.bearerToken || this.session?.idToken?.jwtToken || token || null);
+
+        if (accessToken) {
+            headers['x-access-token'] = accessToken;
+        }
+
+        if (idToken) {
+            headers['x-id-token'] = idToken;
+        }
     }
 
     let meta = {
