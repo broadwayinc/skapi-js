@@ -906,6 +906,7 @@ export default class Skapi {
     clientSecretRequest(params: {
         url: string;
         clientSecretName: string;
+        poll: boolean;
         method: 'GET' | 'POST' | 'DELETE' | 'PUT';
         headers?: { [key: string]: string };
         data?: { [key: string]: any };

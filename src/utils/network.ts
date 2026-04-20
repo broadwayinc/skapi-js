@@ -140,6 +140,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'newsletter-group-endpoint':
         case 'invitation-list':
         case 'csr':
+        case 'csr-poll':
             return selectGateway.bind(this)({ auth, type: 'admin', endpoints }) + dest + query;
 
         // Records

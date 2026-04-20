@@ -18,6 +18,7 @@ export async function clientSecretRequest(params: {
     headers?: { [key: string]: string };
     data?: { [key: string]: any };
     params?: { [key: string]: string };
+    poll: boolean;
 }) {
     let hasSecret = false;
 
@@ -72,7 +73,8 @@ export async function clientSecretRequest(params: {
             }
             checkClientSecretPlaceholder(v);
             return v;
-        }
+        },
+        poll: 'boolean'
     }, ['clientSecretName', 'method', 'url']);
 
     if (!hasSecret) {
@@ -84,7 +86,26 @@ export async function clientSecretRequest(params: {
 
     return request.bind(this)("csr", params, { auth, tokenHeaders: {
         accessToken: !!auth
-    }});
+    }}).then(res=>{
+        if (params.poll && res.poll_id && res.status === 'pending') {
+            return new Promise((resolve, reject) => {
+                let interval = setInterval(async () => {
+                    try {
+                        let result = await request.bind(this)("csr-poll", { id: res.poll_id }, { auth });
+                        if (result) {
+                            clearInterval(interval);
+                            resolve(result);
+                        }
+                    } catch (e) {
+                        clearInterval(interval);
+                        reject(e);
+                    }
+                }, 1000);
+            });
+        } else {
+            return res;
+        }
+    });
 }
 
 export async function sendInquiry(data: Form<{

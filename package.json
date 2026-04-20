@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "1.5.2-beta.1",
+  "version": "1.5.2-beta.2",
   "description": "Serverless Backend API for AI Agents.",
   "main": "dist/skapi.cjs",
   "browser": "dist/skapi.browser.mjs",
