@@ -91,7 +91,7 @@ export async function clientSecretRequest(params: {
             return new Promise((resolve, reject) => {
                 let interval = setInterval(async () => {
                     try {
-                        let result = await request.bind(this)("csr-poll", { id: res.poll_id }, { auth });
+                        let result = await request.bind(this)("csr-poll", { id: res.poll_id, service: params.service, owner: params.owner }, { auth });
                         if(result.id === res.poll_id && result.status === 'pending') {
                             return;
                         }
