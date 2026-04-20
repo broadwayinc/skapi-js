@@ -62,6 +62,7 @@ import {
     secureRequest,
     mock,
     clientSecretRequest,
+    clientSecretRequestHistory,
     sendInquiry
 } from '../methods/request';
 import {
@@ -913,6 +914,20 @@ export default class Skapi {
         params?: { [key: string]: string };
     }): Promise<any> {
         return clientSecretRequest.bind(this)(params);
+    }
+
+    /**
+     * Retrieves the history of client secret requests for a given URL and method.
+     * @param params Request parameters.
+     * @param fetchOptions Pagination and fetch behavior options.
+     * @returns A promise that resolves to Promise<any[]>.
+     */
+    @formHandler()
+    clientSecretRequestHistory(params: {
+        url: string;
+        method: 'GET' | 'POST' | 'DELETE' | 'PUT';
+    }, fetchOptions?: FetchOptions): Promise<any[]> {
+        return clientSecretRequestHistory.bind(this)(params, fetchOptions);
     }
 
     /**

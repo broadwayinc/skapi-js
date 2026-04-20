@@ -1,5 +1,6 @@
 import {
     Form,
+    FetchOptions,
     ProgressCallback
 } from '../Types';
 import SkapiError from '../main/error';
@@ -119,15 +120,15 @@ export async function clientSecretRequestHistory(params: {
     method: 'GET' | 'POST' | 'DELETE' | 'PUT';
 }, fetchOptions?: FetchOptions):Promise<any[]> {
     await this.__connection;
-    
+
     params = validator.Params(params, {
         url: 'string',
         method: ['GET', 'POST', 'DELETE', 'PUT']
-    });
+    }, ['url', 'method']);
 
     let auth = !!this.__user;
 
-    return request.bind(this)("csr-poll", {id: params.url.toLowerCase() + ':' + params.method.toLowerCase() + ':' }, { auth, fetchOptions});
+    return request.bind(this)("csr-poll", {id: params.url.toLowerCase() + ':' + params.method.toLowerCase() + ':', service: params.service, owner: params.owner }, { auth, fetchOptions});
 }
 
 export async function sendInquiry(data: Form<{
