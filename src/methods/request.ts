@@ -87,7 +87,7 @@ export async function clientSecretRequest(params: {
     return request.bind(this)("csr", params, { auth, tokenHeaders: {
         accessToken: !!auth
     }}).then(res=>{
-        if (params.poll && res.poll_id && res.status === 'pending') {
+        if (res.poll_id && res.status === 'pending') {
             return new Promise((resolve, reject) => {
                 let interval = setInterval(async () => {
                     try {
