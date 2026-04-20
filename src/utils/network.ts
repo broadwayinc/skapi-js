@@ -371,11 +371,11 @@ export async function request(
         const idToken = resolveTokenValue(options.tokenHeaders.idToken, this.bearerToken || this.session?.idToken?.jwtToken || token || null);
 
         if (accessToken) {
-            headers['x-access-token'] = accessToken;
+            headers['X-Access-Token'] = accessToken;
         }
 
         if (idToken) {
-            headers['x-id-token'] = idToken;
+            headers['X-Id-Token'] = idToken;
         }
     }
 
