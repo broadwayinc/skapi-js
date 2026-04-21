@@ -97,8 +97,11 @@ export async function clientSecretRequest(params: {
                 let interval = setInterval(async () => {
                     try {
                         let url = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}:`;
-                        let result = await request.bind(this)("csr-poll", { id: url + res.poll_id, service: params.service, owner: params.owner }, { auth });
-                        if(result.id === res.poll_id && result.status === 'pending') {
+                        let fullId = url + res.poll_id;
+                        let result = await request.bind(this)("csr-poll", { id: fullId, service: params.service, owner: params.owner }, { auth });
+                        const parts = result.id.split(':');
+                        const respId = parts.slice(1, -2).join(':');
+                        if(respId === url && result.status === 'pending') {
                             return;
                         }
                         clearInterval(interval);
