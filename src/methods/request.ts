@@ -127,8 +127,8 @@ export async function clientSecretRequestHistory(params: {
     }, ['url', 'method']);
 
     let auth = !!this.__user;
-
-    return request.bind(this)("csr-poll", {id: params.url.toLowerCase() + ':' + params.method.toLowerCase() + ':', service: params.service, owner: params.owner }, { auth, fetchOptions});
+    const id = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}:`;
+    return request.bind(this)("csr-poll", {id, service: params.service, owner: params.owner }, { auth, fetchOptions});
 }
 
 export async function sendInquiry(data: Form<{
