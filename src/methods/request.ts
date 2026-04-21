@@ -1,7 +1,8 @@
 import {
     Form,
     FetchOptions,
-    ProgressCallback
+    ProgressCallback,
+    DatabaseResponse
 } from '../Types';
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
@@ -99,10 +100,8 @@ export async function clientSecretRequest(params: {
                         if(result.id === res.poll_id && result.status === 'pending') {
                             return;
                         }
-                        else if (result?.[0]) {
-                            clearInterval(interval);
-                            resolve(result[0]);
-                        }
+                        clearInterval(interval);
+                        resolve(result);
                     } catch (e) {
                         clearInterval(interval);
                         reject(e);
@@ -118,7 +117,7 @@ export async function clientSecretRequest(params: {
 export async function clientSecretRequestHistory(params: {
     url: string;
     method: 'GET' | 'POST' | 'DELETE' | 'PUT';
-}, fetchOptions?: FetchOptions):Promise<any[]> {
+}, fetchOptions?: FetchOptions):DatabaseResponse<{response_body: any; error: any; updated: number; request_body: any;}[]> {
     await this.__connection;
 
     params = validator.Params(params, {
@@ -128,7 +127,17 @@ export async function clientSecretRequestHistory(params: {
 
     let auth = !!this.__user;
     const id = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}:`;
-    return request.bind(this)("csr-poll", {id, service: params.service, owner: params.owner }, { auth, fetchOptions});
+    let res = await request.bind(this)("csr-poll", {id, service: params.service, owner: params.owner }, { auth, fetchOptions});
+    res.list = res.list.map((item: any) => {
+        return {
+            response_body: item.body,
+            error: item.err,
+            updated: item.utmp,
+            request_body: item.reqbdy
+        };
+    });
+    return res;
+
 }
 
 export async function sendInquiry(data: Form<{

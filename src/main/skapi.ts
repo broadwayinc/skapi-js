@@ -926,7 +926,7 @@ export default class Skapi {
     clientSecretRequestHistory(params: {
         url: string;
         method: 'GET' | 'POST' | 'DELETE' | 'PUT';
-    }, fetchOptions?: FetchOptions): Promise<any[]> {
+    }, fetchOptions?: FetchOptions):DatabaseResponse<{response_body: any; error: any; updated: number; request_body: any;}[]> {
         return clientSecretRequestHistory.bind(this)(params, fetchOptions);
     }
 
