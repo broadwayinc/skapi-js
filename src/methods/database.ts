@@ -923,7 +923,6 @@ export async function bulkPostRecords(params) {
         throw new SkapiError('"params" should be a non-empty array.', { code: 'INVALID_PARAMETER' });
     }
 
-    let is_public = !this.__user;
     let reference_posts = [];
     let service = undefined;
     let owner = undefined;
