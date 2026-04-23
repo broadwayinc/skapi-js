@@ -3,6 +3,7 @@ import {
 	FetchOptions,
 	ProgressCallback,
 	DatabaseResponse,
+    PollingResult,
 } from '../Types';
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
@@ -13,6 +14,52 @@ const hasFormData = typeof FormData !== 'undefined';
 const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
 const hasSubmitEvent = typeof SubmitEvent !== 'undefined';
 
+function pollClientSecretResponse(
+	this: any,
+	{
+		id,
+		auth,
+		service,
+		owner,
+		latency = 1000,
+	}: {
+		id: string;
+		url: string;
+		auth: boolean;
+		service?: any;
+		owner?: any;
+		latency?: number;
+	},
+) {
+	return new Promise<any>((resolve, reject) => {
+		let interval = setInterval(async () => {
+			try {
+				let result = await request.bind(this)(
+					'csr-poll',
+					{
+						id,
+						service,
+						owner,
+					},
+					{ auth },
+				);
+
+				if (
+					result.status === 'pending'
+				) {
+					return;
+				}
+
+				clearInterval(interval);
+				resolve(result);
+			} catch (e) {
+				clearInterval(interval);
+				reject(e);
+			}
+		}, latency);
+	});
+}
+
 export async function clientSecretRequest(params: {
 	url: string;
 	clientSecretName: string;
@@ -21,7 +68,7 @@ export async function clientSecretRequest(params: {
 	data?: { [key: string]: any };
 	params?: { [key: string]: string };
 	poll?: boolean | number;
-    expires?: number;
+	expires?: number;
 }) {
 	let hasSecret = false;
 
@@ -103,7 +150,7 @@ export async function clientSecretRequest(params: {
 				return v;
 			},
 			poll: 'boolean',
-            expires: 'number',
+			expires: 'number',
 		},
 		['clientSecretName', 'method', 'url'],
 	);
@@ -126,35 +173,16 @@ export async function clientSecretRequest(params: {
 			},
 		})
 		.then((res) => {
-			if (res.poll_id && res.status === 'pending') {
-				return new Promise((resolve, reject) => {
-					let interval = setInterval(async () => {
-						try {
-							let url = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}`;
-							let fullId = url + ':' + res.poll_id;
-							let result = await request.bind(this)(
-								'csr-poll',
-								{
-									id: fullId,
-									service: params.service,
-									owner: params.owner,
-								},
-								{ auth },
-							);
-							if (result.status === 'pending' && (typeof result.id === 'string')) {
-                                const parts = result.id.split(':');
-                                const respId = parts.slice(1, -2).join(':');
-                                if (respId === url) {
-								    return;
-                                }
-							}
-							clearInterval(interval);
-							resolve(result);
-						} catch (e) {
-							clearInterval(interval);
-							reject(e);
-						}
-					}, latency);
+			if (res.id && res.status === 'pending') {
+				let url = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}`;
+				let fullId = url + ':' + res.id;
+
+				return pollClientSecretResponse.call(this, {
+					id: fullId,
+					auth,
+					service: params.service,
+					owner: params.owner,
+					latency,
 				});
 			} else {
 				return res;
@@ -166,12 +194,14 @@ export async function clientSecretRequestHistory(
 	params: {
 		url: string;
 		method: 'GET' | 'POST' | 'DELETE' | 'PUT';
+        poll?: number;
 	},
 	fetchOptions?: FetchOptions,
-): Promise<DatabaseResponse<
-	{ response_body: any; error: any; updated: number; request_body: any; status_code: number | null; expires: number | null }[]
->> {
+): Promise<DatabaseResponse<PollingResult[]> & {pending: Promise<PollingResult>[] }> {
 	await this.__connection;
+
+    let doPoll = !!params.poll;
+    let latency = typeof params.poll === 'number' ? params.poll : 1000;
 
 	params = validator.Params(
 		params,
@@ -189,16 +219,40 @@ export async function clientSecretRequestHistory(
 		{ id, service: params.service, owner: params.owner },
 		{ auth, fetchOptions },
 	);
+
+    let stillPending = [];
 	res.list = res.list.map((item: any) => {
-		return {
-            status_code: item.rslv?.status_code || null,
+		let result = {
+			id: item.id,
+			status_code: item.rslv?.status_code || null,
 			response_body: item.rslv?.body || item.rslv?.truncated || null,
 			error: item.err,
 			updated: item.utmp,
 			request_body: item.reqbdy,
-            expires: item.expt || null
+			expires: item.stts !== 'pending' ? item.expt : null,
+			status: item.stts || null,
 		};
+		if (doPoll && result.status === 'pending' && typeof result.id === 'string') {
+			stillPending.push(result.id);
+		}
+        return result;
 	});
+
+    if(doPoll) {
+        res.pending = stillPending.map((id_tip) => {
+            return pollClientSecretResponse
+                .call(this, {
+                    id: id + id_tip,
+                    auth,
+                    service: params.service,
+                    owner: params.owner,
+                    latency
+                })
+                .then((result) => ({ ...result }))
+                .catch((error) => ({ error, id: id_tip }));
+        });
+    }
+    
 	return res;
 }
 

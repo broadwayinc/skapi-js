@@ -508,7 +508,7 @@ export type FetchOptions = {
     /** Callback for database request progress. Useful when building progress bar. */
     progress?: ProgressCallback;
 }
-
+export type PollingResult = { response_body: any; error: any; updated: number; request_body: any; status_code: number | null; expires: number | null; status: 'resolved' | 'failed' | 'pending'; }
 export type DatabaseResponse<T> = {
     list: T[];
     startKey: { [key: string]: any; } | 'end';

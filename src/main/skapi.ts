@@ -24,6 +24,7 @@ import {
 	Tag,
 	UniqueId,
 	Subscription,
+    PollingResult,
 } from '../Types';
 import { CognitoUserPool } from 'amazon-cognito-identity-js';
 import SkapiError from './error';
@@ -1011,13 +1012,10 @@ export default class Skapi {
 		params: {
 			url: string;
 			method: 'GET' | 'POST' | 'DELETE' | 'PUT';
+            poll?: number;
 		},
 		fetchOptions?: FetchOptions,
-	): Promise<
-		DatabaseResponse<
-			{ response_body: any; error: any; updated: number; request_body: any; status_code: number | null; expires: number | null }[]
-		>
-	> {
+	): Promise<DatabaseResponse<PollingResult[]> & {pending: Promise<PollingResult>[] }> {
 		return clientSecretRequestHistory.bind(this)(params, fetchOptions);
 	}
 
