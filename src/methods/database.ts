@@ -1118,12 +1118,34 @@ export async function getTables(
     let convert = {
         'cnt_rec': 'number_of_records',
         'tbl': 'table',
-        'srvc': 'service'
+        'srvc': 'service',
+        'grp_': 'number_of_records_in_access_group_'
     };
 
     if (Array.isArray(res?.list)) {
         for (let t of res.list) {
             for (let k in convert) {
+                if(k === 'grp_') {
+                    for (let gk in t) {
+                        if (gk.startsWith('grp_')) {
+                            let access_group = gk.substring(4);
+                            if(access_group === '**') {
+                                access_group = 'private';
+                            }
+                            else if(access_group === '00') {
+                                access_group = 'public';
+                            }
+                            else if(access_group === '01') {
+                                access_group = 'authorized';
+                            }
+                            else if(access_group === '99') {
+                                access_group = 'admin';
+                            }
+                            t[`number_of_records_in_access_group_${access_group}`] = t[gk];
+                            delete t[gk];
+                        }
+                    }
+                }
                 if (t.hasOwnProperty(k)) {
                     t[convert[k]] = t[k];
                     delete t[k];
