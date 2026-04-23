@@ -248,6 +248,9 @@ export async function request(
     if (options?.fetchOptions && Object.keys(options.fetchOptions).length) {
         for (let k of ['limit', 'startKey', 'ascending']) {
             if (options.fetchOptions.hasOwnProperty(k)) {
+                if (k === 'startKey' && options.fetchOptions[k] === null) {
+                    continue;
+                }
                 fetchOptions[k] = options.fetchOptions[k];
             }
         }
