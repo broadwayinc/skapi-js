@@ -69,7 +69,6 @@ export async function clientSecretRequest(params: {
 	params?: { [key: string]: string };
 	poll?: boolean | number;
 	expires?: number;
-	queue?: boolean;
 }) {
 	let hasSecret = false;
 
@@ -152,7 +151,6 @@ export async function clientSecretRequest(params: {
 			},
 			poll: 'boolean',
 			expires: 'number',
-			queue: 'boolean',
 		},
 		['clientSecretName', 'method', 'url'],
 	);
