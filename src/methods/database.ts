@@ -1129,7 +1129,7 @@ export async function getTables(
                     for (let gk in t) {
                         if (gk.startsWith('grp_')) {
                             let access_group = gk.substring(4);
-                            if(access_group === '**') {
+                            if(access_group === 'pv') {
                                 access_group = 'private';
                             }
                             else if(access_group === '00') {
