@@ -66,7 +66,7 @@ export async function clientSecretRequest(params: {
 	data?: { [key: string]: any };
 	params?: { [key: string]: string };
 	poll?: boolean | number;
-	queId?: string;
+	queue?: string;
 	expires?: number;
 }) {
 	let hasSecret = false;
@@ -150,7 +150,7 @@ export async function clientSecretRequest(params: {
 			},
 			poll: 'boolean',
 			expires: 'number',
-			queId: 'string',
+			queue: 'string',
 		},
 		['clientSecretName', 'method', 'url'],
 	);
@@ -175,13 +175,15 @@ export async function clientSecretRequest(params: {
 		.then((res) => {
 			if (latency && res.id && res.status === 'pending') {
 				let url = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}`;
+				if(params.queue) {
+					url += '#' + params.queue;
+				}
 				let fullId = url + ':' + res.id;
 				return pollClientSecretResponse.call(this, {
 					id: fullId,
 					auth,
 					service: params.service,
 					owner: params.owner,
-					que_id: params.queId,
 					latency,
 				});
 			} else {
@@ -195,7 +197,7 @@ export async function clientSecretRequestHistory(
 		url: string;
 		method: 'GET' | 'POST' | 'DELETE' | 'PUT';
 		poll?: number;
-		queId?: string;
+		queue?: string;
 	},
 	fetchOptions?: FetchOptions,
 ): Promise<
@@ -211,15 +213,15 @@ export async function clientSecretRequestHistory(
 		{
 			url: 'string',
 			method: ['GET', 'POST', 'DELETE', 'PUT'],
-			queId: 'string',
+			queue: 'string',
 		},
 		['url', 'method'],
 	);
 
 	let auth = !!this.__user;
 	let id = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}`;
-	if(params.queId) {
-		id += '#' + params.queId;
+	if(params.queue) {
+		id += '#' + params.queue;
 	}
 	id += ':';
 
