@@ -66,6 +66,7 @@ export async function clientSecretRequest(params: {
 	data?: { [key: string]: any };
 	params?: { [key: string]: string };
 	poll?: boolean | number;
+	queId?: string;
 	expires?: number;
 }) {
 	let hasSecret = false;
@@ -149,6 +150,7 @@ export async function clientSecretRequest(params: {
 			},
 			poll: 'boolean',
 			expires: 'number',
+			queId: 'string',
 		},
 		['clientSecretName', 'method', 'url'],
 	);
@@ -179,6 +181,7 @@ export async function clientSecretRequest(params: {
 					auth,
 					service: params.service,
 					owner: params.owner,
+					que_id: params.queId,
 					latency,
 				});
 			} else {
@@ -192,6 +195,7 @@ export async function clientSecretRequestHistory(
 		url: string;
 		method: 'GET' | 'POST' | 'DELETE' | 'PUT';
 		poll?: number;
+		queId?: string;
 	},
 	fetchOptions?: FetchOptions,
 ): Promise<
@@ -207,12 +211,18 @@ export async function clientSecretRequestHistory(
 		{
 			url: 'string',
 			method: ['GET', 'POST', 'DELETE', 'PUT'],
+			queId: 'string',
 		},
 		['url', 'method'],
 	);
 
 	let auth = !!this.__user;
-	const id = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}:`;
+	let id = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}`;
+	if(params.queId) {
+		id += '#' + params.queId;
+	}
+	id += ':';
+
 	let res = await request.bind(this)(
 		'csr-poll',
 		{ id, service: params.service, owner: params.owner },
