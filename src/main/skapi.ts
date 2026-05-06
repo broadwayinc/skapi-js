@@ -719,7 +719,8 @@ export default class Skapi {
 			user_location: conn.locale,
 			service_name: conn.service_name,
 			version: this.__version,
-			service_description: conn.service_description,
+			service_description: conn?.service_description || "",
+			ai_agent: conn?.ai_agent || "",
 		};
 	}
 

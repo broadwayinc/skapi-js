@@ -212,7 +212,8 @@ export type Connection = {
         prevent_inquiry: boolean;
         prevent_signup: boolean;
         prevent_anonymous: boolean;
-    }
+    },
+    ai_agent?: string; // AI agent info.
 }
 
 export type Form<T> = HTMLFormElement | FormData | SubmitEvent | T;
@@ -537,6 +538,7 @@ export type ConnectionInfo = {
     service_name: string;
     service_description: string;
     version: string;
+    ai_agent: string;
 };
 
 export type Table = {

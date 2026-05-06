@@ -279,7 +279,12 @@ export async function createAccount(
         },
     };
 
-    let params = validator.Params(form, paramRestrictions, ['email', 'password']);
+    let required = [
+        'email', 
+        'password'
+    ];
+
+    let params = validator.Params(form, paramRestrictions, required);
 
     let isAdmin = await checkAdmin.bind(this)();
 
