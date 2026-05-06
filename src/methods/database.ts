@@ -21,7 +21,7 @@ import validator from '../utils/validator';
 import { request, uploadFiles } from '../utils/network';
 import { checkAdmin } from './user';
 import { authentication } from './user';
-import { accessGroup, indexValue, recordIdOrUniqueId, validateCustomIndexName, validateTableName, validateTag, validateStringByPolicy, indexRange } from './param_restrictions';
+import { accessGroup, decodeReservedDelimiters, indexValue, recordIdOrUniqueId, validateCustomIndexName, validateTableName, validateTag, validateStringByPolicy, indexRange } from './param_restrictions';
 
 const pendingPrivateAccessKeyRequest: Record<string, Promise<string>> = {};
 
@@ -109,7 +109,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             // table/service/group(** | group)/[subscription(user id)/group(00 - 99)]/[tag]
             if (!output.table.name) {
                 let rSplit = r.split('/');
-                output.table.name = rSplit[0];
+                output.table.name = decodeReservedDelimiters(rSplit[0]);
                 output.table.access_group = access_group_set(rSplit[2]);
                 if (rSplit?.[3]) {
                     output.table.subscription.is_subscription_record = true;
@@ -123,7 +123,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                 output.user_id = rSplit[0];
             }
             if (!output.table.name) {
-                output.table.name = rSplit[1];
+                output.table.name = decodeReservedDelimiters(rSplit[1]);
                 output.table.access_group = access_group_set(rSplit[3]);
                 if (rSplit?.[4]) {
                     output.table.subscription.is_subscription_record = true;
@@ -133,8 +133,11 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
         'idx': (r: string) => {
             if (!r) return;
             let rSplit = r.split('!');
-            let name = rSplit.splice(0, 1)[0];
+            let name = decodeReservedDelimiters(rSplit.splice(0, 1)[0]);
             let value = normalizeTypedString('!' + rSplit.join('!'));
+            if (typeof value === 'string') {
+                value = decodeReservedDelimiters(value);
+            }
             output.index = {
                 name,
                 value
@@ -145,7 +148,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             output.reference = r.split('/')[0];
         },
         'tags': (r: string[]) => {
-            output.tags = r;
+            output.tags = Array.isArray(r) ? r.map((tag) => decodeReservedDelimiters(tag)) : r;
         },
         'upd': (r: number) => {
             output.updated = r;
@@ -1151,6 +1154,10 @@ export async function getTables(
                     delete t[k];
                 }
             }
+
+            if (typeof t.table === 'string') {
+                t.table = decodeReservedDelimiters(t.table);
+            }
         }
     }
 
@@ -1241,8 +1248,8 @@ export async function getIndexes(
         res.list = res.list.map((i: Record<string, any>) => {
             let iSplit = i.idx.split('/');
             let resolved: Record<string, any> = {
-                table: iSplit[1],
-                index: iSplit[2],
+                table: decodeReservedDelimiters(iSplit[1]),
+                index: decodeReservedDelimiters(iSplit[2]),
                 number_of_records: i.cnt_rec
             };
 
@@ -1287,8 +1294,8 @@ export async function getTags(
         res.list = res.list.map(item => {
             let tSplit = item.tag.split('/');
             return {
-                table: tSplit[1],
-                tag: tSplit[0],
+                table: decodeReservedDelimiters(tSplit[1]),
+                tag: decodeReservedDelimiters(tSplit[0]),
                 number_of_records: item.cnt_rec
             };
         });

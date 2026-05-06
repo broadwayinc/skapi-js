@@ -9,6 +9,42 @@ const SENTINEL_CHAR = '\u{10FFFF}';
 const CONTROL_OR_SENTINEL_REGEX = /[\u0000-\u001F\u007F]|\u{10FFFF}/u;
 const BLOCKED_KEY_SEGMENT_DELIMITER_REGEX = /[\/!*#]/;
 
+const DELIMITER_ENCODING_MAP: Record<string, string> = {
+    '/': '%2F',
+    '!': '%21',
+    '*': '%2A',
+    '#': '%23',
+};
+
+const DELIMITER_DECODING_MAP: Record<string, string> = {
+    '%2F': '/',
+    '%21': '!',
+    '%2A': '*',
+    '%23': '#',
+};
+
+function encodeReservedDelimiters(value: string) {
+    // Escape '%' first so literal sequences like "%2F" remain distinguishable
+    // from a real '/' after normalization.
+    const escapedPercent = value.replace(/%/g, '%25');
+    return escapedPercent.replace(/[\/!*#]/g, (char) => DELIMITER_ENCODING_MAP[char] || char);
+}
+
+export function decodeReservedDelimiters(value: string) {
+    if (typeof value !== 'string') {
+        return value as any;
+    }
+
+    // Reverse delimiter encoding first, then unescape '%25' so '%252F'
+    // round-trips back to literal '%2F' instead of '/'.
+    const delimitersDecoded = value.replace(/%(2F|21|2A|23)/gi, (match) => {
+        const key = match.toUpperCase();
+        return DELIMITER_DECODING_MAP[key] || match;
+    });
+
+    return delimitersDecoded.replace(/%25/gi, '%');
+}
+
 export function validateStringByPolicy(
     value: any,
     fieldName: string,
@@ -49,7 +85,7 @@ export function validateStringByPolicy(
     }
 
     if (blockKeyDelimiters && BLOCKED_KEY_SEGMENT_DELIMITER_REGEX.test(value)) {
-        throw new SkapiError(`"${fieldName}" cannot include reserved delimiters: / ! * #`, { code: 'INVALID_PARAMETER' });
+        value = encodeReservedDelimiters(value);
     }
 
     if (disallowLeadingDollar && value.startsWith('$')) {
