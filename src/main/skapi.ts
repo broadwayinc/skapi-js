@@ -702,9 +702,18 @@ export default class Skapi {
 
 	/**
 	 * Returns current connection metadata such as service name, client IP, user agent, locale, and SDK version.
+	 * @param params Request parameters.
 	 * @returns A promise that resolves to Promise<ConnectionInfo>.
 	 */
-	async getConnectionInfo(): Promise<ConnectionInfo> {
+	async getConnectionInfo(params: { refresh: Boolean }): Promise<ConnectionInfo> {
+		let refresh = params?.refresh || false;
+		
+		if (refresh) {
+			if(this.__connection instanceof Promise) {
+				await this.__connection;
+			}
+			this.__connection = this._updateConnection({ refresh: true });
+		}
 		let conn = await this.__connection;
 		// get browser user-agent info
 		let ua =
@@ -724,13 +733,15 @@ export default class Skapi {
 		};
 	}
 
-	private async _updateConnection(): Promise<Connection> {
+	private async _updateConnection(params?: { refresh: Boolean }): Promise<Connection> {
+		let refresh = params?.refresh || false;
 		try {
 			this.connection = await request.bind(this)(
 				'service',
 				{
 					service: this.service,
 					owner: this.owner,
+					refresh
 				},
 				{ bypassAwaitConnection: true, method: 'get' },
 			);
