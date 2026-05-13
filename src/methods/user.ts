@@ -1146,7 +1146,7 @@ export async function resetPassword(form: Form<{
     });
 }
 
-async function verifyAttribute(attribute: string, form: Form<{ code: string; }>): Promise<string> {
+async function verifyAttribute(attribute: string, form: Form<{ code: string; }>, options?: { template?: { verification?: string } }): Promise<string> {
     await this.__connection;
     let code: string;
 
@@ -1169,6 +1169,16 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>)
     }
     else {
         return;
+    }
+
+    // Optional per-call template override for the verification e-mail.
+    let clientMetadata: { [k: string]: string } | undefined;
+    const verificationMid = options?.template?.verification;
+    if (verificationMid !== undefined) {
+        if (typeof verificationMid !== 'string' || !verificationMid) {
+            throw new SkapiError('"template.verification" should be a non-empty <string> (template message_id).', { code: 'INVALID_PARAMETER' });
+        }
+        clientMetadata = { template_verification: verificationMid };
     }
 
     return new Promise((res, rej) => {
@@ -1208,32 +1218,47 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>)
         }
         else {
             callback.inputVerificationCode = null;
-            cognitoUser?.getAttributeVerificationCode(attribute, callback);
+            cognitoUser?.getAttributeVerificationCode(attribute, callback, clientMetadata);
         }
     });
 }
 
-export function verifyPhoneNumber(form?: Form<{ code: string; }>): Promise<string> {
+export function verifyPhoneNumber(form?: Form<{ code: string; }>, options?: { template?: { verification?: string } }): Promise<string> {
     // 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'
-    return verifyAttribute.bind(this)('phone_number', form);
+    return verifyAttribute.bind(this)('phone_number', form, options);
 }
 
-export function verifyEmail(form?: Form<{ code: string; }>): Promise<string> {
+export function verifyEmail(form?: Form<{ code: string; }>, options?: { template?: { verification?: string } }): Promise<string> {
     // 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'
-    return verifyAttribute.bind(this)('email', form);
+    return verifyAttribute.bind(this)('email', form, options);
 }
 
 export async function forgotPassword(
     form: Form<{
         /** Signin E-Mail. */
         email: string;
-    }>): Promise<"SUCCESS: Verification code has been sent."> {
+    }>,
+    options?: {
+        template?: {
+            /** message_id of the template to use for the password-reset verification e-mail. */
+            verification?: string;
+        };
+    }): Promise<"SUCCESS: Verification code has been sent."> {
 
     await this.__connection;
 
     let params = validator.Params(form, {
         email: (v: string) => validator.Email(v)
     }, ['email']);
+
+    let clientMetadata: { [k: string]: string } | undefined;
+    const verificationMid = options?.template?.verification;
+    if (verificationMid !== undefined) {
+        if (typeof verificationMid !== 'string' || !verificationMid) {
+            throw new SkapiError('"template.verification" should be a non-empty <string> (template message_id).', { code: 'INVALID_PARAMETER' });
+        }
+        clientMetadata = { template_verification: verificationMid };
+    }
 
     return new Promise(async (res, rej) => {
         let cognitoUser = authentication.bind(this)().createCognitoUser(params.email).cognitoUser;
@@ -1274,7 +1299,7 @@ export async function forgotPassword(
 
                 rej(new SkapiError(parsed.message, { code: mappedCode, cause: err }));
             }
-        });
+        }, clientMetadata);
     });
 }
 

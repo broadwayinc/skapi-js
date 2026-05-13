@@ -1892,9 +1892,9 @@ export default class Skapi {
 	 * @returns A promise that resolves to Promise<string>.
 	 */
 	@formHandler({ preventMultipleCalls: true })
-	verifyEmail(params?: Form<{ code: string }>): Promise<string> {
+	verifyEmail(params?: Form<{ code: string }>, options?: { template?: { verification?: string } }): Promise<string> {
 		// 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "email" is verified.'
-		return verifyEmail.bind(this)(params);
+		return verifyEmail.bind(this)(params, options);
 	}
 	/**
 	 * Verifies the user phone number with a confirmation code.
@@ -1902,9 +1902,9 @@ export default class Skapi {
 	 * @returns A promise that resolves to Promise<string>.
 	 */
 	@formHandler({ preventMultipleCalls: true })
-	verifyPhoneNumber(params?: Form<{ code: string }>): Promise<string> {
+	verifyPhoneNumber(params?: Form<{ code: string }>, options?: { template?: { verification?: string } }): Promise<string> {
 		// 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'
-		return verifyPhoneNumber.bind(this)(params);
+		return verifyPhoneNumber.bind(this)(params, options);
 	}
 	/**
 	 * Sends a password reset verification code to the user email.
@@ -1917,8 +1917,14 @@ export default class Skapi {
 			/** Signin E-Mail. */
 			email: string;
 		}>,
+		options?: {
+			template?: {
+				/** message_id of the template to use for the password-reset verification e-mail. */
+				verification?: string;
+			};
+		},
 	): Promise<'SUCCESS: Verification code has been sent.'> {
-		return forgotPassword.bind(this)(params);
+		return forgotPassword.bind(this)(params, options);
 	}
 	/**
 	 * Changes password for the authenticated user.
