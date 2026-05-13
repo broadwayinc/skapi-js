@@ -556,7 +556,15 @@ export async function getProfile(options?: { refreshToken: boolean; }): Promise<
     }
 }
 
-export async function openIdLogin(params: { token: string; id: string; merge?: boolean | string[] }): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
+export async function openIdLogin(params: {
+    token: string;
+    id: string;
+    merge?: boolean | string[];
+    template?: {
+        /** message_id of the template to use for the welcome e-mail (sent the first time this OpenID user account is created). */
+        welcome?: string;
+    };
+}): Promise<{ userProfile: UserProfile; openid: { [attribute: string]: string } }> {
     await this.__connection;
 
     params = validator.Params(params, {
@@ -578,10 +586,26 @@ export async function openIdLogin(params: { token: string; id: string; merge?: b
                 throw new SkapiError('"merge" should be type: <boolean | string[]>.', { code: 'INVALID_PARAMETER' });
             }
             return v;
+        },
+        template: (v: { welcome?: string }) => {
+            if (typeof v !== 'object' || v === null) {
+                throw new SkapiError('"template" should be type: <object>.', { code: 'INVALID_PARAMETER' });
+            }
+            if (v.welcome !== undefined) {
+                if (typeof v.welcome !== 'string' || !v.welcome) {
+                    throw new SkapiError('"template.welcome" should be a non-empty <string> (template message_id).', { code: 'INVALID_PARAMETER' });
+                }
+            }
+            return v;
         }
     });
 
-    let oplog = await request.bind(this)("openid-logger", params);
+    let payload: any = { token: params.token, id: params.id, merge: params.merge };
+    if ((params as any).template?.welcome) {
+        payload.template_welcome = (params as any).template.welcome;
+    }
+
+    let oplog = await request.bind(this)("openid-logger", payload);
     let logger = oplog.logger.split('#');
     let username = this.service + '-' + logger[0];
     let password = logger[1];
@@ -860,6 +884,17 @@ export async function signup(
         signup_confirmation?: boolean | string;
         email_subscription?: boolean;
         login?: boolean;
+        /**
+         * Per-call e-mail template overrides.
+         * Each value is the `message_id` of a template that the service owner
+         * has previously uploaded via the Mail dashboard.
+         */
+        template?: {
+            /** message_id of the template to use for the signup confirmation e-mail. */
+            signup_confirmation?: string;
+            /** message_id of the template to use for the welcome e-mail (sent on the user's first confirmed login). */
+            welcome?: string;
+        };
     }): Promise<UserProfile | "SUCCESS: The account has been created. User's signup confirmation is required." | 'SUCCESS: The account has been created.'> {
 
     await this.__authConnection;
@@ -946,6 +981,25 @@ export async function signup(
                 return v;
             }
             throw new SkapiError('"option.login" should be type: boolean.', { code: 'INVALID_PARAMETER' });
+        },
+        template: (v: { signup_confirmation?: string; welcome?: string }) => {
+            if (typeof v !== 'object' || v === null) {
+                throw new SkapiError('"option.template" should be type: <object>.', { code: 'INVALID_PARAMETER' });
+            }
+            if (v.signup_confirmation !== undefined) {
+                if (typeof v.signup_confirmation !== 'string' || !v.signup_confirmation) {
+                    throw new SkapiError('"option.template.signup_confirmation" should be a non-empty <string> (template message_id).', { code: 'INVALID_PARAMETER' });
+                }
+                if (!option?.signup_confirmation) {
+                    throw new SkapiError('"option.signup_confirmation" is required when "option.template.signup_confirmation" is set.', { code: 'INVALID_PARAMETER' });
+                }
+            }
+            if (v.welcome !== undefined) {
+                if (typeof v.welcome !== 'string' || !v.welcome) {
+                    throw new SkapiError('"option.template.welcome" should be a non-empty <string> (template message_id).', { code: 'INVALID_PARAMETER' });
+                }
+            }
+            return v;
         }
     });
 
@@ -982,6 +1036,8 @@ export async function signup(
         username: newUser.cognitoUsername,
         signup_confirmation: typeof params.signup_confirmation === 'boolean' ? JSON.stringify(params.signup_confirmation) : params.signup_confirmation,
         email_subscription: params.email_subscription,
+        template_confirmation: option?.template?.signup_confirmation || '',
+        template_welcome: option?.template?.welcome || '',
     })).split(':');
 
     let signup_ticket = signup_key.slice(1).join(':');

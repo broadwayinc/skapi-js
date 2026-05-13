@@ -962,6 +962,10 @@ export default class Skapi {
 		token: string;
 		id: string;
 		merge?: boolean | string[];
+		template?: {
+			/** message_id of the template to use for the welcome e-mail (sent the first time this OpenID user account is created). */
+			welcome?: string;
+		};
 	}): Promise<{
 		userProfile: UserProfile;
 		openid: { [attribute: string]: string };
@@ -1849,6 +1853,12 @@ export default class Skapi {
 			 * Automatically login to account after signup. Will not work if signup confirmation is required.
 			 */
 			login?: boolean;
+			template?: {
+				/** message_id of the template to use for the signup confirmation e-mail. */
+				signup_confirmation?: string;
+				/** message_id of the template to use for the welcome e-mail (sent on the user's first confirmed login). */
+				welcome?: string;
+			};
 		},
 	): Promise<
 		| UserProfile
