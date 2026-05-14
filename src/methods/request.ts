@@ -65,13 +65,19 @@ export async function clientSecretRequest(params: {
 	headers?: { [key: string]: string };
 	data?: { [key: string]: any };
 	params?: { [key: string]: string };
-	poll?: boolean | number;
+	poll?: number;
 	queue?: string;
 	expires?: number;
 }) {
 	let hasSecret = false;
 
-	let latency = typeof params.poll === 'number' ? params.poll : 0;
+	if (typeof params.poll === 'number' && params.poll < 0) {
+		throw new SkapiError('"poll" should be a non-negative number.', {
+			code: 'INVALID_PARAMETER',
+		});
+	}
+
+	let latency = typeof params.poll === 'number' ? params.poll : params.poll ? 1000: 0;
 	params.poll = !!params.poll;
 
 	let checkClientSecretPlaceholder = (v: any) => {
@@ -204,6 +210,12 @@ export async function clientSecretRequestHistory(
 	DatabaseResponse<PollingResult[]> & { pending: Promise<PollingResult>[] }
 > {
 	await this.__connection;
+
+	if (typeof params.poll === 'number' && params.poll < 0) {
+		throw new SkapiError('"poll" should be a non-negative number.', {
+			code: 'INVALID_PARAMETER',
+		});
+	}
 
 	let doPoll = !!params.poll;
 	let latency = typeof params.poll === 'number' ? params.poll : 1000;

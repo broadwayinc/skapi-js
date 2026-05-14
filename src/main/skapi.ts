@@ -705,7 +705,7 @@ export default class Skapi {
 	 * @param params Request parameters.
 	 * @returns A promise that resolves to Promise<ConnectionInfo>.
 	 */
-	async getConnectionInfo(params: { refresh: Boolean }): Promise<ConnectionInfo> {
+	async getConnectionInfo(params?: { refresh: Boolean }): Promise<ConnectionInfo> {
 		let refresh = params?.refresh || false;
 		
 		if (refresh) {
@@ -835,7 +835,7 @@ export default class Skapi {
 	@formHandler()
 	connectRTC(
 		params: RTCConnectorParams,
-		callback?: (e: RTCEvent) => void,
+		callback: (e: RTCEvent) => void,
 	): Promise<RTCConnector> {
 		return connectRTC.bind(this)(params, callback);
 	}
@@ -1008,8 +1008,9 @@ export default class Skapi {
 	clientSecretRequest(params: {
 		url: string;
 		clientSecretName: string;
-		poll?: boolean | number;
-        expires?: number;
+		poll?: number; // optional interval in milliseconds to poll for the request result. if not provided, the request will be executed once and return the result.
+        expires?: number; // optional expiration time in milliseconds for the client secret request. default is 15 minutes. if the request is not completed within the expiration time, it will be invalidated and return an error.
+		queue?: string; // optional queue name to process the client secret request. if provided, the requests with same queue name will be processed sequentially in the order they are received. if not provided, the request will be processed immediately.
 		method: 'GET' | 'POST' | 'DELETE' | 'PUT';
 		headers?: { [key: string]: string };
 		data?: { [key: string]: any };
@@ -1029,7 +1030,8 @@ export default class Skapi {
 		params: {
 			url: string;
 			method: 'GET' | 'POST' | 'DELETE' | 'PUT';
-            poll?: number;
+            poll?: number; // optional interval in milliseconds to poll for the request result. if not provided, the request will be executed once and return the result.
+			queue?: string; // optional queue name to filter the client secret request history. if provided, only the requests with the same queue name will be returned. if not provided, all requests for the given URL and method will be returned.
 		},
 		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<PollingResult[]> & {pending: Promise<PollingResult>[] }> {
@@ -1062,7 +1064,7 @@ export default class Skapi {
 	@formHandler()
 	getConsumedTickets(
 		params: { ticket_id?: string },
-		fetchOptions: FetchOptions,
+		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<any[]>> {
 		return getConsumedTickets.bind(this)(params, fetchOptions);
 	}
@@ -1076,7 +1078,7 @@ export default class Skapi {
 	@formHandler()
 	getTickets(
 		params: { ticket_id?: string },
-		fetchOptions: FetchOptions,
+		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<any[]>> {
 		return getTickets.bind(this)(params, fetchOptions);
 	}
@@ -1271,7 +1273,7 @@ export default class Skapi {
 	 */
 	@formHandler()
 	joinRealtime(params: {
-		group: string | null;
+		group?: string | null;
 	}): Promise<{ type: 'success'; message: string }> {
 		return joinRealtime.bind(this)(params);
 	}
@@ -1357,7 +1359,7 @@ export default class Skapi {
 	 */
 	@formHandler()
 	getRecords(
-		query: GetRecordQuery,
+		query: GetRecordQuery & { private_key?: string },
 		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<RecordData>> {
 		return getRecords.bind(this)(query, fetchOptions);
@@ -1442,7 +1444,7 @@ export default class Skapi {
 	 */
 	@formHandler()
 	deleteRecords(
-		params: DelRecordQuery,
+		params: DelRecordQuery & { private_key?: string },
 		fetchOptions?: FetchOptions,
 	): Promise<string | DatabaseResponse<RecordData>> {
 		return deleteRecords.bind(this)(params, fetchOptions);
@@ -1712,11 +1714,14 @@ export default class Skapi {
 	 * @returns A promise that resolves to Promise<DatabaseResponse<{ record_id: string; user_id: string; }>>.
 	 */
 	@formHandler()
-	listPrivateRecordAccess(params: {
-		record_id?: string;
-		user_id?: string | string[];
-	}): Promise<DatabaseResponse<{ record_id: string; user_id: string }>> {
-		return listPrivateRecordAccess.bind(this)(params);
+	listPrivateRecordAccess(
+		params: {
+			record_id?: string;
+			user_id?: string | string[];
+		},
+		fetchOptions?: FetchOptions,
+	): Promise<DatabaseResponse<{ record_id: string; user_id: string }>> {
+		return listPrivateRecordAccess.bind(this)(params, fetchOptions);
 	}
 	/**
 	 * Requests a temporary access key for reading a private record.
