@@ -76,7 +76,7 @@ export async function clientSecretRequest(params: {
 			code: 'INVALID_PARAMETER',
 		});
 	}
-
+	
 	let latency = typeof params.poll === 'number' ? params.poll : params.poll ? 1000: 0;
 	params.poll = !!params.poll;
 
@@ -185,6 +185,22 @@ export async function clientSecretRequest(params: {
 					url += '#' + params.queue;
 				}
 				let fullId = url + ':' + res.id;
+				if(params.queue && !params.poll) {
+					return {
+						id: fullId,
+						auth,
+						service: params.service,
+						owner: params.owner,
+						latency,
+						poll: (arg=null) => pollClientSecretResponse.call(this, arg || {
+							id: fullId,
+							auth,
+							service: params.service,
+							owner: params.owner,
+							latency,
+						})
+					}
+				}
 				return pollClientSecretResponse.call(this, {
 					id: fullId,
 					auth,
