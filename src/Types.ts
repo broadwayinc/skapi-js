@@ -341,7 +341,7 @@ export type UserProfile = {
     email_verified?: boolean;
     /** Shows true when user has verified their phone number. */
     phone_number_verified?: boolean;
-        /** User's E-Mail is public when true. E-Mail should be verified. */
+    /** User's E-Mail is public when true. E-Mail should be verified. */
     email_public?: boolean;
     /** User's phone number is public when true. Phone number should be verified. */
     phone_number_public?: boolean;
@@ -512,7 +512,23 @@ export type FetchOptions = {
     /** Callback for database request progress. Useful when building progress bar. */
     progress?: ProgressCallback;
 }
-export type PollingResult = { response_body: any; error: any; updated: number; request_body: any; status_code: number | null; expires: number | null; status: 'resolved' | 'failed' | 'pending'; }
+export type RequestHistory = { 
+    id: string; // request id. Format: {stamp}:{entropy}
+    status_code: number; // http status code of the request
+    response_body: any;
+    error?: any;
+    updated: number; // timestamp of the last update of the request status in milliseconds
+    request_body: any;
+    expires?: number; // timestamp of when the request history will be deleted in epoch time (seconds).
+    status: 'pending' | 'running' | 'resolved' | 'failed';
+    queue_name?: string; // queue name if the request is in queue, empty string if the request is not in queue.
+    poll?: (arg?: {
+        latency?: number;
+        onResponse?: (res:any)=>void;
+        onError?: (err:any)=>void;
+    }) => Promise<any>; // function to poll the request status. When called, it will return a promise that resolves to the updated request history. Optional argument "latency" can be used to set the latency of the polling in milliseconds. Default latency is 1000ms.
+}
+
 export type DatabaseResponse<T> = {
     list: T[];
     startKey: { [key: string]: any; } | 'end';

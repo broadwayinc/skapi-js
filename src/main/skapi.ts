@@ -24,7 +24,7 @@ import {
 	Tag,
 	UniqueId,
 	Subscription,
-    PollingResult,
+    RequestHistory,
 } from '../Types';
 import { CognitoUserPool } from 'amazon-cognito-identity-js';
 import SkapiError from './error';
@@ -60,6 +60,8 @@ import {
 	clientSecretRequest,
 	clientSecretRequestHistory,
 	sendInquiry,
+	cancelClientSecretRequest,
+	getClientSecretRequestQueueCount,
 } from '../methods/request';
 import {
 	request,
@@ -1002,20 +1004,28 @@ export default class Skapi {
 	/**
 	 * Sends a secure outbound request using a Skapi client secret key.
 	 * @param params Request parameters.
-	 * @returns A promise that resolves to Promise<any>.
+	 * @returns A promise that resolves to the final API response, or to a status object when the request is queued.
 	 */
 	@formHandler()
 	clientSecretRequest(params: {
 		url: string;
 		clientSecretName: string;
-		poll?: number; // optional interval in milliseconds to poll for the request result. if not provided, the request will be executed once and return the result.
-        expires?: number; // optional expiration time in milliseconds for the client secret request. default is 15 minutes. if the request is not completed within the expiration time, it will be invalidated and return an error.
-		queue?: string; // optional queue name to process the client secret request. if provided, the requests with same queue name will be processed sequentially in the order they are received. if not provided, the request will be processed immediately.
 		method: 'GET' | 'POST' | 'DELETE' | 'PUT';
 		headers?: { [key: string]: string };
 		data?: { [key: string]: any };
 		params?: { [key: string]: string };
-	}): Promise<any> {
+		poll?: number; // Polling interval in milliseconds. When > 0 the promise resolves immediately with the initial status object and the final result is delivered via onResponse/onError. When omitted or 0, the status object is returned with a poll() method to start polling manually.
+		queue?: string; // Optional queue name. Requests sharing the same queue are processed sequentially.
+		expires?: number; // Optional expiration time in seconds for the request record.
+		onResponse?: (res: any) => void; // Called with the final API response once polling resolves, or immediately for non-queued responses.
+		onError?: (err: any) => void; // Called when polling or the initial request fails.
+	}): Promise<any | {
+		id: string;
+		status: 'running' | 'pending';
+		queue_name: string;
+		in_queue: number;
+		poll?: (arg?: { latency?: number }) => void;
+	}> {
 		return clientSecretRequest.bind(this)(params);
 	}
 
@@ -1023,19 +1033,47 @@ export default class Skapi {
 	 * Retrieves the history of client secret requests for a given URL and method.
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
-	 * @returns A promise that resolves to Promise<any[]>.
+	 * @returns A promise that resolves to a paginated list of request history items.
 	 */
 	@formHandler()
 	clientSecretRequestHistory(
 		params: {
 			url: string;
 			method: 'GET' | 'POST' | 'DELETE' | 'PUT';
-            poll?: number; // optional interval in milliseconds to poll for the request result. if not provided, the request will be executed once and return the result.
-			queue?: string; // optional queue name to filter the client secret request history. if provided, only the requests with the same queue name will be returned. if not provided, all requests for the given URL and method will be returned.
+			queue?: string; // Optional queue name to filter results.
+			status?: 'pending' | 'running' | 'resolved' | 'failed'; // Optional status filter.
 		},
 		fetchOptions?: FetchOptions,
-	): Promise<DatabaseResponse<PollingResult[]> & {pending: Promise<PollingResult>[] }> {
+	): Promise<DatabaseResponse<RequestHistory[]>> {
 		return clientSecretRequestHistory.bind(this)(params, fetchOptions);
+	}
+
+	/**
+	 * Cancels a pending client secret request and removes it from the client-side queue if applicable.
+	 * @param params Request parameters.
+	 * @returns A promise that resolves to a result object with removed status and message.
+	 */
+	@formHandler()
+	cancelClientSecretRequest(params: {
+		url: string;
+		method: 'GET' | 'POST' | 'DELETE' | 'PUT';
+		id: string; // Request ID to cancel.
+		queue?: string; // Optional queue name the request belongs to, used to remove it from the client-side queue.
+	}): Promise<{ removed: boolean; message: string }> {
+		return cancelClientSecretRequest.bind(this)(params);
+	}
+
+	/**
+	 * Returns the number of requests currently waiting in a named client secret request queue.
+	 * @param params Request parameters.
+	 * @returns A promise that resolves to queue count information.
+	 */
+	getClientSecretRequestQueueCount(params: {
+		queue: string;
+		service?: string;
+		owner?: string;
+	}): Promise<{ queue_name: string; in_queue: number }> {
+		return getClientSecretRequestQueueCount.bind(this)(params);
 	}
 
 	/**
