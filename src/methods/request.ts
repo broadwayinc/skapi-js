@@ -16,7 +16,7 @@ const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
 const hasSubmitEvent = typeof SubmitEvent !== 'undefined';
 
 let queuePromiseList: {
-	[queue_name: string]: Qpass
+	[polling_name: string]: Qpass
 } = {};
 
 let queueJobId: {
@@ -44,7 +44,7 @@ function pollClientSecretResponse(
 		onResponse?: (res: any) => void;
 		onError?: (err: any) => void;
 	},
-) {
+):any | void {
 	if (typeof latency !== 'number') {
 		throw new SkapiError('"latency" should be a number.', {
 			code: 'INVALID_PARAMETER',
@@ -65,6 +65,7 @@ function pollClientSecretResponse(
 	}
 
 	let prom = () => new Promise<any>((resolve, reject) => {
+		let settled = false;
 		let interval = setInterval(async () => {
 			try {
 				let result = await request.bind(this)(
@@ -81,11 +82,15 @@ function pollClientSecretResponse(
 					return;
 				}
 
+				if (settled) return;
+				settled = true;
 				if (onResponse)
 					onResponse(result);
 				clearInterval(interval);
 				resolve(result);
 			} catch (e) {
+				if (settled) return;
+				settled = true;
 				if (onError)
 					onError(e);
 				clearInterval(interval);
@@ -95,8 +100,19 @@ function pollClientSecretResponse(
 	});
 
 	if (queue) {
-		let jobId = queuePromiseList[queue].add([prom])[0];
-		queueJobId[id] = jobId;
+		return new Promise<any>((resolve, reject) => {
+			let jobId = queuePromiseList[queue].add([async () => {
+				try {
+					let result = await prom();
+					resolve(result);
+					return result;
+				} catch (e) {
+					reject(e);
+					throw e;
+				}
+			}])[0];
+			queueJobId[id] = jobId;
+		});
 	}
 	else {
 		return prom();
@@ -139,7 +155,7 @@ export async function clientSecretRequest(params: {
 	expires?: number; // optional history expiration time in seconds after it's resolved.
 	onResponse?: (res: any) => void; // response callback that works on both polling request and regular.
 	onError?: (err: any) => void; // error callback that works on both pollubg request error and regular.
-}): Promise<any | {
+}): Promise<any | void | {
 	id: string; // request id: "stamp:entropy"
 	status: "pending";
 	queue_name: string;
@@ -158,7 +174,7 @@ export async function clientSecretRequest(params: {
 	let latency = typeof params.poll === 'number' ? params.poll : params.poll ? 1000 : 0;
 	delete params.poll;
 
-	if(latency && !params.queue) {
+	if (latency && !params.queue) {
 		// create random queue id
 		params.queue = (this.__user?.user_id || "anonymous") + "-" + generateRandom();
 	}
@@ -253,39 +269,20 @@ export async function clientSecretRequest(params: {
 	await this.__connection;
 	let auth = !!this.__user;
 
-	return request
-		.bind(this)('csr', params, {
-			auth,
-			tokenHeaders: {
-				accessToken: !!auth,
-			},
-		})
-		.then((res) => {
-			if (res.status === 'running' || res.status === 'pending') {
-				let url = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}`;
-				let serviceId = params.service || this.service;
-				let ownerId = params.owner || this.owner;
-				let fullId = `${url}#${serviceId}:${res.id}`;
-
-				if (latency > 0) {
-					let p = pollClientSecretResponse.call(this, {
-						id: fullId,
-						auth,
-						service: serviceId,
-						owner: ownerId,
-						latency,
-						queue: params?.queue,
-						onResponse,
-						onError
-					});
-
-					if (p instanceof Promise) {
-						p.catch(() => { });
-					}
-
-					return res;
-				}
-				else {
+	let req_prom = () => {
+		return request
+			.bind(this)('csr', params, {
+				auth,
+				tokenHeaders: {
+					accessToken: !!auth,
+				},
+			})
+			.then((res) => {
+				if (res.status === 'running' || res.status === 'pending') {
+					let url = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}`;
+					let serviceId = params.service || this.service;
+					let ownerId = params.owner || this.owner;
+					let fullId = `${url}#${serviceId}:${res.id}`;
 					Object.assign(res, {
 						poll: async (arg?: { latency?: number }) => pollClientSecretResponse.call(this, {
 							id: fullId,
@@ -298,15 +295,49 @@ export async function clientSecretRequest(params: {
 							onError
 						}),
 					});
-					return res;
 				}
-			}
-			else {
-				if (onResponse)
-					return onResponse(res);
+				if (onResponse) return onResponse(res);
 				return res;
-			}
-		}).catch(err => { if (onError) return onError(err); throw err; });
+			})
+			.catch(err => {
+				if (onError) return onError(err);
+				throw err;
+			});
+	};
+
+	if (params?.queue) {
+		let base_queue = 'base:' + params.queue;
+
+		if (!queuePromiseList?.[base_queue]) {
+			queuePromiseList[base_queue] = new Qpass({
+				breakWhenError: false,
+				batchSize: 1
+			});
+		}
+
+		return new Promise<any>((resolve, reject) => {
+			queuePromiseList[base_queue].add([async () => {
+				try {
+					let result = await req_prom();
+
+					if (latency > 0) {
+						let polling = result.poll({latency});
+						resolve(polling);
+						return polling;
+					}
+
+					resolve(result);
+					return result;
+				} catch (err) {
+					reject(err);
+					throw err;
+				}
+			}]);
+		});
+	}
+	else {
+		return req_prom();
+	}
 }
 
 export async function clientSecretRequestHistory(
