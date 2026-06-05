@@ -61,7 +61,7 @@ import {
 	clientSecretRequestHistory,
 	sendInquiry,
 	cancelClientSecretRequest,
-	getClientSecretRequestQueueCount,
+	clientSecretRequestQueueCount,
 } from '../methods/request';
 import {
 	request,
@@ -1068,12 +1068,12 @@ export default class Skapi {
 	 * @param params Request parameters.
 	 * @returns A promise that resolves to queue count information.
 	 */
-	getClientSecretRequestQueueCount(params: {
+	clientSecretRequestQueueCount(params: {
 		queue: string;
 		service?: string;
 		owner?: string;
 	}): Promise<{ queue_name: string; in_queue: number }> {
-		return getClientSecretRequestQueueCount.bind(this)(params);
+		return clientSecretRequestQueueCount.bind(this)(params);
 	}
 
 	/**

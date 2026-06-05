@@ -119,7 +119,7 @@ function pollClientSecretResponse(
 	}
 }
 
-export function getClientSecretRequestQueueCount(
+export function clientSecretRequestQueueCount(
 	params: { service?: string; owner?: string; queue: string },
 	fetchOptions?: FetchOptions
 ): Promise<
