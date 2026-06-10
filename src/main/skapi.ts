@@ -732,6 +732,7 @@ export default class Skapi {
 			version: this.__version,
 			service_description: conn?.service_description || "",
 			ai_agent: conn?.ai_agent || "",
+			conf: conn?.opt
 		};
 	}
 
