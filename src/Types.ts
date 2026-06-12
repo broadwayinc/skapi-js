@@ -52,16 +52,16 @@ export type WebSocketMessage = {
 export type RealtimeCallback = (rt: WebSocketMessage) => void;
 
 export type DelRecordQuery = GetRecordQuery & {
-    unique_id?: string | string[];
-    record_id?: string | string[];
+    unique_id?: string;
+    record_id?: string;
 };
 
 export type GetRecordQuery = {
     unique_id?: string; // When unique_id is given, it will fetch the record with the given unique_id.
     record_id?: string; // When record_id is given, it will fetch the record with the given record_id. This overrides all other parameters.
 
-    /** Table name not required when "record_id" is given.*/
-    table?: {
+    /** Table name not required when "record_id" is given. A bare string is shorthand for { name: <string> }. */
+    table?: string | {
         /** Max 128 chars. Blocks: / ! * #, control chars, and sentinel 􏿿. */
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
@@ -70,7 +70,7 @@ export type GetRecordQuery = {
         subscription?: string;
     };
 
-    reference?: string // Referenced record ID or unique ID. If user ID is given, it will fetch records that are uploaded by the user.
+    reference?: string | { record_id?: string; unique_id?: string; user_id?: string } // Referenced record ID or unique ID (string), or the object form. If user ID is given, it will fetch records that are uploaded by the user.
 
     /** Index condition and range cannot be used simultaneously.*/
     index?: {

@@ -704,10 +704,10 @@ export default class Skapi {
 
 	/**
 	 * Returns current connection metadata such as service name, client IP, user agent, locale, and SDK version.
-	 * @param params Request parameters.
+	 * @param params Request parameters. When `refresh` is true, the cached connection metadata is re-fetched before returning; otherwise the cached connection is returned.
 	 * @returns A promise that resolves to Promise<ConnectionInfo>.
 	 */
-	async getConnectionInfo(params?: { refresh: Boolean }): Promise<ConnectionInfo> {
+	async getConnectionInfo(params?: { refresh?: boolean }): Promise<ConnectionInfo> {
 		let refresh = params?.refresh || false;
 		
 		if (refresh) {
@@ -845,15 +845,16 @@ export default class Skapi {
 
 	/**
 	 * Opens a realtime WebSocket connection and registers a callback for incoming realtime messages.
+	 * The WebSocket is delivered through the callback (and stored on the instance); on the initial connection the returned promise resolves to undefined rather than the socket.
 	 * @param callback Callback invoked for events or updates.
-	 * @returns A promise that resolves to Promise<WebSocket>.
+	 * @returns A promise that resolves to Promise<WebSocket | void>.
 	 */
-	connectRealtime(callback: RealtimeCallback): Promise<WebSocket> {
+	connectRealtime(callback: RealtimeCallback): Promise<WebSocket | void> {
 		return connectRealtime.bind(this)(callback);
 	}
 
 	/**
-	 * Runs a spellcast operation and stores or returns generated spell data.
+	 * Casts a spell (uploads the given spell/name). The server response is not surfaced; resolves to a fixed confirmation string.
 	 * @param params Request parameters.
 	 * @returns A promise that resolves to Promise<string>.
 	 */
@@ -883,12 +884,12 @@ export default class Skapi {
 	}
 
 	/**
-	 * Sends a dopamine message payload and returns the previous message.
+	 * Uploads a dopamine message. In non-browser runtimes, resolves to a formatted string (including the video URL, and the previous message if one exists); in the browser it alerts and redirects, resolving to undefined.
 	 * @param params Request parameters.
-	 * @returns A promise that resolves to Promise<string>.
+	 * @returns A promise that resolves to Promise<string | void>.
 	 */
 	@formHandler()
-	dopamine(params: { message: string; name: string }): Promise<string> {
+	dopamine(params: { message: string; name: string }): Promise<string | void> {
 		return dopamine.bind(this)(params);
 	}
 	/**
@@ -899,11 +900,11 @@ export default class Skapi {
 	 */
 	@formHandler()
 	getUniqueId(
-		params: Form<{
+		params?: Form<{
 			/** Unique ID */
 			unique_id?: string;
-			/** String query condition for tag name. */
-			condition?: Condition;
+			/** String query condition for the unique_id value. */
+			condition?: Condition | 'ne' | '!=';
 		}>,
 		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<UniqueId>> {
@@ -919,7 +920,6 @@ export default class Skapi {
 	resendInvitation(
 		params: Form<{
 			email: string;
-			confirmation_url?: string;
 		}>,
 	): Promise<'SUCCESS: Invitation has been re-sent. (User ID: xxx...)'> {
 		return resendInvitation.bind(this)(params);
@@ -947,10 +947,10 @@ export default class Skapi {
 	 */
 	@formHandler()
 	getInvitations(
-		params: Form<{
+		params?: Form<{
 			email?: string;
 		}>,
-		fetchOptions: FetchOptions,
+		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<UserProfile>> {
 		return getInvitations.bind(this)(params, fetchOptions);
 	}
@@ -1025,7 +1025,7 @@ export default class Skapi {
 		status: 'running' | 'pending';
 		queue_name: string;
 		in_queue: number;
-		poll?: (arg?: { latency?: number }) => void;
+		poll?: (arg?: { latency?: number }) => Promise<any>;
 	}> {
 		return clientSecretRequest.bind(this)(params);
 	}
@@ -1098,13 +1098,13 @@ export default class Skapi {
 	 * Lists consumed tickets with optional filters and pagination.
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
-	 * @returns A promise that resolves to Promise<DatabaseResponse<any[]>>.
+	 * @returns A promise that resolves to Promise<DatabaseResponse<any>>.
 	 */
 	@formHandler()
 	getConsumedTickets(
 		params: { ticket_id?: string },
 		fetchOptions?: FetchOptions,
-	): Promise<DatabaseResponse<any[]>> {
+	): Promise<DatabaseResponse<any>> {
 		return getConsumedTickets.bind(this)(params, fetchOptions);
 	}
 
@@ -1112,13 +1112,13 @@ export default class Skapi {
 	 * Lists issued tickets with optional filters and pagination.
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
-	 * @returns A promise that resolves to Promise<DatabaseResponse<any[]>>.
+	 * @returns A promise that resolves to Promise<DatabaseResponse<any>>.
 	 */
 	@formHandler()
 	getTickets(
 		params: { ticket_id?: string },
 		fetchOptions?: FetchOptions,
-	): Promise<DatabaseResponse<any[]>> {
+	): Promise<DatabaseResponse<any>> {
 		return getTickets.bind(this)(params, fetchOptions);
 	}
 
@@ -1132,13 +1132,13 @@ export default class Skapi {
 
 	/**
 	 * Fetches currently connected users in a realtime group.
-	 * @param params Request parameters.
+	 * @param params Request parameters. When `group` is omitted, it defaults to the realtime group the user is currently joined to.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<{ user_id: string; cid: string }[]>>.
 	 */
 	@formHandler()
 	getRealtimeUsers(
-		params: { group: string; user_id?: string },
+		params?: { group?: string; user_id?: string },
 		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<{ user_id: string; cid: string }[]>> {
 		return getRealtimeUsers.bind(this)(params, fetchOptions);
@@ -1201,11 +1201,11 @@ export default class Skapi {
 	 * Invites a user by email with optional attributes and invitation email options.
 	 * @param params Payload for the request.
 	 * @param options Optional behavior configuration.
-	 * @returns A promise that resolves to Promise<'SUCCESS: Invitation has been sent.'>.
+	 * @returns A promise that resolves to Promise<'SUCCESS: Invitation has been sent. (User ID: xxx...)'>.
 	 */
 	@formHandler()
 	inviteUser(
-		params: UserAttributes & { openid_id: string; access_group: number },
+		params: UserAttributes & { openid_id?: string; access_group?: number },
 		options?: {
 			confirmation_url?: string;
 			email_subscription?: boolean;
@@ -1214,7 +1214,7 @@ export default class Skapi {
 				subject: string;
 			};
 		},
-	): Promise<'SUCCESS: Invitation has been sent.'> {
+	): Promise<'SUCCESS: Invitation has been sent. (User ID: xxx...)'> {
 		return inviteUser.bind(this)(params, options);
 	}
 
@@ -1225,7 +1225,7 @@ export default class Skapi {
 	 */
 	@formHandler()
 	createAccount(
-		params: UserAttributes & { password: string; access_group: number },
+		params: UserAttributes & { email: string; password: string; access_group?: number },
 	): Promise<UserProfile & { email_admin: string; username: string }> {
 		return createAccount.bind(this)(params);
 	}
@@ -1253,9 +1253,9 @@ export default class Skapi {
 	getRealtimeGroups(
 		params?: {
 			/** Index name to search. */
-			searchFor: 'group' | 'number_of_users';
+			searchFor?: 'group' | 'number_of_users';
 			/** Index value to search. */
-			value: string | number;
+			value?: string | number;
 			/** Search condition. */
 			condition?:
 				| '>'
@@ -1332,7 +1332,7 @@ export default class Skapi {
 	 */
 	@formHandler()
 	getProfile(options?: {
-		refreshToken: boolean;
+		refreshToken?: boolean;
 	}): Promise<UserProfile | null> {
 		return getProfile.bind(this)(options);
 	}
@@ -1411,9 +1411,9 @@ export default class Skapi {
 	 */
 	@formHandler()
 	getTables(
-		/** If null fetch all list of tables. */
-		query: {
-			table: string;
+		/** If omitted, fetches the full list of tables. */
+		query?: {
+			table?: string;
 			/** Condition operator of table name. */
 			condition?: Condition;
 		},
@@ -1445,7 +1445,8 @@ export default class Skapi {
 					| 'total_bool'
 					| 'bool_count'
 					| 'string_count'
-					| 'index_name';
+					| 'index_name'
+					| 'number_of_records';
 				/** Value to query. */
 				value?: number | boolean | string;
 				condition?: Condition;
@@ -1463,9 +1464,9 @@ export default class Skapi {
 	 */
 	@formHandler()
 	getTags(
-		query: {
+		query?: {
 			/** Table name */
-			table: string;
+			table?: string;
 			/** Tag name */
 			tag?: string;
 			/** String query condition for tag name. */
@@ -1529,9 +1530,10 @@ export default class Skapi {
 				| 'birthdate'
 				| 'subscribers'
 				| 'timestamp'
+				| 'access_group'
 				| 'approved';
 			/** Index value to search. */
-			value: string | number | boolean | string[];
+			value: string | number | string[];
 			/** Search condition. */
 			condition?:
 				| '>'
@@ -1545,7 +1547,7 @@ export default class Skapi {
 				| 'lt'
 				| 'lte';
 			/** Range of search. */
-			range?: string | number | boolean;
+			range?: string | number;
 		},
 		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<UserPublic>> {
@@ -1577,7 +1579,7 @@ export default class Skapi {
 	 */
 	@formHandler()
 	unsubscribeNewsletter(params: {
-		group: number | 'public' | 'authorized' | null;
+		group: number | 'public' | 'authorized' | 'admin';
 	}): Promise<string> {
 		return unsubscribeNewsletter.bind(this)(params);
 	}
@@ -1665,9 +1667,10 @@ export default class Skapi {
 				| 'timestamp'
 				| 'read'
 				| 'complaint'
+				| 'bounced'
 				| 'subject';
 			value: string | number;
-			range: string | number;
+			range?: string | number;
 			/**
 			 * Defaults to '=',
 			 * Condition does not work with range.
@@ -1697,15 +1700,21 @@ export default class Skapi {
 	 */
 	@formHandler()
 	getNewsletterSubscription(
-		params: { group?: number | 'public' | 'authorized' },
+		params: { group?: number | 'public' | 'authorized'; user_id?: string },
 		fetchOptions?: FetchOptions,
 	): Promise<
-		{
+		| {
 			active: boolean;
 			timestamp: number;
 			group: number;
 			subscribed_email: string;
 		}[]
+		| DatabaseResponse<{
+			active: boolean;
+			timestamp: number;
+			group: number;
+			subscribed_email: string;
+		}>
 	> {
 		return getNewsletterSubscription.bind(this)(params, fetchOptions);
 	}
@@ -1994,7 +2003,7 @@ export default class Skapi {
 	/**
 	 * Creates or updates a database record with optional file uploads.
 	 * @param params Payload for the request.
-	 * @param config Additional configuration options.
+	 * @param config Required record configuration (table, record_id, index, tags, source, reference, etc.).
 	 * @param files File list to process.
 	 * @returns A promise that resolves to Promise<RecordData>.
 	 */
@@ -2007,7 +2016,7 @@ export default class Skapi {
 		return postRecord.bind(this)(params, config, files);
 	}
 	/**
-	 * Fetches subscriber/subscription relationships with filters and pagination.
+	 * Fetches subscriber/subscription relationships with filters and pagination. At least one of `subscriber` or `subscription` must be provided.
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<Subscription>>.
@@ -2081,14 +2090,19 @@ export default class Skapi {
 	@formHandler()
 	subscribeNewsletter(
 		params: Form<{
-			email?: string;
-			group: number | 'public' | 'authorized' | 'admin';
+			email?: string | string[];
+			group: number | 'public' | 'authorized' | 'admin' | (string & {});
 			redirect?: string;
 		}>,
 	): Promise<string> {
 		return subscribeNewsletter.bind(this)(params);
 	}
 
+	/**
+	 * Creates or updates multiple database records in a single bulk request. Requires a non-empty array, and all entries must share the same table/service.
+	 * @param config Non-empty array of record configurations to post.
+	 * @returns A promise that resolves to Promise<RecordData[]>.
+	 */
 	bulkPostRecords(config: PostRecordConfig[]): Promise<RecordData[]> {
 		return bulkPostRecords.bind(this)(config);
 	}
