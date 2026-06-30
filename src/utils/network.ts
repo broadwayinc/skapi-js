@@ -168,6 +168,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'get-uniqueid':
         case 'get-index':
         case 'get-signed-url':
+        case 'extract-file-text':
         case 'grant-private-access':
         case 'request-private-access-key':
         case 'get-ws-group':
