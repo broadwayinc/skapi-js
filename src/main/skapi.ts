@@ -146,6 +146,7 @@ declare const __SKAPI_VERSION__: string;
 
 type Options = {
 	autoLogin: boolean;
+	refetchServiceInfo?: boolean; // bypasses cached service info and always fetch new service info on load.
 	requestBatchSize?: number; // default 30. number of requests to be handled in a batch
 	// bearerToken?: string; // custom bearer token for authentication
 	eventListener?: {
@@ -167,6 +168,7 @@ export default class Skapi {
 	session: Record<string, any> | null = null;
 	connection: Connection | null = null;
 	private __my_unique_ids: { [rec_id: string]: string } = {};
+	private __uniqueIdsPersistTimer: ReturnType<typeof setTimeout> | null = null;
 	private userPool: CognitoUserPool | null = null;
 	private __socket: Promise<WebSocket> | null = null;
 	private __mediaStream: MediaStream = null;
@@ -453,8 +455,11 @@ export default class Skapi {
 		this.owner = owner;
 
 		let autoLogin = true;
-
+		let refetchServiceInfo = false;
 		if (options) {
+			if (typeof options.refetchServiceInfo === 'boolean') {
+				refetchServiceInfo = options.refetchServiceInfo;
+			}
 			if (typeof options.autoLogin === 'boolean') {
 				autoLogin = options.autoLogin;
 			}
@@ -638,7 +643,7 @@ export default class Skapi {
 
 			if (!restore?.connection) {
 				// await for first connection
-				connection = this._updateConnection();
+				connection = this._updateConnection({refresh: refetchServiceInfo});
 			}
 
 			const storeClassProperties = () => {

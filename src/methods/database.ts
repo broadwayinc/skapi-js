@@ -1097,7 +1097,24 @@ export async function postRecord(
     if (record.unique_id) {
         this.__my_unique_ids[record.unique_id] = record.record_id;
         if (isBrowserRuntime()) {
-            window.sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids));
+            // Debounce + guard the persistence. Previously every postRecord
+            // re-stringified the entire, ever-growing map synchronously, so a
+            // bulk upload (e.g. 10k files, each writing a src:: unique_id) did
+            // O(n^2) JSON work and could throw QuotaExceededError mid-batch,
+            // failing the upload. Coalesce writes to at most one per idle tick
+            // and swallow storage errors so persistence never breaks an upload.
+            if (this.__uniqueIdsPersistTimer !== null) {
+                clearTimeout(this.__uniqueIdsPersistTimer);
+            }
+            this.__uniqueIdsPersistTimer = setTimeout(() => {
+                this.__uniqueIdsPersistTimer = null;
+                try {
+                    window.sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids));
+                } catch (e) {
+                    // sessionStorage full/unavailable: keep the in-memory map,
+                    // just skip persistence for this session.
+                }
+            }, 500);
         }
     }
 
