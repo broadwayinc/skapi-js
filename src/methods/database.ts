@@ -700,10 +700,7 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
     let is_reference_post = "";
     let files = [];
     let _config = validator.Params(config || {}, {
-        record_id: (v) => validateStringByPolicy(v, 'record_id', {
-            allowEmpty: false,
-            onlyAlphanumeric: true,
-        }),
+        record_id: ['string', null],
         unique_id: ['string', null],
         readonly: 'boolean',
         table: {
