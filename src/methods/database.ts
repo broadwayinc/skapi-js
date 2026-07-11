@@ -700,10 +700,19 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
     let is_reference_post = "";
     let files = [];
     let _config = validator.Params(config || {}, {
-        record_id: (v) => validateStringByPolicy(v, 'record_id', {
-            allowEmpty: false,
-            onlyAlphanumeric: true,
-        }),
+        record_id: (v) => {
+            // "record_id" may actually be a unique_id. If we already know the
+            // unique_id -> record_id mapping locally, resolve it here; otherwise
+            // pass the value through and let the backend resolve it. Do NOT force
+            // alphanumeric, since unique_ids (e.g. "src::folder/file.pdf") contain
+            // characters a real record_id never would.
+            if (typeof v === 'string' && this.__my_unique_ids[v]) {
+                return this.__my_unique_ids[v];
+            }
+            return validateStringByPolicy(v, 'record_id', {
+                allowEmpty: false,
+            });
+        },
         unique_id: ['string', null],
         readonly: 'boolean',
         table: {

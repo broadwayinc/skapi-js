@@ -85,7 +85,7 @@ export type GetRecordQuery = {
 }
 
 export type PostRecordConfig = {
-    record_id?: string; // when record_id is given, it will update the record with the given record_id. If record_id is not given, it will create a new record.
+    record_id?: string; // when record_id is given, it will update the record with the given record_id. If record_id is not given, it will create a new record. If unique ID is given as a record ID, it will update the record with the given unique ID. 
     unique_id?: string | null; // You can set unique_id to the record with the given unique_id. Null will remove unique_id from the record.
     readonly?: boolean; // When true, record cannot be updated or deleted.
 
