@@ -389,7 +389,7 @@ export async function getFile(
     config = validator.Params<NonNullable<typeof config>>(config, {
         expires: ['number', () => 0],
         dataType: ['base64', 'blob', 'endpoint', 'text', 'info', () => 'download'],
-        progress: ['function', null],
+        progress: ['function', 'undefined', null],
         _ref: [null, 'string'],
         _update: v => v
     });
