@@ -3,7 +3,7 @@ import { request } from '../utils/network';
 import { checkAdmin } from './user';
 import { Form, UserAttributes, UserProfile, UserPublic, DatabaseResponse, FetchOptions } from '../Types';
 import SkapiError from '../main/error';
-import { parseUserAttributes } from '../utils/utils';
+import { parseUserAttributes, MD5 } from '../utils/utils';
 
 export async function blockAccount(form: Form<{
     user_id: string;
@@ -280,7 +280,7 @@ export async function createAccount(
     };
 
     let required = [
-        'email', 
+        'email',
         'password'
     ];
 
@@ -416,4 +416,79 @@ export async function resendInvitation(params: Form<{
     }
 
     return await request.bind(this)('invitation-list', Object.assign({ mode: 'resend' }, params), { auth: true });
+}
+
+export async function updateUserAttributes(
+    form: Form<UserAttributes & { user_id: string; }>,
+): Promise<'SUCCESS: User attributes updated.'> {
+    let params: any = validator.Params(form, {
+        user_id: (v: string) => validator.UserId(v, '"user_id"'),
+        email: (v: string) => validator.Email(v),
+        address: (v: any) => {
+            if (!v) return '';
+
+            if (typeof v === 'string') {
+                return v;
+            }
+
+            if (typeof v === 'object') {
+                return JSON.stringify(v);
+            }
+
+            return undefined;
+        },
+        name: 'string',
+        gender: 'string',
+        birthdate: (v: string) => v ? validator.Birthdate(v) : "",
+        phone_number: (v: string) => v ? validator.PhoneNumber(v) : "",
+        email_public: 'boolean',
+        phone_number_public: 'boolean',
+        address_public: 'boolean',
+        gender_public: 'boolean',
+        birthdate_public: 'boolean',
+        misc: 'string',
+        picture: (v: string) => v ? validator.Url(v) : "",
+        profile: (v: string) => v ? validator.Url(v) : "",
+        nickname: 'string',
+        website: (v: string) => v ? validator.Url(v) : "",
+    }, ['user_id']);
+
+    // "service" and "owner" are auto-allowed by validator.Params. They target another
+    // service and must be lifted to the top level of the request (like the sibling admin
+    // methods), otherwise they route against the wrong service and get sent to Cognito as
+    // invalid attribute names. this.service / this.owner are used when they are omitted.
+    let service = params.service;
+    let owner = params.owner;
+    delete params.service;
+    delete params.owner;
+
+    // user_id is the only required field, but at least one attribute to update must be provided.
+    if (Object.keys(params).filter(k => k !== 'user_id' && params[k] !== undefined).length === 0) {
+        throw new SkapiError('At least one attribute to update is required.', { code: 'INVALID_PARAMETER' });
+    }
+
+    let isAdmin = await checkAdmin.bind(this)();
+
+    if (!isAdmin) {
+        if (!this.__user) {
+            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
+        }
+
+        if (this.__user.access_group < 90) {
+            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
+        }
+    }
+
+    // when the e-mail is changed, update the alternative sign-in lookup key as well
+    if (params.email) {
+        params.preferred_username = (service || this.service) + '-' + MD5.hash(params.email);
+    }
+
+    let reqData: { attributes: any; service?: string; owner?: string; } = { attributes: params };
+    if (service && owner) {
+        reqData.service = service;
+        reqData.owner = owner;
+    }
+
+    return await request.bind(this)('admin-edit-profile', reqData, { auth: true });
 }

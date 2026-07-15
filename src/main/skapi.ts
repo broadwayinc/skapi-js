@@ -133,6 +133,7 @@ import {
 	getInvitations,
 	cancelInvitation,
 	resendInvitation,
+	updateUserAttributes
 } from '../methods/admin';
 import {
 	subscribeNotification,
@@ -1246,6 +1247,19 @@ export default class Skapi {
 		access_group: number;
 	}): Promise<'SUCCESS: Access has been granted to the user.'> {
 		return grantAccess.bind(this)(params);
+	}
+
+	/**
+	 * Updates another user's profile attributes from admin context.
+	 * Requires the target user's user_id plus at least one attribute to update.
+	 * @param params Target user_id and the attributes to update.
+	 * @returns A promise that resolves to Promise<'SUCCESS: User attributes updated.'>.
+	 */
+	@formHandler()
+	updateUserAttributes(
+		params: UserAttributes & { user_id: string },
+	): Promise<'SUCCESS: User attributes updated.'> {
+		return updateUserAttributes.bind(this)(params);
 	}
 
 	/**
