@@ -73,10 +73,14 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
     }
     const keys = {
         'ip': (r: string) => {
+            // Stored as "<ip>[R]#<unique_id>". Only the FIRST '#' is the delimiter —
+            // the unique_id itself may contain '#' (e.g. a "src::<path>" id built
+            // from a file path), so rejoin everything after it instead of taking
+            // split[1], which silently truncated at the first '#' in the id.
             let split_ip = r.split('#');
             let ip = split_ip[0];
             if (split_ip.length > 1) {
-                output.unique_id = split_ip[1];
+                output.unique_id = split_ip.slice(1).join('#');
             }
             if (ip.slice(-1) === 'R') {
                 output.readonly = true;
