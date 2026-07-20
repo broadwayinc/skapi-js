@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "1.7.4",
+  "version": "1.7.7",
   "description": "Serverless Backend API for AI Agents.",
   "main": "dist/skapi.cjs",
   "browser": "dist/skapi.browser.mjs",
@@ -40,7 +40,7 @@
   "dependencies": {
     "amazon-cognito-identity-js": "^6.3.16",
     "cocochex": "^1.0.4",
-    "qpass": "^1.2.0"
+    "qpass": "^1.2.1"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

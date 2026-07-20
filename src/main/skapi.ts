@@ -62,6 +62,8 @@ import {
 	sendInquiry,
 	cancelClientSecretRequest,
 	clientSecretRequestQueueCount,
+	stopClientSecretPolling,
+	isPollStopped,
 } from '../methods/request';
 import {
 	request,
@@ -1068,6 +1070,42 @@ export default class Skapi {
 		queue?: string; // Optional queue name the request belongs to, used to remove it from the client-side queue.
 	}): Promise<{ removed: boolean; message: string }> {
 		return cancelClientSecretRequest.bind(this)(params);
+	}
+
+	/**
+	 * Stops live polling for client secret requests without cancelling the requests
+	 * themselves. The server-side work continues; only this client stops asking about it.
+	 *
+	 * Use it to drop polling traffic while the user is not looking at the results (a
+	 * hidden tab, a closed view), then simply poll again when they return. Polls run
+	 * one-at-a-time per queue, so a poll for a request that never settles otherwise
+	 * blocks every poll queued behind it.
+	 *
+	 * Pass `id` (with `url` and `method`) to stop one request, `queue` to stop a queue's
+	 * polls, or neither to stop all of them. A stopped poll resolves with
+	 * `{ id, status: 'stopped' }` rather than rejecting, and its `onResponse`/`onError`
+	 * callbacks are not called.
+	 *
+	 * @param params Which polls to stop.
+	 * @returns The number of polls stopped.
+	 */
+	stopClientSecretPolling(params?: {
+		url?: string;
+		method?: 'GET' | 'POST' | 'DELETE' | 'PUT';
+		id?: string; // Request ID (short form, paired with url+method, or an already-full id).
+		queue?: string; // Queue name the polls were started with.
+		service?: string;
+		owner?: string;
+	}): number {
+		return stopClientSecretPolling.bind(this)(params || {});
+	}
+
+	/**
+	 * True if a poll result came from stopClientSecretPolling rather than the server.
+	 * @param res A resolved poll result.
+	 */
+	isPollStopped(res: any): boolean {
+		return isPollStopped(res);
 	}
 
 	/**

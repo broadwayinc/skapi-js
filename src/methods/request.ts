@@ -23,6 +23,39 @@ let queueJobId: {
 	[full_id: string]: string;
 } = {};
 
+/**
+ * Live polls, keyed by the full request id, so a caller can stop one it already
+ * started. Without this the setInterval below is unreachable from outside: it is a
+ * closure local and is only ever cleared when the request settles, so a request that
+ * never settles polls forever — and because polls run through Qpass with batchSize 1,
+ * it also blocks every poll queued behind it on the same queue.
+ */
+let activePolls: {
+	[full_id: string]: {
+		stop: (() => void) | null;
+		aborted: boolean;
+		queue?: string;
+	};
+} = {};
+
+/**
+ * Value a stopped poll resolves with. Deliberately a RESOLVE, not a reject: callers
+ * await these promises in many places without a rejection handler, and turning a stop
+ * into a rejection would surface as an error state in their UI (and, where a `.catch`
+ * already exists for real failures, would run the failure path).
+ */
+function stoppedResult(id: string) {
+	return Object.freeze({ id, status: 'stopped' });
+}
+
+/**
+ * True if a poll result came from stopPolling rather than the server. Consumers that
+ * cannot import from this package can duck-type the same check (`res.status === 'stopped'`).
+ */
+export function isPollStopped(res: any): boolean {
+	return !!res && typeof res === 'object' && (res as any).status === 'stopped';
+}
+
 function pollClientSecretResponse(
 	this: any,
 	{
@@ -64,8 +97,27 @@ function pollClientSecretResponse(
 		});
 	}
 
+	// One registry entry per poll invocation. `stop` is filled in as soon as there is
+	// something to stop; a stop that arrives while the job is still WAITING in the Qpass
+	// queue sets `aborted` instead, which the job checks when it eventually starts.
+	let entry: { stop: (() => void) | null; aborted: boolean; queue?: string } = {
+		stop: null,
+		aborted: false,
+		queue,
+	};
+	activePolls[id] = entry;
+	let release = () => {
+		if (activePolls[id] === entry) delete activePolls[id];
+	};
+
 	let prom = () => new Promise<any>((resolve, reject) => {
 		let settled = false;
+		if (entry.aborted) {
+			// Stopped before this job ever got a turn.
+			release();
+			resolve(stoppedResult(id));
+			return;
+		}
 		let interval = setInterval(async () => {
 			try {
 				let result = await request.bind(this)(
@@ -87,6 +139,7 @@ function pollClientSecretResponse(
 				if (onResponse)
 					onResponse(result);
 				clearInterval(interval);
+				release();
 				resolve(result);
 			} catch (e) {
 				if (settled) return;
@@ -94,29 +147,131 @@ function pollClientSecretResponse(
 				if (onError)
 					onError(e);
 				clearInterval(interval);
+				release();
 				reject(e);
 			}
 		}, latency);
+		entry.stop = () => {
+			if (settled) return;
+			settled = true;
+			clearInterval(interval);
+			release();
+			// onResponse/onError are deliberately NOT called: a stop is not a result,
+			// and firing them would make callers render a reply that never arrived.
+			resolve(stoppedResult(id));
+		};
 	});
 
+	// Exposed on the returned promise so a caller holding it can stop this exact poll
+	// without having to reconstruct the full request id.
+	let publicStop = () => {
+		let e = activePolls[id];
+		if (!e) return; // already settled
+		if (e.stop) e.stop();
+		else {
+			e.aborted = true;
+			delete activePolls[id];
+		}
+	};
+
 	if (queue) {
-		return new Promise<any>((resolve, reject) => {
+		let outer = new Promise<any>((resolve, reject) => {
+			let outerSettled = false;
 			let jobId = queuePromiseList[queue].add([async () => {
 				try {
 					let result = await prom();
-					resolve(result);
+					if (!outerSettled) {
+						outerSettled = true;
+						resolve(result);
+					}
 					return result;
 				} catch (e) {
-					reject(e);
+					if (!outerSettled) {
+						outerSettled = true;
+						reject(e);
+					}
 					throw e;
 				}
 			}])[0];
 			queueJobId[id] = jobId;
+			// Stopping a job that has not started yet must ALSO drop it from the queue,
+			// or its batchSize-1 slot stays occupied and everything behind it stalls —
+			// and must settle this outer promise, or the caller awaits forever.
+			entry.stop = () => {
+				if (outerSettled) return;
+				entry.aborted = true;
+				try {
+					if (queuePromiseList[queue]) {
+						queuePromiseList[queue].remove(queueJobId[id]);
+					}
+				} catch (e) { /* already started or already removed */ }
+				delete queueJobId[id];
+				release();
+				outerSettled = true;
+				resolve(stoppedResult(id));
+			};
 		});
+		return Object.assign(outer, { stop: publicStop });
 	}
 	else {
-		return prom();
+		return Object.assign(prom(), { stop: publicStop });
 	}
+}
+
+/**
+ * Stop live polls. Returns how many were stopped.
+ *
+ * Matched by full request id when `id` is given, otherwise by queue. Note the two poll
+ * call sites pass DIFFERENT queue namespaces — the dispatch path passes the caller's
+ * queue string, the history path passes the server-side qid — so a queue match only
+ * reaches the polls that were started with that same string. Prefer stopping by id.
+ */
+export function stopClientSecretPolling(
+	this: any,
+	params: {
+		url?: string;
+		method?: 'GET' | 'POST' | 'DELETE' | 'PUT';
+		id?: string;
+		queue?: string;
+		service?: string;
+		owner?: string;
+	},
+): number {
+	let stopped = 0;
+	let ids: string[] = [];
+
+	if (params?.id) {
+		if (params.url && params.method) {
+			let service = params.service || this.service;
+			ids.push(
+				`[${params.method.toUpperCase()}]${params.url.toLowerCase()}#${service}:${params.id}`,
+			);
+		}
+		// Also accept an already-full id, so callers holding the registry key work.
+		ids.push(params.id);
+	} else if (params?.queue) {
+		for (let key in activePolls) {
+			if (activePolls[key]?.queue === params.queue) ids.push(key);
+		}
+	} else {
+		for (let key in activePolls) ids.push(key);
+	}
+
+	for (let key of ids) {
+		let entry = activePolls[key];
+		if (!entry) continue;
+		if (entry.stop) {
+			entry.stop();
+		} else {
+			// Queued but not started, and no stop published yet: mark it so the job
+			// short-circuits the moment it gets a turn.
+			entry.aborted = true;
+			delete activePolls[key];
+		}
+		stopped += 1;
+	}
+
+	return stopped;
 }
 
 export function clientSecretRequestQueueCount(
@@ -284,7 +439,12 @@ export async function clientSecretRequest(params: {
 					let ownerId = params.owner || this.owner;
 					let fullId = `${url}#${serviceId}:${res.id}`;
 					Object.assign(res, {
-						poll: async (arg?: { latency?: number }) => pollClientSecretResponse.call(this, {
+						// NOT async: an async arrow returns a NEW native promise wrapping the
+						// result, which discards the `stop` handle pollClientSecretResponse
+						// attaches to the promise it returns. The caller would then hold an
+						// unstoppable poll. pollClientSecretResponse already returns a
+						// promise, so awaiting this is unchanged.
+						poll: (arg?: { latency?: number }) => pollClientSecretResponse.call(this, {
 							id: fullId,
 							auth,
 							service: serviceId,
