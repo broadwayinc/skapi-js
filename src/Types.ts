@@ -78,6 +78,7 @@ export type GetRecordQuery = {
         name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
         /** String value max 256 chars. Allows punctuation (including / ! * #). Blocks control chars and sentinel 􏿿. */
         value: string | number | boolean;
+        /** For a string value: '>=' = 'starts with', '<=' = 'ends with'. When the name is a compound name ending in '.', '>=' / '<=' match the child name segment (starts / ends with). '>' / '<' are lexicographic; numbers/booleans compare normally. */
         condition?: Condition;
         range?: string | number | boolean;
     };
@@ -512,12 +513,13 @@ export type FetchOptions = {
     /** Callback for database request progress. Useful when building progress bar. */
     progress?: ProgressCallback;
 }
-export type RequestHistory = { 
+export type RequestHistory = {
     id: string; // request id. Format: {stamp}:{entropy}
     status_code: number; // http status code of the request
     response_body: any;
     error?: any;
-    updated: number; // timestamp of the last update of the request status in milliseconds
+    created: number; // timestamp of when the request was created, in milliseconds. Set once and never changes.
+    updated: number; // timestamp of the last update of the request status (e.g. when the response arrived), in milliseconds.
     request_body: any;
     expires?: number; // timestamp of when the request history will be deleted in epoch time (seconds).
     status: 'pending' | 'running' | 'resolved' | 'failed';

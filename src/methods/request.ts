@@ -555,6 +555,10 @@ export async function clientSecretRequestHistory(
 			status_code: item.rslv?.status_code || null,
 			response_body: item.rslv?.body || item.rslv?.truncated || null,
 			error: item?.err,
+			// `stmp` is stamped once when the request is created and never rewritten;
+			// `utmp` moves on every status change. So `created` is the request time and
+			// `updated` is the time of the latest response/status change.
+			created: item?.stmp,
 			updated: item?.utmp,
 			request_body: item?.reqbdy,
 			expires: item?.expt,

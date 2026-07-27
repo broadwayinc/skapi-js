@@ -25,7 +25,30 @@ import { accessGroup, decodeReservedDelimiters, indexValue, recordIdOrUniqueId, 
 
 const pendingPrivateAccessKeyRequest: Record<string, Promise<string>> = {};
 
-export async function normalizeRecord(record: Record<string, any>, _called_from?): Promise<RecordData> {
+// Read a getFile('blob') result to text across browser + node runtimes. Blob.text()
+// is used when present; otherwise FileReader (the same polyfilled reader getFile
+// uses for its base64 path) reads it.
+async function blobToText(blob: any): Promise<string> {
+    if (typeof blob === 'string') {
+        return blob;
+    }
+    if (blob && typeof blob.text === 'function') {
+        return await blob.text();
+    }
+    return await new Promise<string>((resolve, reject) => {
+        try {
+            let fr = new FileReader();
+            fr.onload = () => resolve(fr.result as string);
+            fr.onerror = () => reject(fr.error || new Error('Failed to read blob'));
+            fr.readAsText(blob);
+        }
+        catch (err) {
+            reject(err);
+        }
+    });
+}
+
+export async function normalizeRecord(record: Record<string, any>, _called_from?, _skipDataFetch = false): Promise<RecordData> {
     // if (record?.rec) {
     //     if (_called_from !== 'called from postRecord') {
     //         let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
@@ -66,6 +89,10 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
         bin: {}
     };
     let is_anonymous = false;
+    // Raw CDN urls of any offloaded-"data" file (a __data__/__json__.json entry
+    // in the record's bin). Collected while processing "bin" (which runs before
+    // "data") and used by the "data" handler to fetch the payload back.
+    let dataFileUrls: string[] = [];
     function access_group_set(v) {
         let access_group = v == '**' ? 'private' : parseInt(v);
         access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group == 99 ? 'admin' : access_group;
@@ -183,6 +210,14 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
 
                         let filename = decodeURIComponent(splitPath[splitPath.length - 1]);
                         let pathKey = decodeURIComponent(splitPath[10]);
+
+                        // Offloaded record "data" lives at .../bin/<ts>/<size>/__data__/__json__.json.
+                        // It is not a user binary: keep it out of the bin output and
+                        // hand its raw url to the "data" handler to fetch back.
+                        if (pathKey === '__data__' && filename === '__json__.json') {
+                            return { isDataFile: true, rawUrl: url };
+                        }
+
                         let size = splitPath[9];
                         let uploaded = splitPath[8];
                         let access_group = access_group_set(splitPath[6]);
@@ -228,6 +263,12 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                         continue;
                     }
 
+                    if ((parsed as any).isDataFile) {
+                        // Kept out of the user-facing bin; the url was already
+                        // collected by the synchronous pre-scan above.
+                        continue;
+                    }
+
                     if (binObj[parsed.pathKey]) {
                         binObj[parsed.pathKey].push(parsed.obj);
                         continue;
@@ -249,15 +290,61 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                 }
             }
         },
-        'data': (r: any) => {
-            let data = r;
+        'data': async (r: any) => {
             if (r === '!D%{}') {
-                data = {};
+                output.data = {};
+                return;
             }
-            else if (r === '!L%[]') {
-                data = [];
+            if (r === '!L%[]') {
+                output.data = [];
+                return;
             }
-            output.data = data;
+
+            // Offloaded data: stored as { __data__: "<ts>/<size>/__data__/__json__.json" },
+            // the JSON itself living in the record's bin as that same file. Fetch
+            // it back (all records in a getRecords batch resolve concurrently via
+            // the Promise.all over normalizeRecord) and replace it in the data key.
+            // The value must be exactly one key whose string ends with the
+            // reserved suffix AND a matching bin file must exist; otherwise it is
+            // an ordinary user value that merely looks like a marker, so fall
+            // through and return it verbatim.
+            if (
+                r && typeof r === 'object' && !Array.isArray(r) &&
+                typeof r.__data__ === 'string' && Object.keys(r).length === 1 &&
+                r.__data__.endsWith('/__data__/__json__.json')
+            ) {
+                let markerPath = r.__data__;
+                let rawUrl = dataFileUrls.find(u => u.endsWith(markerPath)) || null;
+                if (rawUrl) {
+                    if (_skipDataFetch) {
+                        // postRecord/bulkPostRecords already hold the posted value
+                        // and restore it, so skip re-downloading what was just sent.
+                        output.data = r;
+                        return;
+                    }
+
+                    try {
+                        // Fetch as a blob, not 'text': getFile('text') routes the
+                        // body through request()'s response post-processing, which
+                        // both JSON.parses it (a second parse here would corrupt a
+                        // JSON-shaped string) and, if the decoded object has a
+                        // truthy top-level `startKey`, mangles it as a paginated
+                        // response. A blob passes through untouched, so we decode
+                        // and JSON.parse the raw body exactly once — the exact
+                        // inverse of the server's json.dumps for every value type.
+                        let blob = await getFile.bind(this)(rawUrl, { dataType: 'blob', _ref: output.reference || null });
+                        let text = await blobToText(blob);
+                        output.data = JSON.parse(text);
+                    }
+                    catch (err) {
+                        console.error('Failed to fetch offloaded record data:', err);
+                        output.data = null;
+                    }
+                    return;
+                }
+            }
+
+            output.data = r;
         }
     };
 
@@ -266,11 +353,29 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
         return record as RecordData;
     }
 
+    // Pre-scan the raw bin synchronously so the async "data" handler can resolve
+    // the offloaded-data file url immediately. The handler loop below starts every
+    // handler before awaiting any of them (collect-then-Promise.all), so the "data"
+    // handler's synchronous lookup cannot rely on the "bin" handler having run yet.
+    if (Array.isArray(record.bin)) {
+        for (let url of record.bin) {
+            try {
+                if (typeof url !== 'string') continue;
+                let sp = url.split('/').slice(3);
+                if (sp.length >= 12 && decodeURIComponent(sp[10]) === '__data__' && decodeURIComponent(sp[sp.length - 1]) === '__json__.json') {
+                    dataFileUrls.push(url);
+                }
+            }
+            catch { }
+        }
+    }
+
+    let toWait = []
     for (let k in keys) {
         if (record.hasOwnProperty(k)) {
             let exec = keys[k](record[k]);
             if (exec instanceof Promise) {
-                await exec;
+                toWait.push(exec);
             }
         }
     }
@@ -278,7 +383,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
     if (is_anonymous) {
         output.user_id = 'anonymous:' + output.user_id;
     }
-
+    await Promise.all(toWait);
     return output as RecordData;
 }
 
@@ -1106,7 +1211,14 @@ export async function postRecord(
 
     // window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
 
-    let record = await normalizeRecord.bind(this)(rec, 'called from postRecord');
+    // If the server offloaded the "data" payload to storage (too large for the
+    // record item), the response carries a { __data__: <path> } marker. Skip the
+    // re-download and return exactly what was posted.
+    let dataOffloaded = !!rec && rec.data && typeof rec.data === 'object' && !Array.isArray(rec.data) && typeof rec.data.__data__ === 'string' && rec.data.__data__.endsWith('/__data__/__json__.json');
+    let record = await normalizeRecord.bind(this)(rec, 'called from postRecord', true);
+    if (dataOffloaded) {
+        record.data = extractedForm.data;
+    }
     if (record.unique_id) {
         this.__my_unique_ids[record.unique_id] = record.record_id;
         if (isBrowserRuntime()) {
