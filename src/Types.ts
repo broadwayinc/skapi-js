@@ -528,7 +528,7 @@ export type RequestHistory = {
         latency?: number;
         onResponse?: (res:any)=>void;
         onError?: (err:any)=>void;
-    }) => Promise<any>; // function to poll the request status. When called, it will return a promise that resolves to the updated request history. Optional argument "latency" can be used to set the latency of the polling in milliseconds. Default latency is 1000ms.
+    }) => Promise<any>; // function to poll the request status until it settles. The promise resolves with the final result of the request: the third-party API response body when it resolves, or the error payload when it fails. It does not resolve with a RequestHistory item, so "created" and "updated" are not on the polled value. A poll stopped by stopClientSecretPolling() resolves with { id, status: 'stopped' }. Optional argument "latency" can be used to set the latency of the polling in milliseconds. Default latency is 1000ms.
 }
 
 export type DatabaseResponse<T> = {
