@@ -193,6 +193,13 @@ export type RecordData = {
     bin: { [key: string]: BinaryFile[] };
     ip: string;
     readonly: boolean;
+    /**
+     * Present ONLY on an element of a postRecords() result that the backend refused.
+     * Such an element is an empty record (record_id is ""), and this carries the reason
+     * the backend gave, e.g. { code: 'NOT_EXISTS', message: 'Reference "..." does not exists.' }.
+     * A saved record never has it, so `record_id` stays the test for "did this save".
+     */
+    error?: { code?: string; message?: string;[key: string]: any };
 }
 
 export type Connection = {

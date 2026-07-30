@@ -170,7 +170,18 @@ export default class Skapi {
 	owner: string;
 	session: Record<string, any> | null = null;
 	connection: Connection | null = null;
-	private __my_unique_ids: { [rec_id: string]: string } = {};
+	/**
+	 * unique_id -> record_id, bucketed by a "<service>/<owner>" scope key.
+	 *
+	 * The scope is mandatory. One Skapi instance routinely serves MANY services: the
+	 * MCP server keeps a single instance per user and names the target project on every
+	 * call, and the dashboard switches projects without reconstructing. A flat map let
+	 * the same unique_id from two projects collide on one key, so a post carrying
+	 * `reference: "src::<file>"` was silently rewritten to the OTHER project's
+	 * record_id and the backend rejected it as non-existent. Never key this by
+	 * unique_id alone, and never scope it by `this.service` when the call names its own.
+	 */
+	private __my_unique_ids: { [serviceKey: string]: { [unique_id: string]: string } } = {};
 	private __uniqueIdsPersistTimer: ReturnType<typeof setTimeout> | null = null;
 	private userPool: CognitoUserPool | null = null;
 	private __socket: Promise<WebSocket> | null = null;
@@ -628,12 +639,24 @@ export default class Skapi {
 			} catch (err) {}
 		})();
 
+		// Restore only THIS instance's own scope, under a key that names both service
+		// and owner. The pre-1.8.2 key (`<service>:uniqueids`) held a flat map that
+		// could already have entries from several projects mixed together, so those
+		// blobs are deliberately not read back: a poisoned cache is worse than none.
+		// Other scopes are simply not preloaded, which costs one backend resolve.
+		let uniqueIdScope = `${this.service}/${this.owner}`;
 		let uniqueids = hasWindow
-			? window.sessionStorage.getItem(`${this.service}:uniqueids`)
+			? window.sessionStorage.getItem(`${uniqueIdScope}:uniqueids`)
 			: null;
 		if (uniqueids) {
 			try {
-				this.__my_unique_ids = JSON.parse(uniqueids);
+				// sessionStorage is same-origin writable and the key is guessable, so do not
+				// trust the shape. The string "null" parses without throwing, and anything
+				// that is not a plain object would poison every later lookup.
+				let parsed = JSON.parse(uniqueids);
+				this.__my_unique_ids = (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+					? { [uniqueIdScope]: parsed }
+					: {};
 			} catch (err) {
 				this.__my_unique_ids = {};
 			}

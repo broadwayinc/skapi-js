@@ -641,8 +641,44 @@ export async function getFile(
     return blob;
 }
 
+/**
+ * Scope key for the unique_id -> record_id cache.
+ *
+ * Every database call may target a service OTHER than the instance's own: callers pass
+ * `service`/`owner` per call (the MCP server keeps one Skapi instance per user and names
+ * a different project on each call), falling back to the instance's own pair. So the
+ * cache must be keyed by the service the call is actually for. Keying it by `this.service`
+ * is just as wrong as not keying it at all, because `this.service` is frequently not the
+ * service being written to.
+ */
+function cacheScope(service?: string, owner?: string): string {
+    return `${service || this.service}/${owner || this.owner}`;
+}
+
+function getScopedUniqueId(scope: string, unique_id: string): string | undefined {
+    let bucket = this.__my_unique_ids[scope];
+    return bucket ? bucket[unique_id] : undefined;
+}
+
+function setScopedUniqueId(scope: string, unique_id: string, record_id: string): void {
+    if (!this.__my_unique_ids[scope]) {
+        this.__my_unique_ids[scope] = {};
+    }
+    this.__my_unique_ids[scope][unique_id] = record_id;
+}
+
+function deleteScopedUniqueId(scope: string, unique_id: string): void {
+    if (this.__my_unique_ids[scope]) {
+        delete this.__my_unique_ids[scope][unique_id];
+    }
+}
+
 async function getQuery(query, isDel = false) {
     query = extractFormData(query, { ignoreEmpty: true }).data || {};
+
+    // Captured before any mutation of `query`: the caller may name the target project,
+    // and the cache lookup below must be confined to it.
+    let scope = cacheScope.bind(this)(query?.service, query?.owner);
 
     let is_reference_fetch = '';
     let rec_or_uniq = recordIdOrUniqueId(query);
@@ -655,12 +691,13 @@ async function getQuery(query, isDel = false) {
             if (typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
                 query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
             }
-            if (this.__my_unique_ids[is_reference_fetch]) {
+            let cached = getScopedUniqueId.bind(this)(scope, is_reference_fetch);
+            if (cached) {
                 if (isDel) {
-                    delete this.__my_unique_ids[is_reference_fetch];
+                    deleteScopedUniqueId.bind(this)(scope, is_reference_fetch);
                 }
                 else {
-                    query.record_id = this.__my_unique_ids[is_reference_fetch];
+                    query.record_id = cached;
                     // delete query.unique_id;
                 }
             }
@@ -808,6 +845,11 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
 function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
     let is_reference_post = "";
     let files = [];
+    // The config names the project this record is posted to (`service`/`owner` are
+    // stripped further down, after the caller has read them). Both cache lookups below
+    // are confined to it, so a unique_id known in one project can never resolve to that
+    // project's record_id while posting into another.
+    let scope = cacheScope.bind(this)((config as any)?.service, (config as any)?.owner);
     let _config = validator.Params(config || {}, {
         record_id: (v) => {
             // "record_id" may actually be a unique_id. If we already know the
@@ -815,8 +857,9 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
             // pass the value through and let the backend resolve it. Do NOT force
             // alphanumeric, since unique_ids (e.g. "src::folder/file.pdf") contain
             // characters a real record_id never would.
-            if (typeof v === 'string' && this.__my_unique_ids[v]) {
-                return this.__my_unique_ids[v];
+            let cached = typeof v === 'string' ? getScopedUniqueId.bind(this)(scope, v) : undefined;
+            if (cached) {
+                return cached;
             }
             return validateStringByPolicy(v, 'record_id', {
                 allowEmpty: false,
@@ -911,8 +954,12 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
             }
             if (typeof v === 'string') {
                 is_reference_post = v;
-                if (this.__my_unique_ids[v]) {
-                    return this.__my_unique_ids[v];
+                // Scoped: an unscoped hit here is what silently redirected a
+                // "src::<file>" reference to a same-named file's record in a
+                // different project, which the backend then rejected as missing.
+                let cached = getScopedUniqueId.bind(this)(scope, v);
+                if (cached) {
+                    return cached;
                 }
                 return v;
             }
@@ -1116,6 +1163,10 @@ export async function bulkPostRecords(params) {
     let recList = await request.bind(this)('post-record', postData, options);
     let records = await Promise.all(recList.map((rec) => normalizeRecord.bind(this)(rec, 'called from postRecord')));
 
+    // Bulk posts all share one service/owner (enforced above), so one scope covers the
+    // whole batch. Falls back to the instance's own pair when the caller named neither.
+    let scope = cacheScope.bind(this)(service, owner);
+
     for (let i = 0; i < recList.length; i++) {
         let rec = recList[i];
         let record = records[i];
@@ -1124,6 +1175,18 @@ export async function bulkPostRecords(params) {
         //     window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
         // }
 
+        // The backend reports a per-element rejection as an error OBJECT INSIDE the
+        // returned array rather than by throwing, e.g. {error:{code:"NOT_EXISTS",
+        // message:'Reference "VQs5..." does not exists.'}}. normalizeRecord does not
+        // know the `error` key, so it dropped it and handed back a fully-shaped EMPTY
+        // record: callers saw an ordinary array of records, counted the rejections as
+        // saves, and the one thing that explained the failure was gone. Carry it across
+        // so a caller can report WHY a record did not save. An empty record_id remains
+        // the reliable "not saved" signal; this only adds the reason.
+        if (rec && typeof rec === 'object' && rec.error && record && !record.record_id) {
+            record.error = rec.error;
+        }
+
         if (typeof rec?.reference_private_key === 'string') {
             for (let ref of reference_posts) {
                 this.__private_access_key[ref] = rec.reference_private_key;
@@ -1131,7 +1194,7 @@ export async function bulkPostRecords(params) {
         }
 
         if (record?.unique_id) {
-            this.__my_unique_ids[record.unique_id] = record.record_id;
+            setScopedUniqueId.bind(this)(scope, record.unique_id, record.record_id);
         }
     }
 
@@ -1220,7 +1283,8 @@ export async function postRecord(
         record.data = extractedForm.data;
     }
     if (record.unique_id) {
-        this.__my_unique_ids[record.unique_id] = record.record_id;
+        let scope = cacheScope.bind(this)((_config as any)?.service, (_config as any)?.owner);
+        setScopedUniqueId.bind(this)(scope, record.unique_id, record.record_id);
         if (isBrowserRuntime()) {
             // Debounce + guard the persistence. Previously every postRecord
             // re-stringified the entire, ever-growing map synchronously, so a
@@ -1234,7 +1298,10 @@ export async function postRecord(
             this.__uniqueIdsPersistTimer = setTimeout(() => {
                 this.__uniqueIdsPersistTimer = null;
                 try {
-                    window.sessionStorage.setItem(`${this.service}:uniqueids`, JSON.stringify(this.__my_unique_ids));
+                    // Persist ONLY the scope just written, under a key that names both
+                    // service and owner. Writing the whole map under a service-only key
+                    // is what let one project's entries be restored into another.
+                    window.sessionStorage.setItem(`${scope}:uniqueids`, JSON.stringify(this.__my_unique_ids[scope] || {}));
                 } catch (e) {
                     // sessionStorage full/unavailable: keep the in-memory map,
                     // just skip persistence for this session.
