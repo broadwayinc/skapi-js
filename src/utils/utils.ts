@@ -565,11 +565,11 @@ function decodeServiceId(service) {
             owner = idSplit.slice(2).join("-");
         }
         catch (err) {
-            throw new Error('INVALID_PARAMETER: Service ID is invalid.');
+            throw new Error('INVALID_PARAMETER: Service ID is invalid: ' + service);
         }
 
         if (!region) {
-            throw new Error('INVALID_PARAMETER: Service ID is invalid.');
+            throw new Error('INVALID_PARAMETER: Service ID is invalid: ' + service);
         }
 
         return { service: region + idSplit[0] + idSplit[1].slice(1), owner };
@@ -727,21 +727,21 @@ function decompressCompoundId(token) {
     const split = tokenString.split('-');
 
     if (split.length !== 2 || !split[0] || !split[1]) {
-        throw new Error('INVALID_PARAMETER: Corrupt compressed token.');
+        throw new Error('INVALID_PARAMETER: Corrupt compressed token: ' + tokenString);
     }
 
     const [part1, part2] = split;
     const secondLength = BASE62_ALPHABET.indexOf(part1[0]);
 
     if (secondLength < 0) {
-        throw new Error('INVALID_PARAMETER: Corrupt compressed token.');
+        throw new Error('INVALID_PARAMETER: Corrupt compressed token: ' + tokenString);
     }
 
     const compacted = part1.slice(1);
     const movedMiddleLength = secondLength + 2;
 
     if (compacted.length < movedMiddleLength) {
-        throw new Error('INVALID_PARAMETER: Corrupt compressed token.');
+        throw new Error('INVALID_PARAMETER: Corrupt compressed token: ' + tokenString);
     }
 
     const movedFirstPart = compacted.slice(0, compacted.length - movedMiddleLength);
@@ -752,14 +752,14 @@ function decompressCompoundId(token) {
     const firstPart = movedPrefix + movedFirstPart;
 
     if (!/^[0-9A-Za-z]+$/.test(firstPart) || !/^[0-9A-Za-z]+$/.test(secondPart)) {
-        throw new Error('INVALID_PARAMETER: Corrupt compressed token.');
+        throw new Error('INVALID_PARAMETER: Corrupt compressed token: ' + tokenString);
     }
 
     const uuidValue = b62ToBigInt(part2);
     const uuidRaw = bigIntToBytes(uuidValue);
 
     if (uuidRaw.length > 16) {
-        throw new Error('INVALID_PARAMETER: Corrupt compressed token.');
+        throw new Error('INVALID_PARAMETER: Corrupt compressed token: ' + tokenString);
     }
 
     const uuidBytes = new Uint8Array(16);
