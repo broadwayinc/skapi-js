@@ -249,6 +249,52 @@ async function test(name, fn) {
             'an unqualified call belongs to the instance service, which here is A');
     });
 
+    /**
+     * Updating a record is refused outright for a public caller, so these tests need a
+     * session. Fake one shaped the way getJwtToken reads it (an unexpired id token), which
+     * is enough for the request layer without a Cognito round trip.
+     */
+    async function asLoggedIn(fn) {
+        const exp = Math.floor(Date.now() / 1000) + 3600;
+        skapi.__user = { user_id: OWNER, access_group: 99 };
+        skapi.session = {
+            getIdToken: () => ({ getExpiration: () => exp }),
+            idToken: { jwtToken: 'test.id.token', payload: { exp } },
+            accessToken: { jwtToken: 'test.access.token' },
+            refreshToken: { token: 'test.refresh.token' }
+        };
+        try { return await fn(); }
+        finally { skapi.__user = null; skapi.session = null; }
+    }
+
+    // The UPDATE path: since 1.7.1 a unique_id may stand in for record_id, resolved from
+    // this same cache by a DIFFERENT validator. It is the path updateRecords uses, so it
+    // needs its own coverage rather than riding on the `reference` tests.
+    await test('update by unique_id resolves inside its own service', async () => {
+        skapi.__my_unique_ids = {};
+        await seedViaPost(SERVICE_A, RECORD_IN_A);
+        await asLoggedIn(() => skapi.bulkPostRecords([{
+            record_id: UNIQUE_ID, table: { name: 'rows', access_group: 0 }, data: { a: 1 },
+            service: SERVICE_A, owner: OWNER
+        }]));
+        const post = [...captured].reverse().find(c => c.url.includes('post-record'));
+        assert.strictEqual(post.body._is_bulk_[0].record_id, RECORD_IN_A);
+    });
+
+    await test('update by unique_id must NOT resolve across services', async () => {
+        skapi.__my_unique_ids = {};
+        await seedViaPost(SERVICE_A, RECORD_IN_A);
+        await asLoggedIn(() => skapi.bulkPostRecords([{
+            record_id: UNIQUE_ID, table: { name: 'rows', access_group: 0 }, data: { a: 1 },
+            service: SERVICE_B, owner: OWNER
+        }]));
+        const post = [...captured].reverse().find(c => c.url.includes('post-record'));
+        assert.strictEqual(post.body._is_bulk_[0].record_id, UNIQUE_ID,
+            'an update in service B must send the unique_id for the backend to resolve, '
+            + 'not service A\'s record_id (which would silently UPDATE THE WRONG RECORD if '
+            + 'that id happened to exist)');
+    });
+
     await test('getRecords by unique_id does not resolve across services', async () => {
         skapi.__my_unique_ids = {};
         await seedViaPost(SERVICE_A, RECORD_IN_A);
