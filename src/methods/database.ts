@@ -21,7 +21,7 @@ import validator from '../utils/validator';
 import { request, uploadFiles } from '../utils/network';
 import { checkAdmin } from './user';
 import { authentication } from './user';
-import { accessGroup, decodeReservedDelimiters, indexValue, recordIdOrUniqueId, validateCustomIndexName, validateTableName, validateTag, validateStringByPolicy, indexRange } from './param_restrictions';
+import { accessGroup, decodeReservedDelimiters, indexValue, recordIdOrUniqueId, validateCustomIndexName, validateTableName, validateTag, validateStringByPolicy, indexRange, isNestIndexName, validateNestIndexSegment } from './param_restrictions';
 
 const pendingPrivateAccessKeyRequest: Record<string, Promise<string>> = {};
 
@@ -165,10 +165,15 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             if (!r) return;
             let rSplit = r.split('!');
             let name = decodeReservedDelimiters(rSplit.splice(0, 1)[0]);
+            // The VALUE is raw both directions and must NOT be decoded. The platform allows / ! * #
+            // in an index value (validate_index_string_value passes no forbidden_chars), so the write
+            // path sends it untouched; decoding on the way back turned a value written as "a%2Fb"
+            // into "a/b". Escaping it instead is not an option: index values are compared
+            // lexicographically for gt/lt/range queries, and "%2F" sorts nowhere near "/", so
+            // escaping would silently change the result of every range query. Raw end to end is the
+            // only lossless choice. A raw '!' inside the value is already safe, because the split
+            // above takes only the first segment as the name and rejoins the remainder.
             let value = normalizeTypedString('!' + rSplit.join('!'));
-            if (typeof value === 'string') {
-                value = decodeReservedDelimiters(value);
-            }
             output.index = {
                 name,
                 value
@@ -208,8 +213,18 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                             return null;
                         }
 
-                        let filename = decodeURIComponent(splitPath[splitPath.length - 1]);
-                        let pathKey = decodeURIComponent(splitPath[10]);
+                        // NOT decoded. Nothing ever percent-encodes these segments on the way out:
+                        // uploadFiles sends the key as `key + '/' + f.name` verbatim
+                        // (utils/network.ts), get_signed_url returns that raw string as the cdn url,
+                        // and the S3 notification stores unquote_plus of the event key, which is the
+                        // raw name again. So decodeURIComponent here had no matching encode and could
+                        // only corrupt: a file named "100%off.pdf" threw URIError, which the catch
+                        // below swallowed as null, silently dropping the file from record.bin
+                        // entirely; "50%20off.pdf" came back renamed to "50 off.pdf" while its own
+                        // .path still held the real name. getFile(url, { dataType: 'info' }) already
+                        // reads this segment raw, so this also makes the two agree.
+                        let filename = splitPath[splitPath.length - 1];
+                        let pathKey = splitPath[10];
 
                         // Offloaded record "data" lives at .../bin/<ts>/<size>/__data__/__json__.json.
                         // It is not a user binary: keep it out of the bin output and
@@ -284,6 +299,24 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                 let subscription_config = ['notify_subscribers', 'upload_to_feed', 'feed_referencing_records', 'notify_referencing_records'];
                 if (subscription_config.includes(k)) {
                     output.table.subscription[k] = r[k];
+                }
+                else if (k === 'referencing_index_restrictions' && Array.isArray(r[k])) {
+                    // The index NAME inside a restriction is escaped on write by
+                    // validateCustomIndexName, because the backend rejects a raw / ! * # in an index
+                    // name. It was the one escaped-on-write field with no decode on read, so a
+                    // restriction written for "category/sub" came back as "category%2Fsub" while
+                    // record.index.name for that same string came back decoded. Re-saving the record
+                    // then escaped it a second time ("category%252Fsub"), and the backend compares
+                    // the restriction name against the incoming index name, so referencing that
+                    // record started failing with "Index value does not match the reference index
+                    // restriction". The sibling value/range stay raw, matching the idx handler:
+                    // index VALUES are never escaped.
+                    output.source[k] = (r[k] as any[]).map((restriction: any) => {
+                        if (restriction && typeof restriction === 'object' && typeof restriction.name === 'string') {
+                            return Object.assign({}, restriction, { name: decodeReservedDelimiters(restriction.name) });
+                        }
+                        return restriction;
+                    });
                 }
                 else {
                     output.source[k] = r[k];
@@ -362,7 +395,9 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             try {
                 if (typeof url !== 'string') continue;
                 let sp = url.split('/').slice(3);
-                if (sp.length >= 12 && decodeURIComponent(sp[10]) === '__data__' && decodeURIComponent(sp[sp.length - 1]) === '__json__.json') {
+                // Raw, matching the "bin" handler: these segments are never percent-encoded, and
+                // decoding threw URIError on any filename holding a bare '%'.
+                if (sp.length >= 12 && sp[10] === '__data__' && sp[sp.length - 1] === '__json__.json') {
                     dataFileUrls.push(url);
                 }
             }
@@ -780,6 +815,15 @@ async function getQuery(query, isDel = false) {
                             return "";
                         }
 
+                        // On a nest query (name ending in '.') this is a child index NAME segment,
+                        // not a value, and the backend concatenates it onto the parent name. Names
+                        // are escaped on write, so a raw "Rock/Pop" here searched a range that the
+                        // stored "Rock%2FPop" falls outside of, and the caller could only find their
+                        // own record by typing the internal escaped form.
+                        if (typeof v === 'string' && isNestIndexName(query.index.name)) {
+                            return validateNestIndexSegment(v, 'index.value');
+                        }
+
                         return indexValue(v);
                     },
                     condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq'],
@@ -1010,7 +1054,11 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
             if (Array.isArray(v)) {
                 for (let i of v) {
                     if (typeof i === 'string') {
-                        arr.push(decodeURIComponent(i.split('?')[0]));
+                        // Strip the "?t=<token>" getFile appends, but do NOT decode: the stored bin
+                        // url holds the filename raw, so decoding produced a url that matches
+                        // nothing. The backend's DELETE on a string set ignores a non-matching
+                        // element, so removing a file named "a%2Fb.pdf" silently did nothing.
+                        arr.push(i.split('?')[0]);
                     }
                     else if (i.url && i.size && i.filename) {
                         let hostUrl = i.url.split('/').slice(0, 3).join('/');
@@ -1323,7 +1371,12 @@ export async function getTables(
     fetchOptions?: FetchOptions
 ): Promise<DatabaseResponse<Table>> {
     let res = await request.bind(this)('get-table', validator.Params(query || {}, {
-        table: 'string',
+        // Escaped, because storage holds the escaped form: a lookup for a table literally named
+        // "a/b" has to go out as "a%2Fb" or it matches nothing. The response is decoded below, so
+        // leaving the query raw made this one call the only place where the caller had to know
+        // about the wire format. Empty is allowed: table '' or ' ' with a condition is the
+        // "list everything" idiom.
+        table: (v: string) => validateTableName(v, 'table', { allowEmpty: true }),
         condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
     }), Object.assign({ auth: !!this.__user }, { fetchOptions }));
 
@@ -1397,7 +1450,8 @@ export async function getIndexes(
     let p:any = validator.Params(
         query || {},
         {
-            table: 'string',
+            // Escaped for the same reason as getTables: storage holds the escaped form.
+            table: (v: string) => validateTableName(v, 'table', { allowEmpty: true }),
             index: (v: string) => validateCustomIndexName(v, 'index.name'),
             order: {
                 by: [
@@ -1411,7 +1465,26 @@ export async function getIndexes(
                     'index_name',
                     'number_of_records'
                 ],
-                value: ['string', 'number', 'boolean'],
+                value: (v: any) => {
+                    // When ordering by 'index_name', order.value is NOT a value: the backend
+                    // concatenates it onto the index name to build the composite key
+                    // (get_index: idx = index + order.value), so it is a name fragment and needs the
+                    // same escaping the name itself got. Sent raw, it searched for "svc/t/Band.Mem/bers"
+                    // while storage held "svc/t/Band.Mem%2Fbers", returning an empty list with no
+                    // error, and the getIndexes response hands back the decoded spelling that fails.
+                    // For every other "by" the value is a numeric threshold and must be left alone.
+                    if (query?.order?.by === 'index_name' && typeof v === 'string') {
+                        return validateStringByPolicy(v, 'order.value', {
+                            allowEmpty: true,
+                            maxLength: 256,
+                            blockKeyDelimiters: true
+                        });
+                    }
+                    if (typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') {
+                        throw new SkapiError('"order.value" should be type: <string | number | boolean>.', { code: 'INVALID_PARAMETER' });
+                    }
+                    return v;
+                },
                 condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
             }
         },
@@ -1491,8 +1564,10 @@ export async function getTags(
         'get-tag',
         validator.Params(query || {},
             {
-                table: 'string',
-                tag: 'string',
+                // Both escaped: the stored tag key is "<tag>/<table>", both segments in escaped
+                // form, and the response is decoded below.
+                table: (v: string) => validateTableName(v, 'table', { allowEmpty: true }),
+                tag: (v: string) => validateTag(v, 'tag', { allowEmpty: true }),
                 condition: ['gt', 'gte', 'lt', 'lte', '>', '>=', '<', '<=', '=', 'eq', '!=', 'ne']
             }
         ),

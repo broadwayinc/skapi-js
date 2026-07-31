@@ -62,7 +62,7 @@ export type GetRecordQuery = {
 
     /** Table name not required when "record_id" is given. A bare string is shorthand for { name: <string> }. */
     table?: string | {
-        /** Max 128 chars. Blocks: / ! * #, control chars, and sentinel 􏿿. */
+        /** Max 256 characters, where / ! * # % each count as 3. Blocks control chars and sentinel 􏿿. */
         name: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
@@ -74,9 +74,9 @@ export type GetRecordQuery = {
 
     /** Index condition and range cannot be used simultaneously.*/
     index?: {
-        /** Custom names: max 128 chars, cannot start with "$", blocks / ! * #, control chars, and sentinel 􏿿. Reserved names: $uploaded, $updated, $referenced_count, $user_id. */
+        /** Custom names: max 256 characters, where / ! * # % each count as 3. Cannot start with "$". Blocks control chars and sentinel 􏿿. Reserved names: $uploaded, $updated, $referenced_count, $user_id. */
         name: string | '$updated' | '$uploaded' | '$referenced_count' | '$user_id';
-        /** String value max 256 chars. Allows punctuation (including / ! * #). Blocks control chars and sentinel 􏿿. */
+        /** String value max 256 characters. Any punctuation is allowed and counts as one character, and values compare exactly as written. Blocks control chars and sentinel 􏿿. */
         value: string | number | boolean;
         /** For a string value: '>=' = 'starts with', '<=' = 'ends with'. When the name is a compound name ending in '.', '>=' / '<=' match the child name segment (starts / ends with). '>' / '<' are lexicographic; numbers/booleans compare normally. */
         condition?: Condition;
@@ -92,7 +92,7 @@ export type PostRecordConfig = {
 
     /** Table name not required when "record_id" is given.*/
     table?: {
-        /** Max 128 chars. Blocks: / ! * #, control chars, and sentinel 􏿿. */
+        /** Max 256 characters, where / ! * # % each count as 3. Blocks control chars and sentinel 􏿿. */
         name?: string;
         /** Number range: 0 ~ 99. Default: 'public' */
         access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
@@ -129,13 +129,13 @@ export type PostRecordConfig = {
 
     /** null removes index */
     index?: {
-        /** Max 128 chars, cannot start with "$", blocks / ! * #, control chars, and sentinel 􏿿. */
+        /** Max 256 characters, where / ! * # % each count as 3. Cannot start with "$". Blocks control chars and sentinel 􏿿. */
         name: string;
-        /** String value max 256 chars. Allows punctuation (including / ! * #). Blocks control chars and sentinel 􏿿. */
+        /** String value max 256 characters. Any punctuation is allowed and counts as one character, and values compare exactly as written. Blocks control chars and sentinel 􏿿. */
         value: string | number | boolean;
     } | null;
 
-    tags?: string[] | null; // null removes all tags. each tag max 64 chars, blocks / ! * #, control chars, and sentinel 􏿿.
+    tags?: string[] | null; // null removes all tags. each tag 1..256 characters, where / ! * # % each count as 3. Blocks control chars and sentinel 􏿿.
     remove_bin?: BinaryFile[] | string[] | null; // Removes bin data from the record. When null, it will remove all bin data.
     progress?: ProgressCallback; // Callback for database request progress. Useful when building progress bar.
     reference_private_key?: string; // When referencing a record that has private access, you can provide the private key of the referenced record to pass the access check. This is only required when the referenced record has private access and the user does not have access to the record through subscription or granted access.

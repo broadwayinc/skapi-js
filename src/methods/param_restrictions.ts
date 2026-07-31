@@ -1,13 +1,25 @@
 import validator from '../utils/validator';
 import { SkapiError } from '../Main';
 
-const MAX_TABLE_NAME_LENGTH = 128;
-const MAX_TAG_LENGTH = 64;
-const MAX_INDEX_NAME_LENGTH = 128;
+// 256 to match the platform (validate_table_name -> validate_key_segment, max_len=256). This was
+// 128, an SDK-only cap half the platform's, so a legal table name was refused before it left the
+// client. Like a tag, the name is escaped on the wire and the server measures the escaped form, so
+// validateStringByPolicy re-checks the length after escaping.
+const MAX_TABLE_NAME_LENGTH = 256;
+// The backend allows 256 (validate_tag_value -> validate_key_segment, max_len=256). This was 64,
+// an SDK-only cap four times stricter than the platform, so a perfectly legal 100-character tag was
+// refused before it ever left the client. The backend measures the ENCODED form, and so do we: the
+// length is re-checked after / ! * # are escaped (each grows to 3 characters), which is the only way
+// a raw length can be compared against a limit the server applies to the escaped string.
+const MAX_TAG_LENGTH = 256;
+// 256 to match the platform (validate_index_name -> validate_key_segment, max_len=256). Same
+// SDK-only under-cap as the table name, and same escaped-length re-check.
+const MAX_INDEX_NAME_LENGTH = 256;
+// Already correct at 256 (validate_index_string_value, max_len=256). Note this one is NOT escaped:
+// the platform allows / ! * # in an index VALUE, unlike a name or a tag.
 const MAX_INDEX_STRING_VALUE_LENGTH = 256;
 const SENTINEL_CHAR = '\u{10FFFF}';
 const CONTROL_OR_SENTINEL_REGEX = /[\u0000-\u001F\u007F]|\u{10FFFF}/u;
-const BLOCKED_KEY_SEGMENT_DELIMITER_REGEX = /[\/!*#]/;
 
 const DELIMITER_ENCODING_MAP: Record<string, string> = {
     '/': '%2F',
@@ -84,8 +96,26 @@ export function validateStringByPolicy(
         throw new SkapiError(`"${fieldName}" cannot include control characters or unsupported sentinel characters.`, { code: 'INVALID_PARAMETER' });
     }
 
-    if (blockKeyDelimiters && BLOCKED_KEY_SEGMENT_DELIMITER_REGEX.test(value)) {
+    if (blockKeyDelimiters) {
+        // Escape UNCONDITIONALLY. This used to run only when the value already contained a raw
+        // delimiter, which made the round trip lossy: decodeReservedDelimiters has no such gate, so a
+        // value carrying a percent-sequence but no raw delimiter went out untouched and came back
+        // decoded. A tag written as "a%2Fb" read back as "a/b", and "100%25off" read back as
+        // "100%off". A decoder cannot tell an escape it produced from one the caller typed, so the
+        // only way to keep the two distinguishable is for the encoder to always run and always
+        // escape '%' first. That is what the '%' -> '%25' pass in encodeReservedDelimiters is for;
+        // under the old gate it was unreachable unless a delimiter happened to share the string.
         value = encodeReservedDelimiters(value);
+
+        // Escaping expands the string (each of / ! * # becomes 3 characters, and a literal % becomes
+        // %25), and the server measures what it receives. Re-check, so a value that only overflows
+        // once escaped is refused here with a clear message instead of as an opaque server error.
+        if (maxLength && value.length > maxLength) {
+            throw new SkapiError(
+                `"${fieldName}" should be <= ${maxLength} characters. "/", "!", "*", "#" and "%" count as 3 characters each.`,
+                { code: 'INVALID_PARAMETER' }
+            );
+        }
     }
 
     if (disallowLeadingDollar && value.startsWith('$')) {
@@ -95,25 +125,30 @@ export function validateStringByPolicy(
     return value;
 }
 
-export function validateTableName(value: any, fieldName = 'table.name') {
+// "allowEmpty" exists for the QUERY side. A write must name a real table/tag/index, but a query uses
+// these same fields as filters, where an empty string paired with a condition is the established
+// "scan everything" idiom (skapi-mcp builds exactly that: table ' ' with condition '>').
+type KeySegmentOptions = { allowEmpty?: boolean };
+
+export function validateTableName(value: any, fieldName = 'table.name', options: KeySegmentOptions = {}) {
     return validateStringByPolicy(value, fieldName, {
-        allowEmpty: false,
+        allowEmpty: options.allowEmpty === true,
         maxLength: MAX_TABLE_NAME_LENGTH,
         blockKeyDelimiters: true,
     });
 }
 
-export function validateTag(value: any, fieldName = 'tag') {
+export function validateTag(value: any, fieldName = 'tag', options: KeySegmentOptions = {}) {
     return validateStringByPolicy(value, fieldName, {
-        allowEmpty: false,
+        allowEmpty: options.allowEmpty === true,
         maxLength: MAX_TAG_LENGTH,
         blockKeyDelimiters: true,
     });
 }
 
-export function validateCustomIndexName(value: any, fieldName = 'index.name') {
+export function validateCustomIndexName(value: any, fieldName = 'index.name', options: KeySegmentOptions = {}) {
     return validateStringByPolicy(value, fieldName, {
-        allowEmpty: false,
+        allowEmpty: options.allowEmpty === true,
         maxLength: MAX_INDEX_NAME_LENGTH,
         blockKeyDelimiters: true,
         disallowLeadingDollar: true,
@@ -124,6 +159,24 @@ export function validateIndexStringValue(value: any, fieldName = 'index.value') 
     return validateStringByPolicy(value, fieldName, {
         allowEmpty: true,
         maxLength: MAX_INDEX_STRING_VALUE_LENGTH,
+    });
+}
+
+// A "nest" query is one whose index.name ends in '.', addressing the children of a compound index.
+// There, index.value is NOT a value: the backend concatenates it onto the parent name to rebuild a
+// child index NAME segment. Names are escaped on write, so this has to be escaped too. Left raw, a
+// compound index like "Band.Rock/Pop.year" (stored as "Band.Rock%2FPop.year") could never be found
+// by the nest query meant to find it, because '%' sorts below '/' so the key falls outside the
+// range, and the reverse index used by the '<=' ends-with form mirrors the ESCAPED name.
+export function isNestIndexName(name: any) {
+    return typeof name === 'string' && name.slice(-1) === '.';
+}
+
+export function validateNestIndexSegment(value: any, fieldName: string) {
+    return validateStringByPolicy(value, fieldName, {
+        allowEmpty: true,
+        maxLength: MAX_INDEX_STRING_VALUE_LENGTH,
+        blockKeyDelimiters: true,
     });
 }
 
@@ -221,6 +274,10 @@ export function indexRange(v, query) {
     }
 
     if (typeof v === 'string') {
+        // Same treatment as index.value: on a nest query the range bound is a child NAME segment.
+        if (isNestIndexName(query.index.name)) {
+            return validateNestIndexSegment(v, 'index.range');
+        }
         return validateIndexStringValue(v, 'index.range');
     }
 
