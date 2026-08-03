@@ -207,6 +207,18 @@ export async function unregisterTicket(
     return request.bind(this)('register-ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
 }
 
+// Refresh a token that is merely ABOUT to expire, not only one that already has.
+//
+// Without a margin, a token with seconds left is handed out as valid — and a token
+// is not always used at the moment it is fetched. A queued request carries it to a
+// server that runs it minutes later, and a background job (indexing a large file)
+// replays that same stored token for the whole run. Those are the calls that die of
+// old age, holding a credential this client could trivially have refreshed first.
+//
+// An hour, because that is the scale of the work a token gets handed to, and it
+// costs at most one extra refresh per token: the replacement is good for a day.
+const TOKEN_REFRESH_SKEW_SECONDS = 60 * 60;
+
 export async function getJwtToken() {
     await this.__connection;
     // if (this.bearerToken) {
@@ -217,7 +229,7 @@ export async function getJwtToken() {
         const idToken = this.session.getIdToken();
         const idTokenExp = idToken.getExpiration();
 
-        if (idTokenExp < currentTime) {
+        if (idTokenExp < currentTime + TOKEN_REFRESH_SKEW_SECONDS) {
             this.log('request:requesting new token', null);
             try {
                 await authentication.bind(this)().getSession({ refreshToken: true });

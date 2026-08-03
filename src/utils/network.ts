@@ -36,8 +36,8 @@ function toPercent(loaded: number, total: number): number {
     return total > 0 ? (loaded / total) * 100 : 0;
 }
 
-let selectGateway = (params: { auth: boolean, type: string, endpoints: {[key:string]: string}[] }) => {
-    const { auth, type, endpoints } = params;
+let selectGateway = (params: { auth: boolean, type: string, endpoints: {[key:string]: string}[], stable?: boolean }) => {
+    const { auth, type, endpoints, stable } = params;
 
     const admin = endpoints[0];
     // {
@@ -90,13 +90,23 @@ let selectGateway = (params: { auth: boolean, type: string, endpoints: {[key:str
             throw new SkapiError('No available record gateways.', { code: 'INVALID_REQUEST' });
         }
 
+        // A response the BROWSER is meant to cache has to come back from the same
+        // host every time: the http cache is keyed by the whole url, so letting
+        // the round robin alternate between record_private and record_private_2
+        // gives the same file two cache entries holding two different signed
+        // urls, and the file is downloaded once for each. Pinning costs this one
+        // request its turn in the rotation and nothing else.
+        if (stable) {
+            return gateways_record_round_robin[0];
+        }
+
         return gateways_record_round_robin[request_counter % gateways_record_round_robin.length];
     }
 
     throw new SkapiError('Invalid gateway type.', { code: 'INVALID_REQUEST' });
 }
 
-async function getEndpoint(dest: string, auth: boolean) {
+async function getEndpoint(dest: string, auth: boolean, stableGateway?: boolean) {
     const endpoints = await Promise.all([
         this.admin_endpoint,
         this.record_endpoint
@@ -178,7 +188,7 @@ async function getEndpoint(dest: string, auth: boolean) {
         case 'castspell':
         case 'dopamine':
         case 'getspell':
-            return selectGateway.bind(this)({ auth, type: 'record', endpoints }) + dest + query;
+            return selectGateway.bind(this)({ auth, type: 'record', endpoints, stable: stableGateway }) + dest + query;
 
         default:
             return validator.Url(dest) + query;
@@ -208,6 +218,16 @@ export async function request(
             accessToken?: boolean | string;
             idToken?: boolean | string;
         };
+        // Always resolve to the SAME gateway host instead of taking the next one
+        // in the round robin. Only for a response the browser is meant to cache:
+        // the http cache is keyed by the full url, so an alternating host would
+        // silently halve the hit rate and duplicate whatever the response points
+        // at. See selectGateway.
+        stableGateway?: boolean;
+        // Send `Cache-Control: no-cache`, so the browser revalidates this exact
+        // url and OVERWRITES its stored response instead of adding a second entry
+        // beside it. Pair with stableGateway when replacing a cached response.
+        revalidate?: boolean;
     },
     _etc?: {
         ignoreService: boolean;
@@ -229,7 +249,7 @@ export async function request(
     let service = data?.service || this.service;
     let owner = data?.owner || this.owner;
     let token = null; // idToken
-    let endpoint = await getEndpoint.bind(this)(url, !!auth);
+    let endpoint = await getEndpoint.bind(this)(url, !!auth, !!options.stableGateway);
 
     if (!bypassAwaitConnection) {
         __connection = await this.__connection;
@@ -392,6 +412,15 @@ export async function request(
     };
 
     headers['Content-Meta'] = JSON.stringify(meta);
+
+    if (options.revalidate) {
+        // Forces the browser to go to the origin for THIS url and to REPLACE what
+        // it has stored under it. A cache-busting query parameter cannot do that:
+        // it is a different url, so it creates a second entry and leaves the stale
+        // one answering every later call until it expires on its own.
+        headers['Cache-Control'] = 'no-cache';
+        headers['Pragma'] = 'no-cache';
+    }
 
     // if (headers['Content-Type'] !== 'application/json') {
     //     // add service and owner to headers if content type is not json

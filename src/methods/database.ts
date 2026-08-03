@@ -717,6 +717,11 @@ export async function getFile(
             }
 
             mintOptions.method = 'get';
+            // One host for every mint of this file. The gateway is otherwise
+            // picked round robin, and the browser caches by full url, so
+            // alternating hosts would hold two entries with two different signed
+            // urls and download the file once for each.
+            mintOptions.stableGateway = true;
             params.browser_cache = browserCache;
 
             // Partitions the browser cache per user. A cache is keyed by url
@@ -730,9 +735,14 @@ export async function getFile(
             }
 
             if (config.refresh) {
-                // Changes the request url so the browser cannot answer it from
-                // its own cache. The backend ignores the value entirely.
-                params.nocache = Date.now();
+                // Revalidate the SAME url rather than busting it with a changed
+                // one. A `nocache=<ts>` parameter would fetch a fresh url under a
+                // new cache key and leave the poisoned entry in place, so every
+                // later read would keep being handed the dead url, fail, and
+                // refresh again: three requests per read for the rest of the
+                // week. `Cache-Control: no-cache` replaces the stored response,
+                // so the repair sticks and the next read is a plain cache hit.
+                mintOptions.revalidate = true;
             }
         }
 
