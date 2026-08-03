@@ -376,6 +376,22 @@ export default class Skapi {
 					accessToken?: boolean | string;
 					idToken?: boolean | string;
 				};
+				// Both matter only to a CACHEABLE request, and both were reachable
+				// at runtime but missing from this type — so the callers that need
+				// them (a browser-cached signed-url mint) could not ask for them
+				// without a cast, and silently did without:
+				//
+				// stableGateway pins the record host. Without it the round robin
+				// alternates between record_private and record_private_2, which is
+				// two urls for one mint, two cache entries, two signed urls, and
+				// the same file downloaded twice.
+				//
+				// revalidate sends Cache-Control: no-cache so the browser REPLACES
+				// what it has stored under this exact url. A cache-busting query
+				// param cannot do that: it is a different url, so the stale entry
+				// stays and keeps answering every ordinary call until it expires.
+				stableGateway?: boolean;
+				revalidate?: boolean;
 			},
 		) => request.bind(this)(url, data, options, { ignoreService: true }),
 	};
