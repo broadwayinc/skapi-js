@@ -1434,6 +1434,13 @@ export default class Skapi {
 				| 'text'
 				| 'info'; // default 'download'
 			expires?: number; // uses url that expires. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
+			// Seconds the browser may reuse the url minted for `expires`. Without
+			// it every call mints a new signed url, which is a new cache key, so
+			// the file downloads again every time. See getFile in
+			// methods/database.ts. Only meaningful together with `expires`.
+			browserCache?: number;
+			// Bypass the cached mint above and force a fresh signed url.
+			refresh?: boolean;
 			progress?: ProgressCallback;
 		},
 	): Promise<Blob | string | void | FileInfo> {

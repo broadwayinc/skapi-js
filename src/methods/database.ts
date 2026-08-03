@@ -25,6 +25,47 @@ import { accessGroup, decodeReservedDelimiters, indexValue, recordIdOrUniqueId, 
 
 const pendingPrivateAccessKeyRequest: Record<string, Promise<string>> = {};
 
+/**
+ * How long a private record file stays available locally: ONE WEEK.
+ *
+ * A private file cannot be served from the plain CDN url, so every read went out
+ * over the network. The `?t=<idToken>` form it used could not help either: that
+ * token rotates, so the url changed and the browser cache never matched. Reading
+ * the same private image twice therefore downloaded it twice.
+ *
+ * These two numbers do different jobs and are deliberately far apart:
+ *  - EXPIRES is how long the signed URL works. Short, so a leaked url dies fast.
+ *  - BROWSER_CACHE is how long the FILE stays usable locally. The mint request is
+ *    cached for this long, so the same url keeps coming back and the copy already
+ *    on disk stays addressable long after the url itself stopped working.
+ *
+ * Once the browser evicts the file, a load fails on the expired url; getFile
+ * re-mints once with `refresh` and succeeds, so that is a round trip, not an error.
+ */
+const PRIVATE_FILE_BROWSER_CACHE_SECONDS = 7 * 24 * 60 * 60;
+const PRIVATE_FILE_URL_EXPIRES_SECONDS = 20 * 60;
+
+/**
+ * Whether a signed url for this record file may be browser-cached.
+ *
+ * Reaching ANOTHER user's restricted file relies on a granted private access key,
+ * which getFile appends as `&p=` to the token url. The mint request has no way to
+ * carry that key, so those files must keep taking the token path: they stay
+ * uncached rather than being handed a presign the caller is not entitled to.
+ *
+ * `splitPath` is the record file path:
+ * auth|publ/service/owner/uploader/records/record/access_group/bin/ts/size/key/name
+ */
+function canBrowserCacheRecordFile(splitPath: string[]): boolean {
+    if (!this.user?.user_id) return false;
+    let access_group = splitPath[6] === '**' ? '**' : parseInt(splitPath[6]);
+    let user_access_group = this.user?.access_group ?? -1;
+    if (this.user.user_id !== splitPath[3] && (access_group === '**' || user_access_group < access_group)) {
+        return false;
+    }
+    return true;
+}
+
 // Read a getFile('blob') result to text across browser + node runtimes. Blob.text()
 // is used when present; otherwise FileReader (the same polyfilled reader getFile
 // uses for its base64 path) reads it.
@@ -237,8 +278,33 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                         let uploaded = splitPath[8];
                         let access_group = access_group_set(splitPath[6]);
                         let url_endpoint = url;
+
+                        // A private file is read through a SIGNED url whose mint is
+                        // browser-cached for a week, so the same url keeps coming
+                        // back and the file downloads once instead of on every read.
+                        // Null when the file needs a granted private access key,
+                        // which the mint cannot carry: those keep the token url.
+                        let privateCache = access_group !== 'public' && canBrowserCacheRecordFile.call(this, splitPath)
+                            ? {
+                                expires: PRIVATE_FILE_URL_EXPIRES_SECONDS,
+                                browserCache: PRIVATE_FILE_BROWSER_CACHE_SECONDS,
+                            }
+                            : null;
+
                         if (access_group !== 'public') {
                             try {
+                                // Deliberately NOT the cached presign, even for a
+                                // file that could use one. `url` is the record's
+                                // public face: it is fed back into remove_bin and
+                                // deleteFiles, which rebuild the endpoint from this
+                                // string's host and require a cloudfront one
+                                // (post_record raises "Invalid binary endpoint." on
+                                // an s3 host, and del_files accepts it and then
+                                // deletes nothing). It is also what the MCP server
+                                // hands to a model and what a dashboard renders, so
+                                // a presign here would leak the bucket and key and
+                                // rot wherever it was stored. Caching happens in
+                                // getFile below, where the url never escapes.
                                 url_endpoint = (await getFile.bind(this)(url, { dataType: 'endpoint', _ref }) as string);
                             }
                             catch (err) {
@@ -256,13 +322,39 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                             size: fromBase62(size),
                             uploaded: fromBase62(uploaded),
                             getFile: (dataType: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info', progress?: ProgressCallback) => {
-                                let config = {
+                                let base = {
                                     dataType: dataType || 'download',
                                     progress,
                                     _ref,
-                                    _update: obj
                                 };
-                                return getFile.bind(this)(url_endpoint, config);
+                                let tokenPath = () => getFile.bind(this)(
+                                    url_endpoint,
+                                    Object.assign({}, base, { _update: obj }),
+                                );
+
+                                if (!privateCache) return tokenPath();
+
+                                // Mint from the RAW cdn url, not url_endpoint: the
+                                // latter already carries '?t=<token>', which getFile
+                                // would re-append to, and which is not the string
+                                // the record stores in its bin list.
+                                //
+                                // No `_update` here on purpose. _update writes the
+                                // resolved url back onto obj.url, and a presign
+                                // there is exactly what breaks remove_bin and
+                                // deleteFiles (see the resolution above).
+                                return getFile.bind(this)(url, Object.assign({}, base, privateCache))
+                                    .catch(() => {
+                                        // A file that reads fine today must not
+                                        // become unreadable because the mint
+                                        // refuses it. The mint enforces checks the
+                                        // cdn edge does not (record existence, bin
+                                        // membership, subscription access), and a
+                                        // backend without browser_cache support
+                                        // answers differently again. Any of those
+                                        // falls back to the url that already works.
+                                        return tokenPath();
+                                    });
                             }
                         };
 
@@ -485,6 +577,23 @@ export async function getFile(
     config?: {
         dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info'; // default 'download'
         expires?: number; // uses url that expires in given seconds. this option does not use the cdn (slow). can be used for private files. (does not work on public files).
+        // Seconds the browser may reuse the signed url minted for `expires`.
+        //
+        // Without it, every call mints a brand new SigV4 url, so the browser
+        // cache can never be hit and the file downloads again every time even
+        // though nothing changed. With it, the MINT REQUEST is answered from the
+        // browser cache and the same url comes back, so the already-downloaded
+        // body stays addressable. The url's own lifetime is still `expires`: what
+        // keeps the file available past that is the cached body, not the url.
+        //
+        // Only meaningful together with `expires`, and capped at 1 week
+        // server-side. Private record files in `record.bin` set it to a week for
+        // you; this is for files you fetch by url yourself.
+        browserCache?: number;
+        // Bypass the cached mint above and force a fresh signed url. Use it when
+        // the file may have changed, or after a load failed because the cached
+        // url had expired and the body was no longer in the cache.
+        refresh?: boolean;
         progress?: ProgressCallback;
         _ref?: string;
         _update?: any;
@@ -493,6 +602,10 @@ export async function getFile(
     if (typeof url !== 'string') {
         throw new SkapiError('"url" should be type: string.', { code: 'INVALID_PARAMETER' });
     }
+
+    // `url` is reassigned below (query string, then the minted signed url). The
+    // retry at the end has to start over from what the caller actually passed.
+    const requestedUrl = url;
 
     let splitQuery = url.split('?');
     let baseUrl = splitQuery.shift() || '';
@@ -532,6 +645,8 @@ export async function getFile(
 
     config = validator.Params<NonNullable<typeof config>>(config, {
         expires: ['number', () => 0],
+        browserCache: ['number', () => 0],
+        refresh: ['boolean', () => false],
         dataType: ['base64', 'blob', 'endpoint', 'text', 'info', () => 'download'],
         progress: ['function', 'undefined', null],
         _ref: [null, 'string'],
@@ -573,7 +688,16 @@ export async function getFile(
         let params: Record<string, any> = {
             request: subdomain ? 'get-host' : 'get',
             id: subdomain || target_key[5],
-            key: url,
+            // The RAW url the caller passed, minus any query string, NOT the
+            // validator-normalized one. The server authorizes this by testing
+            // `key in record.bin`, an exact string compare against urls stored
+            // fully decoded (s3_notification unquote_plus). validator.Url runs
+            // `new URL().href`, which percent-encodes: a private file called
+            // "my photo.jpg" or "한글.jpg" arrived as "my%20photo.jpg" /
+            // "%ED%95%9C%EA%B8%80.jpg", matched nothing, and the mint failed with
+            // "File does not exists." The query is dropped because a stored bin
+            // url never has one, and a '?t=' token would never match either.
+            key: requestedUrl.split('?')[0],
             expires
         }
 
@@ -581,8 +705,39 @@ export async function getFile(
             params.service = service
         }
 
+        // A cacheable mint has to be a GET: a POST response is not stored by any
+        // browser cache, so the same signed url could never come back without a
+        // round trip and the file would re-download every time.
+        let browserCache = config.browserCache;
+        let mintOptions: Record<string, any> = { auth: true };
+
+        if (browserCache) {
+            if (browserCache < 0) {
+                throw new SkapiError('"config.browserCache" should be > 0. (seconds)', { code: 'INVALID_PARAMETER' });
+            }
+
+            mintOptions.method = 'get';
+            params.browser_cache = browserCache;
+
+            // Partitions the browser cache per user. A cache is keyed by url
+            // alone and shared by everyone using that browser profile, so
+            // without this a second user signing in would be served the first
+            // user's signed urls. The backend rejects a uid that is not the
+            // caller, so a stale value fails loudly instead of silently.
+            let uid = this.session?.idToken?.payload?.sub || this.user?.user_id;
+            if (uid) {
+                params.uid = uid;
+            }
+
+            if (config.refresh) {
+                // Changes the request url so the browser cannot answer it from
+                // its own cache. The backend ignores the value entirely.
+                params.nocache = Date.now();
+            }
+        }
+
         url = (await request.bind(this)('get-signed-url', params,
-            { auth: true }
+            mintOptions
         )).url;
     }
 
@@ -669,6 +824,24 @@ export async function getFile(
                 res(b);
             }
         } catch (err) {
+            // The expected failure of a cached mint: the browser answered from
+            // its cache with a url whose signature has since expired, and the
+            // file it points at is no longer in the cache either, so the fetch
+            // 403s on a url the caller never chose. Re-mint once, bypassing the
+            // cache. Only when we actually used the cache, and never twice.
+            if (config?.browserCache && !config?.refresh) {
+                try {
+                    res(await getFile.bind(this)(
+                        requestedUrl,
+                        Object.assign({}, config, { refresh: true }),
+                    ) as Blob | string);
+                    return;
+                }
+                catch (retryErr) {
+                    rej(retryErr);
+                    return;
+                }
+            }
             rej(err);
         }
     });
