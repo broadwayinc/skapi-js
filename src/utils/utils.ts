@@ -553,7 +553,7 @@ function parseUserAttributes(attr: { [key: string]: any }) {
     return user;
 }
 
-function decodeServiceId(service) {
+function decodeProjectId(service) {
     service = decompressCompoundId(service); // validate format and throw if invalid
     if (service.split("-").length === 7) {
         const idSplit = service.split("-");
@@ -782,5 +782,5 @@ export {
     compressCompoundId,
     decompressCompoundId,
     formatServiceId,
-    decodeServiceId
+    decodeProjectId
 };

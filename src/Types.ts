@@ -557,6 +557,8 @@ export type FileInfo = {
 }
 
 export type ConnectionInfo = {
+    /** Public project ID (service + owner composed into the two-segment token). Empty when the service has no uuid owner. */
+    project_id: string;
     user_ip: string;
     user_agent: string;
     user_location: string;

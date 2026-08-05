@@ -122,7 +122,7 @@ import {
 	MD5,
 	isBrowserRuntime,
 	isNodeRuntime,
-	decodeServiceId,
+	decodeProjectId,
 	formatServiceId,
 } from '../utils/utils';
 import {
@@ -168,6 +168,13 @@ export default class Skapi {
 	private __version = __SKAPI_VERSION__;
 	service: string;
 	owner: string;
+	/**
+	 * The public project ID: the single two-segment token composed from service + owner
+	 * (the same value formatServiceId returns, and the form external tools accept).
+	 * Empty string when the service has no uuid owner (e.g. host-owned), since the
+	 * compound form cannot be built without one.
+	 */
+	project_id: string = '';
 	session: Record<string, any> | null = null;
 	connection: Connection | null = null;
 	/**
@@ -352,7 +359,7 @@ export default class Skapi {
 		generateRandom,
 		toBase62,
 		fromBase62,
-		decodeServiceId,
+		decodeProjectId,
 		formatServiceId,
 		extractFormData,
 		terminatePendingRequests,
@@ -421,12 +428,22 @@ export default class Skapi {
 				code: 'INVALID_PARAMETER',
 			});
 		}
+		if (typeof service === 'string' && (service.toLowerCase() === 'service_id' || service.toLowerCase() === 'project_id')) {
+			// The docs' copy-paste placeholder was never replaced. Checked FIRST, before any
+			// decoding or owner validation, so the user gets this message and not a puzzling
+			// "Owner ID is invalid". Both spellings are caught: older docs said 'service_id',
+			// current docs say 'project_id'.
+			this._alert(`Replace "${service}" with your actual Project ID.`);
+			throw new SkapiError('Project ID is required.', {
+				code: 'INVALID_PARAMETER',
+			});
+		}
 		let idSplitLen = service.split('-').length;
 		let isV2 = idSplitLen === 2;
 		let isV1 = idSplitLen === 7;
 		if (isV2 || isV1) {
 			try {
-				let decoded = decodeServiceId(service);
+				let decoded = decodeProjectId(service);
 				if (options && typeof options === 'object') {
 					__etc = options;
 				}
@@ -463,12 +480,7 @@ export default class Skapi {
 			});
 		}
 
-		if (service.toLowerCase() === 'service_id') {
-			this._alert('Replace "service_id" with your actual Service ID.');
-			throw new SkapiError('Service ID is required.', {
-				code: 'INVALID_PARAMETER',
-			});
-		}
+
 
 		if (owner !== this.host) {
 			try {
@@ -483,6 +495,12 @@ export default class Skapi {
 
 		this.service = service;
 		this.owner = owner;
+		try {
+			this.project_id = formatServiceId(service, owner);
+		} catch (err) {
+			// Non-uuid owner (host-owned service): there is no public compound form.
+			this.project_id = '';
+		}
 
 		let autoLogin = true;
 		let refetchServiceInfo = false;
@@ -772,6 +790,7 @@ export default class Skapi {
 				? window.navigator.userAgent
 				: `skapi-node/${(globalThis as any)?.process?.versions?.node || 'unknown'}`);
 		return {
+			project_id: this.project_id,
 			user_ip: conn.ip,
 			user_agent: ua,
 			user_location: conn.locale,
