@@ -531,6 +531,13 @@ export type RequestHistory = {
     expires?: number; // timestamp of when the request history will be deleted in epoch time (seconds).
     status: 'pending' | 'running' | 'resolved' | 'failed';
     queue_name?: string; // queue name if the request is in queue, empty string if the request is not in queue.
+    // Compact-listing stubs. Present ONLY when the history was fetched with `compact: true`,
+    // in which case request_body/response_body are omitted (the full bodies never leave the
+    // server); re-fetch without `compact`, or poll the item, when a full body is needed.
+    request_text?: string; // stub: first text of the request's LAST user message, truncated. Missing when the request body's shape was unrecognisable.
+    response_text?: string; // stub: the head of the response text, truncated.
+    response_complete_marker?: boolean; // stub: whether the response carried the indexing completion marker.
+    compact?: boolean; // true on items returned by a `compact: true` listing, so consumers know bodies were deliberately omitted rather than empty.
     poll?: (arg?: {
         latency?: number;
         onResponse?: (res:any)=>void;

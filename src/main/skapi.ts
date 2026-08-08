@@ -729,10 +729,39 @@ export default class Skapi {
 						}
 
 						if (hasWindow) {
-							window.sessionStorage.setItem(
-								`${service}#${owner}`,
-								JSON.stringify(data),
-							);
+							const storageKey = `${service}#${owner}`;
+							try {
+								window.sessionStorage.setItem(
+									storageKey,
+									JSON.stringify(data),
+								);
+							} catch (err) {
+								// QuotaExceededError: __cached_requests can hold
+								// megabytes of paged history (indexing-pass bodies),
+								// and this runs inside beforeunload/visibilitychange —
+								// throwing here surfaced as an uncaught error on every
+								// tab switch. The paging cache is an optimization
+								// (losing it costs a refetch after reload, never
+								// correctness), so retry WITHOUT the paging state —
+								// dropped as a PAIR: cursors without their cached
+								// pages would desync fetchMore after a restore.
+								try {
+									const slim = Object.assign({}, data, {
+										__cached_requests: {},
+										__startKeyHistory: {},
+									});
+									window.sessionStorage.setItem(
+										storageKey,
+										JSON.stringify(slim),
+									);
+								} catch (err2) {
+									// Still over quota (something else filled it):
+									// remove any STALE snapshot rather than letting a
+									// previous session's state restore against this
+									// one's reality.
+									try { window.sessionStorage.removeItem(storageKey); } catch (_e) { /* nothing left to do */ }
+								}
+							}
 						}
 						this.__class_properties_has_been_cached = true;
 					}
@@ -1098,6 +1127,15 @@ export default class Skapi {
 
 	/**
 	 * Retrieves the history of client secret requests for a given URL and method.
+	 *
+	 * Listing modifiers: `compact` returns lightweight label/marker stubs
+	 * (request_text, response_text, response_complete_marker) instead of the
+	 * full request/response bodies, which stay on the server; `queue_exact`
+	 * restricts a queue listing to exactly the named queue (the queue lookup is
+	 * otherwise a prefix range, so queue "u1" would also match "u1-bg");
+	 * `queue_exclude` drops one queue's rows from the listing. Both queue
+	 * filters are applied server-side after the range read, so a page can come
+	 * back short while more matches remain - keep paging by startKey/endOfList.
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to a paginated list of request history items.
@@ -1109,6 +1147,9 @@ export default class Skapi {
 			method: 'GET' | 'POST' | 'DELETE' | 'PUT';
 			queue?: string; // Optional queue name to filter results.
 			status?: 'pending' | 'running' | 'resolved' | 'failed'; // Optional status filter.
+			compact?: boolean; // Return label/marker stubs instead of full request/response bodies.
+			queue_exact?: boolean; // Match the named queue exactly (a bare queue lookup is a prefix range: "u1" also matches "u1-bg").
+			queue_exclude?: string; // Drop this queue's rows from the listing.
 		},
 		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<RequestHistory[]>> {

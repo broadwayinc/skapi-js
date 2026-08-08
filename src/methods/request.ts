@@ -506,6 +506,22 @@ export async function clientSecretRequestHistory(
 		method: 'GET' | 'POST' | 'DELETE' | 'PUT';
 		queue?: string;
 		status?: 'pending' | 'running' | 'resolved' | 'failed';
+		/** Compact listing: each item carries label/marker STUBS (request_text,
+		 *  response_text, response_complete_marker) INSTEAD of the full
+		 *  request_body/response_body, which never leave the server. Enough to
+		 *  list, label and color rows; re-fetch without `compact` (or poll the
+		 *  item) when a full body is actually needed. */
+		compact?: boolean;
+		/** Only rows belonging to exactly `queue`. Without it the queue lookup
+		 *  is a PREFIX range, so queue "u1" also matches "u1-bg". The filter is
+		 *  applied server-side after the range read, so a page may come back
+		 *  short (or empty) while more matches remain — keep paging by
+		 *  startKey/endOfList as usual. */
+		queue_exact?: boolean;
+		/** Drop one queue's rows from the listing — e.g. fetch a chat surface
+		 *  WITHOUT its background queue. Same short-page caveat as
+		 *  `queue_exact`. */
+		queue_exclude?: string;
 	},
 	fetchOptions?: FetchOptions,
 ): Promise<
@@ -527,9 +543,12 @@ export async function clientSecretRequestHistory(
 			// Listing modifiers (see the polling lambda): `compact` returns
 			// label/marker STUBS instead of full request/response bodies;
 			// `queue_exact` post-filters the qid prefix range to the named
-			// queue (without it, queue "u1" also matches "u1-bg").
+			// queue (without it, queue "u1" also matches "u1-bg");
+			// `queue_exclude` drops one queue's rows from an id-prefix listing
+			// (how a chat fetches its surface WITHOUT the bg-indexing queue).
 			compact: 'boolean',
 			queue_exact: 'boolean',
+			queue_exclude: 'string',
 		},
 		['url', 'method'],
 	);
@@ -538,8 +557,9 @@ export async function clientSecretRequestHistory(
 	let id = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}#${service}:`;
 
 	let his_req: any = { id, queue: params?.queue, status: params?.status, service, owner };
-	if ((params as any)?.compact) his_req.compact = true;
-	if ((params as any)?.queue_exact) his_req.queue_exact = true;
+	if (params?.compact) his_req.compact = true;
+	if (params?.queue_exact) his_req.queue_exact = true;
+	if (params?.queue_exclude) his_req.queue_exclude = params.queue_exclude;
 
 	Object.keys(his_req).forEach((k) => {
 		if (!his_req[k]) {
