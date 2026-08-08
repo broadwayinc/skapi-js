@@ -524,6 +524,12 @@ export async function clientSecretRequestHistory(
 			method: ['GET', 'POST', 'DELETE', 'PUT'],
 			queue: 'string',
 			status: ['pending', 'running', 'resolved', 'failed'],
+			// Listing modifiers (see the polling lambda): `compact` returns
+			// label/marker STUBS instead of full request/response bodies;
+			// `queue_exact` post-filters the qid prefix range to the named
+			// queue (without it, queue "u1" also matches "u1-bg").
+			compact: 'boolean',
+			queue_exact: 'boolean',
 		},
 		['url', 'method'],
 	);
@@ -531,7 +537,9 @@ export async function clientSecretRequestHistory(
 	let auth = !!this.__user;
 	let id = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}#${service}:`;
 
-	let his_req = { id, queue: params?.queue, status: params?.status, service, owner };
+	let his_req: any = { id, queue: params?.queue, status: params?.status, service, owner };
+	if ((params as any)?.compact) his_req.compact = true;
+	if ((params as any)?.queue_exact) his_req.queue_exact = true;
 
 	Object.keys(his_req).forEach((k) => {
 		if (!his_req[k]) {
@@ -564,6 +572,14 @@ export async function clientSecretRequestHistory(
 			expires: item?.expt,
 			status: item.stts,
 			queue_name: item?.qid,
+			// Compact-listing stubs (only present when `compact` was requested):
+			// the label line of the request, the head of the response, whether
+			// the reply carried the indexing completion marker, and the flag
+			// itself so consumers know bodies were deliberately omitted.
+			request_text: item?.reqtxt,
+			response_text: item?.rslvtxt,
+			response_complete_marker: item?.rslvmk != null ? !!item.rslvmk : undefined,
+			compact: item?.cmpct ? true : undefined,
 		};
 		for (let k in result) {
 			if (result[k] === undefined) {
