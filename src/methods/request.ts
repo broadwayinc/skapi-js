@@ -568,6 +568,17 @@ export async function clientSecretRequestHistory(
 	});
 
 	if (his_req.queue) {
+		// A QUEUE name carries no provider: the background-indexing queue is
+		// "<userId>-bg" for BOTH the Claude chat and the ChatGPT chat of the
+		// same project. Dropping the id (which begins
+		// "[POST]<provider url>#<service>:") therefore made every queue listing
+		// span both platforms — the other platform's indexing passes and
+		// attachment-send turns surfaced in a chat they do not belong to, where
+		// nothing could ever confirm or cover them. The id cannot stay as `id`
+		// (that selects a different query path server-side), so it is sent as a
+		// FILTER instead. Requires the updated polling lambda; older backends
+		// reject unknown keys, so this ships after that deploy.
+		his_req.id_prefix = his_req.id;
 		delete his_req.id;
 	}
 
