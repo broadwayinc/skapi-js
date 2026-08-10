@@ -53,11 +53,11 @@ For vanilla HTML projects, import Skapi in the script tag, and initialize the li
 <!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
 <script>
-    const skapi = new Skapi('SERVICE_ID');
+    const skapi = new Skapi("<Project ID>");
 </script>
 ```
 
-**Be sure to replace `'SERVICE_ID'` with the actual ID of your service**
+**Be sure to replace `"<Project ID>"`, angle brackets included, with your actual project ID**
 
 For more information, check out our [documentation](https://docs.skapi.com/introduction/getting-started.html).
 
@@ -74,7 +74,7 @@ Then, import the library into your main JavaScript file.
 ```javascript
 // main.js
 import { Skapi } from 'skapi-js';
-const skapi = new Skapi('SERVICE_ID');
+const skapi = new Skapi("<Project ID>");
 
 // Export the skapi instance, so you can use it in other component files
 export { skapi }
@@ -86,7 +86,7 @@ export { skapi }
 import { Skapi } from 'skapi-js';
 import type { RecordData, DatabaseResponse } from 'skapi-js';
 
-const skapi = new Skapi('SERVICE_ID');
+const skapi = new Skapi("<Project ID>");
 let databaseRecords: DatabaseResponse<RecordData>;
 ```
 
@@ -96,14 +96,14 @@ To use Skapi in NodeJS, import the library as shown below:
 
 ```javascript
 const { Skapi } = require('skapi-js');
-const skapi = new Skapi('SERVICE_ID');
+const skapi = new Skapi("<Project ID>");
 ```
 
 ### Node.js (ESM)
 
 ```javascript
 import { Skapi } from 'skapi-js';
-const skapi = new Skapi('SERVICE_ID');
+const skapi = new Skapi("<Project ID>");
 ```
 
 > **Note:** When running Skapi in Node.js, browser-specific features such as WebSocket, WebRTC, and Notifications are not available.
@@ -121,7 +121,7 @@ Below is an example of how you can use the `mock()` method in HTML forms.
 <!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/skapi-js@latest/dist/skapi.js"></script>
 <script>
-    const skapi = new Skapi('SERVICE_ID');
+    const skapi = new Skapi("<Project ID>");
 </script>
 
 <form onsubmit='skapi.mock(event).then(ping=>alert(ping.msg))'>
@@ -153,11 +153,11 @@ In your AI chat website or app (for example, ChatGPT at chat.openai.com or Lovab
 
 ```
 Use the file "SKAPI.md" as a system prompt.
-My Skapi service ID is: "xxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxx".
+My Skapi project ID is: "xxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxx".
 Build me a [describe what you want].
 ```
 
-Replace the placeholder service ID with your actual service ID, and customize the last line with what you want to build.
+Replace the placeholder project ID with your actual project ID, and customize the last line with what you want to build.
 
 ### For AI Code Generators (e.g., Claude Code, OpenAI Codex, Gemini CLI)
 
@@ -180,11 +180,11 @@ Examples:
 When you invoke your code generator, include a prompt like:
 
 ```
-My Skapi service ID is: "xxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxx".
+My Skapi project ID is: "xxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxx".
 Build me a [describe what you want].
 ```
 
-Replace the placeholder service ID with your actual service ID before you run the command.
+Replace the placeholder project ID with your actual project ID before you run the command.
 
 
 #### For more information, check out our [documentation](https://docs.skapi.com).

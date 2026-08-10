@@ -428,11 +428,17 @@ export default class Skapi {
 				code: 'INVALID_PARAMETER',
 			});
 		}
-		if (typeof service === 'string' && (service.toLowerCase() === 'service_id' || service.toLowerCase() === 'project_id')) {
-			// The docs' copy-paste placeholder was never replaced. Checked FIRST, before any
-			// decoding or owner validation, so the user gets this message and not a puzzling
-			// "Owner ID is invalid". Both spellings are caught: older docs said 'service_id',
-			// current docs say 'project_id'.
+		// The docs' copy-paste placeholder was never replaced. Checked FIRST, before any
+		// decoding or owner validation, so the user gets this message and not a puzzling
+		// "Owner ID is invalid".
+		//
+		// Every spelling the docs have ever used is caught by normalizing away the angle
+		// brackets, spacing and separators the placeholder is written with: '<Project ID>'
+		// (current), 'project_id', and the older 'service_id' / 'SERVICE_ID'. Matching only
+		// the exact literals meant a docs change to a new placeholder form silently
+		// disabled this check, which is what happened when '<Project ID>' was adopted.
+		const placeholderForm = service.trim().toLowerCase().replace(/^<|>$/g, '').replace(/[\s_\-.]+/g, '');
+		if (placeholderForm === 'serviceid' || placeholderForm === 'projectid') {
 			this._alert(`Replace "${service}" with your actual Project ID.`);
 			throw new SkapiError('Project ID is required.', {
 				code: 'INVALID_PARAMETER',
