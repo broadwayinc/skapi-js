@@ -394,9 +394,18 @@ export default class Skapi {
 				// the same file downloaded twice.
 				//
 				// revalidate sends Cache-Control: no-cache so the browser REPLACES
-				// what it has stored under this exact url. A cache-busting query
-				// param cannot do that: it is a different url, so the stale entry
-				// stays and keeps answering every ordinary call until it expires.
+				// what it has stored under this exact url, which a cache-busting
+				// query param cannot do (a different url leaves the stale entry
+				// answering every ordinary call).
+				//
+				// USELESS CROSS-ORIGIN, and worse than useless: Cache-Control is
+				// not a CORS-safelisted request header, and the record gateway's
+				// preflight does not list it, so the browser REFUSES TO SEND a
+				// request carrying it. Every mint that asked for this failed with
+				// a network error rather than being revalidated. Bust the cache
+				// with a `nocache` parameter instead (see getFile's
+				// mintCacheToken), or add Cache-Control to the gateway's
+				// Access-Control-Allow-Headers first.
 				stableGateway?: boolean;
 				revalidate?: boolean;
 			},

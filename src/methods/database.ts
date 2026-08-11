@@ -33,17 +33,52 @@ const pendingPrivateAccessKeyRequest: Record<string, Promise<string>> = {};
  * token rotates, so the url changed and the browser cache never matched. Reading
  * the same private image twice therefore downloaded it twice.
  *
- * These two numbers do different jobs and are deliberately far apart:
+ * These two numbers do different jobs:
  *  - EXPIRES is how long the signed URL works. Short, so a leaked url dies fast.
- *  - BROWSER_CACHE is how long the FILE stays usable locally. The mint request is
- *    cached for this long, so the same url keeps coming back and the copy already
- *    on disk stays addressable long after the url itself stopped working.
+ *  - BROWSER_CACHE is how long the FILE stays usable locally.
  *
- * Once the browser evicts the file, a load fails on the expired url; getFile
- * re-mints once with `refresh` and succeeds, so that is a round trip, not an error.
+ * They used to be a week and twenty minutes, which reads as "short url, long
+ * local copy" and is in fact a scheduled outage: get_signed_url stamped the mint
+ * response with the week, so from minute 21 the browser answered every later mint
+ * from its own store with a credential that was already dead, for the remaining
+ * six days. That is what killed chat image previews on phones (which drop image
+ * bodies and refetch) while desktops, still holding the bytes, never noticed.
+ *
+ * The server now refuses to grant a cache a url cannot back
+ * (get_signed_url resolve_browser_cache caps at `expires` minus headroom), so the
+ * real lever on local availability is EXPIRES, not BROWSER_CACHE. An hour buys
+ * 55 minutes of reuse and is still short enough that a leaked url is not a
+ * standing grant. Asking for the week is kept deliberately: it says what this
+ * client would reuse if the url were stable by construction, and lets the server
+ * be the one that decides.
  */
 const PRIVATE_FILE_BROWSER_CACHE_SECONDS = 7 * 24 * 60 * 60;
-const PRIVATE_FILE_URL_EXPIRES_SECONDS = 20 * 60;
+const PRIVATE_FILE_URL_EXPIRES_SECONDS = 60 * 60;
+
+/**
+ * Cache generation for the mint url, and the repair's window stamp.
+ *
+ * Mirrors bunnyquery/engine's previewMintCacheToken, which cannot be imported
+ * here (the chat engine depends on this package, not the other way round). BUMP
+ * THE GENERATION to abandon every mint response browsers are holding: generation
+ * 2 retires the week-long entries written before 2026-08-11, which the server cap
+ * cannot reach because they are already on the user's device.
+ *
+ * A query parameter, not a request header. `Cache-Control: no-cache` is not
+ * CORS-safelisted and the record gateway's preflight does not allow it, so a mint
+ * carrying it is refused by the browser before it is sent: the repair below never
+ * ran at all, in any browser.
+ */
+const MINT_CACHE_GENERATION = 2;
+
+function mintCacheToken(expiresSeconds: number, refresh?: boolean): string {
+    if (!refresh) return String(MINT_CACHE_GENERATION);
+    // Same derivation as the chat client: one stamp per window, so a repair is one
+    // extra cache entry per window rather than one per file per attempt, and the
+    // window always closes before the url it carries can expire.
+    let windowMs = Math.max(60, expiresSeconds - 5 * 60) * 1000;
+    return MINT_CACHE_GENERATION + '.' + Math.floor(Date.now() / windowMs);
+}
 
 /**
  * Whether a signed url for this record file may be browser-cached.
@@ -734,16 +769,15 @@ export async function getFile(
                 params.uid = uid;
             }
 
-            if (config.refresh) {
-                // Revalidate the SAME url rather than busting it with a changed
-                // one. A `nocache=<ts>` parameter would fetch a fresh url under a
-                // new cache key and leave the poisoned entry in place, so every
-                // later read would keep being handed the dead url, fail, and
-                // refresh again: three requests per read for the rest of the
-                // week. `Cache-Control: no-cache` replaces the stored response,
-                // so the repair sticks and the next read is a plain cache hit.
-                mintOptions.revalidate = true;
-            }
+            // Cache generation, plus a window stamp when this is a repair. NOT
+            // `revalidate`: that sends Cache-Control: no-cache as a REQUEST
+            // header, which the gateway's CORS preflight does not allow, so the
+            // browser refused to send the repair at all and the read fell back to
+            // the token path every time. The objection to the old `nocache=<ts>`
+            // form was that a per-call timestamp made a new cache key on every
+            // attempt and left the poisoned entry answering ordinary reads; a
+            // generation plus a window fixes both halves of that.
+            params.nocache = mintCacheToken(expires, config.refresh);
         }
 
         url = (await request.bind(this)('get-signed-url', params,
