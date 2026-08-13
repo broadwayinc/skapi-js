@@ -837,7 +837,14 @@ export async function mock(
  * browser would have sent, files included. The destination url and the headers
  * to send with it travel in the Content-Meta header, so nothing has to be mixed
  * into the body. Your service api key is added server side, where the browser
- * cannot read it.
+ * cannot read it; when the project has no key set the header is still sent, with
+ * the value "none", so a backend can treat a missing header as "not from skapi".
+ *
+ * The destination's status code and response headers come back to the caller,
+ * apart from hop-by-hop headers, set-cookie, and access-control-* (skapi writes
+ * those from the project's cors setting, and a duplicate would make the browser
+ * reject the response). Headers in `options.headers` go OUTBOUND only and have
+ * no bearing on what the browser is allowed to read.
  *
  * ```js
  * // buffered
