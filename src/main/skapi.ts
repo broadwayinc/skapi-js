@@ -1575,14 +1575,24 @@ export default class Skapi {
 	 * with the service api key added where the browser cannot read it, and
 	 * streams the destination's response back as it arrives.
 	 *
-	 * Deliberately NOT decorated with @formHandler: that decorator serializes the
-	 * resolved value into sessionStorage and navigates the page when the form has
-	 * an action attribute, which would discard a stream.
+	 * The body is relayed verbatim, so an html form reaches the destination as the
+	 * same multipart or urlencoded payload the browser would have sent, files
+	 * included. Supply options.onStream to receive the response chunk by chunk.
 	 *
 	 * @param form Form element, submit event, FormData, or a plain object. Sent to the destination verbatim.
 	 * @param options Destination url, method, headers, and an optional onStream callback.
 	 * @returns A promise that resolves to the destination's response.
 	 */
+	// Decorated like every other form-taking method, so
+	// onsubmit="skapi.forwardRequest(event, {...})" works with no preventDefault
+	// from the caller: the decorator calls it and passes the event through
+	// untouched.
+	//
+	// One caveat belongs with a STREAMING call. When the form carries an `action`
+	// attribute the decorator serializes the resolved value into sessionStorage
+	// and navigates there, which throws the stream away. Streaming forms should
+	// have no action.
+	@formHandler()
 	forwardRequest(
 		form: any,
 		options: {
