@@ -827,3 +827,176 @@ export async function mock(
 
 	return request.bind(this)('mock', data, options);
 }
+
+/**
+ * Relays a request to a destination of your choosing, from the server rather
+ * than the browser, and streams the destination's response back as it arrives.
+ *
+ * Unlike {@link secureRequest}, the body is relayed VERBATIM: an html form
+ * reaches the destination as the same multipart or urlencoded payload the
+ * browser would have sent, files included. The destination url and the headers
+ * to send with it travel in the Content-Meta header, so nothing has to be mixed
+ * into the body. Your service api key is added server side, where the browser
+ * cannot read it.
+ *
+ * ```js
+ * // buffered
+ * const res = await skapi.forwardRequest(formElement, {
+ *     url: 'https://api.example.com/v1/report',
+ *     headers: { Accept: 'application/json' }
+ * });
+ *
+ * // streaming: onStream fires per chunk, the promise resolves with the whole body
+ * await skapi.forwardRequest(formElement, {
+ *     url: 'https://api.example.com/v1/chat',
+ *     onStream: (chunk) => { output.textContent += chunk; }
+ * });
+ * ```
+ *
+ * This method deliberately bypasses the shared request pipeline: that pipeline
+ * flattens forms into JSON, forces its own Content-Type, and reads responses
+ * through XMLHttpRequest, which cannot surface bytes before the response is
+ * complete.
+ */
+export async function forwardRequest(
+	form: any,
+	options: {
+		/** Destination url. Must be http(s) and resolve to a public address. */
+		url: string;
+		/** Destination method. Defaults to POST. */
+		method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
+		/** Headers to send TO the destination. */
+		headers?: { [key: string]: string };
+		/** Header name to carry the service api key. Defaults to "x-api-key". */
+		apiKeyHeader?: string;
+		/** Scheme prefix for the api key, e.g. "Bearer". */
+		apiKeyScheme?: string;
+		/** Called with each chunk of text as it arrives. Presence of this enables streaming. */
+		onStream?: (chunk: string) => void;
+		/** Abort the forward (and the destination request) early. */
+		signal?: AbortSignal;
+		/** How to resolve the promise. Defaults to 'json' when the destination says json, else 'text'. */
+		responseType?: 'json' | 'text' | 'response';
+	},
+): Promise<any> {
+	await this.__connection;
+
+	if (!options?.url || typeof options.url !== 'string') {
+		throw new SkapiError('"url" is required in the second argument.', {
+			code: 'INVALID_PARAMETER',
+		});
+	}
+	validator.Url(options.url);
+
+	const admin = await this.admin_endpoint;
+	const endpoint = admin?.forward_request;
+	if (!endpoint) {
+		// An older cached endpoint json simply has no entry for this: say so,
+		// rather than failing later with an opaque network error.
+		throw new SkapiError('forwardRequest is not available on this service region yet.', {
+			code: 'NOT_EXISTS',
+		});
+	}
+
+	// The body is relayed as-is. A form element or submit event becomes native
+	// FormData (multipart, boundary chosen by the browser, files preserved);
+	// anything else is sent as json.
+	let body: any = null;
+	let contentType: string | null = null;
+	const el =
+		hasSubmitEvent && form instanceof SubmitEvent
+			? (form.target as HTMLFormElement)
+			: hasHTMLFormElement && form instanceof HTMLFormElement
+				? form
+				: null;
+
+	if (el) {
+		body = new FormData(el);
+	} else if (hasFormData && form instanceof FormData) {
+		body = form;
+	} else if (form !== null && form !== undefined) {
+		body = JSON.stringify(form);
+		contentType = 'application/json';
+	}
+
+	const meta = {
+		public_identifier: this.__public_identifier,
+		service: this.service,
+		owner: this.owner,
+		forward: {
+			url: options.url,
+			method: options.method || 'POST',
+			headers: options.headers || {},
+			apiKeyHeader: options.apiKeyHeader,
+			apiKeyScheme: options.apiKeyScheme,
+		},
+	};
+
+	const metaHeader = JSON.stringify(meta);
+	if (metaHeader.length > 4096) {
+		// Header budget is shared with the tokens below; a destination that needs
+		// more than this wants the payload in the body instead.
+		throw new SkapiError('Destination url and headers are too large for Content-Meta.', {
+			code: 'INVALID_PARAMETER',
+		});
+	}
+
+	const idToken = this.bearerToken || this.session?.idToken?.jwtToken || null;
+	if (!idToken) {
+		throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+	}
+
+	const headers: { [key: string]: string } = {
+		'Content-Meta': metaHeader,
+		Authorization: idToken,
+	};
+	if (contentType) headers['Content-Type'] = contentType;
+	// FormData intentionally has no Content-Type set here: the browser must add
+	// its own, including the multipart boundary.
+
+	const res = await fetch(endpoint, {
+		method: 'POST',
+		headers,
+		body,
+		signal: options.signal,
+	});
+
+	if (options.responseType === 'response') return res;
+
+	if (!res.ok && !options.onStream) {
+		let payload: any = await res.text();
+		try {
+			payload = JSON.parse(payload);
+		} catch { }
+		throw new SkapiError(payload?.message || String(payload), {
+			code: payload?.code || 'ERROR',
+		});
+	}
+
+	if (options.onStream && res.body) {
+		const reader = res.body.getReader();
+		const decoder = new TextDecoder();
+		let whole = '';
+		for (; ;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			const chunk = decoder.decode(value, { stream: true });
+			whole += chunk;
+			try {
+				options.onStream(chunk);
+			} catch (err) {
+				// A throwing callback should not strand the reader.
+				console.error(err);
+			}
+		}
+		return whole;
+	}
+
+	const text = await res.text();
+	if (options.responseType === 'text') return text;
+	try {
+		return JSON.parse(text);
+	} catch {
+		return text;
+	}
+}

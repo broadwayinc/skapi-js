@@ -56,6 +56,7 @@ import {
 import { closeRTC, connectRTC } from '../methods/webrtc';
 import {
 	secureRequest,
+	forwardRequest,
 	mock,
 	clientSecretRequest,
 	clientSecretRequestHistory,
@@ -415,7 +416,16 @@ export default class Skapi {
 	private __connection: Promise<Connection>;
 	private __authConnection: Promise<void>;
 	private __network_logs = false;
-	private __endpoint_version = 'v1';
+	// Which per-region endpoint file this SDK boots from:
+	// <cdn>/<short_region>/admin-<version>.json and record-<version>.json.
+	// v2 adds forward_request (the streaming forwarder's Function URL), which v1
+	// has no slot for.
+	//
+	// This version must not move ahead of what is published: the fetch below
+	// rejects on a missing file and every call then throws "Service does not
+	// exist". Publish with infra/cdn/publish_endpoints.py for EVERY region
+	// first, and leave v1 in place while older clients are still in the wild.
+	private __endpoint_version = 'v2';
 	private __public_identifier = '';
 	private bearerToken: string = '';
 
@@ -1559,6 +1569,34 @@ export default class Skapi {
 		url?: string,
 	): Promise<Response | Response[]> {
 		return secureRequest.bind(this)(params, url);
+	}
+	/**
+	 * Relays a request to a destination of your choosing from the server side,
+	 * with the service api key added where the browser cannot read it, and
+	 * streams the destination's response back as it arrives.
+	 *
+	 * Deliberately NOT decorated with @formHandler: that decorator serializes the
+	 * resolved value into sessionStorage and navigates the page when the form has
+	 * an action attribute, which would discard a stream.
+	 *
+	 * @param form Form element, submit event, FormData, or a plain object. Sent to the destination verbatim.
+	 * @param options Destination url, method, headers, and an optional onStream callback.
+	 * @returns A promise that resolves to the destination's response.
+	 */
+	forwardRequest(
+		form: any,
+		options: {
+			url: string;
+			method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
+			headers?: { [key: string]: string };
+			apiKeyHeader?: string;
+			apiKeyScheme?: string;
+			onStream?: (chunk: string) => void;
+			signal?: AbortSignal;
+			responseType?: 'json' | 'text' | 'response';
+		},
+	): Promise<any> {
+		return forwardRequest.bind(this)(form, options);
 	}
 	/**
 	 * Returns a normalized response object for form-based handler flows.
