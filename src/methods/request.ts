@@ -833,8 +833,9 @@ export async function mock(
  * than the browser, and streams the destination's response back as it arrives.
  *
  * Unlike {@link secureRequest}, the body is relayed VERBATIM: an html form
- * reaches the destination as the same multipart or urlencoded payload the
- * browser would have sent, files included. The destination url and the headers
+ * reaches the destination as multipart/form-data, files included. The form's own
+ * enctype and method attributes are not used; the method comes from
+ * options.method. The destination url and the headers
  * to send with it travel in the Content-Meta header, so nothing has to be mixed
  * into the body. Your service api key is added server side, where the browser
  * cannot read it; when the project has no key set the header is still sent, with
@@ -880,7 +881,8 @@ export async function forwardRequest(
 		apiKeyScheme?: string;
 		/** Called with each chunk of text as it arrives. Presence of this enables streaming. */
 		onStream?: (chunk: string) => void;
-		/** Abort the forward (and the destination request) early. */
+		/** Stops the client receiving the response. The request already sent to
+		 * the destination is NOT cancelled and runs to completion. */
 		signal?: AbortSignal;
 		/** How to resolve the promise. Defaults to 'json' when the destination says json, else 'text'. */
 		responseType?: 'json' | 'text' | 'response';
@@ -970,14 +972,20 @@ export async function forwardRequest(
 
 	if (options.responseType === 'response') return res;
 
-	if (!res.ok && !options.onStream) {
+	// An error response throws whether or not onStream was supplied. Gating this
+	// on `!options.onStream` meant a streaming caller had the forwarder's own
+	// error body ({"message":"Destination host is not routable.","code":...})
+	// delivered to their callback as if it were backend output, and the promise
+	// then RESOLVED with it. A failure must not look like content.
+	if (!res.ok) {
 		let payload: any = await res.text();
 		try {
 			payload = JSON.parse(payload);
 		} catch { }
-		throw new SkapiError(payload?.message || String(payload), {
-			code: payload?.code || 'ERROR',
-		});
+		throw new SkapiError(
+			payload?.message || (typeof payload === 'string' ? payload : JSON.stringify(payload)),
+			{ code: payload?.code || 'ERROR' },
+		);
 	}
 
 	if (options.onStream && res.body) {

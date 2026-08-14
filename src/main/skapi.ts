@@ -1575,9 +1575,13 @@ export default class Skapi {
 	 * with the service api key added where the browser cannot read it, and
 	 * streams the destination's response back as it arrives.
 	 *
-	 * The body is relayed verbatim, so an html form reaches the destination as the
-	 * same multipart or urlencoded payload the browser would have sent, files
-	 * included. Supply options.onStream to receive the response chunk by chunk.
+	 * The body is relayed verbatim, so an html form reaches the destination as
+	 * multipart/form-data, files included; the form's own enctype and method
+	 * attributes are not used. Supply options.onStream to receive the response
+	 * chunk by chunk. An error response throws a SkapiError either way; reading
+	 * the status code or a response header needs options.responseType
+	 * 'response'. options.signal stops the client receiving the response, it
+	 * does not cancel the request already sent to the destination.
 	 *
 	 * @param form Form element, submit event, FormData, or a plain object. Sent to the destination verbatim.
 	 * @param options Destination url, method, headers, and an optional onStream callback.
