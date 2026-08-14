@@ -941,7 +941,16 @@ export async function forwardRequest(
 		},
 	};
 
-	const metaHeader = JSON.stringify(meta);
+	// A header value is a byte string: fetch() refuses any character above U+00FF,
+	// so a destination url or a header value carrying non-ascii text (a Korean
+	// query string, an accented note) would throw a bare TypeError from fetch and
+	// never leave the browser. Escaping those to \uXXXX keeps this pure ascii and
+	// still valid JSON, so the forwarder's JSON.parse sees the original text.
+	const metaHeader = JSON.stringify(meta).replace(
+		/[\u007f-\uffff]/g,
+		(c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'),
+	);
+	// Measured on the ESCAPED string, since that is what goes on the wire.
 	if (metaHeader.length > 4096) {
 		// Header budget is shared with the tokens below; a destination that needs
 		// more than this wants the payload in the body instead.
