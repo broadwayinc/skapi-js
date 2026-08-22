@@ -69,8 +69,10 @@ const sentParams = (u, opt) => {
 
 globalThis.fetch = async (url, opt) => {
     const u = String(url);
-    if (u.includes('admin-v1.json')) return new Response(fs.readFileSync(path.join(FIXTURES, 'admin-v1.json')));
-    if (u.includes('record-v1.json')) return new Response(fs.readFileSync(path.join(FIXTURES, 'record-v1.json')));
+    // Matched by prefix, not by version: the SDK's __endpoint_version moves (it is v2 now) while
+    // the fixtures keep their filename.
+    if (/\/admin-v[\d.]+\.json/.test(u)) return new Response(fs.readFileSync(path.join(FIXTURES, 'admin-v1.json')));
+    if (/\/record-v[\d.]+\.json/.test(u)) return new Response(fs.readFileSync(path.join(FIXTURES, 'record-v1.json')));
     if (u.includes('post-record')) {
         const body = JSON.parse(opt.body);
         captured.push(body);

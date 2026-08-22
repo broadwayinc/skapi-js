@@ -460,6 +460,23 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                 return;
             }
 
+            // Data DynamoDB could not hold natively is stored as { __json__: "<text>" }:
+            // valid JSON whose shape the item itself cannot express (an empty or oversized
+            // key at any depth, nesting past 32 levels). Parse it back. The check mirrors
+            // exactly what the server writes (one key, holding a string), and a value that
+            // merely looks like the marker but does not parse is an ordinary user value, so
+            // it falls through and is returned verbatim.
+            if (
+                r && typeof r === 'object' && !Array.isArray(r) &&
+                typeof r.__json__ === 'string' && Object.keys(r).length === 1
+            ) {
+                try {
+                    output.data = JSON.parse(r.__json__);
+                    return;
+                }
+                catch (err) { }
+            }
+
             // Offloaded data: stored as { __data__: "<ts>/<size>/__data__/__json__.json" },
             // the JSON itself living in the record's bin as that same file. Fetch
             // it back (all records in a getRecords batch resolve concurrently via
@@ -494,6 +511,11 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                         // inverse of the server's json.dumps for every value type.
                         let blob = await getFile.bind(this)(rawUrl, { dataType: 'blob', _ref: output.reference || null });
                         let text = await blobToText(blob);
+                        // Parsed ONCE, and never run through the __json__ decode above. The
+                        // offloaded file always holds the original payload (post_record
+                        // offloads decode_record_data(...) precisely so it does), which means
+                        // a file whose contents ARE { __json__: "..." } is a caller who really
+                        // stored that shape. Decoding again here would unwrap their data.
                         output.data = JSON.parse(text);
                     }
                     catch (err) {
