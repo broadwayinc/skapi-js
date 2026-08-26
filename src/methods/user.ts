@@ -1,4 +1,5 @@
 import SkapiError from '../main/error';
+import { ensureKeyring, clearEncryptionState, encState, rewrapForPasswordChange, pruneKeyringWraps } from './encryption';
 import {
     CognitoUserAttribute,
     CognitoUser,
@@ -410,7 +411,16 @@ export function authentication() {
                         initUser.cognitoUser.completeNewPasswordChallenge(password, {}, {
                             onSuccess: _ => {
                                 cognitoUser = initUser.cognitoUser;
-                                getSession().then(session => res(this.user));
+                                getSession().then(async session => {
+                                    if (encState.call(this)) {
+                                        try {
+                                            await ensureKeyring.bind(this)(password);
+                                        } catch (err) {
+                                            this.log('encryption:ensureKeyring:failed', err);
+                                        }
+                                    }
+                                    res(this.user);
+                                });
                             },
                             onFailure: (err: any) => {
                                 rej(new SkapiError(err.message || 'Failed to authenticate user.', { code: err.code }));
@@ -422,8 +432,19 @@ export function authentication() {
                         rej(new SkapiError("User's signup confirmation is required.", { code: 'SIGNUP_CONFIRMATION_NEEDED' }));
                     }
                 },
-                onSuccess: _ => getSession({ skipUserUpdateEventTrigger: true }).then(_ => {
+                onSuccess: _ => getSession({ skipUserUpdateEventTrigger: true }).then(async _ => {
                     this.__disabledAccount = null;
+                    // Login is the one moment the plaintext password exists on
+                    // the client, so it is the only place a password-derived key
+                    // can be built. Must never reject the login: a failure here
+                    // leaves the session locked and unlockEncryption() can retry.
+                    if (encState.call(this)) {
+                        try {
+                            await ensureKeyring.bind(this)(password);
+                        } catch (err) {
+                            this.log('encryption:ensureKeyring:failed', err);
+                        }
+                    }
                     this._runOnLoginListeners(this.user);
                     this._runOnUserUpdateListeners(this.user);
                     res(this.user);
@@ -787,6 +808,8 @@ export async function _out(global: boolean = false) {
             cognitoUser.signOut();
         }
     }
+
+    clearEncryptionState.bind(this)();
 
     let to_be_erased = {
         'session': null,
@@ -1340,6 +1363,14 @@ export async function changePassword(params: {
     validator.Password(p.current_password);
     validator.Password(p.new_password);
 
+    // Re-wrap the encryption master key for the new password BEFORE Cognito
+    // changes it. Order is load-bearing: the keyring must never be left holding
+    // only a wrap under a password that no longer exists. Both wraps are valid
+    // in between, and unlock tries each in turn, so a crash here is survivable.
+    if (encState.call(this)) {
+        await rewrapForPasswordChange.bind(this)(p.current_password, p.new_password);
+    }
+
     return new Promise((res, rej) => {
         cognitoUser.changePassword(
             p.current_password,
@@ -1360,6 +1391,13 @@ export async function changePassword(params: {
                         rej(parsed);
                     }
                     return;
+                }
+
+                // Now that the old password is gone, drop its wrap. Best
+                // effort: a failure leaves a stale wrap that can still be
+                // opened only by someone who already knows the old password.
+                if (encState.call(this)) {
+                    pruneKeyringWraps.bind(this)().catch(e => this.log('encryption:prune:failed', e));
                 }
 
                 res('SUCCESS: Password has been changed.');

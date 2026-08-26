@@ -151,6 +151,48 @@ export type BinaryFile = {
     getFile: (dataType?: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info', progress?: ProgressCallback) => Promise<Blob | string | void | FileInfo>;
 }
 
+/**
+ * Per-record encryption outcome. Present ONLY when the record's data went
+ * through the client-side encryption layer, so its absence means the record was
+ * stored in the clear.
+ *
+ * status 'encrypted' means the data in this object was decrypted successfully.
+ * status 'failed' means `data` is null and `reason` says why:
+ *   NO_SESSION_KEY      encryption is locked; call unlockEncryption()
+ *   NOT_A_RECIPIENT     this user has no key wrap on the record
+ *   BAD_KEY             the wrap did not open (wrong or rotated key)
+ *   BINDING_MISMATCH    the envelope does not belong to this record
+ *   CORRUPT             the payload failed its authentication tag
+ *   UNSUPPORTED_VERSION written by a newer SDK
+ *   ENCRYPTION_DISABLED the record is encrypted but this instance is not
+ */
+export type RecordEncryptionInfo = {
+    status: 'encrypted' | 'failed';
+    reason?: string;
+    /** user_ids that hold a key wrap on this record. */
+    recipients?: string[];
+};
+
+/** Options for `new Skapi(..., { encryption })`. */
+export type EncryptionOptions = boolean | {
+    /** PBKDF2 iteration count. Default 600000. Minimum 100000. */
+    iterations?: number;
+    /** 'tofu' pins a peer's key on first sight (default). 'strict' requires a prior pin. */
+    trustPolicy?: 'tofu' | 'strict';
+    /** Keep the master key in IndexedDB so a page reload stays unlocked. Default true. */
+    persistDevice?: boolean;
+    /** Refuse to enroll a password shorter than this. Default 0 (no check). */
+    minPasswordLength?: number;
+    /**
+     * Issue a one-time recovery code at enrollment. Default 'code'.
+     * 'none' opts out and accepts that a forgotten password means the user's
+     * encrypted records are permanently unreadable.
+     */
+    recovery?: 'code' | 'none';
+    /** Reserved keyring table name. Default 'skapi__keyring'. */
+    table?: string;
+};
+
 export type RecordData = {
     record_id: string;
     unique_id?: string;
@@ -158,6 +200,8 @@ export type RecordData = {
     updated: number;
     uploaded: number;
     referenced_count: number;
+    /** Set only when the record's data passed through the encryption layer. */
+    encrypted?: RecordEncryptionInfo;
 
     table: {
         name: string;

@@ -770,6 +770,35 @@ function decompressCompoundId(token) {
 }
 
 
+
+/** UTF-8 decode bytes back to a string. Inverse of encodeUtf8. */
+function decodeUtf8(bytes: Uint8Array): string {
+    if (typeof TextDecoder !== 'undefined') {
+        return new TextDecoder().decode(bytes);
+    }
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return decodeURIComponent(escape(binary));
+}
+
+/** Concatenate byte runs into one Uint8Array. */
+function concatBytes(...parts: Uint8Array[]): Uint8Array {
+    let total = 0;
+    for (let p of parts) {
+        total += p.length;
+    }
+    let out = new Uint8Array(total);
+    let at = 0;
+    for (let p of parts) {
+        out.set(p, at);
+        at += p.length;
+    }
+    return out;
+}
+
+
 export {
     fromBase62,
     toBase62,
@@ -782,5 +811,9 @@ export {
     compressCompoundId,
     decompressCompoundId,
     formatServiceId,
-    decodeProjectId
+    decodeProjectId,
+    encodeUtf8,
+    decodeUtf8,
+    toUint8Array,
+    concatBytes
 };

@@ -78,7 +78,13 @@ export default defineConfig([
             options.alias = {
                 ...(options.alias || {}),
                 fs: browserShim,
-                path: browserShim
+                path: browserShim,
+                // src/utils/crypto.ts lazily require()s node:crypto as a fallback
+                // for runtimes where globalThis.crypto.subtle is missing. A browser
+                // always has the global, so alias the fallback away rather than
+                // shipping a bare require() into a <script> bundle.
+                crypto: browserShim,
+                'node:crypto': browserShim
             };
         }
     }

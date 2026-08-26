@@ -145,6 +145,21 @@ import {
 	unsubscribeNotification,
 } from '../methods/notification';
 import { spellcast, dopamine, getspell } from '../methods/vivian';
+import {
+	parseEncryptionOptions,
+	initEncryption,
+	clearEncryptionState,
+	getEncryptionStatus,
+	isWithheld,
+	unlockEncryption,
+	lockEncryption,
+	startDeviceUnlock,
+	pinPeerKey,
+	takeRecoveryCode,
+	unlockWithRecoveryCode,
+	regenerateRecoveryCode,
+	EncryptionConfig,
+} from '../methods/encryption';
 
 declare const __SKAPI_VERSION__: string;
 
@@ -153,6 +168,18 @@ type Options = {
 	refetchServiceInfo?: boolean; // bypasses cached service info and always fetch new service info on load.
 	requestBatchSize?: number; // default 30. number of requests to be handled in a batch
 	// bearerToken?: string; // custom bearer token for authentication
+	/**
+	 * Enable client-side encryption of `data` on records written to
+	 * access_group 'private'. Off by default. See EncryptionOptions.
+	 */
+	encryption?: boolean | {
+		iterations?: number;
+		trustPolicy?: 'tofu' | 'strict';
+		persistDevice?: boolean;
+		minPasswordLength?: number;
+		recovery?: 'code' | 'none';
+		table?: string;
+	};
 	eventListener?: {
 		onLogin?: (user: UserProfile | null) => void;
 		onUserUpdate?: (user: UserProfile | null) => void;
@@ -529,12 +556,16 @@ export default class Skapi {
 
 		let autoLogin = true;
 		let refetchServiceInfo = false;
+		let encryptionConfig: EncryptionConfig | null = null;
 		if (options) {
 			if (typeof options.refetchServiceInfo === 'boolean') {
 				refetchServiceInfo = options.refetchServiceInfo;
 			}
 			if (typeof options.autoLogin === 'boolean') {
 				autoLogin = options.autoLogin;
+			}
+			if (options.encryption) {
+				encryptionConfig = parseEncryptionOptions(options.encryption);
 			}
 			if (typeof options.requestBatchSize === 'number') {
 				if (options.requestBatchSize < 1) {
@@ -663,6 +694,11 @@ export default class Skapi {
 			}
 		}
 
+		// AFTER the blanket restore above, which assigns every key of a
+		// same-origin-writable sessionStorage blob onto `this`. Encryption state
+		// lives in a module WeakMap precisely so it cannot be injected that way.
+		initEncryption.bind(this)(encryptionConfig);
+
 		this.__authConnection = (async (): Promise<void> => {
 			const admin_endpoint = await this.admin_endpoint;
 			const poolSetting = {
@@ -690,6 +726,21 @@ export default class Skapi {
 					if (!restore?.connection && !autoLogin) {
 						_out.bind(this)();
 					} else {
+						// A token-restored session has no password, so the only
+						// way to stay unlocked across a reload is the device
+						// store.
+						//
+						// NOT awaited here, and that is load-bearing: the unlock
+						// reads the keyring with getRecords, getRecords awaits
+						// __connection, and __connection awaits THIS promise.
+						// Awaiting it closed the cycle and hung every call on the
+						// instance. Instead the attempt is kicked off and parked
+						// on the encryption state, where the record read and
+						// write hooks wait for it, so an app call issued during
+						// bootstrap still sees an unlocked session.
+						if (encryptionConfig) {
+							startDeviceUnlock.bind(this)();
+						}
 						// only run login listeners if user is logged in (auto login successful)
 						this._runOnLoginListeners(this.user);
 						this._runOnUserUpdateListeners(this.user);
@@ -751,6 +802,20 @@ export default class Skapi {
 					if (this.connection) {
 						for (let k of to_be_cached) {
 							data[k] = this[k];
+						}
+
+						// Never persist the paging cache while record encryption
+						// is on. On a cache hit request() returns the cached
+						// response object BY REFERENCE (utils/network.ts:349),
+						// and getRecords then assigns the DECRYPTED list onto
+						// it, so __cached_requests ends up holding plaintext for
+						// records that were encrypted precisely so they would
+						// not be written to disk. Dropped as a PAIR with
+						// __startKeyHistory: cursors without their cached pages
+						// desync fetchMore after a restore.
+						if (encryptionConfig) {
+							data.__cached_requests = {};
+							data.__startKeyHistory = {};
 						}
 
 						if (hasWindow) {
@@ -1961,6 +2026,106 @@ export default class Skapi {
 		username: string;
 	}): Promise<'SUCCESS: confirmation e-mail has been sent.'> {
 		return requestUsernameChange.bind(this)(params);
+	}
+	/**
+	 * Reports whether client-side record encryption is on, and whether it is
+	 * currently unlocked.
+	 * @returns { status: 'disabled' | 'locked' | 'unlocked', reason?, user_id?, fingerprint? }
+	 */
+	getEncryptionStatus(): {
+		status: string;
+		reason?: string;
+		user_id?: string;
+		fingerprint?: string;
+	} {
+		return getEncryptionStatus.bind(this)();
+	}
+	/**
+	 * True when a record's `data` is the placeholder returned in place of
+	 * content this session cannot decrypt.
+	 *
+	 * Only relevant with `encryption: { withheld: 'sentinel' }`. Under the
+	 * default, withheld data is `null` and an ordinary falsy check is enough.
+	 * @param data The value of `record.data`.
+	 * @returns boolean
+	 */
+	isWithheld(data: any): boolean {
+		return isWithheld.call(this, data);
+	}
+	/**
+	 * Unlocks record encryption with the user's password.
+	 *
+	 * Normally unnecessary: logging in unlocks automatically, and a page reload
+	 * unlocks from the device store. This is for a session restored from a token
+	 * on a device that has never been unlocked, and for Node, which has no
+	 * IndexedDB and is therefore always locked after a token restore.
+	 * @param params Request parameters.
+	 * @returns A promise that resolves to Promise<{ status: string }>.
+	 */
+	@formHandler()
+	unlockEncryption(params: { password: string }): Promise<{ status: string }> {
+		return unlockEncryption.bind(this)(params);
+	}
+	/**
+	 * Drops encryption keys from memory without logging out. Pass
+	 * { forgetDevice: true } to also clear the device store, which means the
+	 * next reload will require the password again.
+	 * @param params Request parameters.
+	 * @returns A promise that resolves to Promise<{ status: string }>.
+	 */
+	lockEncryption(params?: { forgetDevice?: boolean }): Promise<{ status: string }> {
+		return lockEncryption.bind(this)(params);
+	}
+	/**
+	 * Collects a freshly minted recovery code, ONCE.
+	 *
+	 * Call it right after a login or signup that may have enrolled the user; it
+	 * returns the code and forgets it. There is no way to fetch it again later,
+	 * and that is the point: if the SDK could hand it back on demand it would be
+	 * holding the key, and so could the service provider. Show it, make the user
+	 * confirm they saved it, and never send it anywhere.
+	 * @returns The code, or null if nothing was enrolled.
+	 */
+	takeRecoveryCode(): string | null {
+		return takeRecoveryCode.bind(this)();
+	}
+	/**
+	 * Unlocks with a recovery code after a forgotten-password reset, and repairs
+	 * the keyring for the new password.
+	 *
+	 * The order is: reset the password, log in with the new one (encryption will
+	 * report 'locked'), then call this with the code and that new password. A
+	 * used code is retired and a replacement is returned.
+	 * @param params Request parameters.
+	 * @returns A promise that resolves to Promise<{ status, repaired, recoveryCode }>.
+	 */
+	@formHandler()
+	unlockWithRecoveryCode(params: {
+		code: string;
+		password?: string;
+	}): Promise<{ status: string; repaired: boolean; recoveryCode: string | null }> {
+		return unlockWithRecoveryCode.bind(this)(params);
+	}
+	/**
+	 * Retires the current recovery code and issues a new one. Requires an
+	 * unlocked session: only someone who can already decrypt can mint a code.
+	 * @returns A promise that resolves to Promise<{ recoveryCode: string }>.
+	 */
+	regenerateRecoveryCode(): Promise<{ recoveryCode: string }> {
+		return regenerateRecoveryCode.bind(this)();
+	}
+	/**
+	 * Pins another user's public key fingerprint after verifying it out of band.
+	 *
+	 * Only needed when a peer's key has changed, or when trustPolicy is
+	 * 'strict'. The provider serves the key directory, so a changed key is both
+	 * what a legitimate account reset looks like and what a key substitution
+	 * attack looks like: the SDK refuses to guess.
+	 * @param params Request parameters.
+	 * @returns A promise that resolves to Promise<void>.
+	 */
+	pinPeerKey(params: { user_id: string; fingerprint: string }): Promise<void> {
+		return pinPeerKey.bind(this)(params);
 	}
 	/**
 	 * Grants users access to a private record.

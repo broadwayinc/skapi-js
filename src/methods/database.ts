@@ -16,6 +16,7 @@ import {
     UniqueId
 } from '../Types';
 import SkapiError from '../main/error';
+import { encState, isEnvelope, maybeEncrypt, maybeDecrypt, addRecipients, dropRecipientsAndRoll, encryptedFileFromUrl, decryptFileBlob, parseFileMarker, bindRecordDek } from './encryption';
 import { extractFormData, fromBase62, isBrowserRuntime } from '../utils/utils';
 import validator from '../utils/validator';
 import { request, uploadFiles } from '../utils/network';
@@ -104,6 +105,46 @@ function canBrowserCacheRecordFile(splitPath: string[]): boolean {
 // Read a getFile('blob') result to text across browser + node runtimes. Blob.text()
 // is used when present; otherwise FileReader (the same polyfilled reader getFile
 // uses for its base64 path) reads it.
+/**
+ * Decode the stored form of a record's `data`, or return the value unchanged when there
+ * is nothing to decode. Reference equality is the signal: `parseStoredData(v) !== v`
+ * means it was decoded.
+ *
+ * Every payload is stored as its JSON text behind '!J%'. The other two forms are legacy
+ * and read-only: '!D%{}' / '!L%[]' were written for an empty dict and an empty list, and
+ * { __json__: text } was this codec's first form, live in five regions since 2026-08-22.
+ * Text that carries the prefix but does not parse is an ordinary user value that merely
+ * starts with it, so it comes back verbatim.
+ *
+ * The S3-offload marker is deliberately NOT handled here: resolving it needs the record's
+ * bin urls and a network fetch, which only normalizeRecord can do.
+ */
+export function parseStoredData(r: any): any {
+    if (typeof r === 'string') {
+        if (r.startsWith('!J%')) {
+            try {
+                return JSON.parse(r.substring(3));
+            }
+            catch (err) {
+                return r;
+            }
+        }
+        if (r === '!D%{}') return {};
+        if (r === '!L%[]') return [];
+        return r;
+    }
+
+    if (r && typeof r === 'object' && !Array.isArray(r) &&
+        typeof r.__json__ === 'string' && Object.keys(r).length === 1) {
+        try {
+            return JSON.parse(r.__json__);
+        }
+        catch (err) { }
+    }
+
+    return r;
+}
+
 async function blobToText(blob: any): Promise<string> {
     if (typeof blob === 'string') {
         return blob;
@@ -124,7 +165,7 @@ async function blobToText(blob: any): Promise<string> {
     });
 }
 
-export async function normalizeRecord(record: Record<string, any>, _called_from?, _skipDataFetch = false): Promise<RecordData> {
+export async function normalizeRecord(record: Record<string, any>, _called_from?, _skipDataFetch = false, _skipDecrypt = false): Promise<RecordData> {
     // if (record?.rec) {
     //     if (_called_from !== 'called from postRecord') {
     //         let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
@@ -309,6 +350,12 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                             return { isDataFile: true, rawUrl: url };
                         }
 
+                        // A sealed attachment: strip the marker so `path` and
+                        // the form key read naturally, and report the PLAINTEXT
+                        // size, which is the honest answer to "how big is this
+                        // file" and needs no round trip because the marker
+                        // carries it.
+                        let marked = parseFileMarker(pathKey);
                         let size = splitPath[9];
                         let uploaded = splitPath[8];
                         let access_group = access_group_set(splitPath[6]);
@@ -349,12 +396,12 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                             }
                         }
 
-                        let obj = {
+                        let obj: Record<string, any> = {
                             access_group,
                             filename,
                             url: url_endpoint,
                             path,
-                            size: fromBase62(size),
+                            size: marked ? marked.plainSize : fromBase62(size),
                             uploaded: fromBase62(uploaded),
                             getFile: (dataType: 'base64' | 'download' | 'endpoint' | 'blob' | 'text' | 'info', progress?: ProgressCallback) => {
                                 let base = {
@@ -393,7 +440,19 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                             }
                         };
 
-                        return { pathKey, obj };
+                        if (marked) {
+                            // Set on the plain data, not only on the closure:
+                            // both dashboards `delete f.getFile` before cloning a
+                            // record into their pager, so a flag carried only on
+                            // the closure would be invisible to them, and they
+                            // render `url` straight into an <a href>.
+                            obj.encrypted = true;
+                            obj.stored_size = fromBase62(size);
+                        }
+
+                        // The bin is keyed by the caller's form key, so the
+                        // marker must not leak into it.
+                        return { pathKey: marked ? marked.key : pathKey, obj };
                     }
                     catch {
                         return null;
@@ -451,30 +510,57 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             }
         },
         'data': async (r: any) => {
-            if (r === '!D%{}') {
-                output.data = {};
-                return;
-            }
-            if (r === '!L%[]') {
-                output.data = [];
-                return;
-            }
+            // Captured BEFORE any await. The handlers that populate these
+            // ('ip', 'rec', 'usr', 'tbl', 'usr_tbl') are synchronous and precede
+            // 'data' in this object literal, so they have all run by the time
+            // this body starts; after the first await, another record's
+            // normalize could otherwise be interleaved.
+            const encCtx = {
+                access_group: output.table.access_group,
+                table_name: output.table.name,
+                user_id: output.user_id,
+                record_id: output.record_id,
+                unique_id: output.unique_id
+            };
 
-            // Data DynamoDB could not hold natively is stored as { __json__: "<text>" }:
-            // valid JSON whose shape the item itself cannot express (an empty or oversized
-            // key at any depth, nesting past 32 levels). Parse it back. The check mirrors
-            // exactly what the server writes (one key, holding a string), and a value that
-            // merely looks like the marker but does not parse is an ordinary user value, so
-            // it falls through and is returned verbatim.
-            if (
-                r && typeof r === 'object' && !Array.isArray(r) &&
-                typeof r.__json__ === 'string' && Object.keys(r).length === 1
-            ) {
-                try {
-                    output.data = JSON.parse(r.__json__);
-                    return;
+            // Open an encryption envelope, if this is one. Total: it never
+            // throws, so one undecryptable record cannot fail a whole page.
+            // Flags a payload the SDK could not read. Only meaningful while
+            // encryption is on: with it off there is no grant/revoke crypto to
+            // mislead, and adding the field would change the off path.
+            const markUnavailable = () => {
+                if (encState.call(this)) {
+                    output.encrypted = { status: 'failed', reason: 'DATA_UNAVAILABLE' };
                 }
-                catch (err) { }
+            };
+
+            const finishData = async (v: any) => {
+                if (_skipDecrypt) {
+                    return v;
+                }
+                // Runs even with encryption OFF, but only far enough to notice
+                // an envelope: without this an instance that has the flag
+                // disabled hands the raw ciphertext object to the app as if it
+                // were the record's data. maybeDecrypt returns `v` untouched
+                // for anything that is not an envelope, so the off path is
+                // still a single cheap shape test.
+                if (!encState.call(this) && !isEnvelope(v)) {
+                    return v;
+                }
+                let res = await maybeDecrypt.bind(this)(v, encCtx);
+                if (res.flag) {
+                    output.encrypted = res.flag;
+                }
+                return res.value;
+            };
+
+            // The stored form, decoded (see parseStoredData). finishData runs OUTSIDE any
+            // catch so a decryption failure surfaces exactly as it does for a natively
+            // stored envelope at the bottom of this handler.
+            const decoded = parseStoredData(r);
+            if (decoded !== r) {
+                output.data = await finishData(decoded);
+                return;
             }
 
             // Offloaded data: stored as { __data__: "<ts>/<size>/__data__/__json__.json" },
@@ -492,6 +578,12 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             ) {
                 let markerPath = r.__data__;
                 let rawUrl = dataFileUrls.find(u => u.endsWith(markerPath)) || null;
+                if (!rawUrl && !_skipDataFetch) {
+                    // A marker whose bin file is missing entirely. Same
+                    // reasoning as the fetch failure below: the payload is
+                    // unreadable, so it must not read as an ordinary value.
+                    markUnavailable();
+                }
                 if (rawUrl) {
                     if (_skipDataFetch) {
                         // postRecord/bulkPostRecords already hold the posted value
@@ -516,17 +608,25 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                         // offloads decode_record_data(...) precisely so it does), which means
                         // a file whose contents ARE { __json__: "..." } is a caller who really
                         // stored that shape. Decoding again here would unwrap their data.
-                        output.data = JSON.parse(text);
+                        output.data = await finishData(JSON.parse(text));
                     }
                     catch (err) {
                         console.error('Failed to fetch offloaded record data:', err);
                         output.data = null;
+                        // The payload could not be read, so whether it was
+                        // encrypted is UNKNOWABLE. Say so. Leaving no flag made
+                        // this indistinguishable from a record whose data is
+                        // genuinely null, and encryption.ts read that absence as
+                        // "plaintext record": a grant then created an ACL row
+                        // with no key wrap, and a revoke silently skipped the
+                        // key roll while reporting success.
+                        markUnavailable();
                     }
                     return;
                 }
             }
 
-            output.data = r;
+            output.data = await finishData(r);
         }
     };
 
@@ -592,7 +692,10 @@ function normalizeTypedString(v: string) {
             return value === '1';
         case "!L%":
         case "!D%":
-            // !L%[0, "hello"] / !D%{}
+            // Read-only: an index value is a scalar (str | int | bool | float) on both the
+            // write and the query schema, so to_typed_string no longer has a dict or list
+            // branch and neither prefix can be produced for an index. Kept for any index
+            // written by an older version.
             try {
                 return JSON.parse(value);
             } catch (err) {
@@ -851,6 +954,50 @@ export async function getFile(
                 } catch (err) { }
             }
         }
+    }
+
+    // An encrypted attachment cannot be served straight to the browser: every
+    // dataType that yields BYTES has to fetch, decrypt, and only then produce
+    // its result. 'download' is the dangerous one, because it is the DEFAULT and
+    // today it never touches JS at all: left alone it would save ciphertext to
+    // disk under the plaintext filename with no error.
+    let encInfo = encState.call(this) ? encryptedFileFromUrl(url) : null;
+    if (encInfo && config?.dataType !== 'endpoint' && config?.dataType !== 'info') {
+        let raw = await request.bind(this)(
+            url, null,
+            { method: 'get', contentType: null, responseType: 'blob', fetchOptions: { progress: config?.progress } },
+            { ignoreService: true }
+        );
+        let opened = await decryptFileBlob.bind(this)(url, raw);
+
+        if (config?.dataType === 'blob') {
+            return opened as any;
+        }
+        if (config?.dataType === 'text') {
+            // Fetched as a BLOB above and decoded here. Never responseType
+            // 'text': that decodes the body as text before any key is consulted,
+            // which mangles arbitrary ciphertext bytes irrecoverably.
+            return await blobToText(opened) as any;
+        }
+        if (config?.dataType === 'base64') {
+            return await new Promise((res, rej) => {
+                const reader = new FileReader();
+                reader.onloadend = () => res(reader.result as string);
+                reader.onerror = () => rej(reader.error);
+                reader.readAsDataURL(opened);
+            }) as any;
+        }
+
+        // 'download': hand the browser the DECRYPTED bytes via an object url.
+        let objUrl = URL.createObjectURL(opened);
+        let a = document.createElement('a');
+        a.href = objUrl;
+        document.body.appendChild(a);
+        a.setAttribute('download', filename);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
+        return null;
     }
 
     if (config?.dataType === 'endpoint') {
@@ -1383,13 +1530,30 @@ export async function bulkPostRecords(params) {
     let owner = undefined;
     let progress = null;
 
-    let validatedBulk = params.map((config, idx) => {
+    // Plaintext restored onto the returned records, by index. Populated only
+    // when encryption actually ran for that element.
+    let bulkPlain: { [idx: number]: any } = {};
+
+    let validatedBulk = await Promise.all(params.map(async (config, idx) => {
         if (!config || typeof config !== 'object' || Array.isArray(config)) {
             throw new SkapiError(`"params[${idx}]" should be type: <object>.`, { code: 'INVALID_PARAMETER' });
         }
 
         let mangled = setupPostRecordConfig.bind(this)(config) as {config: PostRecordConfig & { service?: string; owner?: string;  }; is_reference_post?: string;};
         let _config = mangled.config;
+
+        // Same hook as postRecord. Without it a bulk write of a private record
+        // would send plaintext, which is the one failure this feature cannot
+        // have. Keyed off the RAW element config, which is what names the
+        // target access group.
+        if (encState.call(this)) {
+            let elemHasData = Object.prototype.hasOwnProperty.call(_config, 'data');
+            let encRes = await maybeEncrypt.bind(this)((_config as any).data, config, elemHasData);
+            if (encRes.encrypted) {
+                (_config as any).data = encRes.send;
+                bulkPlain[idx] = encRes.plain;
+            }
+        }
         if (mangled.is_reference_post) {
             reference_posts.push(mangled.is_reference_post);
         }
@@ -1420,7 +1584,7 @@ export async function bulkPostRecords(params) {
         delete _config.owner;
 
         return _config;
-    });
+    }));
 
     let postData = {
         _is_bulk_: validatedBulk,
@@ -1448,7 +1612,19 @@ export async function bulkPostRecords(params) {
     }
 
     let recList = await request.bind(this)('post-record', postData, options);
-    let records = await Promise.all(recList.map((rec) => normalizeRecord.bind(this)(rec, 'called from postRecord')));
+    let records = await Promise.all(recList.map((rec, i) =>
+        // Skip decryption for elements we just encrypted: we already hold the
+        // plaintext and restore it below, so re-opening the envelope would be
+        // pure waste.
+        normalizeRecord.bind(this)(rec, 'called from postRecord', false, bulkPlain.hasOwnProperty(i))
+    ));
+
+    for (let i = 0; i < records.length; i++) {
+        if (bulkPlain.hasOwnProperty(i) && records[i] && !records[i].error) {
+            records[i].data = bulkPlain[i];
+            records[i].encrypted = { status: 'encrypted' };
+        }
+    }
 
     // Bulk posts all share one service/owner (enforced above), so one scope covers the
     // whole batch. Falls back to the instance's own pair when the caller named neither.
@@ -1521,8 +1697,38 @@ export async function postRecord(
         to_bin = to_bin.concat(extractedForm.files);
     }
 
+    // Encrypt the payload when this write lands on access_group 'private' and
+    // the feature is on. `config` (the RAW caller config, not the validated
+    // copy) is what decides, because it is what states the target access group.
+    // UNDEFINED and NULL are different payloads, and conflating them is how a
+    // metadata-only update destroys a record:
+    //
+    //   undefined  ->  no `data` key on the wire, server KEEPS what is stored
+    //   null       ->  `data: null`, server stores a real JSON null ("!J%null")
+    //   any value  ->  stored as is
+    //
+    // extractFormData already preserves that distinction (undefined stays
+    // undefined, null stays null), so it only has to be respected here.
+    // `config.data` wins over the form argument, which is the precedence the
+    // pre-encryption code had by virtue of `_config` being the Object.assign
+    // source.
+    let rawPayload = (config as any)?.data !== undefined
+        ? (config as any).data
+        : extractedForm.data;
+    let hasData = rawPayload !== undefined;
+
+    let encRes = await maybeEncrypt.bind(this)(rawPayload, config, hasData);
+
     let postData = null;
-    postData = Object.assign({ data: extractedForm.data }, _config);
+    // `_config` LAST would let a `data` key that survived validation
+    // (setupPostRecordConfig's schema passes it through verbatim) overwrite the
+    // envelope with the caller's plaintext. Strip it from the config copy and
+    // set the payload explicitly afterwards.
+    postData = Object.assign({}, _config);
+    delete (postData as any).data;
+    if (!encRes.omit) {
+        (postData as any).data = encRes.send;
+    }
 
     let fetchOptions: { [key: string]: any } = {};
 
@@ -1534,6 +1740,14 @@ export async function postRecord(
         Object.assign(options, { fetchOptions });
     }
     let rec = await request.bind(this)('post-record', postData, options);
+
+    // The server has just minted the record_id. Bind the data key to it BEFORE
+    // the attachments upload, or a create-with-files would find no key and send
+    // the files in the clear.
+    if (encRes.encrypted && rec?.rec) {
+        bindRecordDek.bind(this)(rec.rec, encRes.dek);
+    }
+
     if (isBrowserRuntime() && to_bin.length) {
         let bin_formData = new FormData();
         for (let f of to_bin) {
@@ -1565,9 +1779,15 @@ export async function postRecord(
     // record item), the response carries a { __data__: <path> } marker. Skip the
     // re-download and return exactly what was posted.
     let dataOffloaded = !!rec && rec.data && typeof rec.data === 'object' && !Array.isArray(rec.data) && typeof rec.data.__data__ === 'string' && rec.data.__data__.endsWith('/__data__/__json__.json');
-    let record = await normalizeRecord.bind(this)(rec, 'called from postRecord', true);
+    let record = await normalizeRecord.bind(this)(rec, 'called from postRecord', true, encRes.encrypted);
     if (dataOffloaded) {
         record.data = extractedForm.data;
+    }
+    if (encRes.encrypted) {
+        // The server echoed the envelope; hand the caller back what they gave
+        // us rather than making them re-read the record to see their own data.
+        record.data = encRes.plain;
+        record.encrypted = { status: 'encrypted', recipients: Object.keys(encRes.send.k || {}) };
     }
     if (record.unique_id) {
         let scope = cacheScope.bind(this)((_config as any)?.service, (_config as any)?.owner);
@@ -1861,6 +2081,61 @@ export async function getUniqueId(
     return res;
 }
 
+
+/**
+ * Build the encryption context for a RAW record (short keys), for the paths
+ * that deliberately do not run normalizeRecord.
+ *
+ * deleteRecords is the one caller: it must not normalize (that would resolve
+ * every private bin file through getFile, firing a private-access-key request
+ * per record during a delete, and embedding a live token in a payload callers
+ * forward onward), but it still has to hand back plaintext rather than an
+ * envelope.
+ */
+function rawRecordEncContext(rec: any): { access_group: any; table_name: string; user_id: string; record_id: string; unique_id: string } | null {
+    if (!rec || typeof rec !== 'object') {
+        return null;
+    }
+
+    let user_id = '';
+    let table_name = '';
+    let group: any = 0;
+
+    if (typeof rec.usr_tbl === 'string') {
+        // user-id/table/service/group[/subscription][/tag]
+        let p = rec.usr_tbl.split('/');
+        user_id = p[0] || '';
+        table_name = decodeReservedDelimiters(p[1] || '');
+        group = p[3];
+    }
+    else if (typeof rec.tbl === 'string') {
+        // table/service/group[/subscription][/tag]
+        let p = rec.tbl.split('/');
+        table_name = decodeReservedDelimiters(p[0] || '');
+        group = p[2];
+        user_id = rec.usr || '';
+    }
+    else {
+        return null;
+    }
+
+    let unique_id = '';
+    if (typeof rec.ip === 'string') {
+        let hashAt = rec.ip.indexOf('#');
+        if (hashAt >= 0) {
+            unique_id = rec.ip.slice(hashAt + 1);
+        }
+    }
+
+    return {
+        access_group: group === '**' ? 'private' : parseInt(group),
+        table_name,
+        user_id,
+        record_id: rec.rec || '',
+        unique_id
+    };
+}
+
 export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> {
     await this.__connection;
 
@@ -1871,13 +2146,69 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
         this.__private_access_key[is_reference_fetch] = result.reference_private_key;
     }
 
+    // Deleting by query returns the records it deleted, and they arrive RAW: short keys
+    // (rec / usr_tbl / idx) and every stored encoding untouched, so `data` is the
+    // '!J%<json>' text the server wrote. Decode just that, in place.
+    //
+    // NOT normalizeRecord, deliberately. Its `bin` handler resolves every non-public file
+    // through getFile(url, 'endpoint'), which appends the caller's id token to the url and,
+    // for another user's private record, fires requestPrivateRecordAccessKey once per
+    // record. On a delete that means a burst of requests racing the asynchronous file
+    // deletion, and a live token embedded in bin[].url of a payload callers forward
+    // onward. Its Promise.all would also reject the whole call if one record failed to
+    // normalize, after the delete had already been committed server side.
+    //
+    // The offload marker is left as-is for the same reason it is not decoded here: the
+    // payload lives in a file this delete is removing.
+    if (Array.isArray(result?.list)) {
+        for (let rec of result.list) {
+            if (rec && typeof rec === 'object' && 'data' in rec) {
+                rec.data = parseStoredData(rec.data);
+
+                // Decrypt what the caller is entitled to. Without this the
+                // owner deleting their own record gets a raw envelope back
+                // instead of their data, and a MASTER deleting someone else's
+                // gets the ciphertext handed to them as if it were the payload.
+                // maybeDecrypt is total, so a record nobody present can open
+                // becomes data:null with a reason rather than failing the
+                // delete, which has already committed server side.
+                if (encState.call(this) && isEnvelope(rec.data)) {
+                    let ctx = rawRecordEncContext(rec);
+                    if (ctx) {
+                        let opened = await maybeDecrypt.bind(this)(rec.data, ctx);
+                        rec.data = opened.value;
+                        if (opened.flag) {
+                            rec.encrypted = opened.flag;
+                        }
+                    }
+                    else {
+                        // Shape we cannot place. Never hand back ciphertext
+                        // dressed as data.
+                        rec.data = null;
+                        rec.encrypted = { status: 'failed', reason: 'BINDING_MISMATCH' };
+                    }
+                }
+            }
+        }
+    }
+
     return result?.message || result;
 }
 
-export function grantPrivateRecordAccess(params: {
+export async function grantPrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
+    // Wrap the record's data key for each grantee BEFORE the backend grant, so
+    // a crypto failure means nothing was granted at all. Without this the ACL
+    // would say "shared" while the grantee got an envelope they cannot open.
+    if (encState.call(this)) {
+        let ids = typeof params.user_id === 'string' ? [params.user_id] : params.user_id;
+        if (Array.isArray(ids) && ids.length) {
+            await addRecipients.bind(this)(params.record_id, ids);
+        }
+    }
+
     return recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id,
@@ -1885,15 +2216,26 @@ export function grantPrivateRecordAccess(params: {
     });
 }
 
-export function removePrivateRecordAccess(params: {
+export async function removePrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
-    return recordAccess.bind(this)({
+    let result = await recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'remove'
     });
+
+    // Roll the data key AFTER the ACL change. Dropping the wrap alone would
+    // leave the revoked user able to open any ciphertext they already hold, so
+    // the record is re-encrypted under a fresh key. This is forward-only: it
+    // cannot un-read what they already read.
+    if (encState.call(this)) {
+        let ids = typeof params.user_id === 'string' ? [params.user_id] : params.user_id;
+        await dropRecipientsAndRoll.bind(this)(params.record_id, Array.isArray(ids) && ids.length ? ids : null);
+    }
+
+    return result;
 }
 
 export async function listPrivateRecordAccess(p: {

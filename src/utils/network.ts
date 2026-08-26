@@ -1,5 +1,6 @@
 
 import SkapiError from '../main/error';
+import { encState, maybeEncryptFile } from '../methods/encryption';
 import { Form, FetchOptions, DatabaseResponse, ProgressCallback } from '../Types';
 import validator from './validator';
 import { MD5, generateRandom, extractFormData, isBrowserRuntime } from './utils';
@@ -617,6 +618,29 @@ function load_startKey_keys(option: {
     return { requestKeyWithStartKey, requestKey: hashedParams };
 }
 
+/**
+ * Replace the data of any record that came back through the decryption layer
+ * with null, so a form-action response can be persisted without writing
+ * plaintext to disk. Identified by the `encrypted` marker normalizeRecord adds,
+ * which is present only on records that actually went through it.
+ */
+function stripDecrypted(response: any): any {
+    const scrub = (r: any) => (r && typeof r === 'object' && r.encrypted)
+        ? Object.assign({}, r, { data: null })
+        : r;
+
+    if (Array.isArray(response)) {
+        return response.map(scrub);
+    }
+    if (response && typeof response === 'object') {
+        if (Array.isArray(response.list)) {
+            return Object.assign({}, response, { list: response.list.map(scrub) });
+        }
+        return scrub(response);
+    }
+    return response;
+}
+
 function _fetch(url: string, opt: any, progress?: ProgressCallback) {
     return new Promise(
         (res, rej) => {
@@ -909,10 +933,19 @@ export async function uploadFiles(
             continue;
         }
 
+        // Seal the bytes before they leave, when the record they attach to is
+        // encrypted. Returns the file untouched otherwise, so the off path is
+        // unchanged. `uploadKey` carries the __skenc__ marker and the PLAINTEXT
+        // size; `sizeKey` must declare the CIPHERTEXT size, because that is what
+        // the object actually weighs and what the backend bills.
+        let sealed = await maybeEncryptFile.bind(this)(record_id, key, f);
+        let uploadFile = sealed.file;
+        let uploadKey = sealed.key;
+
         let signedParams = Object.assign({
-            key: key + '/' + f.name,
-            sizeKey: toBase62(f.size),
-            contentType: f.type || null
+            key: uploadKey + '/' + uploadFile.name,
+            sizeKey: toBase62(uploadFile.size),
+            contentType: uploadFile.type || null
         }, getSignedParams);
 
         let { fields = null, url, cdn } = await request.bind(this)('get-signed-url', signedParams, { auth: !!this.__user });
@@ -923,7 +956,7 @@ export async function uploadFiles(
             form.append(name, fields[name]);
         }
 
-        form.append('file', f);
+        form.append('file', uploadFile);
 
         try {
             await fetchProgress(
@@ -1036,7 +1069,14 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
 
                 if (formEl) {
                     if (storeResponseKey) {
-                        window.sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(response));
+                        // Never write a decrypted record to sessionStorage. When
+                        // client-side encryption is on, `response` here holds the
+                        // PLAINTEXT that maybeDecrypt just produced (or the
+                        // plaintext echo postRecord restores), so serializing it
+                        // would put the very data that was encrypted for the
+                        // database straight onto disk in the clear.
+                        let storable = encState.call(this) ? stripDecrypted(response) : response;
+                        window.sessionStorage.setItem(`${this.service}:${MD5.hash(actionDestination)}`, JSON.stringify(storable));
                         if (refreshPage) {
                             window.location.replace(actionDestination);
                         }
