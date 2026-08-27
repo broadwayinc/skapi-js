@@ -296,10 +296,38 @@ const dec = b => new TextDecoder().decode(b);
             assert.deepStrictEqual(Array.from(C.decodeRecoveryCode(variant)), Array.from(raw), 'failed for ' + variant);
         }
     });
-    await mustThrow('a single-character typo is caught by the checksum', () => {
-        const code = C.encodeRecoveryCode(C.getRandom(16));
-        const bad = code[0] === '2' ? '3' + code.slice(1) : '2' + code.slice(1);
-        C.decodeRecoveryCode(bad);
+    await t('single-character typos are caught by the checksum', () => {
+        // The check is TWO base32 characters, so 10 bits: a mutated code has
+        // roughly a 1 in 1024 chance of colliding and validating anyway. That
+        // is fine for its purpose (turn a typo into "that is not a valid code"
+        // instead of "wrong code"), but it means asserting on ONE mutation is a
+        // coin flip that fails about once every thousand runs. Measure the rate
+        // instead, and state the bound the design actually offers.
+        const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+        let tried = 0, missed = 0;
+
+        for (let n = 0; n < 200; n++) {
+            const code = C.encodeRecoveryCode(C.getRandom(16));
+            const chars = code.split('');
+            // mutate one DATA character, not a hyphen
+            // Walk FORWARD to the next data character. Recomputing the same
+            // index in a do/while never advances and spins forever.
+            let at = (n * 7) % chars.length;
+            while (chars[at] === '-') {
+                at = (at + 1) % chars.length;
+            }
+            const orig = chars[at];
+            chars[at] = ALPHABET[(ALPHABET.indexOf(orig) + 1) % 32];
+            if (chars[at] === orig) continue;
+
+            tried++;
+            try { C.decodeRecoveryCode(chars.join('')); missed++; }
+            catch (e) { /* caught, as it should be */ }
+        }
+
+        assert.ok(tried > 100, 'expected a meaningful sample, got ' + tried);
+        assert.ok(missed / tried < 0.05,
+            `checksum missed ${missed}/${tried} single-character typos; a 10 bit check should miss about 1 in 1024`);
     });
     await mustThrow('a truncated code is rejected', () => C.decodeRecoveryCode('ABCD-EFGH'));
     await mustThrow('an invalid character is rejected', () => {

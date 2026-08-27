@@ -113,7 +113,13 @@ type Envelope = {
     rid: string;
     own: string;
     iv: string;
+    /** base64url ciphertext, or '' when it lives in a file named by ct_ref. */
     ct: string;
+    /**
+     * Marker path of the bin file holding the ciphertext, when it was too large
+     * to keep inline. Set INSTEAD of ct, never alongside it.
+     */
+    ct_ref?: string;
     k: Record<string, Wrap>;
 };
 
@@ -144,6 +150,23 @@ type EncState = {
     dek: Map<string, DekEntry>;
     /** record_ids whose next encrypt MUST mint a fresh data key (revocation). */
     roll: Set<string>;
+    /**
+     * record_id -> an already-sealed envelope to write VERBATIM.
+     *
+     * Grant and revoke change only the recipient map. Handing them back through
+     * the normal encrypt path would re-seal the payload and, for a spilled
+     * record, re-upload the whole ciphertext to append ~230 bytes of key wrap.
+     * This lets them write the envelope they already hold.
+     */
+    passthrough: Map<string, Envelope>;
+    /**
+     * While true, the read hook returns the STORED value untouched.
+     *
+     * Grant and revoke need the envelope, not the payload. Letting the normal
+     * read run would decrypt it, and on a spilled record that means fetching
+     * the whole ciphertext file: precisely the work the split exists to avoid.
+     */
+    rawRead: boolean;
     /**
      * Resolves when the device-store unlock attempt has finished. Read and
      * write hooks wait on it so an app call issued during page bootstrap does
@@ -230,6 +253,8 @@ export function initEncryption(this: any, cfg: EncryptionConfig | null): void {
         pins: {},
         dek: new Map(),
         roll: new Set(),
+        passthrough: new Map(),
+        rawRead: false,
         ready: null,
         unlocking: false,
         pendingRecoveryCode: '',
@@ -261,6 +286,7 @@ export function clearEncryptionState(this: any): void {
     }
     s.dek.clear();
     s.roll.clear();
+    s.passthrough.clear();
     s.peerPub.clear();
     s.peerInflight.clear();
     s.pins = {};
@@ -381,6 +407,50 @@ export function isWithheld(this: any, value: any): boolean {
     return !!value && typeof value === 'object' && (value as any)[NO_ACCESS_MARKER] === true;
 }
 
+
+/* ------------------------------------------------------------------ *
+ * CIPHERTEXT SPILL
+ *
+ * The envelope is one DynamoDB attribute, so a large payload dragged the
+ * recipient map along with it. Adding one user to a 1.9MB record meant reading
+ * 1.9MB back and writing 1.9MB out again, to append about 230 bytes of key
+ * wrap, and a transient storage failure could block a sharing change that never
+ * needed the payload at all.
+ *
+ * So past a threshold the CIPHERTEXT moves to a file of its own and the
+ * envelope keeps only what sharing actually needs: the marker, the IV, the
+ * anchor and `k`. Grant and revoke then rewrite a few hundred bytes and never
+ * open the payload.
+ *
+ * Deliberately NOT the server's offload path, which spills the WHOLE envelope
+ * (recipient map included) and only when DynamoDB has already rejected the
+ * write. This is the client choosing what to keep in hand.
+ *
+ * The spilled file is raw AES-GCM output. It is NOT put through the SKENCF
+ * container: it is already ciphertext, its IV is in the envelope, and its
+ * integrity is the payload's own GCM tag.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Spill the ciphertext past this many base64url characters.
+ *
+ * A DynamoDB item caps at 400KB and holds more than `data`, so this leaves room
+ * for the recipient map, index values and tags while staying well clear of the
+ * limit. Below it, inline is cheaper: one attribute instead of a second object
+ * to fetch, upload and eventually delete.
+ */
+export const CT_SPILL_THRESHOLD = 256 * 1024;
+
+/** Reserved form key for the spilled ciphertext. Never sealed, never listed. */
+export const CT_FORM_KEY = '__skenc_ct__';
+const CT_FILE_NAME = 'payload.bin';
+export const CT_FILE_SUFFIX = `/${CT_FORM_KEY}/${CT_FILE_NAME}`;
+
+/** True for the bin entry that holds a spilled ciphertext. */
+export function isCiphertextFile(pathKey: string, filename: string): boolean {
+    return pathKey === CT_FORM_KEY && filename === CT_FILE_NAME;
+}
+
 /* ------------------------------------------------------------------ *
  * WRITE PATH
  * ------------------------------------------------------------------ */
@@ -441,6 +511,11 @@ async function resolveWriteGroup(
  * "src::folder/file.pdf" straight through throws INVALID_PARAMETER. Route by
  * shape instead, so enabling encryption never breaks a call that works today.
  */
+/** Fetch a spilled ciphertext file as a blob. */
+function getFile(this: any, url: string): Promise<any> {
+    return this.getFile(url, { dataType: 'blob' });
+}
+
 async function readOwnRecord(this: any, id: string): Promise<any | null> {
     let query = /^[a-zA-Z0-9]+$/.test(id) ? { record_id: id } : { unique_id: id };
     let res = await this.getRecords(query, { limit: 1 });
@@ -463,6 +538,40 @@ function normalizeGroup(v: any): 'private' | number {
     return typeof v === 'number' ? v : 0;
 }
 
+
+/**
+ * Encryption operates only on records you OWN.
+ *
+ * prepare_update.py grants a master three explicit bypasses ("only master can
+ * make change to the record"), so a master can update any user's record and
+ * change its access group. That is fine for plaintext, and quietly destructive
+ * for an encrypted one:
+ *
+ *  - making someone else's record private sealed it under the MASTER's key with
+ *    `own` set to the master, while the record's real owner is someone else.
+ *    The binding cross-check on read then refuses it for everyone, the actual
+ *    owner included. The record was silently destroyed and the call reported
+ *    success.
+ *  - declassifying someone else's record was already refused, but the reason
+ *    given was ENCRYPTION_LOCKED, which reads as "unlock your session" when the
+ *    truth is "this is not your record and no key of yours will ever open it".
+ *
+ * A master who needs to change these settings has to have the owner do it, or
+ * accept the record as opaque. No amount of privilege substitutes for the key.
+ */
+function assertOwnsForEncryption(this: any, rec: any, record_id: string, what: string): void {
+    let me = this.user?.user_id;
+    if (!rec || !rec.user_id || !me || rec.user_id === me) {
+        return;
+    }
+    throw new SkapiError(
+        `Record "${record_id}" belongs to another user (${rec.user_id}), so ${what} would either seal it ` +
+        `under the wrong key or strand its contents. Encryption only operates on records you own, ` +
+        `no matter what access level you hold.`,
+        { code: 'ENCRYPTION_NOT_RECORD_OWNER' }
+    );
+}
+
 /**
  * Seal the caller's data if this write is a private one.
  *
@@ -475,7 +584,7 @@ export async function maybeEncrypt(
     value: any,
     rawConfig: any,
     hasData: boolean
-): Promise<{ send: any; plain: any; encrypted: boolean; omit: boolean; dek?: DekEntry }> {
+): Promise<{ send: any; plain: any; encrypted: boolean; omit: boolean; dek?: DekEntry; files?: 'decrypt' | 'encrypt'; spill?: Uint8Array; retireCt?: string }> {
     let s = encState.call(this);
     if (!s) {
         return { send: value, plain: value, encrypted: false, omit: false };
@@ -489,17 +598,25 @@ export async function maybeEncrypt(
     let resolvedId = rawId;
     let unique_id: string = rawConfig?.unique_id || '';
 
+    // An envelope handed back by grant/revoke: write it exactly as given. It is
+    // already sealed, its ciphertext is unchanged, and re-encrypting would undo
+    // the only thing that made the split worth doing.
+    if (rawId && s.passthrough.has(rawId)) {
+        let env = s.passthrough.get(rawId) as Envelope;
+        s.passthrough.delete(rawId);
+        return { send: env, plain: value, encrypted: true, omit: false };
+    }
+
     let { group, table, record } = await resolveWriteGroup.call(this, s, rawConfig, resolvedId);
 
     // Not private: write in the clear. This is the declassification path.
     if (group !== 'private') {
-        if (resolvedId) {
-            let old = s.dek.get(resolvedId);
-            if (old) {
-                zeroize(old.bytes);
-                s.dek.delete(resolvedId);
-            }
-        }
+        // The cached data key is dropped here ONLY when nothing still needs it.
+        // Declassifying a record with sealed attachments has to decrypt those
+        // files first, and that happens after this returns, so dropping the key
+        // now made them unreadable at the exact moment they had to be read.
+        // convertRecordFiles drops it instead, once every file is in hand.
+        let dropKeyNow = true;
 
         // Declassifying without restating the payload used to be refused,
         // because leaving the ciphertext in a record the read path no longer
@@ -510,6 +627,7 @@ export async function maybeEncrypt(
         if (!hasData && rawId) {
             let current = record || await readOwnRecord.call(this, rawId);
             if (current && current.encrypted) {
+                assertOwnsForEncryption.call(this, current, rawId, 'making it non-private');
                 if (current.encrypted.status === 'failed') {
                     throw new SkapiError(
                         `Cannot make record "${rawId}" non-private: its current contents could not be decrypted ` +
@@ -518,13 +636,65 @@ export async function maybeEncrypt(
                         { code: 'ENCRYPTION_LOCKED' }
                     );
                 }
-                return { send: current.data, plain: current.data, encrypted: false, omit: false };
+                let sealed = !!current.bin && Object.keys(current.bin).some((k: string) =>
+                    (current.bin[k] || []).some((f: any) => f && f.encrypted));
+                if (!sealed && resolvedId) {
+                    let stale = s.dek.get(resolvedId);
+                    if (stale) {
+                        zeroize(stale.bytes);
+                        s.dek.delete(resolvedId);
+                    }
+                }
+                return {
+                    send: current.data,
+                    plain: current.data,
+                    encrypted: false,
+                    omit: false,
+                    files: sealed ? 'decrypt' : undefined
+                };
             }
         }
 
-        // No payload and nothing to decrypt: omit the key so the server keeps
-        // whatever is stored. `null` is NOT this case; it is a real value.
-        return { send: value, plain: value, encrypted: false, omit: !hasData };
+        // A payload WAS supplied, but the record may still hold sealed
+        // attachments that have to come back to plaintext with it.
+        //
+        // `record` is only already in hand when the caller omitted the table,
+        // so an update that states its target group needs a read to find out.
+        // That costs one GET on a non-private update, which is the price of not
+        // silently stranding attachments; there is no way to know a record has
+        // encrypted files without looking.
+        let current = record;
+        if (rawId && !current) {
+            current = await readOwnRecord.call(this, rawId).catch(() => null);
+        }
+
+        if (current && current.encrypted) {
+            assertOwnsForEncryption.call(this, current, rawId, 'making it non-private');
+        }
+
+        let hasSealedFiles = !!current
+            && !!current.bin
+            && Object.keys(current.bin).some((k: string) =>
+                (current.bin[k] || []).some((f: any) => f && f.encrypted));
+
+        if (hasSealedFiles) {
+            dropKeyNow = false;
+        }
+        if (dropKeyNow && resolvedId) {
+            let stale = s.dek.get(resolvedId);
+            if (stale) {
+                zeroize(stale.bytes);
+                s.dek.delete(resolvedId);
+            }
+        }
+
+        return {
+            send: value,
+            plain: value,
+            encrypted: false,
+            omit: !hasData,
+            files: hasSealedFiles ? 'decrypt' : undefined
+        };
     }
 
     // The keyring itself is never encrypted, and must be checked BEFORE the
@@ -605,6 +775,30 @@ export async function maybeEncrypt(
         }
     }
 
+    // Existing PLAINTEXT attachments to seal once this write lands. Same
+    // reasoning as the declassify side: `record` is only in hand when the table
+    // was omitted, so a stated group needs a look.
+    // Gated on the DEK cache, and that gate is load-bearing. A cached key means
+    // this record is ALREADY private and encrypted, so it has no plaintext
+    // attachments to seal and no read is needed. Reading anyway re-runs
+    // maybeDecrypt, which refreshes the cached recipient map from the SERVER --
+    // and writeRecipients has, at that moment, just added a wrap to that map
+    // and not yet written it. The refresh silently reverted it, so every grant
+    // through this path lost its new recipient.
+    let priorForFiles = record;
+    if (rawId && !priorForFiles && !s.dek.has(rawId)) {
+        priorForFiles = await readOwnRecord.call(this, rawId).catch(() => null);
+    }
+    if (priorForFiles) {
+        assertOwnsForEncryption.call(this, priorForFiles, rawId, 'making it private');
+    }
+
+    let hasPlainFiles = !!priorForFiles
+        && !priorForFiles.encrypted
+        && !!priorForFiles.bin
+        && Object.keys(priorForFiles.bin).some((k: string) =>
+            (priorForFiles.bin[k] || []).some((f: any) => f && !f.encrypted));
+
     // THE RECORD, NOT THE CACHE, IS THE SOURCE OF TRUTH FOR RECIPIENTS.
     //
     // Reading the recipient map out of an in-memory cache meant that any
@@ -617,7 +811,7 @@ export async function maybeEncrypt(
     if (rawId && !rolling) {
         entry = s.dek.get(rawId) || null;
         if (!entry) {
-            let current = record || await readOwnRecord.call(this, rawId);
+            let current = priorForFiles || record || await readOwnRecord.call(this, rawId);
             if (current) {
                 resolvedId = current.record_id || rawId;
                 entry = s.dek.get(resolvedId) || null;
@@ -652,6 +846,12 @@ export async function maybeEncrypt(
     let recipients: Record<string, Wrap>;
 
     if (entry) {
+        if (entry.own && entry.own !== own) {
+            throw new SkapiError(
+                `Record "${rawId}" belongs to another user (${entry.own}). Encryption only operates on records you own.`,
+                { code: 'ENCRYPTION_NOT_RECORD_OWNER' }
+            );
+        }
         dekBytes = entry.bytes;
         dekKey = entry.key;
         recipients = Object.assign({}, entry.recipients);
@@ -699,6 +899,24 @@ export async function maybeEncrypt(
         k: recipients
     };
 
+    // Spill the ciphertext when it is large enough to make sharing expensive.
+    // Only on an UPDATE: a create has no record_id yet, so there is no bin to
+    // upload into. A large create still works, via the server's own offload of
+    // the whole envelope, and splits on its first update.
+    let spill: Uint8Array | undefined;
+    let retireCt: string | undefined;
+    let ctB64 = envelope.ct;
+
+    if (resolvedId && ctB64.length > CT_SPILL_THRESHOLD) {
+        spill = b64uToBytes(ctB64);
+        envelope.ct = '';
+        envelope.ct_ref = CT_FILE_SUFFIX;
+        // The previous spill file, if any, is retired on this same write.
+        if (entry && (entry as any).ctRef) {
+            retireCt = (entry as any).ctRef;
+        }
+    }
+
     let envSize = JSON.stringify(envelope).length;
     if (envSize > 2 * 1024 * 1024) {
         throw new SkapiError(
@@ -726,7 +944,13 @@ export async function maybeEncrypt(
         plain: value,
         encrypted: true,
         omit: false,
-        dek: { bytes: dekBytes, key: dekKey, recipients, anch, uid: unique_id, rid: resolvedId, own, access_group: 'private' }
+        spill,
+        retireCt,
+        dek: { bytes: dekBytes, key: dekKey, recipients, anch, uid: unique_id, rid: resolvedId, own, access_group: 'private' },
+        // Sealing existing attachments can only happen AFTER the write, because
+        // the data key does not exist until this envelope is stored. postRecord
+        // runs it once the record is private.
+        files: hasPlainFiles ? 'encrypt' : undefined
     };
 }
 
@@ -806,7 +1030,7 @@ async function wrapFor(
 export async function maybeDecrypt(
     this: any,
     raw: any,
-    ctx: { access_group: any; table_name: string; user_id: string; record_id: string; unique_id: string }
+    ctx: { access_group: any; table_name: string; user_id: string; record_id: string; unique_id: string; ctUrl?: string | null }
 ): Promise<{ value: any; flag?: RecordEncryptionInfo }> {
     if (!isEnvelope(raw)) {
         return { value: raw };
@@ -824,6 +1048,11 @@ export async function maybeDecrypt(
         // the envelope to app logic as if it were the record's data. No config
         // exists on this path, so the sentinel is not an option here.
         return { value: null, flag: { status: 'failed', reason: 'ENCRYPTION_DISABLED' } };
+    }
+
+    // A deliberate raw read, for a caller that wants the envelope itself.
+    if (s.rawRead) {
+        return { value: raw };
     }
     if (isEncTable(s, ctx.table_name)) {
         return { value: raw };
@@ -902,11 +1131,33 @@ export async function maybeDecrypt(
         return { value: withheldValue(s.cfg, 'BAD_KEY'), flag: { status: 'failed', reason: 'BAD_KEY' } };
     }
 
+    // The ciphertext is either inline or in a file of its own. The fetch is a
+    // network read, so it happens only here, at the point the payload is
+    // actually wanted; grant and revoke never reach it.
+    let ctBytes: Uint8Array;
+    try {
+        if (raw.ct_ref) {
+            if (!ctx.ctUrl) {
+                zeroize(dekBytes);
+                return { value: withheldValue(s.cfg, 'DATA_UNAVAILABLE'), flag: { status: 'failed', reason: 'DATA_UNAVAILABLE' } };
+            }
+            let blob: any = await getFile.call(this, ctx.ctUrl);
+            ctBytes = new Uint8Array(await blob.arrayBuffer());
+        }
+        else {
+            ctBytes = b64uToBytes(raw.ct);
+        }
+    }
+    catch (err) {
+        zeroize(dekBytes);
+        return { value: withheldValue(s.cfg, 'DATA_UNAVAILABLE'), flag: { status: 'failed', reason: 'DATA_UNAVAILABLE' } };
+    }
+
     let plaintext: Uint8Array;
     let dekKey: CryptoKey;
     try {
         dekKey = await importAesGcm(dekBytes);
-        plaintext = await openGcm(dekKey, b64uToBytes(raw.iv), b64uToBytes(raw.ct), aad);
+        plaintext = await openGcm(dekKey, b64uToBytes(raw.iv), ctBytes, aad);
     }
     catch (err) {
         zeroize(dekBytes);
@@ -957,6 +1208,7 @@ export async function maybeDecrypt(
             prev.uid = raw.uid;
             prev.own = raw.own;
             prev.access_group = 'private';
+            (prev as any).ctRef = raw.ct_ref || '';
         }
         else {
             s.dek.set(ctx.record_id, {
@@ -967,8 +1219,9 @@ export async function maybeDecrypt(
                 uid: raw.uid,
                 rid: ctx.record_id,
                 own: raw.own,
-                access_group: 'private'
-            });
+                access_group: 'private',
+                ctRef: raw.ct_ref || ''
+            } as any);
         }
     }
     else {
@@ -1918,22 +2171,61 @@ function assertReadable(rec: any, record_id: string): void {
     }
 }
 
-/** Write a changed recipient map back, reusing the record's own ciphertext. */
+/**
+ * Write a changed recipient map back WITHOUT touching the ciphertext.
+ *
+ * This is the whole point of the split. Re-posting the plaintext would re-seal
+ * the payload and, on a spilled record, re-upload every byte of it to append
+ * about 230 bytes of key wrap. Instead the stored envelope is read, its `k`
+ * replaced, and the result written verbatim through the passthrough.
+ */
 async function writeRecipients(this: any, s: EncState, record_id: string, entry: DekEntry, recipients: Record<string, Wrap>): Promise<void> {
-    let res = await this.getRecords({ record_id }, { limit: 1 });
-    let rec = res?.list?.[0];
-    if (!rec) {
-        throw new SkapiError(`Record "${record_id}" not found.`, { code: 'NOT_EXISTS' });
+    let raw = await readStoredEnvelope.call(this, record_id);
+    if (!raw) {
+        throw new SkapiError(
+            `Cannot change sharing on record "${record_id}": its stored envelope could not be read.`,
+            { code: 'ENCRYPTION_DATA_UNAVAILABLE' }
+        );
     }
-    assertReadable(rec, record_id);
 
     entry.recipients = recipients;
     s.dek.set(record_id, entry);
 
-    // Re-post the plaintext: maybeEncrypt reuses the cached DEK and the updated
-    // recipient map, and re-seals with a fresh IV. The whole ciphertext is
-    // re-uploaded, which is the cost of `data` being a single attribute.
-    await this.postRecord(rec.data, { record_id });
+    let next: Envelope = Object.assign({}, raw, { k: recipients });
+    s.passthrough.set(record_id, next);
+
+    // `undefined` for the payload: the envelope comes from the passthrough, and
+    // nothing here needs the plaintext at all.
+    await this.postRecord(undefined, { record_id });
+}
+
+/**
+ * Read a record's envelope as STORED, without decrypting anything.
+ *
+ * getRecords would decrypt it, which for a spilled record means fetching the
+ * ciphertext file: exactly the work a sharing change is supposed to avoid. The
+ * decrypt hook is skipped instead.
+ */
+async function readStoredEnvelope(this: any, record_id: string): Promise<Envelope | null> {
+    let s = encState.call(this);
+    if (!s) {
+        return null;
+    }
+
+    s.rawRead = true;
+    let rec: any;
+    try {
+        let res = await this.getRecords({ record_id }, { limit: 1 });
+        rec = res?.list?.[0];
+    }
+    finally {
+        s.rawRead = false;
+    }
+
+    if (!rec) {
+        return null;
+    }
+    return isEnvelope(rec.data) ? rec.data as Envelope : null;
 }
 
 /** Pin a peer's key fingerprint after verifying it out of band. */
@@ -2256,6 +2548,13 @@ export async function maybeEncryptFile(
         throw new SkapiError(`"${FILE_MARKER}" is reserved in an upload form key.`, { code: 'INVALID_PARAMETER' });
     }
 
+    // The spilled ciphertext is already AES-GCM output with its IV in the
+    // envelope. Putting it through the file container would encrypt it a second
+    // time under a different key, and the read path would never unwrap that.
+    if (formKey === CT_FORM_KEY) {
+        return { key: formKey, file, encrypted: false };
+    }
+
     let plain = new Uint8Array(await file.arrayBuffer());
     let meta = { n: file.name, t: file.type || '', lm: file.lastModified || 0 };
     let sealed = await encryptFileBytes(entry.bytes, plain, fileCtx.call(this, recordId, entry.own), meta);
@@ -2307,4 +2606,139 @@ export async function decryptFileBlob(this: any, url: string, blob: Blob): Promi
 /** Stored size of an attachment once sealed, for declaring it before upload. */
 export function sealedFileSize(plainLen: number, meta: { n?: string; t?: string; lm?: number }): number {
     return encryptedFileSize(plainLen, encodeUtf8(JSON.stringify(meta)).length);
+}
+
+/* ------------------------------------------------------------------ *
+ * FILE LIFECYCLE ACROSS AN ACCESS-GROUP CHANGE
+ *
+ * `data` is carried across a group change by the write itself, but attachments
+ * are separate S3 objects that the server relocates BYTE FOR BYTE. Left alone,
+ * declassifying a record produced a public record holding files nobody could
+ * ever open again: the payload was decrypted, the key was discarded with the
+ * envelope, and the ciphertext stayed on disk. That is silent, permanent data
+ * loss on an ordinary access-group change.
+ *
+ * So the files are rewritten too, and the ORDER is what makes each direction
+ * fail safe rather than lose data:
+ *
+ *   private -> other : rewrite the files FIRST, while the key is still in hand,
+ *                      then flip the group. A crash leaves a still-private
+ *                      record with some files already plaintext: readable,
+ *                      recoverable, nothing lost.
+ *
+ *   other -> private : flip the group FIRST, because the data key does not
+ *                      exist until the write mints it, then seal the files. A
+ *                      crash leaves a private record with some files still
+ *                      plaintext: less protected than intended, but nothing is
+ *                      lost and re-running finishes the job.
+ *
+ * Neither direction is atomic and neither can be. What they are is monotonic:
+ * no interruption destroys content.
+ *
+ * The replacements are uploaded into the CURRENT prefix and the old objects are
+ * passed as `remove_bin` on the flip, so the stream excludes them from
+ * move_folder_s3 and deletes them instead of copying a stale twin across.
+ * ------------------------------------------------------------------ */
+
+/** Encrypted attachments on a record, as { formKey, url, filename }. */
+function encryptedAttachments(rec: any): { formKey: string; url: string; filename: string }[] {
+    let out: { formKey: string; url: string; filename: string }[] = [];
+    for (let formKey in (rec?.bin || {})) {
+        for (let f of rec.bin[formKey] || []) {
+            if (f && f.encrypted) {
+                out.push({ formKey, url: f.url, filename: f.filename });
+            }
+        }
+    }
+    return out;
+}
+
+/** Plaintext attachments on a record. */
+function plainAttachments(rec: any): { formKey: string; url: string; filename: string }[] {
+    let out: { formKey: string; url: string; filename: string }[] = [];
+    for (let formKey in (rec?.bin || {})) {
+        for (let f of rec.bin[formKey] || []) {
+            if (f && !f.encrypted) {
+                out.push({ formKey, url: f.url, filename: f.filename });
+            }
+        }
+    }
+    return out;
+}
+
+/**
+ * Rewrite a record's attachments for a group change.
+ *
+ * `direction` 'decrypt' converts sealed files back to plaintext; 'encrypt' does
+ * the reverse. Returns the urls of the objects the flip should retire, for
+ * `remove_bin`.
+ */
+export async function convertRecordFiles(
+    this: any,
+    record_id: string,
+    direction: 'decrypt' | 'encrypt',
+    progress?: any
+): Promise<string[]> {
+    let s = encState.call(this);
+    if (!s) {
+        return [];
+    }
+
+    let rec = await readOwnRecord.call(this, record_id);
+    if (!rec) {
+        return [];
+    }
+
+    let targets = direction === 'decrypt' ? encryptedAttachments(rec) : plainAttachments(rec);
+    if (!targets.length) {
+        return [];
+    }
+
+    // this.uploadFiles, not a dynamic import of utils/network. network.ts
+    // imports THIS module, so a static import would be a cycle, and a dynamic
+    // one is silently rewritten by the bundler into something that never
+    // resolves: the replacement upload simply did not happen, while the old
+    // object was still retired. Same reason getRecords/postRecord are reached
+    // through the instance here.
+    let retire: string[] = [];
+    let form = new FormData();
+    let any = false;
+
+    for (let t of targets) {
+        let entry = rec.bin[t.formKey].find((f: any) => f.url === t.url);
+        if (!entry || typeof entry.getFile !== 'function') {
+            continue;
+        }
+
+        // getFile decrypts a sealed file and passes a plain one through, so one
+        // call covers both directions.
+        let blob: any = await entry.getFile('blob');
+        if (!blob) {
+            continue;
+        }
+
+        form.append(t.formKey, new File([blob], t.filename, { type: (blob as Blob).type || 'application/octet-stream' }));
+        retire.push(t.url);
+        any = true;
+    }
+
+    if (!any) {
+        return [];
+    }
+
+    // Every file is decrypted and in memory at this point, so the data key has
+    // finally done its last job and can go. It MUST go before the upload, or
+    // the upload path would see a cached key and seal the plaintext right back
+    // up again.
+    if (direction === 'decrypt') {
+        let stale = s.dek.get(record_id);
+        if (stale) {
+            zeroize(stale.bytes);
+            s.dek.delete(record_id);
+        }
+    }
+
+    await this.uploadFiles(form, { record_id, progress });
+
+    return retire;
 }

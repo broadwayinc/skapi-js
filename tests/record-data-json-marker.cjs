@@ -57,14 +57,17 @@ const DATA_FILE_URL = `${BIN_HOST}/publ/svc/${OWNER}/${OWNER}/records/${RID}/00/
 // Body the mock storage serves for that file.
 let offloadedBody = null;
 
-const rawRecord = data => ({
+// Extra raw keys a single test wants on the item (bin, a different tbl, ...).
+let rawRecordExtra = null;
+
+const rawRecord = data => Object.assign({
     rec: RID,
     srvc: 'x/y',
     usr: OWNER,
     ip: '',
     tbl: 't/svc/00',
     data
-});
+}, rawRecordExtra || {});
 
 globalThis.fetch = async (url, opt) => {
     const u = String(url);
@@ -331,16 +334,46 @@ async function test(name, fn) {
             'the deleted record\'s data must not come back as raw !J% text');
     });
 
-    await test('deleteRecords decodes ONLY data, leaving the rest of the item alone', async () => {
-        // full normalization would put the caller's id token into bin[].url (getFile
-        // 'endpoint' appends it) and fire a private-access request per record, racing the
-        // asynchronous file deletion. The record therefore keeps its raw shape.
+    await test('deleteRecords returns the mapped record shape, not raw database keys', async () => {
+        // The deleted records read like every other record-returning method: a caller
+        // reaching for record_id or table.name must not get undefined and a short key.
         storedFor = '!J%' + JSON.stringify({ a: 1 });
         const res = await asLoggedIn(() => skapi.deleteRecords({ table: { name: 't', access_group: 0 } }));
         const rec = res.list[0];
         assert.deepStrictEqual(rec.data, { a: 1 }, 'data is decoded');
-        assert.strictEqual(rec.rec, RID, 'the raw item is otherwise untouched');
-        assert.strictEqual(rec.bin, undefined, 'no bin resolution, so no token in a url');
+        assert.strictEqual(rec.record_id, RID, 'record_id reads normally');
+        assert.strictEqual(rec.table.name, 't', 'table.name reads normally');
+        assert.strictEqual(rec.table.access_group, 'public', 'access_group reads normally');
+        assert.strictEqual(rec.user_id, OWNER, 'user_id reads normally');
+        assert.strictEqual(rec.rec, undefined, 'the raw short keys are gone');
+        assert.deepStrictEqual(rec.bin, {}, 'bin is the mapped shape, empty here');
+    });
+
+    await test('deleteRecords mints no signed endpoint for a private file', async () => {
+        // getFile('endpoint') appends the caller's id token to bin[].url and fires a
+        // private-access request per record, which on a delete races the asynchronous
+        // file removal and puts a live token in a payload callers forward onward. The
+        // url has to come back exactly as the record stored it.
+        const PRIV_URL = `${BIN_HOST}/auth/svc/${OWNER}/${OWNER}/records/${RID}/**/bin/0/5/doc/f.txt`;
+        let minted = false;
+        const prev = globalThis.fetch;
+        globalThis.fetch = async (url, opt) => {
+            if (String(url).includes('get-signed-url')) { minted = true; }
+            return prev(url, opt);
+        };
+        const prevRaw = rawRecordExtra;
+        // The record row stays public so the query itself is allowed; it is the FILE's
+        // own access group, read out of its url path, that decides whether a mint runs.
+        rawRecordExtra = { bin: [PRIV_URL] };
+        try {
+            storedFor = '!J%' + JSON.stringify({ a: 1 });
+            const res = await asLoggedIn(() => skapi.deleteRecords({ table: { name: 't', access_group: 0 } }));
+            const f = res.list[0].bin.doc[0];
+            assert.strictEqual(minted, false, 'no signed endpoint minted on a delete');
+            assert.strictEqual(f.url, PRIV_URL, 'the url is what the record stored');
+            assert.strictEqual(f.filename, 'f.txt');
+        }
+        finally { globalThis.fetch = prev; rawRecordExtra = prevRaw; }
     });
 
     await test('deleteRecords still passes a plain success string through', async () => {

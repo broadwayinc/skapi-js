@@ -65,12 +65,24 @@ function resolveCrypto(): Crypto {
         return _cryptoCache;
     }
 
-    // Node fallback. Wrapped because in a browser bundle this identifier may not
-    // exist at all, and because the alias in tsup.config.ts replaces it with an
-    // empty shim for the IIFE/browser builds.
+    // Node fallback. `process.getBuiltinModule` first: a bare require() becomes a
+    // throwing shim in the ESM output, so this fallback used to evaporate for
+    // anyone importing the package as ESM, and on a runtime with no global
+    // WebCrypto that meant encryption reporting "not supported" instead of
+    // falling back. Neither call is an import, so no browser bundle picks up a
+    // dependency on node:crypto; a browser always has the global anyway and
+    // never reaches this line.
     try {
+        let g: any = typeof globalThis !== 'undefined' ? globalThis : undefined;
+        let nodeCrypto: any = null;
+        if (g?.process && typeof g.process.getBuiltinModule === 'function') {
+            nodeCrypto = g.process.getBuiltinModule('crypto');
+        }
         // eslint-disable-next-line
-        let nodeCrypto = typeof require === 'function' ? require('node:crypto') : null;
+        if (!nodeCrypto && typeof require === 'function') {
+            // eslint-disable-next-line
+            nodeCrypto = require('node:crypto');
+        }
         if (nodeCrypto?.webcrypto?.subtle) {
             _cryptoCache = nodeCrypto.webcrypto as Crypto;
             return _cryptoCache;

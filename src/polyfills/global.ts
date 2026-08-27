@@ -1,4 +1,52 @@
 // Platform-aware global polyfill
+
+/**
+ * Load a Node built-in without any import a bundler can see.
+ *
+ * A bare `require('fs')` is not an option: esbuild rewrites it into a shim that
+ * THROWS in the ESM output, and these calls sit in the storage polyfill Cognito
+ * reaches on every signup, login and session restore, so `import { Skapi } from
+ * 'skapi-js'` died on `Dynamic require of "fs" is not supported` while the CJS
+ * entry worked fine.
+ *
+ * A static `import ... from 'node:fs'` is not an option either: the browser
+ * builds mark the specifier external before any alias or resolve hook can
+ * redirect it, so it survives into the bundle as an unresolvable import (ESM) or
+ * an undefined global (IIFE).
+ *
+ * `process.getBuiltinModule` is neither. It is a plain runtime call, invisible to
+ * every bundler, and it exists in Node 20.16+ / 22.3+. Older runtimes fall back to
+ * `require` when there is a real one, and to null otherwise, in which case the
+ * storage below degrades to holding nothing rather than throwing.
+ */
+function loadNodeModule(name: string): any {
+    const g: any = typeof globalThis !== 'undefined' ? (globalThis as any) : undefined;
+    const proc = g?.process;
+
+    if (proc && typeof proc.getBuiltinModule === 'function') {
+        try {
+            return proc.getBuiltinModule(name);
+        }
+        catch (e) { }
+    }
+
+    try {
+        // eslint-disable-next-line
+        if (typeof require === 'function') {
+            // eslint-disable-next-line
+            return require(name);
+        }
+    }
+    catch (e) { }
+
+    return null;
+}
+
+let _fsMod: any;
+let _pathMod: any;
+const fsMod = () => (_fsMod !== undefined ? _fsMod : (_fsMod = loadNodeModule('fs')));
+const pathMod = () => (_pathMod !== undefined ? _pathMod : (_pathMod = loadNodeModule('path')));
+
 const root = typeof globalThis !== 'undefined' ? (globalThis as any) : undefined;
 const win = root?.window;
 
@@ -179,8 +227,9 @@ if (win) {
             },
             localStorage: {
                 getItem: (key: string) => {
-                    const fs = require('fs');
-                    const path = require('path');
+                    const fs = fsMod();
+                    const path = pathMod();
+                    if (!fs || !path) return null;
                     // read file "{key}.skapi" in ./states/localStorage/ as string
                     try {
                         const filePath = path.resolve(process.cwd(), 'states', 'localStorage', `${key}.skapi`);
@@ -193,8 +242,9 @@ if (win) {
                     }
                 },
                 setItem: (key: string, value: string) => {
-                    const fs = require('fs');
-                    const path = require('path');
+                    const fs = fsMod();
+                    const path = pathMod();
+                    if (!fs || !path) return;
                     // write file "{key}.skapi" in ./states/localStorage/ with value as content
                     try {
                         const dirPath = path.resolve(process.cwd(), 'states', 'localStorage');
@@ -208,8 +258,9 @@ if (win) {
                     }
                 },
                 removeItem: (key: string) => {
-                    const fs = require('fs');
-                    const path = require('path');
+                    const fs = fsMod();
+                    const path = pathMod();
+                    if (!fs || !path) return;
                     try {
                         const filePath = path.resolve(process.cwd(), 'states', 'localStorage', `${key}.skapi`);
                         if (fs.existsSync(filePath)) {

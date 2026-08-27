@@ -16,7 +16,7 @@ import {
     UniqueId
 } from '../Types';
 import SkapiError from '../main/error';
-import { encState, isEnvelope, maybeEncrypt, maybeDecrypt, addRecipients, dropRecipientsAndRoll, encryptedFileFromUrl, decryptFileBlob, parseFileMarker, bindRecordDek } from './encryption';
+import { encState, isEnvelope, maybeEncrypt, maybeDecrypt, addRecipients, dropRecipientsAndRoll, encryptedFileFromUrl, decryptFileBlob, parseFileMarker, bindRecordDek, convertRecordFiles, isCiphertextFile, CT_FORM_KEY, CT_FILE_SUFFIX } from './encryption';
 import { extractFormData, fromBase62, isBrowserRuntime } from '../utils/utils';
 import validator from '../utils/validator';
 import { request, uploadFiles } from '../utils/network';
@@ -78,7 +78,12 @@ function mintCacheToken(expiresSeconds: number, refresh?: boolean): string {
     // extra cache entry per window rather than one per file per attempt, and the
     // window always closes before the url it carries can expire.
     let windowMs = Math.max(60, expiresSeconds - 5 * 60) * 1000;
-    return MINT_CACHE_GENERATION + '.' + Math.floor(Date.now() / windowMs);
+    // 'g2w29796087', not '2.29796087'. The gateway parses a numeric-looking
+    // query value before it type-checks it, so the dotted form arrived as a
+    // float and `nocache: [str, int]` refused it -- which meant every
+    // getFile({ browserCache, refresh: true }) failed with INVALID_PARAMETER,
+    // the one call refresh exists for. Letters keep the token a string.
+    return 'g' + MINT_CACHE_GENERATION + 'w' + Math.floor(Date.now() / windowMs);
 }
 
 /**
@@ -165,7 +170,15 @@ async function blobToText(blob: any): Promise<string> {
     });
 }
 
-export async function normalizeRecord(record: Record<string, any>, _called_from?, _skipDataFetch = false, _skipDecrypt = false): Promise<RecordData> {
+/**
+ * @param _skipBinResolve  Do not mint a signed endpoint for each private file in
+ *   `bin`. The deleted-record path needs the mapped shape without that resolution:
+ *   getFile('endpoint') appends the caller's id token to the url and fires
+ *   requestPrivateRecordAccessKey once per record, which on a delete is a burst of
+ *   requests racing the asynchronous file removal, and puts a live token inside a
+ *   payload callers forward onward. The urls come back as the record stores them.
+ */
+export async function normalizeRecord(record: Record<string, any>, _called_from?, _skipDataFetch = false, _skipDecrypt = false, _skipBinResolve = false): Promise<RecordData> {
     // if (record?.rec) {
     //     if (_called_from !== 'called from postRecord') {
     //         let recPost = window.sessionStorage.getItem(`${this.service}:post:${record.rec}`);
@@ -210,6 +223,10 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
     // in the record's bin). Collected while processing "bin" (which runs before
     // "data") and used by the "data" handler to fetch the payload back.
     let dataFileUrls: string[] = [];
+    // Url of the spilled-ciphertext file, when this record has one. Collected by
+    // the same synchronous pre-scan as the offloaded __data__ file, because the
+    // 'data' handler needs it before the async 'bin' handler has run.
+    let ctFileUrl: string | null = null;
     function access_group_set(v) {
         let access_group = v == '**' ? 'private' : parseInt(v);
         access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group == 99 ? 'admin' : access_group;
@@ -350,6 +367,13 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                             return { isDataFile: true, rawUrl: url };
                         }
 
+                        // The spilled ciphertext of an encrypted record. Like
+                        // the offloaded data file it is machinery, not a user
+                        // binary, so it never appears in record.bin.
+                        if (isCiphertextFile(pathKey, filename)) {
+                            return { isDataFile: true, rawUrl: url };
+                        }
+
                         // A sealed attachment: strip the marker so `path` and
                         // the form key read naturally, and report the PLAINTEXT
                         // size, which is the honest answer to "how big is this
@@ -373,7 +397,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                             }
                             : null;
 
-                        if (access_group !== 'public') {
+                        if (access_group !== 'public' && !_skipBinResolve) {
                             try {
                                 // Deliberately NOT the cached presign, even for a
                                 // file that could use one. `url` is the record's
@@ -520,7 +544,8 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                 table_name: output.table.name,
                 user_id: output.user_id,
                 record_id: output.record_id,
-                unique_id: output.unique_id
+                unique_id: output.unique_id,
+                ctUrl: ctFileUrl
             };
 
             // Open an encryption envelope, if this is one. Total: it never
@@ -648,6 +673,9 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                 // decoding threw URIError on any filename holding a bare '%'.
                 if (sp.length >= 12 && sp[10] === '__data__' && sp[sp.length - 1] === '__json__.json') {
                     dataFileUrls.push(url);
+                }
+                if (sp.length >= 12 && isCiphertextFile(sp[10], sp[sp.length - 1])) {
+                    ctFileUrl = url;
                 }
             }
             catch { }
@@ -1739,6 +1767,34 @@ export async function postRecord(
     if (Object.keys(fetchOptions).length) {
         Object.assign(options, { fetchOptions });
     }
+    // DECLASSIFY: bring the attachments back to plaintext BEFORE the group
+    // changes, while the data key is still available. Their old objects are
+    // retired on this same write, so the stream deletes them instead of
+    // relocating a stale encrypted twin into the new prefix.
+    if (encRes.files === 'decrypt' && (config as any)?.record_id) {
+        let retire = await convertRecordFiles.bind(this)((config as any).record_id, 'decrypt', progress);
+        if (retire.length) {
+            let existing = (postData as any).remove_bin;
+            (postData as any).remove_bin = Array.isArray(existing) ? existing.concat(retire) : retire;
+        }
+    }
+
+    // Upload the spilled ciphertext BEFORE the record points at it, so the
+    // record never names a file that is not there yet. The old spill file is
+    // retired on this same write, so the stream deletes it rather than
+    // relocating a stale twin.
+    if (encRes.spill && (config as any)?.record_id) {
+        let ctForm = new FormData();
+        ctForm.append(CT_FORM_KEY, new File([encRes.spill], 'payload.bin', { type: 'application/octet-stream' }));
+        await uploadFiles.bind(this)(ctForm, { record_id: (config as any).record_id });
+
+        if (encRes.retireCt) {
+            let existing = (postData as any).remove_bin;
+            let stale = [encRes.retireCt];
+            (postData as any).remove_bin = Array.isArray(existing) ? existing.concat(stale) : stale;
+        }
+    }
+
     let rec = await request.bind(this)('post-record', postData, options);
 
     // The server has just minted the record_id. Bind the data key to it BEFORE
@@ -1746,6 +1802,26 @@ export async function postRecord(
     // the files in the clear.
     if (encRes.encrypted && rec?.rec) {
         bindRecordDek.bind(this)(rec.rec, encRes.dek);
+    }
+
+    // CLASSIFY: the record is private as of the write above and its data key is
+    // cached, so existing plaintext attachments can now be sealed. Retiring the
+    // old objects needs a second, metadata-only write; `undefined` there means
+    // "leave the payload alone".
+    if (encRes.files === 'encrypt' && rec?.rec) {
+        try {
+            let retire = await convertRecordFiles.bind(this)(rec.rec, 'encrypt', progress);
+            if (retire.length) {
+                await postRecord.bind(this)(undefined, { record_id: rec.rec, remove_bin: retire } as any);
+            }
+        }
+        catch (err) {
+            // The record is already private and its data is sealed. Leaving
+            // some attachments in the clear is worse than intended but loses
+            // nothing, and re-running the same update finishes the job, so this
+            // must not fail a write that has already committed.
+            console.error('Failed to encrypt existing attachments after making the record private:', err);
+        }
     }
 
     if (isBrowserRuntime() && to_bin.length) {
@@ -2082,59 +2158,6 @@ export async function getUniqueId(
 }
 
 
-/**
- * Build the encryption context for a RAW record (short keys), for the paths
- * that deliberately do not run normalizeRecord.
- *
- * deleteRecords is the one caller: it must not normalize (that would resolve
- * every private bin file through getFile, firing a private-access-key request
- * per record during a delete, and embedding a live token in a payload callers
- * forward onward), but it still has to hand back plaintext rather than an
- * envelope.
- */
-function rawRecordEncContext(rec: any): { access_group: any; table_name: string; user_id: string; record_id: string; unique_id: string } | null {
-    if (!rec || typeof rec !== 'object') {
-        return null;
-    }
-
-    let user_id = '';
-    let table_name = '';
-    let group: any = 0;
-
-    if (typeof rec.usr_tbl === 'string') {
-        // user-id/table/service/group[/subscription][/tag]
-        let p = rec.usr_tbl.split('/');
-        user_id = p[0] || '';
-        table_name = decodeReservedDelimiters(p[1] || '');
-        group = p[3];
-    }
-    else if (typeof rec.tbl === 'string') {
-        // table/service/group[/subscription][/tag]
-        let p = rec.tbl.split('/');
-        table_name = decodeReservedDelimiters(p[0] || '');
-        group = p[2];
-        user_id = rec.usr || '';
-    }
-    else {
-        return null;
-    }
-
-    let unique_id = '';
-    if (typeof rec.ip === 'string') {
-        let hashAt = rec.ip.indexOf('#');
-        if (hashAt >= 0) {
-            unique_id = rec.ip.slice(hashAt + 1);
-        }
-    }
-
-    return {
-        access_group: group === '**' ? 'private' : parseInt(group),
-        table_name,
-        user_id,
-        record_id: rec.rec || '',
-        unique_id
-    };
-}
 
 export async function deleteRecords(query: DelRecordQuery & { private_key?: string; }, fetchOptions?: FetchOptions): Promise<string | DatabaseResponse<RecordData>> {
     await this.__connection;
@@ -2147,49 +2170,42 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
     }
 
     // Deleting by query returns the records it deleted, and they arrive RAW: short keys
-    // (rec / usr_tbl / idx) and every stored encoding untouched, so `data` is the
-    // '!J%<json>' text the server wrote. Decode just that, in place.
+    // (rec / usr_tbl / idx) and every stored encoding untouched. Map them to the same
+    // shape every other record-returning method produces, so `record_id`, `table.name`,
+    // `index`, `tags` and `data` read normally rather than as database internals.
     //
-    // NOT normalizeRecord, deliberately. Its `bin` handler resolves every non-public file
-    // through getFile(url, 'endpoint'), which appends the caller's id token to the url and,
-    // for another user's private record, fires requestPrivateRecordAccessKey once per
-    // record. On a delete that means a burst of requests racing the asynchronous file
-    // deletion, and a live token embedded in bin[].url of a payload callers forward
-    // onward. Its Promise.all would also reject the whole call if one record failed to
-    // normalize, after the delete had already been committed server side.
+    // Two things are deliberately skipped:
     //
-    // The offload marker is left as-is for the same reason it is not decoded here: the
-    // payload lives in a file this delete is removing.
+    //   _skipBinResolve  no signed endpoint is minted per file. That call appends the
+    //                    caller's id token to bin[].url and fires
+    //                    requestPrivateRecordAccessKey once per record, which on a
+    //                    delete is a burst of requests racing the asynchronous file
+    //                    removal, and embeds a live token in a payload callers forward
+    //                    onward. bin[].url is what the record stored.
+    //
+    //   _skipDataFetch   an offloaded payload is not fetched back, because it lives in
+    //                    a file this same delete is removing. Such a record keeps its
+    //                    { __data__: path } marker.
+    //
+    // Decryption is NOT skipped: the owner deleting their own record must get their data
+    // back, and a MASTER deleting someone else's must not get ciphertext handed to them
+    // as if it were the payload. maybeDecrypt is total, so a record nobody present can
+    // open becomes data:null with a reason rather than failing a delete that has already
+    // committed server side. normalizeRecord is likewise total per record here: one
+    // record that cannot be mapped is returned as it arrived instead of rejecting the
+    // whole call after the fact.
     if (Array.isArray(result?.list)) {
-        for (let rec of result.list) {
-            if (rec && typeof rec === 'object' && 'data' in rec) {
-                rec.data = parseStoredData(rec.data);
-
-                // Decrypt what the caller is entitled to. Without this the
-                // owner deleting their own record gets a raw envelope back
-                // instead of their data, and a MASTER deleting someone else's
-                // gets the ciphertext handed to them as if it were the payload.
-                // maybeDecrypt is total, so a record nobody present can open
-                // becomes data:null with a reason rather than failing the
-                // delete, which has already committed server side.
-                if (encState.call(this) && isEnvelope(rec.data)) {
-                    let ctx = rawRecordEncContext(rec);
-                    if (ctx) {
-                        let opened = await maybeDecrypt.bind(this)(rec.data, ctx);
-                        rec.data = opened.value;
-                        if (opened.flag) {
-                            rec.encrypted = opened.flag;
-                        }
-                    }
-                    else {
-                        // Shape we cannot place. Never hand back ciphertext
-                        // dressed as data.
-                        rec.data = null;
-                        rec.encrypted = { status: 'failed', reason: 'BINDING_MISMATCH' };
-                    }
-                }
+        result.list = await Promise.all(result.list.map(async (rec: any) => {
+            if (!rec || typeof rec !== 'object') {
+                return rec;
             }
-        }
+            try {
+                return await normalizeRecord.bind(this)(rec, 'called from deleteRecords', true, false, true);
+            }
+            catch (err) {
+                return rec;
+            }
+        }));
     }
 
     return result?.message || result;

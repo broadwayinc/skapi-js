@@ -145,6 +145,13 @@ function handlePost(body) {
         STORE.set(rid, existing);
     }
     else {
+        // remove_bin retires objects. The real stream excludes them from the
+        // folder move and deletes them; here it is enough that they leave the
+        // record's bin.
+        if (Array.isArray(body.remove_bin) && body.remove_bin.length) {
+            const gone = new Set(body.remove_bin.map(v => String(typeof v === 'string' ? v : v.url).split('?')[0]));
+            existing.binUrls = (existing.binUrls || []).filter(u => !gone.has(u));
+        }
         // An update carries the group only when the caller restated it.
         if (body.table?.access_group !== undefined) {
             existing.group = body.table.access_group;
@@ -277,6 +284,7 @@ globalThis.XMLHttpRequest = class XMLHttpRequest {
 };
 
 let CURRENT_USER = null;
+let NET = { get: 0, post: 0, bin: 0 };   // request counters, for the split tests
 
 globalThis.fetch = async (url, opt) => {
     const u = String(url);
@@ -294,10 +302,12 @@ globalThis.fetch = async (url, opt) => {
                 return out;
             }));
         }
+        NET.post++;
         body.__test_user__ = CURRENT_USER;
         return jsonResponse(handlePost(body));
     }
     if (u.includes('get-records')) {
+        NET.get++;
         const body = JSON.parse(opt.body);
         body.__test_scope_user__ = CURRENT_USER;
         return jsonResponse(handleGet(body));
@@ -336,6 +346,7 @@ globalThis.fetch = async (url, opt) => {
         return jsonResponse({ url: cdn, cdn, fields: { key: cdn } });
     }
     if (u.startsWith(BIN_HOST)) {
+        NET.bin++;
         const clean = u.split('?')[0];
         if (S3.has(clean)) {
             return new Response(S3.get(clean), { status: 200 });
@@ -1049,6 +1060,150 @@ const stored = rid => STORE.get(rid).data;
         assert.strictEqual(master.isWithheld(res.list[0].data), true);
     });
 
+    await test('DECLASSIFY brings the FILES back to plaintext, not just the data', async () => {
+        // Without this the record went public with its files still sealed and
+        // the key discarded: permanently unreadable by everyone, including the
+        // owner. Silent, total loss of the attachment on an ordinary setting
+        // change.
+        S3.clear();
+        const body = 'DECLASSIFY-FILE-BODY';
+        const rid = (await as(alice, () => alice.postRecord(
+            { doc: 'v1' },
+            { table: { name: 't', access_group: 'private' } },
+            [{ name: 'doc', file: mkFile('report.pdf', body) }]
+        ))).record_id;
+        assert.strictEqual(Buffer.from([...S3.values()][0].subarray(0, 6)).toString(), 'SKENCF', 'starts sealed');
+
+        await as(alice, () => alice.postRecord({ doc: 'v1' }, {
+            record_id: rid, table: { name: 't', access_group: 0 }
+        }));
+
+        const out = await as(alice, () => alice.getRecords({ record_id: rid }));
+        const f = out.list[0].bin.doc[0];
+        assert.strictEqual(f.encrypted, undefined, 'the file must no longer be marked encrypted');
+
+        const back = await f.getFile('blob');
+        assert.strictEqual(Buffer.from(await back.arrayBuffer()).toString(), body,
+            'AND IT MUST STILL BE READABLE, which is the whole point');
+
+        // The sealed object is retired rather than left behind as a stale twin.
+        // A private file's url carries a '?t=' token, so compare stripped.
+        const liveUrls = new Set(out.list[0].bin.doc.map(x => x.url.split('?')[0]));
+        const live = [...S3.entries()].filter(([k]) => liveUrls.has(k));
+        assert.strictEqual(live.length, 1, 'exactly one live object for the attachment');
+        assert.notStrictEqual(Buffer.from(live[0][1].subarray(0, 6)).toString(), 'SKENCF',
+            'and it is the PLAINTEXT one, not a stale encrypted twin');
+        assert.ok(!liveUrls.has([...S3.keys()].find(k => k.includes('__skenc__')) || '\u0000'),
+            'the sealed object is no longer referenced by the record');
+    });
+
+    await test('CLASSIFY seals existing plaintext attachments', async () => {
+        S3.clear();
+        const body = 'CLASSIFY-FILE-BODY';
+        const rid = (await as(alice, () => alice.postRecord(
+            { doc: 'open' },
+            { table: { name: 't', access_group: 0 } },
+            [{ name: 'doc', file: mkFile('open.pdf', body) }]
+        ))).record_id;
+        assert.strictEqual(Buffer.from([...S3.values()][0]).toString(), body, 'starts plaintext');
+
+        await as(alice, () => alice.postRecord({ doc: 'open' }, {
+            record_id: rid, table: { name: 't', access_group: 'private' }
+        }));
+
+        const out = await as(alice, () => alice.getRecords({ record_id: rid }));
+        const f = out.list[0].bin.doc[0];
+        assert.strictEqual(f.encrypted, true, 'the attachment must now be sealed');
+
+        const live = S3.get(f.url.split('?')[0]);
+        assert.ok(live, 'the sealed object exists');
+        assert.strictEqual(Buffer.from(live.subarray(0, 6)).toString(), 'SKENCF');
+        assert.ok(!Buffer.from(live).toString('latin1').includes(body), 'and holds no plaintext');
+
+        const back = await f.getFile('blob');
+        assert.strictEqual(Buffer.from(await back.arrayBuffer()).toString(), body, 'still readable by the owner');
+    });
+
+    await test('a record with no attachments is unaffected by either direction', async () => {
+        const rid = (await as(alice, () => alice.postRecord(
+            { plain: 'record' }, { table: { name: 't', access_group: 'private' } }
+        ))).record_id;
+        await as(alice, () => alice.postRecord({ plain: 'record' }, {
+            record_id: rid, table: { name: 't', access_group: 0 }
+        }));
+        assert.deepStrictEqual(stored(rid), { plain: 'record' });
+        await as(alice, () => alice.postRecord({ plain: 'record' }, {
+            record_id: rid, table: { name: 't', access_group: 'private' }
+        }));
+        assert.ok(stored(rid).__skapi_enc__);
+    });
+
+    await test('MASTER cannot make another user\'s record PRIVATE', async () => {
+        // prepare_update.py lets a master update any record ("only master can
+        // make change to the record"), which for an encrypted record used to
+        // mean sealing someone else's data under the MASTER's key with `own`
+        // set to the master. The binding check then refused it for everyone
+        // including the actual owner: the record was destroyed and the call
+        // reported success.
+        const rid = (await as(alice, () => alice.postRecord(
+            { open: 'value' }, { table: { name: 't', access_group: 0 } }
+        ))).record_id;
+
+        const master = await makeClient(OWNER);
+        await login(master, 'master-password-4242');
+        CURRENT_USER = OWNER;
+
+        await assert.rejects(
+            () => master.postRecord({ open: 'value' }, {
+                record_id: rid, table: { name: 't', access_group: 'private' }
+            }),
+            e => /ENCRYPTION_NOT_RECORD_OWNER/.test(e.code || ''),
+            'must refuse, and say it is an ownership problem'
+        );
+
+        // Untouched, and still readable by its actual owner.
+        assert.deepStrictEqual(stored(rid), { open: 'value' });
+        const back = await as(alice, () => alice.getRecords({ record_id: rid }));
+        assert.deepStrictEqual(back.list[0].data, { open: 'value' });
+    });
+
+    await test('MASTER cannot declassify another user\'s encrypted record', async () => {
+        const secret = { s: 'master-flip-canary' };
+        const rid = (await as(alice, () => alice.postRecord(
+            secret, { table: { name: 't', access_group: 'private' } }
+        ))).record_id;
+
+        const master = await makeClient(OWNER);
+        await login(master, 'master-password-4242');
+        CURRENT_USER = OWNER;
+
+        await assert.rejects(
+            () => master.postRecord(undefined, {
+                record_id: rid, table: { name: 't', access_group: 0 }
+            }),
+            e => /ENCRYPTION_NOT_RECORD_OWNER/.test(e.code || ''),
+            'the reason must be ownership, NOT "unlock your session"'
+        );
+
+        assert.ok(stored(rid).__skapi_enc__, 'the record is untouched');
+        const back = await as(alice, () => alice.getRecords({ record_id: rid }));
+        assert.deepStrictEqual(back.list[0].data, secret, 'and its owner can still read it');
+    });
+
+    await test('the owner is still free to change their OWN record either way', async () => {
+        const rid = (await as(alice, () => alice.postRecord(
+            { mine: true }, { table: { name: 't', access_group: 'private' } }
+        ))).record_id;
+        await as(alice, () => alice.postRecord({ mine: true }, {
+            record_id: rid, table: { name: 't', access_group: 0 }
+        }));
+        assert.deepStrictEqual(stored(rid), { mine: true });
+        await as(alice, () => alice.postRecord({ mine: true }, {
+            record_id: rid, table: { name: 't', access_group: 'private' }
+        }));
+        assert.ok(stored(rid).__skapi_enc__);
+    });
+
     /* ---------------- the S3 data spill ---------------- */
 
     await test('THE SPILL IS CIPHERTEXT: oversized private data offloaded to S3', async () => {
@@ -1095,6 +1250,100 @@ const stored = rid => STORE.get(rid).data;
         finally {
             OFFLOAD_OVER = 0;
         }
+    });
+
+    /* ---------------- the ciphertext split ---------------- */
+
+    /** A payload whose ciphertext lands over the spill threshold. */
+    const bigValue = () => ({ blob: 'x'.repeat(300 * 1024) });
+
+    let SPLIT_RID = null;
+
+    await test('SPLIT: a large payload keeps its envelope inline and spills only the ciphertext', async () => {
+        S3.clear();
+        const value = bigValue();
+        // A create has no record_id yet, so the split happens on the first update.
+        SPLIT_RID = (await as(alice, () => alice.postRecord(
+            { seed: 1 }, { table: { name: 't', access_group: 'private' } }
+        ))).record_id;
+        await as(alice, () => alice.postRecord(value, {
+            record_id: SPLIT_RID, table: { name: 't', access_group: 'private' }
+        }));
+
+        const env = stored(SPLIT_RID);
+        assert.ok(env.__skapi_enc__, 'still an envelope');
+        assert.strictEqual(env.ct, '', 'the ciphertext is NOT inline any more');
+        assert.ok(env.ct_ref, 'and the envelope names the file holding it');
+        assert.ok(env.iv && env.k, 'the IV and the recipient map stay inline: that is the point');
+        assert.ok(JSON.stringify(env).length < 2000, 'the stored attribute is now small, got ' + JSON.stringify(env).length);
+
+        const spilled = [...S3.entries()].find(([k]) => k.includes('__skenc_ct__'));
+        assert.ok(spilled, 'the ciphertext file exists');
+        assert.ok(spilled[1].length > 250 * 1024, 'and holds the bulk');
+        assert.ok(!Buffer.from(spilled[1]).toString('latin1').includes('xxxxxxxxxx'),
+            'it is ciphertext, not the plaintext run');
+    });
+
+    await test('a split record reads back identically', async () => {
+        const out = await as(alice, () => alice.getRecords({ record_id: SPLIT_RID }));
+        assert.deepStrictEqual(out.list[0].data, bigValue());
+        assert.strictEqual(out.list[0].encrypted.status, 'encrypted');
+    });
+
+    await test('the spilled ciphertext is NOT listed as a user file', async () => {
+        const out = await as(alice, () => alice.getRecords({ record_id: SPLIT_RID }));
+        const keys = Object.keys(out.list[0].bin || {});
+        assert.ok(!keys.includes('__skenc_ct__'), 'machinery must not appear in record.bin, got ' + JSON.stringify(keys));
+    });
+
+    await test('THE PAYOFF: granting on a split record never fetches the ciphertext', async () => {
+        NET = { get: 0, post: 0, bin: 0 };
+        await as(alice, () => alice.grantPrivateRecordAccess({ record_id: SPLIT_RID, user_id: BOB }));
+
+        assert.strictEqual(NET.bin, 0,
+            'a sharing change must not download the payload: it needs only k and the data key');
+        assert.ok(stored(SPLIT_RID).k[BOB], 'and bob got his wrap');
+        assert.strictEqual(stored(SPLIT_RID).ct, '', 'the ciphertext is untouched and still spilled');
+
+        // Only one ciphertext object exists: nothing was re-uploaded.
+        const ctFiles = [...S3.keys()].filter(k => k.includes('__skenc_ct__'));
+        assert.strictEqual(ctFiles.length, 1, 'no re-upload of the payload, got ' + ctFiles.length + ' files');
+    });
+
+    await test('and the grantee can still read it', async () => {
+        const out = await as(bob, () => bob.getRecords({ record_id: SPLIT_RID }));
+        assert.deepStrictEqual(out.list[0].data, bigValue());
+    });
+
+    await test('a small payload stays inline, with no extra object', async () => {
+        S3.clear();
+        const rid = (await as(alice, () => alice.postRecord(
+            { small: 'value' }, { table: { name: 't', access_group: 'private' } }
+        ))).record_id;
+        await as(alice, () => alice.postRecord({ small: 'value2' }, {
+            record_id: rid, table: { name: 't', access_group: 'private' }
+        }));
+        const env = stored(rid);
+        assert.ok(env.ct && env.ct.length > 0, 'inline');
+        assert.strictEqual(env.ct_ref, undefined, 'no spill for a small record');
+        assert.strictEqual([...S3.keys()].filter(k => k.includes('__skenc_ct__')).length, 0);
+    });
+
+    await test('updating a split record retires the previous ciphertext file', async () => {
+        S3.clear();
+        const rid = (await as(alice, () => alice.postRecord(
+            { seed: 1 }, { table: { name: 't', access_group: 'private' } }
+        ))).record_id;
+        await as(alice, () => alice.postRecord(bigValue(), {
+            record_id: rid, table: { name: 't', access_group: 'private' }
+        }));
+        await as(alice, () => alice.postRecord({ blob: 'y'.repeat(300 * 1024) }, {
+            record_id: rid, table: { name: 't', access_group: 'private' }
+        }));
+
+        const out = await as(alice, () => alice.getRecords({ record_id: rid }));
+        assert.deepStrictEqual(out.list[0].data, { blob: 'y'.repeat(300 * 1024) },
+            'the new payload reads back, so the record points at the CURRENT file');
     });
 
     /* ---------------- regressions for the security review ---------------- */
