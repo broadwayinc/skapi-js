@@ -1196,6 +1196,38 @@ function encryptionView(rawConfig: any, validated: any): any {
     return Object.assign({}, rawConfig, { table: (validated as any).table });
 }
 
+/**
+ * Refuse a database READ from a session with no signed-in user when the project
+ * says users must sign in.
+ *
+ * `require_login` is set by the project owner and arrives on the unauthenticated
+ * connection response, so this can be decided before any credential exists.
+ * Enforced only when the flag is PRESENT and exactly `true`: a project that has
+ * never set it, or whose connection has not resolved, behaves as it always did.
+ *
+ * This is a GUARD RAIL, not a security boundary, and it matters that the
+ * difference is understood. The backend still serves access-group-0 records to
+ * any unauthenticated caller - `check_rec_access` returns immediately for group
+ * "00" and never consults this flag - so anyone who bypasses the SDK still reads
+ * them. What this buys is that an app built on skapi-js stops leaking public
+ * records through a signed-out page by accident. Data that must not be readable
+ * without an account has to not be in group 0.
+ *
+ * The message and code deliberately avoid every phrase the BunnyQuery MCP
+ * classifies as an auth failure ("authentication required", "valid Bearer
+ * token", "User login is required."), because a match there becomes an HTTP 401
+ * that its polling worker reads as an auth outage and stops indexing chains on.
+ */
+async function requireLoginGate(this: any, method: string): Promise<void> {
+	await this.__connection;
+	if (this.__user) return;
+	if ((this.connection as any)?.opt?.require_login !== true) return;
+	throw new SkapiError(
+		`This project requires users to sign in before reading its database, so "${method}" is not available to a signed-out visitor.`,
+		{ code: 'REQUIRE_LOGIN' },
+	);
+}
+
 async function getQuery(query, isDel = false) {
     query = extractFormData(query, { ignoreEmpty: true }).data || {};
 
@@ -1351,6 +1383,7 @@ async function getQuery(query, isDel = false) {
 
 export async function getRecords(query: GetRecordQuery & { private_key?: string; }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
     await this.__connection;
+    await requireLoginGate.call(this, 'getRecords');
 
     let q = await getQuery.bind(this)(query);
     let is_reference_fetch = q.is_reference_fetch;
@@ -2008,6 +2041,7 @@ export async function getTables(
     },
     fetchOptions?: FetchOptions
 ): Promise<DatabaseResponse<Table>> {
+    await requireLoginGate.call(this, 'getTables');
     let res = await request.bind(this)('get-table', validator.Params(query || {}, {
         // Escaped, because storage holds the escaped form: a lookup for a table literally named
         // "a/b" has to go out as "a%2Fb" or it matches nothing. The response is decoded below, so
@@ -2081,6 +2115,7 @@ export async function getIndexes(
     },
     fetchOptions?: FetchOptions
 ): Promise<DatabaseResponse<Index>> {
+    await requireLoginGate.call(this, 'getIndexes');
     if (!query?.table) {
         throw new SkapiError('"table" is required.', { code: 'INVALID_PARAMETER' });
     }
@@ -2197,6 +2232,7 @@ export async function getTags(
     },
     fetchOptions?: FetchOptions
 ): Promise<DatabaseResponse<Tag>> {
+    await requireLoginGate.call(this, 'getTags');
 
     let res = await request.bind(this)(
         'get-tag',
@@ -2235,6 +2271,7 @@ export async function getUniqueId(
     }>,
     fetchOptions?: FetchOptions
 ): Promise<DatabaseResponse<UniqueId>> {
+    await requireLoginGate.call(this, 'getUniqueId');
 
     let res = await request.bind(this)(
         'get-uniqueid',

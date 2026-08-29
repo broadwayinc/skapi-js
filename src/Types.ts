@@ -271,6 +271,12 @@ export type Connection = {
          * has not set one, in which case the SDK's own default (0) stands.
          */
         default_access_group?: DefaultAccessGroup;
+        /**
+         * BunnyQuery: whether the embeddable chat requires an account before a
+         * visitor can use it. Unrelated to `prevent_anonymous`, which governs
+         * anonymous record WRITES. Defaults to true.
+         */
+        require_login?: boolean;
     },
     ai_agent?: string; // AI agent info.
 }
@@ -651,6 +657,12 @@ export type ConnectionInfo = {
          * has not set one, in which case the SDK's own default (0) stands.
          */
         default_access_group?: DefaultAccessGroup;
+        /**
+         * BunnyQuery: whether the embeddable chat requires an account before a
+         * visitor can use it. Unrelated to `prevent_anonymous`, which governs
+         * anonymous record WRITES. Defaults to true.
+         */
+        require_login?: boolean;
     }
 };
 
