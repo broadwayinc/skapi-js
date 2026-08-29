@@ -1122,6 +1122,54 @@ function deleteScopedUniqueId(scope: string, unique_id: string): void {
     }
 }
 
+/**
+ * Apply the project's `default_access_group` to a table that did not name one.
+ *
+ * Called at the two places that KNOW whether the call is table-addressed:
+ * getQuery (getRecords / deleteRecords) and setupPostRecordConfig's precall
+ * (postRecord). Not inside the `accessGroup` validator, even though that is the
+ * single value-level choke point, because the validator cannot see the rest of
+ * the request: a call addressed by `record_id` / `unique_id`, and an update to an
+ * existing record, carry no table and must never be made to fail for missing a
+ * value they have no place to put.
+ *
+ * An explicit `access_group` always wins, including an explicit 0. Only an
+ * ABSENT one is filled, so nothing a caller wrote is ever overridden.
+ *
+ * `fallbackPublic` restores the exact pre-existing bytes when NO default is
+ * configured, and is set only where the caller wrote `table: '<name>'` as a
+ * string. That shorthand used to expand to `{name, access_group: 0}` literally,
+ * while the object form `{name: '<name>'}` sent no access_group at all and let
+ * the backend decide - and those two are NOT the same request, because an
+ * authenticated query with no group means "every group I can read" server side.
+ * Collapsing them would silently change what an existing app fetches.
+ */
+function applyDefaultAccessGroup(table: any, opts?: { fallbackPublic?: boolean }): any {
+    if (!table || typeof table !== 'object') return table;
+    if (table.access_group !== undefined && table.access_group !== null) return table;
+
+    const resolved = typeof this._defaultAccessGroup === 'function'
+        ? this._defaultAccessGroup()
+        : null;
+
+    if (resolved === 'ask') {
+        throw new SkapiError(
+            '"table.access_group" is required: this project\'s "default_access_group" is set to "ask", so every table query and record must name its access group explicitly.',
+            { code: 'INVALID_PARAMETER' },
+        );
+    }
+
+    if (resolved !== null && resolved !== undefined) {
+        table.access_group = resolved;
+        return table;
+    }
+
+    if (opts?.fallbackPublic) {
+        table.access_group = 0;
+    }
+    return table;
+}
+
 async function getQuery(query, isDel = false) {
     query = extractFormData(query, { ignoreEmpty: true }).data || {};
 
@@ -1178,12 +1226,21 @@ async function getQuery(query, isDel = false) {
             }
         }
 
-        if (typeof query?.table === 'string') {
+        // Remembered because the shorthand and the object form carry DIFFERENT
+        // defaults: `table: 'name'` has always meant group 0, while
+        // `table: {name}` has always meant "send no group and let the backend
+        // decide". See applyDefaultAccessGroup.
+        const tableWasShorthand = typeof query?.table === 'string';
+        if (tableWasShorthand) {
             query.table = {
-                name: query.table,
-                access_group: 0
+                name: query.table
             };
         }
+
+        // Reached only on the table-addressed branch. The record_id / unique_id
+        // branch above returns a query with no table at all, which is why those
+        // calls are unaffected by a 'ask' default.
+        applyDefaultAccessGroup.bind(this)(query.table, { fallbackPublic: tableWasShorthand });
 
         if (query.index) {
             if (query.index.hasOwnProperty('range') && query.index.hasOwnProperty('condition')) {
@@ -1500,11 +1557,21 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
                 throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
             }
 
-            if (typeof data.table === 'string') {
+            // See the matching note in getQuery: the shorthand has always meant
+            // group 0, the object form has always meant "no group".
+            const tableWasShorthand = typeof data.table === 'string';
+            if (tableWasShorthand) {
                 data.table = {
-                    name: data.table,
-                    access_group: 0
+                    name: data.table
                 };
+            }
+
+            // Only on a CREATE. An update names an existing record by
+            // `record_id`, whose access group is already decided and which the
+            // caller has no reason to restate, so a 'ask' default must not make
+            // one fail.
+            if (!data?.record_id) {
+                applyDefaultAccessGroup.bind(this)(data.table, { fallbackPublic: tableWasShorthand });
             }
 
             if (pc.files) {

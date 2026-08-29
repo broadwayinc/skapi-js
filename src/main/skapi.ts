@@ -19,6 +19,7 @@ import {
 	RTCConnector,
 	DelRecordQuery,
 	ConnectionInfo,
+	DefaultAccessGroup,
 	Table,
 	Index,
 	Tag,
@@ -163,10 +164,59 @@ import {
 
 declare const __SKAPI_VERSION__: string;
 
+const ACCESS_GROUP_ALIASES = ['public', 'private', 'authorized', 'admin'];
+
+/**
+ * Validate a `default_access_group` value.
+ *
+ * Accepts exactly what `table.access_group` accepts, plus 'ask'. Validated at
+ * the point it is SET rather than at the point it is used, so a typo in an init
+ * option (or in a project setting) is reported once, immediately, instead of on
+ * whichever record call happens to run first.
+ */
+function validateDefaultAccessGroup(v: any, label: string): DefaultAccessGroup {
+	if (typeof v === 'number') {
+		if (!Number.isInteger(v) || v < 0 || v > 99) {
+			throw new SkapiError(
+				`"${label}" value should be an integer within a range of 0 ~ 99.`,
+				{ code: 'INVALID_PARAMETER' },
+			);
+		}
+		return v;
+	}
+
+	if (typeof v === 'string') {
+		if (v === 'ask' || ACCESS_GROUP_ALIASES.indexOf(v) !== -1) {
+			return v as DefaultAccessGroup;
+		}
+		throw new SkapiError(
+			`"${label}" should be one of ${ACCESS_GROUP_ALIASES.concat(['ask']).map((a) => `'${a}'`).join(', ')}, or a number 0 ~ 99.`,
+			{ code: 'INVALID_PARAMETER' },
+		);
+	}
+
+	throw new SkapiError(`"${label}" should be type: <number | string>.`, {
+		code: 'INVALID_PARAMETER',
+	});
+}
+
 type Options = {
 	autoLogin: boolean;
 	refetchServiceInfo?: boolean; // bypasses cached service info and always fetch new service info on load.
 	requestBatchSize?: number; // default 30. number of requests to be handled in a batch
+	/**
+	 * Default value for `table.access_group` on getRecords, postRecord and
+	 * deleteRecords when the caller omits one. Overrides the project's own
+	 * `default_access_group` setting; when neither is set, the SDK's historical
+	 * default of 0 (public) stands.
+	 *
+	 * 'ask' picks no group. It makes an omitted `access_group` an ERROR, for
+	 * projects that hold data at more than one visibility and would rather fail
+	 * loudly than quietly write to public. Calls addressed by `record_id` or
+	 * `unique_id`, and updates to an existing record, carry no table and are
+	 * unaffected.
+	 */
+	default_access_group?: DefaultAccessGroup;
 	// bearerToken?: string; // custom bearer token for authentication
 	/**
 	 * Enable client-side encryption of `data` on records written to
@@ -225,6 +275,14 @@ export default class Skapi {
 	private host = 'skapi';
 	private hostDomain = 'skapi.com';
 	private target_cdn = 'd3e9syvbtso631';
+	/**
+	 * The `default_access_group` INIT OPTION, if one was given. Kept separate
+	 * from the project's own setting (connection.opt.default_access_group)
+	 * because the two have a precedence order and collapsing them would lose it:
+	 * an app that pins a value in code must not have it changed under it by a
+	 * dashboard edit.
+	 */
+	private __default_access_group: DefaultAccessGroup | null = null;
 	private customApiDomain = 'skapi.dev';
 	private requestBatchSize = 30;
 
@@ -567,6 +625,12 @@ export default class Skapi {
 			if (options.encryption) {
 				encryptionConfig = parseEncryptionOptions(options.encryption);
 			}
+			if (options.default_access_group !== undefined && options.default_access_group !== null) {
+				this.__default_access_group = validateDefaultAccessGroup(
+					options.default_access_group,
+					'default_access_group',
+				);
+			}
 			if (typeof options.requestBatchSize === 'number') {
 				if (options.requestBatchSize < 1) {
 					throw new SkapiError(
@@ -891,6 +955,35 @@ export default class Skapi {
 	 * @param params Request parameters. When `refresh` is true, the cached connection metadata is re-fetched before returning; otherwise the cached connection is returned.
 	 * @returns A promise that resolves to Promise<ConnectionInfo>.
 	 */
+	/**
+	 * The effective `default_access_group` for this instance, or null when there
+	 * is none and the SDK's historical default (0) stands.
+	 *
+	 * Precedence: the INIT OPTION wins, then the project's own setting. An app
+	 * that pins a value in code is stating an intent the dashboard must not
+	 * silently override; a project that has set one is stating a default for
+	 * every app that has not.
+	 *
+	 * Reads `this.connection` rather than awaiting it: every caller
+	 * (getRecords / postRecord / deleteRecords) has already awaited
+	 * `__connection` before it gets here, so the project value is populated. A
+	 * miss degrades to "no default", never to a wrong one.
+	 *
+	 * A malformed project value is IGNORED rather than thrown: it arrives from
+	 * the server, not from the caller, and taking down every record call over it
+	 * would be a worse failure than falling back to the SDK default.
+	 */
+	private _defaultAccessGroup(): DefaultAccessGroup | null {
+		if (this.__default_access_group !== null) return this.__default_access_group;
+		const fromService = (this.connection as any)?.opt?.default_access_group;
+		if (fromService === undefined || fromService === null) return null;
+		try {
+			return validateDefaultAccessGroup(fromService, 'default_access_group');
+		} catch (err) {
+			return null;
+		}
+	}
+
 	async getConnectionInfo(params?: { refresh?: boolean }): Promise<ConnectionInfo> {
 		let refresh = params?.refresh || false;
 		
