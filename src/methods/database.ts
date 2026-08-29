@@ -1170,6 +1170,32 @@ function applyDefaultAccessGroup(table: any, opts?: { fallbackPublic?: boolean }
     return table;
 }
 
+/**
+ * The config the ENCRYPTION layer must judge a write by.
+ *
+ * `maybeEncrypt` decides whether to seal by reading `table.access_group`, and it
+ * used to be handed the caller's RAW config. That was the same object the wire
+ * was built from, right up until `table.access_group` acquired a value the
+ * caller never wrote: `setupPostRecordConfig` resolves the project default
+ * inside `validator.Params`' precall, which operates on a JSON DEEP COPY, so the
+ * group reached the wire and never reached the raw config.
+ *
+ * The two views then disagreed in the worst possible direction. A write with
+ * `default_access_group: 'private'` went out labelled private while
+ * resolveWriteGroup saw no group at all, resolved 0, took the not-private branch
+ * and sent `data` in the clear - a record the caller believes is encrypted,
+ * stored as plaintext, with no error.
+ *
+ * So encryption is shown the VALIDATED table, which is exactly what the wire
+ * carries. Everything else still comes from the raw config, and a write with no
+ * table at all (an update) still has none here, so resolveWriteGroup keeps
+ * falling through to reading the stored record's real group.
+ */
+function encryptionView(rawConfig: any, validated: any): any {
+    if (!validated || (validated as any).table === undefined) return rawConfig;
+    return Object.assign({}, rawConfig, { table: (validated as any).table });
+}
+
 async function getQuery(query, isDel = false) {
     query = extractFormData(query, { ignoreEmpty: true }).data || {};
 
@@ -1566,12 +1592,22 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
                 };
             }
 
-            // Only on a CREATE. An update names an existing record by
-            // `record_id`, whose access group is already decided and which the
-            // caller has no reason to restate, so a 'ask' default must not make
-            // one fail.
             if (!data?.record_id) {
+                // CREATE: the default (and 'ask') apply.
                 applyDefaultAccessGroup.bind(this)(data.table, { fallbackPublic: tableWasShorthand });
+            }
+            else if (tableWasShorthand && data.table.access_group === undefined) {
+                // UPDATE: no default and no 'ask' - an existing record's group is
+                // already decided, and the caller has no reason to restate it.
+                //
+                // But the shorthand's 0 is NOT a default: it is what
+                // `table: 'name'` has always MEANT, on updates as much as on
+                // creates, and the server reads an absent group on an update as
+                // "keep the record where it is" (post_record/index.py). Dropping
+                // it here silently stopped `table: 'name'` from moving a record to
+                // public, and with encryption on left a private record holding
+                // plaintext with its data key already zeroized.
+                data.table.access_group = 0;
             }
 
             if (pc.files) {
@@ -1643,7 +1679,7 @@ export async function bulkPostRecords(params) {
         // target access group.
         if (encState.call(this)) {
             let elemHasData = Object.prototype.hasOwnProperty.call(_config, 'data');
-            let encRes = await maybeEncrypt.bind(this)((_config as any).data, config, elemHasData);
+            let encRes = await maybeEncrypt.bind(this)((_config as any).data, encryptionView(config, _config), elemHasData);
             if (encRes.encrypted) {
                 (_config as any).data = encRes.send;
                 bulkPlain[idx] = encRes.plain;
@@ -1812,7 +1848,7 @@ export async function postRecord(
         : extractedForm.data;
     let hasData = rawPayload !== undefined;
 
-    let encRes = await maybeEncrypt.bind(this)(rawPayload, config, hasData);
+    let encRes = await maybeEncrypt.bind(this)(rawPayload, encryptionView(config, _config), hasData);
 
     let postData = null;
     // `_config` LAST would let a `data` key that survived validation

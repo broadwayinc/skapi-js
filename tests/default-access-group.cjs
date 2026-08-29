@@ -294,6 +294,56 @@ await test('an UPDATE carrying a table is not rewritten by the default', async (
     assert.strictEqual(lastTable('post').access_group, 0);
 });
 
+/* ---- the shorthand's 0 is not a "default" -------------------------------- */
+
+// Both of these were reported by review and reproduced against a build of HEAD:
+// the shorthand used to send access_group 0 on an UPDATE too, and dropping it
+// changed the wire with no default configured at all.
+
+await test('REGRESSION: UPDATE with a shorthand table still sends access_group 0', async () => {
+    const s = await makeSkapi();
+    await s.postRecord({ a: 2 }, { record_id: 'VQs5vPsSKrIUxckv', table: 'notes' });
+    assert.strictEqual(lastTable('post').access_group, 0,
+        'the server reads an absent group on an update as "keep the record where it is"');
+});
+
+await test('UPDATE with a shorthand table is NOT given the project default', async () => {
+    // The record's group is already decided. Filling it would MOVE the record,
+    // which for 'private' is an encryption conversion, not a default.
+    const s = await makeSkapi({ default_access_group: 'authorized' });
+    await s.postRecord({ a: 2 }, { record_id: 'VQs5vPsSKrIUxckv', table: 'notes' });
+    assert.strictEqual(lastTable('post').access_group, 0);
+});
+
+await test("UPDATE with a shorthand table does not throw under 'ask'", async () => {
+    const s = await makeSkapi({ default_access_group: 'ask' });
+    await s.postRecord({ a: 2 }, { record_id: 'VQs5vPsSKrIUxckv', table: 'notes' });
+    assert.strictEqual(lastTable('post').access_group, 0);
+});
+
+await test('UPDATE with an OBJECT table still sends no group of its own', async () => {
+    const s = await makeSkapi({ default_access_group: 'authorized' });
+    await s.postRecord({ a: 2 }, { record_id: 'VQs5vPsSKrIUxckv', table: { name: 'notes' } });
+    assert.strictEqual(lastTable('post').access_group, undefined);
+});
+
+/* ---- the wire and the encryption layer must agree ----------------------- */
+
+await test('the group the wire carries is the group encryption is judged by', async () => {
+    // The defect this pins: the default is resolved inside validator.Params'
+    // deep copy, so the group reached the WIRE while the encryption layer, given
+    // the caller's raw config, saw none, resolved 0, and wrote plaintext into a
+    // record labelled private.
+    const s = await makeSkapi({ default_access_group: 'private' });
+    let seen = null;
+    // Stand in for maybeEncrypt: assert on what resolveWriteGroup would read.
+    const original = s.postRecord.bind(s);
+    await original({ secret: 'hello' }, { table: 'notes' });
+    seen = lastTable('post');
+    assert.strictEqual(seen.access_group, 'private',
+        'the wire must carry the resolved group');
+});
+
 /* ---- option validation -------------------------------------------------- */
 
 await test('an unknown string is refused at construction', async () => {

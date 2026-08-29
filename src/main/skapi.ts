@@ -943,11 +943,21 @@ export default class Skapi {
 			return this.connection;
 		})();
 
-		this.__connection.then((conn) => {
-			if ((conn?.group || 0) < 3 || this.__network_logs) {
-				this.version();
-			}
-		});
+		// The .catch is not optional. This chain is fire-and-forget, so nothing
+		// downstream ever attaches a handler to it, and a rejected __connection
+		// (an unknown project id, or a transient failure of the service lookup)
+		// therefore surfaced as an UNHANDLED REJECTION - which Node turns into a
+		// process exit by default. A server that constructs a Skapi per project
+		// could be killed by one bad id. There is nothing to log for a connection
+		// that never resolved, so the failure is simply dropped here; every
+		// caller that needs it still gets it by awaiting __connection itself.
+		this.__connection
+			.then((conn) => {
+				if ((conn?.group || 0) < 3 || this.__network_logs) {
+					this.version();
+				}
+			})
+			.catch(() => {});
 	}
 
 	/**
