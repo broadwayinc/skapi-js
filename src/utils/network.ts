@@ -153,6 +153,7 @@ async function getEndpoint(dest: string, auth: boolean, stableGateway?: boolean)
         case 'csr':
         case 'csr-poll':
         case 'csr-cancel':
+        case 'csr-finalize':
             return selectGateway.bind(this)({ auth, type: 'admin', endpoints }) + dest + query;
 
         // Records

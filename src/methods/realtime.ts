@@ -14,6 +14,20 @@ import { getJwtToken } from './user';
 // } = {};
 
 let __current_socket_room: string;
+
+/**
+ * The realtime group this connection is currently in, or a falsy value when it is in
+ * none.
+ *
+ * Exported because joinRealtime REPLACES the current group rather than adding to it,
+ * so anything that joins a room on the caller's behalf has to be able to check the
+ * room is STILL its own before leaving it. Without that check it evicts the app from a
+ * room the app joined afterwards, and the app never learns: the leave succeeds and its
+ * own messages simply stop arriving.
+ */
+export function currentSocketRoom(): string {
+    return __current_socket_room;
+}
 let __keepAliveInterval = null;
 let closedByIntention = true;
 let reconnectAttempts = 0;
@@ -107,10 +121,38 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
         __keepAliveInterval = null;
     }
 
-    this.__socket = new Promise(async (resolve) => {
-        await getJwtToken.bind(this)();
+    // The executor runs before the assignment below completes, so the handle it needs
+    // to compare against travels in a holder rather than a plain local.
+    const mineRef: { value: any } = { value: null };
+    this.__socket = new Promise(async (resolve, reject) => {
+        // FAILURES HAVE TO REJECT, AND THEY HAVE TO CLEAR `__socket`.
+        //
+        // This executor used to take only `resolve`, and the only resolve() is inside
+        // socket.onopen below. So anything that threw on the way to opening the socket
+        // (prepareWebsocket raises "No access" when there is no session, and
+        // getJwtToken can throw on a refresh failure) left this promise PENDING FOR
+        // EVER, with an unhandled rejection as the only trace. connectRealtime returns
+        // early whenever `this.__socket` is set, so every later call, from anywhere in
+        // the app, awaited that same dead promise: one failed connect permanently
+        // disabled realtime for the page, and reloading was the only cure.
+        //
+        // Rejecting alone is not enough. The handle has to be dropped too, or the
+        // retry inherits the rejected promise and fails identically for ever. Cleared
+        // only if it is still OURS: a caller that already started a new connection has
+        // replaced it, and nulling that one would strand the new socket instead.
+        const failed = (err: any) => {
+            if (this.__socket === mineRef.value) this.__socket = null;
+            reject(err);
+        };
+        try {
+            await getJwtToken.bind(this)();
+        } catch (err) {
+            failed(err);
+            return;
+        }
 
         setTimeout(async () => {
+          try {
             let socket: WebSocket = await prepareWebsocket.bind(this)();
 
             socket.onopen = () => {
@@ -338,8 +380,18 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                 this.log('realtime onerror', 'WebSocket connection error.');
                 cb({ type: 'error', message: 'Skapi: WebSocket connection error.' });
             };
+          } catch (err) {
+            // Anything thrown on the way to an OPEN socket: no session, a rejected
+            // handshake, a blocked url. Reject and drop the handle so the next call
+            // opens a fresh one instead of awaiting this corpse for ever.
+            failed(err);
+          }
         }, delay);
     });
+    // Captured AFTER assignment so `failed` can tell "still mine" from "someone else
+    // replaced it while I was connecting".
+    mineRef.value = this.__socket;
+    return this.__socket;
 }
 
 
@@ -440,11 +492,21 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
         throw new SkapiError(`"group" must be a string | null.`, { code: 'INVALID_PARAMETER' });
     }
 
-    socket.send(JSON.stringify({
-        action: 'joinRoom',
-        rid: group,
-        token: this.session.accessToken.jwtToken
-    }));
+    // GUARDED, the way postRealtime's send at :437 already is. A socket that has
+    // closed under us (a dropped connection, a tab resumed after a sleep, a caller
+    // tidying up on the way out) throws "WebSocket is already in CLOSING or CLOSED
+    // state" from send, which surfaces as an unhandled error from what is otherwise a
+    // successful teardown. There is nothing to say to a closed socket in either
+    // direction: a join it cannot receive is not a join, and a LEAVE is already true
+    // of a connection that is gone, so the room state below is updated either way and
+    // the next connectRealtime re-joins from it.
+    if (socket.readyState === 1) {
+        socket.send(JSON.stringify({
+            action: 'joinRoom',
+            rid: group,
+            token: this.session.accessToken.jwtToken
+        }));
+    }
 
     __current_socket_room = group;
 

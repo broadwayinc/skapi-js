@@ -265,13 +265,6 @@ export type Connection = {
         prevent_signup: boolean;
         prevent_anonymous: boolean;
         /**
-         * Project-wide default for `table.access_group`, set by the project
-         * owner. Applied by getRecords / postRecord / deleteRecords unless the
-         * `default_access_group` init option overrides it. Absent when the owner
-         * has not set one, in which case the SDK's own default (0) stands.
-         */
-        default_access_group?: DefaultAccessGroup;
-        /**
          * BunnyQuery: whether the embeddable chat requires an account before a
          * visitor can use it. Unrelated to `prevent_anonymous`, which governs
          * anonymous record WRITES. Defaults to true.
@@ -599,6 +592,7 @@ export type RequestHistory = {
         latency?: number;
         onResponse?: (res:any)=>void;
         onError?: (err:any)=>void;
+        onStream?: (chunk: string, seq: number)=>void;
     }) => Promise<any>; // function to poll the request status until it settles. The promise resolves with the final result of the request: the third-party API response body when it resolves, or the error payload when it fails. It does not resolve with a RequestHistory item, so "created" and "updated" are not on the polled value. A poll stopped by stopClientSecretPolling() resolves with { id, status: 'stopped' }. Optional argument "latency" can be used to set the latency of the polling in milliseconds. Default latency is 1000ms.
 }
 
@@ -620,21 +614,6 @@ export type FileInfo = {
     fileKey: string;
 }
 
-/**
- * A project-wide default for `table.access_group`.
- *
- * Accepts everything `table.access_group` itself accepts (a number 0-99, or one
- * of 'public' / 'private' / 'authorized' / 'admin'), plus 'ask'.
- *
- * 'ask' does not pick a group: it makes an OMITTED `access_group` an error, so
- * the caller has to state one on every record it reads, writes or deletes by
- * table. Meant for projects that hold data at more than one visibility and would
- * rather fail loudly than quietly fall back to public. Calls addressed by
- * `record_id` or `unique_id`, and updates to an existing record, are unaffected:
- * they do not carry a table at all.
- */
-export type DefaultAccessGroup = number | 'public' | 'private' | 'authorized' | 'admin' | 'ask';
-
 export type ConnectionInfo = {
     /** Public project ID (service + owner composed into the two-segment token). Empty when the service has no uuid owner. */
     project_id: string;
@@ -650,13 +629,6 @@ export type ConnectionInfo = {
         prevent_signup: boolean;
         prevent_inquiry: boolean;
         prevent_anonymous: boolean;
-        /**
-         * Project-wide default for `table.access_group`, set by the project
-         * owner. Applied by getRecords / postRecord / deleteRecords unless the
-         * `default_access_group` init option overrides it. Absent when the owner
-         * has not set one, in which case the SDK's own default (0) stands.
-         */
-        default_access_group?: DefaultAccessGroup;
         /**
          * BunnyQuery: whether the embeddable chat requires an account before a
          * visitor can use it. Unrelated to `prevent_anonymous`, which governs

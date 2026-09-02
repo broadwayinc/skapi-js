@@ -1123,73 +1123,28 @@ function deleteScopedUniqueId(scope: string, unique_id: string): void {
 }
 
 /**
- * Apply the project's `default_access_group` to a table that did not name one.
- *
- * Called at the two places that KNOW whether the call is table-addressed:
- * getQuery (getRecords / deleteRecords) and setupPostRecordConfig's precall
- * (postRecord). Not inside the `accessGroup` validator, even though that is the
- * single value-level choke point, because the validator cannot see the rest of
- * the request: a call addressed by `record_id` / `unique_id`, and an update to an
- * existing record, carry no table and must never be made to fail for missing a
- * value they have no place to put.
- *
- * An explicit `access_group` always wins, including an explicit 0. Only an
- * ABSENT one is filled, so nothing a caller wrote is ever overridden.
- *
- * `fallbackPublic` restores the exact pre-existing bytes when NO default is
- * configured, and is set only where the caller wrote `table: '<name>'` as a
- * string. That shorthand used to expand to `{name, access_group: 0}` literally,
- * while the object form `{name: '<name>'}` sent no access_group at all and let
- * the backend decide - and those two are NOT the same request, because an
- * authenticated query with no group means "every group I can read" server side.
- * Collapsing them would silently change what an existing app fetches.
- */
-function applyDefaultAccessGroup(table: any, opts?: { fallbackPublic?: boolean }): any {
-    if (!table || typeof table !== 'object') return table;
-    if (table.access_group !== undefined && table.access_group !== null) return table;
-
-    const resolved = typeof this._defaultAccessGroup === 'function'
-        ? this._defaultAccessGroup()
-        : null;
-
-    if (resolved === 'ask') {
-        throw new SkapiError(
-            '"table.access_group" is required: this project\'s "default_access_group" is set to "ask", so every table query and record must name its access group explicitly.',
-            { code: 'INVALID_PARAMETER' },
-        );
-    }
-
-    if (resolved !== null && resolved !== undefined) {
-        table.access_group = resolved;
-        return table;
-    }
-
-    if (opts?.fallbackPublic) {
-        table.access_group = 0;
-    }
-    return table;
-}
-
-/**
  * The config the ENCRYPTION layer must judge a write by.
  *
  * `maybeEncrypt` decides whether to seal by reading `table.access_group`, and it
- * used to be handed the caller's RAW config. That was the same object the wire
- * was built from, right up until `table.access_group` acquired a value the
- * caller never wrote: `setupPostRecordConfig` resolves the project default
- * inside `validator.Params`' precall, which operates on a JSON DEEP COPY, so the
- * group reached the wire and never reached the raw config.
+ * used to be handed the caller's RAW config. That is the same object the wire is
+ * built from only until the table is normalized: `setupPostRecordConfig` does
+ * that inside `validator.Params`' precall, which operates on a JSON DEEP COPY,
+ * so the normalized table reaches the wire and never reaches the raw config.
  *
- * The two views then disagreed in the worst possible direction. A write with
- * `default_access_group: 'private'` went out labelled private while
- * resolveWriteGroup saw no group at all, resolved 0, took the not-private branch
- * and sent `data` in the clear - a record the caller believes is encrypted,
- * stored as plaintext, with no error.
+ * Still load-bearing, for exactly one shape: postRecord / bulkPostRecords UPDATE
+ * (record_id present) with `table: '<name>'` and encryption on. The precall
+ * expands that shorthand to `{ name }` with NO access_group, because on an
+ * update the server backfills the stored record's group. But resolveWriteGroup
+ * (encryption.ts) maps a RAW string table to group 0, so read from the raw
+ * config the same write looks like a move to public: maybeEncrypt takes the
+ * declassification branch, sends `data` in the clear and zeroizes the DEK, while
+ * the wire carries no group at all and the server keeps the record private.
+ * Plaintext sitting in a record the caller believes is sealed, with no error.
  *
  * So encryption is shown the VALIDATED table, which is exactly what the wire
  * carries. Everything else still comes from the raw config, and a write with no
- * table at all (an update) still has none here, so resolveWriteGroup keeps
- * falling through to reading the stored record's real group.
+ * table at all still has none here, so resolveWriteGroup keeps falling through
+ * to reading the stored record's real group.
  */
 function encryptionView(rawConfig: any, validated: any): any {
     if (!validated || (validated as any).table === undefined) return rawConfig;
@@ -1284,21 +1239,19 @@ async function getQuery(query, isDel = false) {
             }
         }
 
-        // Remembered because the shorthand and the object form carry DIFFERENT
-        // defaults: `table: 'name'` has always meant group 0, while
-        // `table: {name}` has always meant "send no group and let the backend
-        // decide". See applyDefaultAccessGroup.
-        const tableWasShorthand = typeof query?.table === 'string';
-        if (tableWasShorthand) {
+        // The shorthand and the object form are deliberately DIFFERENT requests,
+        // so the expansion is not a normalization: `table: 'name'` has always
+        // meant group 0, while `table: {name}` sends no access_group at all and
+        // lets the backend decide, which for an authenticated query means "every
+        // group I can read". Collapsing the two (either by dropping the 0 or by
+        // adding one to the object form) would silently change what an existing
+        // app fetches, so only the string form gains a group.
+        if (typeof query?.table === 'string') {
             query.table = {
-                name: query.table
+                name: query.table,
+                access_group: 0
             };
         }
-
-        // Reached only on the table-addressed branch. The record_id / unique_id
-        // branch above returns a query with no table at all, which is why those
-        // calls are unaffected by a 'ask' default.
-        applyDefaultAccessGroup.bind(this)(query.table, { fallbackPublic: tableWasShorthand });
 
         if (query.index) {
             if (query.index.hasOwnProperty('range') && query.index.hasOwnProperty('condition')) {
@@ -1616,31 +1569,28 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
                 throw new SkapiError('"table.name" is required.', { code: 'INVALID_PARAMETER' });
             }
 
-            // See the matching note in getQuery: the shorthand has always meant
-            // group 0, the object form has always meant "no group".
-            const tableWasShorthand = typeof data.table === 'string';
-            if (tableWasShorthand) {
+            // Three cases here, and they are deliberately not the same request:
+            //
+            // CREATE (no record_id) with `table: 'name'` -> { name, access_group: 0 }.
+            //   The shorthand has always MEANT group 0, so it keeps meaning it.
+            // CREATE with `table: { name }`              -> left exactly as written,
+            //   with no access_group key. The object form has always sent no group
+            //   and let the backend decide; see the matching note in getQuery.
+            // UPDATE (record_id present), either form     -> nothing is added.
+            //   An existing record's group is already decided, and the server
+            //   backfills access_group from the stored record whenever a table
+            //   arrives without one (infra/record/record/post_record/index.py:738),
+            //   so "no group" reads as "keep the record where it is" rather than
+            //   "move it to public". Anything we filled in here would instead be a
+            //   move the caller never asked for.
+            if (typeof data.table === 'string') {
                 data.table = {
                     name: data.table
                 };
-            }
 
-            if (!data?.record_id) {
-                // CREATE: the default (and 'ask') apply.
-                applyDefaultAccessGroup.bind(this)(data.table, { fallbackPublic: tableWasShorthand });
-            }
-            else if (tableWasShorthand && data.table.access_group === undefined) {
-                // UPDATE: no default and no 'ask' - an existing record's group is
-                // already decided, and the caller has no reason to restate it.
-                //
-                // But the shorthand's 0 is NOT a default: it is what
-                // `table: 'name'` has always MEANT, on updates as much as on
-                // creates, and the server reads an absent group on an update as
-                // "keep the record where it is" (post_record/index.py). Dropping
-                // it here silently stopped `table: 'name'` from moving a record to
-                // public, and with encryption on left a private record holding
-                // plaintext with its data key already zeroized.
-                data.table.access_group = 0;
+                if (!data?.record_id) {
+                    data.table.access_group = 0;
+                }
             }
 
             if (pc.files) {
