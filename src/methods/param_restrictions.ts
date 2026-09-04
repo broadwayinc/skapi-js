@@ -218,6 +218,7 @@ export function accessGroup(v) {
 
     else if (typeof v === 'string') {
         v = {
+            '*': 'private', // shorthand for 'private'; the wire always carries 'private'
             private: 'private',
             public: 0,
             authorized: 1,

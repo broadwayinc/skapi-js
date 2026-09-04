@@ -60,7 +60,7 @@ import {
  * ------------------------------------------------------------------ */
 
 /** Reserved table holding every user's keyring. Never itself encrypted. */
-export const KEYRING_TABLE = 'skapi__keyring';
+export const KEYRING_TABLE = '__skapi__keyring';
 
 /** Reserved top-level key marking an encrypted payload. Joins __json__/__data__. */
 export const ENC_MARKER = '__skapi_enc__';
@@ -523,7 +523,7 @@ async function readOwnRecord(this: any, id: string): Promise<any | null> {
 }
 
 function normalizeGroup(v: any): 'private' | number {
-    if (v === 'private' || v === '**') {
+    if (v === 'private' || v === '*' || v === '**') {
         return 'private';
     }
     if (v === 'public') {

@@ -64,8 +64,8 @@ export type GetRecordQuery = {
     table?: string | {
         /** Max 256 characters, where / ! * # % each count as 3. Blocks control chars and sentinel 􏿿. */
         name: string;
-        /** Number range: 0 ~ 99. Default: 'public' */
-        access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
+        /** Number range: 0 ~ 99. 'public' = 0, 'authorized' = 1, 'admin' = 99. '*' is shorthand for 'private'. Default: 'public' */
+        access_group?: number | 'private' | '*' | 'public' | 'authorized' | 'admin';
         /** User ID of subscription */
         subscription?: string;
     };
@@ -94,8 +94,8 @@ export type PostRecordConfig = {
     table?: {
         /** Max 256 characters, where / ! * # % each count as 3. Blocks control chars and sentinel 􏿿. */
         name?: string;
-        /** Number range: 0 ~ 99. Default: 'public' */
-        access_group?: number | 'private' | 'public' | 'authorized' | 'admin';
+        /** Number range: 0 ~ 99. 'public' = 0, 'authorized' = 1, 'admin' = 99. '*' is shorthand for 'private'. Default: 'public' */
+        access_group?: number | 'private' | '*' | 'public' | 'authorized' | 'admin';
 
         /** When true, Record will be only accessible for subscribed users. */
         subscription?: {
@@ -189,7 +189,7 @@ export type EncryptionOptions = boolean | {
      * encrypted records are permanently unreadable.
      */
     recovery?: 'code' | 'none';
-    /** Reserved keyring table name. Default 'skapi__keyring'. */
+    /** Reserved keyring table name. Default '__skapi__keyring'. */
     table?: string;
 };
 

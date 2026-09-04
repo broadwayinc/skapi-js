@@ -508,6 +508,35 @@ await test('an EXPLICIT access group survives on deleteRecords', async () => {
     assert.strictEqual(lastTable('del').access_group, 'private');
 });
 
+/* ---- '*' is shorthand for 'private' ------------------------------------ */
+
+await test("'*' goes out as 'private' on getRecords", async () => {
+    const s = await makeSkapi();
+    await s.getRecords({ table: { name: 'notes', access_group: '*' } });
+    assert.strictEqual(lastTable('get').access_group, 'private');
+});
+
+await test("'*' goes out as 'private' on deleteRecords", async () => {
+    const s = await makeSkapi();
+    await s.deleteRecords({ table: { name: 'notes', access_group: '*' } });
+    assert.strictEqual(lastTable('del').access_group, 'private');
+});
+
+await test("'*' goes out as 'private' on a CREATE, and the record is stored private", async () => {
+    const s = await makeSkapi();
+    const rec = await s.postRecord({ a: 1 }, { table: { name: 'notes', access_group: '*' } });
+    assert.strictEqual(lastTable('post').access_group, 'private');
+    assert.strictEqual(STORE.get(rec.record_id).group, 'private');
+});
+
+await test("'*' goes out as 'private' on an UPDATE that moves the record", async () => {
+    const s = await makeSkapi();
+    const rec = await s.postRecord({ a: 1 }, { table: { name: 'notes', access_group: 'public' } });
+    await s.postRecord({ a: 2 }, { record_id: rec.record_id, table: { name: 'notes', access_group: '*' } });
+    assert.strictEqual(lastTable('post').access_group, 'private');
+    assert.strictEqual(STORE.get(rec.record_id).group, 'private');
+});
+
 /* ---- id-addressed calls carry no table at all --------------------------- */
 
 await test('getRecords by record_id sends no table', async () => {
@@ -591,7 +620,7 @@ await alice.unlockEncryption({ password: 'correct horse battery staple' });
 await test('encryption unlocked, with a keyring in the store', async () => {
     const st = alice.getEncryptionStatus();
     assert.strictEqual(st.status, 'unlocked');
-    assert.ok([...STORE.values()].some(r => r.table === 'skapi__keyring'), 'no keyring was provisioned');
+    assert.ok([...STORE.values()].some(r => r.table === '__skapi__keyring'), 'no keyring was provisioned');
 });
 
 await test('THE HAZARD: an UPDATE with a STRING table must not write PLAINTEXT into a private record', async () => {
@@ -677,6 +706,23 @@ await test('declassifying still works when the caller STATES group 0', async () 
     await alice.postRecord({ was: 'secret' }, { record_id: rec.record_id, table: { name: 't', access_group: 0 } });
     assert.deepStrictEqual(stored(rec.record_id), { was: 'secret' }, 'a declassified record is stored in the clear');
     assert.strictEqual(STORE.get(rec.record_id).group, 0);
+});
+
+await test("'*' on a CREATE seals the record exactly like 'private'", async () => {
+    const rec = await alice.postRecord({ secret: 'star' }, { table: { name: 't', access_group: '*' } });
+    assert.strictEqual(lastTable('post').access_group, 'private');
+    assert.ok(stored(rec.record_id).__skapi_enc__, 'must be sealed on the way in');
+    assert.strictEqual(STORE.get(rec.record_id).group, 'private');
+    const back = await alice.getRecords({ record_id: rec.record_id });
+    assert.deepStrictEqual(back.list[0].data, { secret: 'star' }, 'and must read back');
+});
+
+await test("'*' on an UPDATE moves a public record into private and seals it", async () => {
+    const rec = await alice.postRecord({ was: 'open' }, { table: { name: 't', access_group: 0 } });
+    assert.ok(!stored(rec.record_id).__skapi_enc__, 'starts in the clear');
+    await alice.postRecord({ was: 'open' }, { record_id: rec.record_id, table: { name: 't', access_group: '*' } });
+    assert.ok(stored(rec.record_id).__skapi_enc__, 'must be sealed on the way into private');
+    assert.strictEqual(STORE.get(rec.record_id).group, 'private');
 });
 
 /* ---- report ------------------------------------------------------------- */

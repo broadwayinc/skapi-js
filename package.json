@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "2.0.0-rc.11",
+  "version": "2.0.0-rc.12",
   "description": "Serverless Backend API for Web Developers.",
   "main": "dist/skapi.cjs",
   "browser": "dist/skapi.browser.mjs",
@@ -24,7 +24,7 @@
   "scripts": {
     "build": "npx tsup && node ./src/main/typedoc.js",
     "test:node-imports": "node ./tests/node-import-compatibility.cjs",
-    "dev": "npx bns 3333",
+    "dev": "npx bns 4000",
     "test": "node ./tests/tag-encoding.cjs && node ./tests/table-access-group.cjs && node ./tests/require-login.cjs && node ./tests/unique-id-scope.cjs && node ./tests/record-data-json-marker.cjs && node ./tests/crypto-primitives.cjs && node ./tests/encryption.cjs && node ./tests/node-import-compatibility.cjs",
     "test:encryption": "node ./tests/crypto-primitives.cjs && node ./tests/encryption.cjs"
   },

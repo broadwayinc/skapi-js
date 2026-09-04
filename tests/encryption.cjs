@@ -492,14 +492,14 @@ const stored = rid => STORE.get(rid).data;
         const st = alice.getEncryptionStatus();
         assert.strictEqual(st.status, 'unlocked');
         assert.ok(st.fingerprint, 'a key fingerprint must be published');
-        const keyrings = [...STORE.values()].filter(r => r.table === 'skapi__keyring');
+        const keyrings = [...STORE.values()].filter(r => r.table === '__skapi__keyring');
         assert.strictEqual(keyrings.length, 2, 'one private keyring and one public key record');
         assert.ok(keyrings.some(r => groupWire(r.group) === '**'), 'secrets go in the private partition');
         assert.ok(keyrings.some(r => groupWire(r.group) === '01'), 'the public key goes in the authorized partition');
     });
 
     await test('the keyring never stores the password or the raw master key', async () => {
-        const kr = [...STORE.values()].find(r => r.table === 'skapi__keyring' && groupWire(r.group) === '**');
+        const kr = [...STORE.values()].find(r => r.table === '__skapi__keyring' && groupWire(r.group) === '**');
         const blob = JSON.stringify(kr.data);
         assert.ok(!blob.includes('correct horse'), 'the password must never be stored');
         assert.ok(kr.data.wraps[0].ct, 'the master key is stored only as a wrap');
@@ -695,7 +695,7 @@ const stored = rid => STORE.get(rid).data;
 
     await test('bob gets his own keyring and public key', async () => {
         assert.strictEqual(bob.getEncryptionStatus().status, 'unlocked');
-        const pub = [...STORE.values()].filter(r => r.table === 'skapi__keyring' && r.usr === BOB && groupWire(r.group) === '01');
+        const pub = [...STORE.values()].filter(r => r.table === '__skapi__keyring' && r.usr === BOB && groupWire(r.group) === '01');
         assert.strictEqual(pub.length, 1);
     });
 
@@ -781,8 +781,8 @@ const stored = rid => STORE.get(rid).data;
     });
 
     await test('the keyring holds only wraps, and two users have different keys', async () => {
-        const krA = [...STORE.values()].find(r => r.table === 'skapi__keyring' && r.usr === ALICE && groupWire(r.group) === '**');
-        const krB = [...STORE.values()].find(r => r.table === 'skapi__keyring' && r.usr === BOB && groupWire(r.group) === '**');
+        const krA = [...STORE.values()].find(r => r.table === '__skapi__keyring' && r.usr === ALICE && groupWire(r.group) === '**');
+        const krB = [...STORE.values()].find(r => r.table === '__skapi__keyring' && r.usr === BOB && groupWire(r.group) === '**');
         assert.notStrictEqual(krA.data.pub, krB.data.pub, 'each user has their own identity key');
         assert.notStrictEqual(krA.data.wraps[0].kdf.s, krB.data.wraps[0].kdf.s, 'each user has their own salt');
     });
@@ -1692,7 +1692,7 @@ const stored = rid => STORE.get(rid).data;
         assert.ok(!bodies.includes(code), 'the code must not appear in any request body');
         assert.ok(!bodies.includes(bare), 'nor without its formatting');
 
-        const kr = [...STORE.values()].find(r => r.table === 'skapi__keyring' && r.usr === ERIN && groupWire(r.group) === '**');
+        const kr = [...STORE.values()].find(r => r.table === '__skapi__keyring' && r.usr === ERIN && groupWire(r.group) === '**');
         assert.ok(!JSON.stringify(kr.data).includes(bare), 'nor anywhere in the stored keyring');
         const rw = kr.data.wraps.find(w => w.p === 'recovery');
         assert.ok(rw, 'but the recovery WRAP must be stored');
@@ -1819,7 +1819,7 @@ const stored = rid => STORE.get(rid).data;
         await login(judy, 'judy-password-3344');
         assert.strictEqual(judy.takeRecoveryCode(), null);
 
-        const kr = [...STORE.values()].find(r => r.table === 'skapi__keyring' && r.usr === JUDY && groupWire(r.group) === '**');
+        const kr = [...STORE.values()].find(r => r.table === '__skapi__keyring' && r.usr === JUDY && groupWire(r.group) === '**');
         assert.ok(!kr.data.wraps.some(w => w.p === 'recovery'), 'no recovery wrap when opted out');
     });
 
@@ -1839,7 +1839,7 @@ const stored = rid => STORE.get(rid).data;
         CURRENT_USER = KARL;
         const res = await s2.unlockWithRecoveryCode({ code, password: 'karl-password-new1' });
 
-        const kr = [...STORE.values()].find(r => r.table === 'skapi__keyring' && r.usr === KARL && groupWire(r.group) === '**');
+        const kr = [...STORE.values()].find(r => r.table === '__skapi__keyring' && r.usr === KARL && groupWire(r.group) === '**');
         const pw = kr.data.wraps.filter(w => w.p === 'password');
         const rw = kr.data.wraps.filter(w => w.p === 'recovery');
         assert.strictEqual(pw.length, 1, 'exactly one password wrap, under the new password');
