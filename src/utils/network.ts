@@ -181,6 +181,12 @@ async function getEndpoint(dest: string, auth: boolean, stableGateway?: boolean)
         case 'get-index':
         case 'get-signed-url':
         case 'extract-file-text':
+        // The server-side spreadsheet reader (record stack, GridQuery Lambda, POST /grid-query on
+        // every record gateway). Missing from this table it was an "invalid url" to the SDK, so
+        // the MCP's queryGrid tool, and the worker's server-side row ingest behind it, could not
+        // reach a Lambda that was deployed and answering. Found by a live end-to-end run, not by
+        // a unit test: nothing below this line is exercised without a network.
+        case 'grid-query':
         case 'grant-private-access':
         case 'request-private-access-key':
         case 'get-ws-group':
