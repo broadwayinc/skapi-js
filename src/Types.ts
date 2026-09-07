@@ -298,6 +298,30 @@ export type Newsletter = {
     url: string;
     /** Number users delivered */
     delivered: number;
+    /**
+     * Newsletter group the message was sent to.<br>
+     * A number for the 0 ~ 99 groups, the group name for a named newsletter group.
+     */
+    group: number | string;
+}
+
+export type NewsletterGroup = {
+    /** Name of the newsletter group. */
+    group: string;
+    /**
+     * Access group required to subscribe to the group and to read its sent mail.<br>
+     * 0 is anyone, 1 is any signed in user, 2 ~ 99 is that access group.
+     */
+    restriction: number;
+    /** Display label of the group. Empty string when none was set. */
+    name: string;
+    /** Number of subscribers of the group. */
+    subscribers: number;
+    /**
+     * E-Mail address a newsletter for this group is sent to.<br>
+     * Empty string when the service has no sender e-mail set.
+     */
+    endpoint: string;
 }
 
 export type UserAttributes = {

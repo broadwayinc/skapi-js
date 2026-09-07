@@ -9,6 +9,7 @@ import {
 	UserAttributes,
 	UserProfile,
 	Newsletter,
+	NewsletterGroup,
 	Form,
 	PostRecordConfig,
 	UserPublic,
@@ -87,8 +88,9 @@ import {
 	getNewsletterSubscription,
 	getFeed,
 	// adminNewsletterRequest,
-	// registerNewsletterGroup,
-	// newsletterGroupEndpoint,
+	registerNewsletterGroup,
+	deleteNewsletterGroup,
+	newsletterGroupEndpoint,
 } from '../methods/subscription';
 import {
 	getProfile,
@@ -1187,18 +1189,38 @@ export default class Skapi {
 		return loginWithToken.bind(this)(params);
 	}
 
-	// /**
-	//  * Creates or updates a newsletter group with its delivery restriction settings.
-	//  * @param params Request parameters.
-	//  * @returns A promise that resolves to Promise<"SUCCESS: Your newsletter group has been registered.">.
-	//  */
-	// @formHandler()
-	// registerNewsletterGroup(params: Form<{
-	//     group: string;
-	//     restriction: number;
-	// }>): Promise<"SUCCESS: Your newsletter group has been registered."> {
-	//     return registerNewsletterGroup.bind(this)(params) as Promise<"SUCCESS: Your newsletter group has been registered.">;
-	// }
+	/**
+	 * Registers a named newsletter group. Service owner only.
+	 * @param params Request parameters.
+	 * @returns A promise that resolves to Promise<'SUCCESS: Group registered successfully.'>.
+	 */
+	@formHandler()
+	registerNewsletterGroup(
+		params: Form<{
+			/** Name of the newsletter group. 2 ~ 20 lowercase alphanumeric characters, at least one letter, not a reserved name. */
+			group: string;
+			/** Access group required to subscribe. 0 ~ 99. Defaults to 0. */
+			restriction?: number;
+			/** Display label of the group. 60 characters max. */
+			name?: string;
+		}>,
+	): Promise<'SUCCESS: Group registered successfully.'> {
+		return registerNewsletterGroup.bind(this)(params);
+	}
+	/**
+	 * Deletes a named newsletter group along with every subscription of that group. Service owner only.
+	 * @param params Request parameters.
+	 * @returns A promise that resolves to Promise<string>, 'SUCCESS: Group has been deleted along with N subscription(s).'.
+	 */
+	@formHandler()
+	deleteNewsletterGroup(
+		params: Form<{
+			/** Name of the newsletter group to delete. */
+			group: string;
+		}>,
+	): Promise<string> {
+		return deleteNewsletterGroup.bind(this)(params);
+	}
 	/**
 	 * Sends a secure outbound request using a Skapi client secret key.
 	 * @param params Request parameters.
@@ -1607,14 +1629,14 @@ export default class Skapi {
 	): Promise<DatabaseResponse<{ group: string; number_of_users: number }>> {
 		return getRealtimeGroups.bind(this)(params, fetchOptions);
 	}
-	// /**
-	//  * Calls the newsletter group endpoint for administrative group operations.
-	//  * @param params Request parameters.
-	//  */
-	// @formHandler()
-	// newsletterGroupEndpoint(params) {
-	//     return newsletterGroupEndpoint.bind(this)(params);
-	// }
+	/**
+	 * Lists every named newsletter group of the service with its restriction, subscriber count and sending address. Service owner only.
+	 * @returns A promise that resolves to Promise<{ groups: NewsletterGroup[] }>.
+	 */
+	@formHandler()
+	newsletterGroupEndpoint(): Promise<{ groups: NewsletterGroup[] }> {
+		return newsletterGroupEndpoint.bind(this)();
+	}
 	/**
 	 * Sends realtime data to a user or group with optional push notification metadata.
 	 * @param message Message payload to send.
@@ -1953,12 +1975,14 @@ export default class Skapi {
 	}
 	/**
 	 * Unsubscribes the user from a newsletter group.
+	 * Takes a numeric group, "public", "authorized" or the name of a named newsletter group. null unsubscribes from every group.
 	 * @param params Request parameters.
 	 * @returns A promise that resolves to Promise<string>.
 	 */
 	@formHandler()
 	unsubscribeNewsletter(params: {
-		group: number | 'public' | 'authorized' | 'admin';
+		/** Numeric group, "public", "authorized" or a named newsletter group. null unsubscribes from every group. */
+		group: number | 'public' | 'authorized' | (string & {}) | null;
 	}): Promise<string> {
 		return unsubscribeNewsletter.bind(this)(params);
 	}
@@ -2029,6 +2053,7 @@ export default class Skapi {
 
 	/**
 	 * Fetches newsletter delivery records with filters and pagination.
+	 * Reads a numeric group, "public", "authorized" or a named newsletter group. A named group is readable by anyone its restriction allows, signed in or not.
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<Newsletter>>.
@@ -2065,7 +2090,8 @@ export default class Skapi {
 				| 'eq'
 				| 'lt'
 				| 'lte';
-			group: 'public' | 'authorized' | number;
+			/** Numeric group, "public", "authorized" or a named newsletter group. */
+			group: 'public' | 'authorized' | number | (string & {});
 		},
 		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<Newsletter>> {
@@ -2073,25 +2099,30 @@ export default class Skapi {
 	}
 	/**
 	 * Gets newsletter subscription status for the requested groups.
+	 * Takes a numeric group, "public", "authorized" or a named newsletter group. Omit the group for every group the user is subscribed to.
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
-	 * @returns A promise that resolves to Promise<{ active: boolean; timestamp: number; group: number; subscribed_email: string; }[]>.
+	 * @returns A promise that resolves to Promise<{ active: boolean; timestamp: number; group: number | string; subscribed_email: string; }[]>.
 	 */
 	@formHandler()
 	getNewsletterSubscription(
-		params: { group?: number | 'public' | 'authorized'; user_id?: string },
+		params?: {
+			/** Numeric group, "public", "authorized" or a named newsletter group. Omit or null for every group. */
+			group?: number | 'public' | 'authorized' | (string & {}) | null;
+			user_id?: string;
+		},
 		fetchOptions?: FetchOptions,
 	): Promise<
 		| {
 			active: boolean;
 			timestamp: number;
-			group: number;
+			group: number | string;
 			subscribed_email: string;
 		}[]
 		| DatabaseResponse<{
 			active: boolean;
 			timestamp: number;
-			group: number;
+			group: number | string;
 			subscribed_email: string;
 		}>
 	> {
@@ -2563,6 +2594,7 @@ export default class Skapi {
 	}
 	/**
 	 * Subscribes an email/user to a newsletter group with optional redirect flow.
+	 * Takes a numeric group, "public", "authorized" or the name of a named newsletter group registered with registerNewsletterGroup().
 	 * @param params Request parameters.
 	 * @returns A promise that resolves to Promise<string>.
 	 */
@@ -2570,7 +2602,8 @@ export default class Skapi {
 	subscribeNewsletter(
 		params: Form<{
 			email?: string | string[];
-			group: number | 'public' | 'authorized' | 'admin' | (string & {});
+			/** Numeric group, "public", "authorized" or a named newsletter group. */
+			group: number | 'public' | 'authorized' | (string & {});
 			redirect?: string;
 		}>,
 	): Promise<string> {
