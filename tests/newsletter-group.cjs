@@ -12,8 +12,12 @@
  * What this file pins is the shared validator (`validator.newsletterGroup`), the grammar
  * of NAMED_NEWSLETTERS.md section 1, and the fact that all four methods now speak it:
  *
- *   ^[a-z0-9]{2,20}$, at least one [a-z], and not one of
- *   tp, admin, public, authorized, newsletter, forward, all
+ *   ^[a-z0-9]{2,20}$, at least one [a-z], not an exponent literal (^[0-9]+e[0-9]+$),
+ *   and not one of tp, admin, public, authorized, newsletter, forward, all, true, false, null
+ *
+ * The exponent literal and the three JSON literals are excluded because the backend
+ * JSON parses GET parameters: "1e5" would reach the handler as the number 100000 and
+ * "true", "false", "null" as non strings.
  *
  * "public" and "authorized" are reserved as NAMES and still accepted as the numeric
  * aliases they have always been, which is the one place the two rules meet.
@@ -53,7 +57,7 @@ const NAME = 'bunnyquery';
 
 // Section 1. "public" and "authorized" are on this list, and are still accepted by the
 // four group taking methods because they resolve to 0 and 1 BEFORE the name check.
-const RESERVED = ['tp', 'admin', 'public', 'authorized', 'newsletter', 'forward', 'all'];
+const RESERVED = ['tp', 'admin', 'public', 'authorized', 'newsletter', 'forward', 'all', 'true', 'false', 'null'];
 const RESERVED_NOT_ALIASED = RESERVED.filter(r => r !== 'public' && r !== 'authorized');
 const NAME_ERROR = 'Newsletter group name must be 2-20 lowercase alphanumeric characters, contain a letter, and not be a reserved name.';
 
@@ -279,6 +283,42 @@ async function test(name, fn) {
                 const err = await rejects(() => callers[name](digits), `${name}(${digits})`);
                 assert.strictEqual(err.message, NAME_ERROR, `${name} must refuse "${digits}"`);
             }
+        }
+    });
+
+    await test('an exponent literal is refused, a name that merely mixes "e" and digits is not', async () => {
+        // The backend JSON parses GET parameters, so "1e5" would reach the handler as the
+        // number 100000 and never match the registry row it was meant to name.
+        for (const bad of ['1e5', '0e0']) {
+            for (const name of callerNames) {
+                const err = await rejects(() => callers[name](bad), `${name}(${bad})`);
+                assert.strictEqual(err.message, NAME_ERROR, `${name} must refuse "${bad}"`);
+            }
+            let err = await rejects(() => skapi.registerNewsletterGroup({ group: bad }), `registerNewsletterGroup(${bad})`);
+            assert.strictEqual(err.message, NAME_ERROR, `registerNewsletterGroup must refuse "${bad}"`);
+            err = await rejects(() => skapi.deleteNewsletterGroup({ group: bad }), `deleteNewsletterGroup(${bad})`);
+            assert.strictEqual(err.message, NAME_ERROR, `deleteNewsletterGroup must refuse "${bad}"`);
+        }
+
+        // "e15x" is not a number to JSON, and "bunnyquery" is the everyday case: neither
+        // may be caught by the exclusion.
+        for (const good of ['e15x', 'bunnyquery']) {
+            signOut(skapi);
+            await skapi.subscribeNewsletter({ email: 'visitor@email.com', group: good });
+            assert.strictEqual(wireOf(lastRequest('subscribe-public-newsletter')).group, good, `subscribeNewsletter(${good})`);
+
+            signIn(skapi);
+            await skapi.unsubscribeNewsletter({ group: good });
+            assert.strictEqual(wireOf(lastRequest('subscribe-newsletter')).group, good, `unsubscribeNewsletter(${good})`);
+
+            await skapi.getNewsletterSubscription({ group: good });
+            assert.strictEqual(wireOf(lastRequest('get-newsletter-subscription')).group, good, `getNewsletterSubscription(${good})`);
+
+            await skapi.getNewsletters({ searchFor: 'timestamp', value: 1, condition: '<', group: good });
+            assert.strictEqual(wireOf(lastRequest('get-newsletters')).group, good, `getNewsletters(${good})`);
+
+            await skapi.registerNewsletterGroup({ group: good });
+            assert.strictEqual(wireOf(lastRequest('register-newsletter-group')).group, good, `registerNewsletterGroup(${good})`);
         }
     });
 

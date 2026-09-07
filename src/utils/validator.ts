@@ -163,10 +163,16 @@ function Url(url: string | string[]) {
  * key is not, no "-" because the sending address is "-" delimited and filter_mail
  * splits on it, no "#" because "#" delimits every composite key in this system, and
  * at least one letter so a name can never collide with the "00".."99" vocabulary.
+ *
+ * Two exclusions the grammar alone would admit. The backend JSON parses GET parameters,
+ * so an exponent literal ("1e5") reaches the handler as the number 100000 and the JSON
+ * literals "true", "false" and "null" reach it as non strings; none of them can ever be
+ * a group name.
  */
 const NEWSLETTER_GROUP_NAME = /^[a-z0-9]{2,20}$/;
 const NEWSLETTER_GROUP_NAME_LETTER = /[a-z]/;
-const RESERVED_NEWSLETTER_GROUP_NAMES = ['tp', 'admin', 'public', 'authorized', 'newsletter', 'forward', 'all'];
+const NEWSLETTER_GROUP_NAME_EXPONENT = /^[0-9]+e[0-9]+$/;
+const RESERVED_NEWSLETTER_GROUP_NAMES = ['tp', 'admin', 'public', 'authorized', 'newsletter', 'forward', 'all', 'true', 'false', 'null'];
 
 function newsletterGroup(
     group: any,
@@ -209,6 +215,7 @@ function newsletterGroup(
         typeof group !== 'string'
         || !NEWSLETTER_GROUP_NAME.test(group)
         || !NEWSLETTER_GROUP_NAME_LETTER.test(group)
+        || NEWSLETTER_GROUP_NAME_EXPONENT.test(group)
         || RESERVED_NEWSLETTER_GROUP_NAMES.includes(group)
     ) {
         throw new SkapiError(

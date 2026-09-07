@@ -293,8 +293,10 @@ export async function subscribeNewsletter(
  * Registers a named newsletter group. Only the service owner can call this.<br>
  * The group name is the token subscribers are stored under, and it is also the "-" delimited
  * middle of the group's sending address, so it has to be 2 to 20 lowercase alphanumeric
- * characters, contain at least one letter, and not be one of the reserved names
- * ("tp", "admin", "public", "authorized", "newsletter", "forward", "all").<br>
+ * characters, contain at least one letter, not be an exponent literal such as "1e5" (a GET
+ * parameter is JSON parsed, and that comes back as a number), and not be one of the reserved
+ * names ("tp", "admin", "public", "authorized", "newsletter", "forward", "all", "true",
+ * "false", "null").<br>
  * "restriction" is the access group required to subscribe and to read the group's sent mail:
  * 0 lets anyone subscribe with an e-mail confirmation, 1 requires a signed in user, 2 to 99
  * requires that access group.<br>
