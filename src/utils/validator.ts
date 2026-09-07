@@ -151,6 +151,75 @@ function Url(url: string | string[]) {
     }
 }
 
+/**
+ * NAMED_NEWSLETTERS.md section 1, and the ONLY newsletter group check in the SDK.
+ *
+ * The four group taking methods each grew their own inline check, and two of them
+ * (unsubscribeNewsletter, getNewsletterSubscription) rejected every string, so a
+ * named group could be subscribed to and never removed or read back. The grammar
+ * below is byte for byte the one register_newsletter_group, delete_newsletter_group,
+ * subscribe_newsletter, get_newsletters and get_newsletter_subscription enforce:
+ * lower case only because an e-mail local part is case insensitive while a DynamoDB
+ * key is not, no "-" because the sending address is "-" delimited and filter_mail
+ * splits on it, no "#" because "#" delimits every composite key in this system, and
+ * at least one letter so a name can never collide with the "00".."99" vocabulary.
+ */
+const NEWSLETTER_GROUP_NAME = /^[a-z0-9]{2,20}$/;
+const NEWSLETTER_GROUP_NAME_LETTER = /[a-z]/;
+const RESERVED_NEWSLETTER_GROUP_NAMES = ['tp', 'admin', 'public', 'authorized', 'newsletter', 'forward', 'all'];
+
+function newsletterGroup(
+    group: any,
+    options?: {
+        /** Let null through as "every group". The unsubscribe and the subscription listing both mean that. */
+        allowNull?: boolean;
+        /** Refuse the numeric vocabulary. Registering or deleting a group is only ever about a NAME. */
+        nameOnly?: boolean;
+    }
+): number | string | null {
+    if (group === null || group === undefined) {
+        if (options?.allowNull) {
+            return null;
+        }
+
+        throw new SkapiError('"group" is required.', { code: 'INVALID_PARAMETER' });
+    }
+
+    if (!options?.nameOnly) {
+        // The two aliases the numeric ladder has always answered to. They are on the
+        // reserved list as NAMES, which is why they are resolved before the name check.
+        if (group === 'public') {
+            return 0;
+        }
+
+        if (group === 'authorized') {
+            return 1;
+        }
+
+        if (typeof group === 'number') {
+            if (!Number.isInteger(group) || group < 0 || group > 99) {
+                throw new SkapiError('"group" should be an integer between 0 and 99.', { code: 'INVALID_PARAMETER' });
+            }
+
+            return group;
+        }
+    }
+
+    if (
+        typeof group !== 'string'
+        || !NEWSLETTER_GROUP_NAME.test(group)
+        || !NEWSLETTER_GROUP_NAME_LETTER.test(group)
+        || RESERVED_NEWSLETTER_GROUP_NAMES.includes(group)
+    ) {
+        throw new SkapiError(
+            'Newsletter group name must be 2-20 lowercase alphanumeric characters, contain a letter, and not be a reserved name.',
+            { code: 'INVALID_PARAMETER' }
+        );
+    }
+
+    return group;
+}
+
 function Params<T = any>(
     params: T,
     struct: Record<string, any>,
@@ -211,5 +280,6 @@ export default {
     Password,
     Email,
     Url,
+    newsletterGroup,
     Params
 };

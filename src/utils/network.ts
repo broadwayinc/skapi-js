@@ -148,6 +148,7 @@ async function getEndpoint(dest: string, auth: boolean, stableGateway?: boolean)
         case 'request-username-change':
         case 'send-inquiry':
         case 'register-newsletter-group':
+        case 'delete-newsletter-group':
         case 'newsletter-group-endpoint':
         case 'invitation-list':
         case 'csr':

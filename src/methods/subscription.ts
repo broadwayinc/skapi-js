@@ -3,6 +3,7 @@ import {
     FetchOptions,
     Form,
     Newsletter,
+    NewsletterGroup,
     Subscription,
     RecordData
 } from '../Types';
@@ -163,19 +164,26 @@ export async function unblockSubscriber(params: { user_id: string; }): Promise<'
     return await request.bind(this)('subscription', { unblock: user_id }, { auth: true });
 }
 
-// requires auth
-export async function getNewsletterSubscription(params: {group?: number | 'public' | 'authorized';},
+/**
+ * Fetches the user's newsletter subscriptions.<br>
+ * Accepts a numeric group, "public", "authorized" or a named newsletter group.<br>
+ * When "group" is omitted or null, every group the user is subscribed to is returned.
+ * ```
+ * let subscriptions = await skapi.getNewsletterSubscription({ group: 'bunnyquery' });
+ * ```
+ */
+export async function getNewsletterSubscription(params?: {group?: number | 'public' | 'authorized' | (string & {}) | null;},
 fetchOptions?: FetchOptions): Promise<{
     active: boolean;
     timestamp: number;
-    group: number;
+    group: number | string;
     subscribed_email: string;
 }[]> {
     await this.__connection;
     let isAdmin = await checkAdmin.bind(this)();
 
     params = validator.Params(
-        params,
+        params || {},
         {
             user_id: v => {
                 if (v !== this.__user.user_id && !isAdmin) {
@@ -184,18 +192,7 @@ fetchOptions?: FetchOptions): Promise<{
 
                 return v;
             },
-            group: v => {
-                if (v === 'public') {
-                    v = 0
-                }
-                if (v === 'authorized') {
-                    v = 1;
-                }
-                if (typeof v !== 'number') {
-                    throw new SkapiError('"group" should be type number | "public" | "authorized".', { code: 'INVALID_PARAMETER' })
-                }
-                return v;
-            }
+            group: v => validator.newsletterGroup(v, { allowNull: true })
         }
     );
 
@@ -215,7 +212,10 @@ fetchOptions?: FetchOptions): Promise<{
             subt[0] = subt[0].substring(1);
         }
 
-        let group = parseInt(subt[0]);
+        // A named group's token IS the group name (NAMED_NEWSLETTERS.md section 3), so
+        // parseInt turned every named subscription into NaN. Only a "00".."99" token is
+        // handed back as a number, which is what callers have always compared against.
+        let group: number | string = /^\d+$/.test(subt[0]) ? parseInt(subt[0]) : subt[0];
 
         result.push({
             timestamp: sub['stmp'],
@@ -238,19 +238,21 @@ fetchOptions?: FetchOptions): Promise<{
  * The newsletters you send out will have unsubscribe link at the bottom.<br>
  * Both Signed and unsigned users can subscribe to your newsletter.<br>
  * Signed users can also subscribe to groups other than 0.
- * redirect is for newsletter subscribe confirmation link which it will only be sent to group 0 subscribers.
+ * redirect is for newsletter subscribe confirmation link which it will only be sent to group 0 subscribers.<br>
+ * "group" can also be the name of a named newsletter group registered with registerNewsletterGroup().<br>
+ * An anonymous subscriber may only reach a group whose restriction is 0.
  * ```
  * let params = {
  *      email: 'visitors@email.com'
  * };
- * 
+ *
  * skapi.subscribeNewsletter(params);
  * ```
  */
 export async function subscribeNewsletter(
     form: Form<{
         email?: string;
-        group: number | 'public' | 'authorized' | 'admin' | string; 
+        group: number | 'public' | 'authorized' | (string & {});
         redirect?: string;
     }>
 ): Promise<string> {
@@ -270,12 +272,7 @@ export async function subscribeNewsletter(
                 }
                 return validator.Email(v);
             },
-            group: ['number', 'public', 'authorized', 'admin', (v: string) => {
-                if (typeof v !== 'string' || v.length > 20 || !/^[a-zA-Z0-9]+$/.test(v)) {
-                    throw new SkapiError('"group" should be an alphanumeric string without spaces and less than 20 characters.', { code: 'INVALID_PARAMETER' });
-                }
-                return v;
-            }], 
+            group: (v: any) => validator.newsletterGroup(v),
             redirect: (v: string) => validator.Url(v)
         },
         this.__user ? ['group'] : ['email', 'group']
@@ -292,58 +289,129 @@ export async function subscribeNewsletter(
 //     return response
 // }
 
-// /* depricate from the user api */
-// export async function registerNewsletterGroup(
-//     form: Form<{
-//         group: string;
-//         restriction: number;
-//     }>
-// ): Promise<string> {
-//     await this.__connection;
+/**
+ * Registers a named newsletter group. Only the service owner can call this.<br>
+ * The group name is the token subscribers are stored under, and it is also the "-" delimited
+ * middle of the group's sending address, so it has to be 2 to 20 lowercase alphanumeric
+ * characters, contain at least one letter, and not be one of the reserved names
+ * ("tp", "admin", "public", "authorized", "newsletter", "forward", "all").<br>
+ * "restriction" is the access group required to subscribe and to read the group's sent mail:
+ * 0 lets anyone subscribe with an e-mail confirmation, 1 requires a signed in user, 2 to 99
+ * requires that access group.<br>
+ * A service can hold up to 20 named groups.
+ * ```
+ * skapi.registerNewsletterGroup({
+ *      group: 'bunnyquery',
+ *      restriction: 0,
+ *      name: 'BunnyQuery news'
+ * });
+ * ```
+ */
+export async function registerNewsletterGroup(
+    form: Form<{
+        /** Name of the newsletter group. */
+        group: string;
+        /** Access group required to subscribe. 0 ~ 99. Defaults to 0. */
+        restriction?: number;
+        /** Display label of the group. 60 characters max. */
+        name?: string;
+    }>
+): Promise<'SUCCESS: Group registered successfully.'> {
+    await this.__connection;
 
-//     let params = validator.Params(
-//         form || {},
-//         {
-//             group: (v: string) => {
-//                 if (typeof v !== 'string' || v.length > 20 || !/^[a-zA-Z0-9]+$/.test(v)) {
-//                     throw new SkapiError('"group" should be an alphanumeric string without spaces and less than 20 characters.', { code: 'INVALID_PARAMETER' });
-//                 }
-//                 return v;
-//             },
-//             restriction: (v: number) => {
-//                 if (typeof v !== 'number' || v < 0 || v > 99) {
-//                     throw new SkapiError('"restriction" should be a number between 0 and 99.', { code: 'INVALID_PARAMETER' });
-//                 }
-//                 return v;
-//             }
-//         },
-//         ['group', 'restriction']
-//     );
+    let params = validator.Params(
+        form || {},
+        {
+            // A group is registered by NAME, so the numeric vocabulary is refused here:
+            // 0 ~ 99 already exist and are not registrable.
+            group: (v: any) => validator.newsletterGroup(v, { nameOnly: true }),
+            restriction: (v: any) => {
+                if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 99) {
+                    throw new SkapiError('"restriction" should be a number between 0 and 99.', { code: 'INVALID_PARAMETER' });
+                }
 
-//     return request.bind(this)('register-newsletter-group', params, { auth: true });
-// }
+                return v;
+            },
+            name: (v: any) => {
+                if (typeof v !== 'string' || v.length > 60) {
+                    throw new SkapiError('"name" should be a string of 60 characters or less.', { code: 'INVALID_PARAMETER' });
+                }
 
-// /* depricate from the user api */
-// export async function newsletterGroupEndpoint(params) {
-//     await this.__connection;
-//     let response = await request.bind(this)('newsletter-group-endpoint', params, { auth: true });
+                return v;
+            }
+        },
+        ['group']
+    );
 
-//     return response
-// }
+    return request.bind(this)('register-newsletter-group', params, { auth: true });
+}
 
 /**
- * Only signed users can unsubscribe newsletter via api.
+ * Deletes a named newsletter group. Only the service owner can call this.<br>
+ * Every subscription of the group is removed along with the group itself, so the subscribers
+ * are gone for good.<br>
+ * A group with a very large number of subscribers may need more than one call: the response
+ * says how many subscriptions were removed, and the group is only gone once the call succeeds.
+ * ```
+ * skapi.deleteNewsletterGroup({ group: 'bunnyquery' });
+ * ```
+ * @returns 'SUCCESS: Group has been deleted along with N subscription(s).'
+ */
+export async function deleteNewsletterGroup(
+    form: Form<{
+        /** Name of the newsletter group to delete. */
+        group: string;
+    }>
+): Promise<string> {
+    await this.__connection;
+
+    let params = validator.Params(
+        form || {},
+        {
+            group: (v: any) => validator.newsletterGroup(v, { nameOnly: true })
+        },
+        ['group']
+    );
+
+    return request.bind(this)('delete-newsletter-group', params, { auth: true });
+}
+
+/**
+ * Lists every named newsletter group of the service. Only the service owner can call this.<br>
+ * Each group comes back with its restriction, its display label, its subscriber count and the
+ * e-mail address a newsletter is sent to.<br>
+ * "endpoint" is an empty string when the service has no sender e-mail set, since there is then
+ * no address to mint.
+ * ```
+ * let { groups } = await skapi.newsletterGroupEndpoint();
+ * ```
+ */
+export async function newsletterGroupEndpoint(): Promise<{ groups: NewsletterGroup[]; }> {
+    await this.__connection;
+
+    return request.bind(this)('newsletter-group-endpoint', null, { auth: true });
+}
+
+/**
+ * Only signed users can unsubscribe newsletter via api.<br>
+ * "group" takes a numeric group, "public", "authorized" or the name of a named newsletter group.<br>
  * if form.group is null, unsubscribes from all groups.
+ * ```
+ * skapi.unsubscribeNewsletter({ group: 'bunnyquery' });
+ * ```
  */
 export async function unsubscribeNewsletter(
-    params: { group: number | 'public' | 'authorized' | 'admin' | null; }
+    params: { group: number | 'public' | 'authorized' | (string & {}) | null; }
 ): Promise<string> {
     await this.__connection;
 
     params = validator.Params(
         params,
         {
-            group: ['number', 'public', 'authorized', 'admin']
+            // A named group has to be removable by the same token it was subscribed
+            // with, and null still means every group, which is what the unsubscribe
+            // action has always answered to a missing group.
+            group: (v: any) => validator.newsletterGroup(v, { allowNull: true })
         },
         ['group']
     );
@@ -355,6 +423,19 @@ export async function unsubscribeNewsletter(
     return request.bind(this)('subscribe-newsletter', param_send, { auth: true });
 }
 
+/**
+ * Fetches the newsletters the service has sent out.<br>
+ * "group" takes a numeric group, "public", "authorized" or the name of a named newsletter group.<br>
+ * A named group is readable by anyone its restriction allows, signed in or not.
+ * ```
+ * let newsletters = await skapi.getNewsletters({
+ *      searchFor: 'timestamp',
+ *      value: Date.now(),
+ *      condition: '<',
+ *      group: 'bunnyquery'
+ * });
+ * ```
+ */
 export async function getNewsletters(
     params?: {
         /**
@@ -364,7 +445,7 @@ export async function getNewsletters(
          */
         searchFor: 'message_id' | 'timestamp' | 'read' | 'complaint' | 'subject';
         value: string | number;
-        group: 'public' | 'authorized' | number;
+        group: 'public' | 'authorized' | number | (string & {});
         range?: string | number;
         /**
          * Defaults to '='
@@ -424,8 +505,17 @@ export async function getNewsletters(
         },
         condition: ['>', '>=', '=', '<', '<=', 'gt', 'gte', 'eq', 'lt', 'lte', () => '='],
         group: (x: number | string) => {
-            if (x === 'public') {
+            let group = validator.newsletterGroup(x);
+
+            if (group === 0) {
                 return 0;
+            }
+
+            // A named group carries its own restriction on the registry row, and
+            // NAMED_NEWSLETTERS.md section 5 has the server apply it. A restriction of 0
+            // is readable signed out, so refusing it here would hide a public list.
+            if (typeof group === 'string') {
+                return group;
             }
 
             if (!this.session) {
@@ -436,25 +526,28 @@ export async function getNewsletters(
                 return 1;
             }
 
-            if (typeof x === 'number') {
-                if (!isAdmin && x > parseInt(this.user?.access_group || this.session?.idToken?.payload?.access_group)) {
-                    throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
-                }
-
-                return x;
+            if (!isAdmin && group > parseInt(this.user?.access_group || this.session?.idToken?.payload?.access_group)) {
+                throw new SkapiError('User has no access.', { code: 'INVALID_REQUEST' });
             }
 
-            throw new SkapiError('"group" should be type: number | "public" | "authorized".', { code: 'INVALID_PARAMETER' });
+            return group;
         }
     }, ['searchFor', 'value', 'group']);
 
-    let endpointTarget = params.group === 0 ? 'get-public-newsletters' : 'get-newsletters';
+    // NAMED_NEWSLETTERS.md section 10. Group 0 keeps the public route. A numeric group
+    // above 0 was already refused to a signed out caller, so the only reader that can
+    // reach the public route with a name is one who has no session to authorize with.
+    let endpointTarget = params.group === 0 || (typeof params.group === 'string' && !this.__user)
+        ? 'get-public-newsletters'
+        : 'get-newsletters';
     let mails = await request.bind(this)(
         endpointTarget,
         params,
         Object.assign({ method: 'get', auth: endpointTarget === 'get-public-newsletters' ? !!this.__user : true }, { fetchOptions })
     );
 
+    // The loop below copies only the keys it finds in BOTH tables, so a field listed in
+    // one and missing from the other is silently dropped.
     let remap = {
         'message_id': 'mid',
         'timestamp': 'stmp',
@@ -463,7 +556,8 @@ export async function getNewsletters(
         'subject': 'subj',
         'bounced': 'bnce',
         'url': 'url',
-        'delivered': 'delv'
+        'delivered': 'delv',
+        'group': 'grp'
     };
     let defaults = {
         'message_id': '',
@@ -473,7 +567,11 @@ export async function getNewsletters(
         'subject': '',
         'bounced': '',
         'url': '',
-        'delivered': 0
+        'delivered': 0,
+        // The sent-mail row is keyed by the group and does not carry it as its own
+        // attribute, so the group the caller asked for is what comes back. A backend
+        // that starts projecting "grp" takes over without another change here.
+        'group': params.group
     };
 
     mails.list = mails.list.map(m => {
