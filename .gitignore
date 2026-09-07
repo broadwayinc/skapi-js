@@ -125,3 +125,5 @@ sw.js
 src/main/ref/
 SKAPI.md
 .tmp-validator-check*
+# Claude Code agent worktrees (nested checkouts, never commit)
+.claude/worktrees/
