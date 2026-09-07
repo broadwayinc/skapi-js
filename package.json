@@ -25,7 +25,7 @@
     "build": "npx tsup && node ./src/main/typedoc.js",
     "test:node-imports": "node ./tests/node-import-compatibility.cjs",
     "dev": "npx bns 4000",
-    "test": "node ./tests/tag-encoding.cjs && node ./tests/table-access-group.cjs && node ./tests/require-login.cjs && node ./tests/unique-id-scope.cjs && node ./tests/record-data-json-marker.cjs && node ./tests/crypto-primitives.cjs && node ./tests/encryption.cjs && node ./tests/node-import-compatibility.cjs",
+    "test": "node ./tests/tag-encoding.cjs && node ./tests/table-access-group.cjs && node ./tests/require-login.cjs && node ./tests/unique-id-scope.cjs && node ./tests/record-data-json-marker.cjs && node ./tests/crypto-primitives.cjs && node ./tests/encryption.cjs && node ./tests/newsletter-group.cjs && node ./tests/node-import-compatibility.cjs",
     "test:encryption": "node ./tests/crypto-primitives.cjs && node ./tests/encryption.cjs"
   },
   "repository": {
