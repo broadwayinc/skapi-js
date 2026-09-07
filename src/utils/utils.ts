@@ -561,7 +561,10 @@ function decodeProjectId(service) {
         let owner;
 
         try {
-            region = SERVICE_REGION_KEYS[fromBase62(idSplit[1][0])];
+            // The region character was written by formatServiceId from SERVICE_REGION_ALPHABET,
+            // which is NOT base62 past the ten digits ('a' is index 10 here, 36 in base62), so
+            // it must be read back by its position in that same alphabet.
+            region = SERVICE_REGION_KEYS[SERVICE_REGION_ALPHABET.indexOf(idSplit[1][0])];
             owner = idSplit.slice(2).join("-");
         }
         catch (err) {
