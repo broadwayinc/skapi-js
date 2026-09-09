@@ -1630,6 +1630,17 @@ export async function clientSecretRequestHistory(
 			// `updated` is the time of the latest response/status change.
 			created: item?.stmp,
 			updated: item?.utmp,
+			// When the worker actually began executing this request. `att` is written
+			// immediately before the non-idempotent upstream call fires (it doubles as
+			// the at-most-once gate), so it is the execution start, not the enqueue
+			// time -- `updated - executed` is how long the call took, while
+			// `updated - created` also counts however long the row waited in the queue.
+			//
+			// NORMALISED TO MILLISECONDS: the worker stamps `att` in whole SECONDS,
+			// while `stmp`/`utmp` are ms. Handing all three back on one clock is the
+			// point; a consumer subtracting a raw seconds value from `updated` would be
+			// out by a factor of 1000 and read every call as ~57 years.
+			executed: typeof item?.att === 'number' ? item.att * 1000 : undefined,
 			request_body: item?.reqbdy,
 			expires: item?.expt,
 			status: item.stts,

@@ -601,6 +601,7 @@ export type RequestHistory = {
     error?: any;
     created: number; // timestamp of when the request was created, in milliseconds. Set once and never changes.
     updated: number; // timestamp of the last update of the request status (e.g. when the response arrived), in milliseconds.
+    executed?: number; // timestamp of when the worker actually BEGAN executing the request, in milliseconds. Distinct from `created`, which is when it was enqueued: a request can wait in the queue first, so `updated - executed` is the execution time while `updated - created` also includes the wait. Absent on a request that has not started yet, and on rows written before the worker recorded it.
     request_body: any;
     expires?: number; // timestamp of when the request history will be deleted in epoch time (seconds).
     status: 'pending' | 'running' | 'resolved' | 'failed';
