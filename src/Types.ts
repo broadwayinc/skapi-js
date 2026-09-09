@@ -615,7 +615,7 @@ export type RequestHistory = {
     compact?: boolean; // true on items returned by a `compact: true` listing, so consumers know bodies were deliberately omitted rather than empty.
     poll?: (arg?: {
         latency?: number;
-        onResponse?: (res:any)=>void;
+        onResponse?: (res:any, meta?: { executed?: number })=>void; // meta.executed is when the worker BEGAN executing the request, in milliseconds, when a running poll tick reported it. "res" is the destination's own answer and carries nothing of skapi's, so request-level facts arrive here instead. Absent for a request that began and ended between two ticks; the same value is on the history item as "executed".
         onError?: (err:any)=>void;
         onStream?: (chunk: string, seq: number)=>void;
     }) => Promise<any>; // function to poll the request status until it settles. The promise resolves with the final result of the request: the third-party API response body when it resolves, or the error payload when it fails. It does not resolve with a RequestHistory item, so "created" and "updated" are not on the polled value. A poll stopped by stopClientSecretPolling() resolves with { id, status: 'stopped' }. Optional argument "latency" can be used to set the latency of the polling in milliseconds. Default latency is 1000ms.

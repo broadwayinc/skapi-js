@@ -784,7 +784,7 @@ function pollClientSecretResponse(
 		owner?: any;
 		latency?: number;
 		queue?: string;
-		onResponse?: (res: any) => void;
+		onResponse?: (res: any, meta?: { executed?: number }) => void; // called when the request settles. `meta.executed` is when the worker BEGAN executing it, in milliseconds, when a running poll tick reported it: `res` is the destination's own answer and carries nothing of ours, so request-level facts arrive here instead. Absent for a turn that began and ended between two ticks.
 		onError?: (err: any) => void;
 		/** Presence of this is what makes the poll read the STREAMED text of the
 		 *  request as it arrives. Without it the poll sends no cursor and gets the
@@ -878,6 +878,8 @@ function pollClientSecretResponse(
 		// Consecutive capped reads that handed back nothing new, i.e. the polling
 		// lambda's degraded answer when the chunk table failed on it.
 		let stalled = 0;
+		// Execution start seen on a running poll tick, handed to onResponse at settle.
+		let lastExecuted: number | undefined;
 
 		let tick = async () => {
 			if (settled || ticking) return;
@@ -914,6 +916,16 @@ function pollClientSecretResponse(
 					// only the first read of a turn is its history.
 					if (sink) sink.open();
 					let running = isRunningStatus(result);
+					// The execution start rides on the STATUS envelope, which only a
+					// non-terminal tick returns: a resolved read hands back the caller's own
+					// response body, and that body is theirs, not somewhere to attach our
+					// fields. Remember it here so the settle below can pass it on without a
+					// second request. A turn that begins and ends between two ticks never
+					// shows a running envelope and simply has none, in which case the value
+					// is still on the history row for whoever lists it.
+					if (typeof result?.executed === 'number' && result.executed > 0) {
+						lastExecuted = result.executed;
+					}
 
 					if (result?.more && moved) {
 						// A CAP stopped that read, not the end of the data: the rest is
@@ -956,7 +968,10 @@ function pollClientSecretResponse(
 
 					settled = true;
 					if (onResponse)
-						onResponse(result);
+						// Second argument, so every existing one-parameter callback is
+						// unaffected: `meta` carries what belongs to the REQUEST rather than
+						// to the response, starting with when it began executing.
+						onResponse(result, lastExecuted !== undefined ? { executed: lastExecuted } : undefined);
 					clearInterval(interval);
 					endRealtime();
 					release();
@@ -1282,7 +1297,7 @@ export async function clientSecretRequest(params: {
 	 *  the text at all, so a caller that only wants the outcome can poll the very same
 	 *  request without it and simply get the terminal status. Raw text, never parsed. */
 	onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void;
-	onResponse?: (res: any) => void; // response callback that works on both polling request and regular.
+	onResponse?: (res: any, meta?: { executed?: number }) => void; // response callback that works on both polling request and regular.
 	onError?: (err: any) => void; // error callback that works on both pollubg request error and regular.
 }): Promise<any | void | {
 	id: string; // request id: "stamp:entropy"
@@ -1662,7 +1677,7 @@ export async function clientSecretRequestHistory(
 		if (result.status === 'running' || result.status === 'pending') {
 			result.poll = (arg?: {
 				latency?: number;
-				onResponse?: (res: any) => void;
+				onResponse?: (res: any, meta?: { executed?: number }) => void; // called when the request settles. `meta.executed` is when the worker BEGAN executing it, in milliseconds, when a running poll tick reported it: `res` is the destination's own answer and carries nothing of ours, so request-level facts arrive here instead. Absent for a turn that began and ended between two ticks.
 				onError?: (err: any) => void;
 				/** Reads a STREAMED row's text as it arrives, same as on the dispatch
 				 *  path. A row that already settled has nothing left to poll: read that
@@ -1796,7 +1811,7 @@ export function clientSecretRequestStream(
 		/** Polling interval in ms while the request is still running. Default 1000. */
 		poll?: number;
 		/** Called once with whatever this resolves with. */
-		onResponse?: (res: any) => void;
+		onResponse?: (res: any, meta?: { executed?: number }) => void; // called when the request settles. `meta.executed` is when the worker BEGAN executing it, in milliseconds, when a running poll tick reported it: `res` is the destination's own answer and carries nothing of ours, so request-level facts arrive here instead. Absent for a turn that began and ended between two ticks.
 		/** Called if the read itself fails. */
 		onError?: (err: any) => void;
 		service?: string;
