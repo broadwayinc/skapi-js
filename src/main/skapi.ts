@@ -1806,6 +1806,31 @@ export default class Skapi {
 	}
 	/**
 	 * Lists table metadata with optional table-name filters.
+	 *
+	 * With `table` given and `condition` omitted, the table name is matched
+	 * exactly. With `table` omitted entirely, every table is returned.
+	 * `gte` / `>=` is a prefix search ("table names starting with x"), while
+	 * `gt` / `>` is a lexicographic greater-than that spills past the prefix
+	 * into every later table name.
+	 *
+	 * Every combination:
+	 * - `getTables({})`: every table in the project.
+	 * - `getTables({ table: 'x' })`: exact match on 'x'.
+	 * - `getTables({ table: 'x', condition: 'gte' })`: prefix, every table
+	 *   name starting with 'x'.
+	 * - `getTables({ table: '' })`: errors with '"table" should not be empty.'
+	 * - `getTables({ condition: 'gte' })` with no `table`: errors with
+	 *   '"table" is required for condition.'
+	 *
+	 * When you are looking for a table rather than listing them all, pass
+	 * `gte`: a name recorded two ways, such as "Asian Spice House" and "Asian
+	 * Spice House (alias)", is only found by the prefix. Real table names
+	 * very often carry a leading name shared with the rest of their data set,
+	 * a source or dataset prefix, so an exact match finds one spelling and
+	 * silently misses its siblings while the prefix finds the family. When
+	 * you already know the exact name, omitting `condition` is the exact
+	 * match you want. Omit the key to get the default: an explicit undefined
+	 * or null `condition` is rejected with INVALID_PARAMETER.
 	 * @param query Query object used to filter results.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<Table>>.
@@ -1815,7 +1840,7 @@ export default class Skapi {
 		/** If omitted, fetches the full list of tables. */
 		query?: {
 			table?: string;
-			/** Condition operator of table name. */
+			/** Condition operator of table name. Omitted: exact match on the given table name. `gte` / `>=`: prefix. */
 			condition?: Condition;
 		},
 		fetchOptions?: FetchOptions,
@@ -1824,6 +1849,38 @@ export default class Skapi {
 	}
 	/**
 	 * Lists index metadata and aggregated index statistics for a table.
+	 *
+	 * There is no top-level `condition` here. With no `index` and no `order`,
+	 * every index of the table is listed, which is a prefix read. An `index`
+	 * without a trailing '.' is an exact match on that index name; an `index`
+	 * ending in '.' is a prefix that lists the children of that compound
+	 * index, so "Band." lists Band.name, Band.year.
+	 *
+	 * The only condition is `order.condition`, which requires `order.value`.
+	 * Omitting it matches `order.value` exactly.
+	 *
+	 * Every combination (`table` is required, so there is no no-argument
+	 * form):
+	 * - `getIndexes({ table: 't' })`: every index of table 't'.
+	 * - `getIndexes({ table: 't', index: 'Band' })`: exact match on the index
+	 *   'Band'.
+	 * - `getIndexes({ table: 't', index: 'Band.' })`: prefix, the children of
+	 *   the compound index, so Band.name, Band.year.
+	 * - `getIndexes({ table: 't', order: { by: 'index_name', value: 'B' } })`:
+	 *   exact match against the value.
+	 * - `getIndexes({ table: 't', order: { by: 'total_number' } })`: the whole
+	 *   partition, ordered by that attribute.
+	 * - `order.condition` without `order.value`: errors.
+	 * - no `table`: errors with '"table" is required.'
+	 *
+	 * When you are looking for an index rather than listing them all, use the
+	 * prefix form (no `index`, or a name ending in '.') the way `gte` explores
+	 * in getTables and getTags, since an exact `index` name returns only that
+	 * one entry. Index names very often carry a leading name shared with the
+	 * rest of their data set, so an exact match finds one spelling and
+	 * silently misses its siblings while the prefix finds the family. Omit the
+	 * key to get the default: an explicit undefined or null condition is
+	 * rejected with INVALID_PARAMETER.
 	 * @param query Query object used to filter results.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<Index>>.
@@ -1850,6 +1907,7 @@ export default class Skapi {
 					| 'number_of_records';
 				/** Value to query. */
 				value?: number | boolean | string;
+				/** Requires "value". Omitted: exact match against "value". */
 				condition?: Condition;
 			};
 		},
@@ -1859,6 +1917,36 @@ export default class Skapi {
 	}
 	/**
 	 * Lists tags used in a table with optional tag-name filtering.
+	 *
+	 * With `condition` omitted the default depends on what else you gave:
+	 * `table` and `tag` together match the tag exactly, `table` alone is a
+	 * prefix ('>=') that lists every tag in that table, and neither one
+	 * returns every tag in the project, ordered by record count, descending.
+	 * `gte` / `>=` is a prefix search.
+	 *
+	 * Every combination:
+	 * - `getTags({})`: every tag in the project, ordered by record count,
+	 *   descending.
+	 * - `getTags({ table: 't' })`: every tag in table 't'.
+	 * - `getTags({ table: 't', tag: 'g' })`: exact match on the tag 'g' in
+	 *   table 't'.
+	 * - `getTags({ tag: 'g' })` with no `table`: the tag 'g' across all
+	 *   tables.
+	 * - `getTags({ table: 't', tag: 'g', condition: 'gte' })`: prefix, every
+	 *   tag in 't' starting with 'g'.
+	 * - `getTags({ condition: 'gte' })` with neither `table` nor `tag`: errors
+	 *   with '"table" or "tag" is required for condition.'
+	 *
+	 * When you are looking for a tag rather than listing them all, pass
+	 * `gte`: a name recorded two ways, such as "Asian Spice House" and "Asian
+	 * Spice House (alias)", is only found by the prefix. Real tags very often
+	 * carry a leading name shared with the rest of their data set, a series
+	 * name or an artist recorded once plainly and once with a parenthesised
+	 * alias, so an exact match finds one spelling and silently misses its
+	 * siblings while the prefix finds the family. When you already know the
+	 * exact name, omitting `condition` is the exact match you want. Omit the
+	 * key to get the default: an explicit undefined or null `condition` is
+	 * rejected with INVALID_PARAMETER.
 	 * @param query Query object used to filter results.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<Tag>>.
@@ -1870,7 +1958,7 @@ export default class Skapi {
 			table?: string;
 			/** Tag name */
 			tag?: string;
-			/** String query condition for tag name. */
+			/** String query condition for tag name. Omitted: exact match when `table` and `tag` are both given, prefix when only `table` is given. */
 			condition?: Condition;
 		},
 		fetchOptions?: FetchOptions,
