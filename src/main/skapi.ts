@@ -1093,6 +1093,18 @@ export default class Skapi {
 	}
 	/**
 	 * Queries unique ID records by unique_id or condition filters.
+	 *
+	 * Refused to a signed out caller when the project's `require_login`
+	 * setting is on: REQUIRE_LOGIN from the SDK, INVALID_REQUEST from the
+	 * backend for a caller that skips it. A project that has never set the
+	 * flag counts as ON. This listing used to be served to anyone who knew
+	 * the project id, and called with no `unique_id` it enumerates every
+	 * unique ID in the project.
+	 *
+	 * The listing is NOT filtered by access group: a row is keyed by the
+	 * unique ID alone, so any caller who gets past the sign in check sees the
+	 * IDs of records in every group, each with the record ID it maps to.
+	 * Fetching those records still goes through the usual access checks.
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<UniqueId>>.
@@ -1831,6 +1843,27 @@ export default class Skapi {
 	 * you already know the exact name, omitting `condition` is the exact
 	 * match you want. Omit the key to get the default: an explicit undefined
 	 * or null `condition` is rejected with INVALID_PARAMETER.
+	 *
+	 * Refused to a signed out caller when the project's `require_login`
+	 * setting is on. The SDK throws REQUIRE_LOGIN before the request leaves,
+	 * and the backend refuses the same call with INVALID_REQUEST, so a direct
+	 * HTTP call or an older SDK with no gate is refused too. A project that
+	 * has never set the flag counts as ON, the same default
+	 * `getConnectionInfo()` already reports as `conf.require_login`. Table
+	 * metadata used to be served to anyone who knew the project id, so an
+	 * integration that listed tables with no signed in user now gets an error
+	 * where it used to get a list.
+	 *
+	 * Table NAMES are never filtered: every table in the project is listed,
+	 * whatever access group the records inside it live in. The per access
+	 * group counters are filtered to the caller.
+	 * `number_of_records_in_access_group_public` goes to everyone, a signed in
+	 * user also receives the counters up to and including their own access
+	 * group, and `number_of_records_in_access_group_private` and
+	 * `number_of_records_in_access_group_admin` go to an admin or the project
+	 * owner only. `number_of_records` and `size` are NOT filtered: both stay
+	 * totals over every access group, so `number_of_records` is normally
+	 * larger than the counters you can see add up to.
 	 * @param query Query object used to filter results.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<Table>>.
@@ -1881,6 +1914,21 @@ export default class Skapi {
 	 * silently misses its siblings while the prefix finds the family. Omit the
 	 * key to get the default: an explicit undefined or null condition is
 	 * rejected with INVALID_PARAMETER.
+	 *
+	 * Refused to a signed out caller when the project's `require_login`
+	 * setting is on: REQUIRE_LOGIN from the SDK, INVALID_REQUEST from the
+	 * backend for a caller that skips it. A project that has never set the
+	 * flag counts as ON. Index metadata used to be served to anyone who knew
+	 * the project id.
+	 *
+	 * The listing is NOT filtered by access group, for any caller. A stored
+	 * index row is keyed by table and index name with the access group left
+	 * out of the key, so one row aggregates every group: `number_of_records`,
+	 * `total_number`, `average_number` and the rest span the whole table,
+	 * private and admin records included. Anyone who gets past the sign in
+	 * check therefore reads the project's entire index vocabulary. The
+	 * records behind it stay gated, but an index name is visible to every
+	 * signed in user.
 	 * @param query Query object used to filter results.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<Index>>.
@@ -1947,6 +1995,20 @@ export default class Skapi {
 	 * exact name, omitting `condition` is the exact match you want. Omit the
 	 * key to get the default: an explicit undefined or null `condition` is
 	 * rejected with INVALID_PARAMETER.
+	 *
+	 * Refused to a signed out caller when the project's `require_login`
+	 * setting is on: REQUIRE_LOGIN from the SDK, INVALID_REQUEST from the
+	 * backend for a caller that skips it. A project that has never set the
+	 * flag counts as ON. Tag metadata used to be served to anyone who knew
+	 * the project id.
+	 *
+	 * The listing is NOT filtered by access group, for any caller. A stored
+	 * tag row is keyed by tag and table name with the access group left out
+	 * of the key, so `number_of_records` counts the records in every group
+	 * together. Anyone who gets past the sign in check reads the project's
+	 * entire tag vocabulary, tags carried only by private or admin records
+	 * included. The records behind it stay gated, but a tag name is visible
+	 * to every signed in user, so do not put anything secret in one.
 	 * @param query Query object used to filter results.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<Tag>>.
