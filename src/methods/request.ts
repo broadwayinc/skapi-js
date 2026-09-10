@@ -773,6 +773,7 @@ function pollClientSecretResponse(
 		owner,
 		latency = 1000,
 		queue,
+		seedExecuted,
 		onResponse,
 		onError,
 		onStream,
@@ -784,6 +785,13 @@ function pollClientSecretResponse(
 		owner?: any;
 		latency?: number;
 		queue?: string;
+		/** Execution start already known to the caller, in milliseconds. A poll can
+		 *  only learn this from a RUNNING status envelope, so a poll attached to a row
+		 *  that is about to go terminal -- or already has -- can never see one, and the
+		 *  turn settles with no execution start at all. A listing DOES carry it (`att`
+		 *  on the row), so a poll built off a history item starts out already knowing.
+		 *  A later running tick overwrites this with the row's own current value. */
+		seedExecuted?: number;
 		onResponse?: (res: any, meta?: { executed?: number }) => void; // called when the request settles. `meta.executed` is when the worker BEGAN executing it, in milliseconds, when a running poll tick reported it: `res` is the destination's own answer and carries nothing of ours, so request-level facts arrive here instead. Absent for a turn that began and ended between two ticks.
 		onError?: (err: any) => void;
 		/** Presence of this is what makes the poll read the STREAMED text of the
@@ -879,7 +887,11 @@ function pollClientSecretResponse(
 		// lambda's degraded answer when the chunk table failed on it.
 		let stalled = 0;
 		// Execution start seen on a running poll tick, handed to onResponse at settle.
-		let lastExecuted: number | undefined;
+		// Seeded from the caller when it already knows (a poll built off a listing),
+		// because a row that goes terminal before this poll's first read never shows a
+		// running envelope and the value would otherwise be unreachable from here.
+		let lastExecuted: number | undefined =
+			typeof seedExecuted === 'number' && seedExecuted > 0 ? seedExecuted : undefined;
 
 		let tick = async () => {
 			if (settled || ticking) return;
@@ -1690,6 +1702,10 @@ export async function clientSecretRequestHistory(
 				owner: owner,
 				latency: arg?.latency || 1000,
 				queue: item?.qid,
+				// The listing already read `att` off the row (see `executed` above), so
+				// hand it straight to the poll rather than making the poll re-discover it
+				// from a running envelope it may never get to see.
+				seedExecuted: result.executed,
 				onResponse: arg?.onResponse,
 				onError: arg?.onError,
 				onStream: arg?.onStream
