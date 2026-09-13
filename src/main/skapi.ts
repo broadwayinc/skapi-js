@@ -109,7 +109,6 @@ import {
 	updateProfile,
 	getUsers,
 	lastVerifiedEmail,
-	requestUsernameChange,
 	consumeTicket,
 	getConsumedTickets,
 	getTickets,
@@ -1556,7 +1555,17 @@ export default class Skapi {
 	 */
 	@formHandler()
 	inviteUser(
-		params: UserAttributes & { openid_id?: string; access_group?: number },
+		params: UserAttributes & {
+			/** Required. The invitation is sent here. */
+			email: string
+			/**
+			 * Optional. Becomes the invited account's PERMANENT login username.
+			 * The e-mail logs them in too.
+			 */
+			username?: string
+			openid_id?: string
+			access_group?: number
+		},
 		options?: {
 			confirmation_url?: string;
 			email_subscription?: boolean;
@@ -1576,7 +1585,17 @@ export default class Skapi {
 	 */
 	@formHandler()
 	createAccount(
-		params: UserAttributes & { email: string; password: string; access_group?: number },
+		params: UserAttributes & {
+			/** Required. Always. */
+			email: string
+			password: string
+			/**
+			 * Optional. Becomes the account's PERMANENT login username. The
+			 * e-mail logs the account in as well.
+			 */
+			username?: string
+			access_group?: number
+		},
 	): Promise<UserProfile & { email_admin: string; username: string }> {
 		return createAccount.bind(this)(params);
 	}
@@ -2279,20 +2298,6 @@ export default class Skapi {
 		return getNewsletterSubscription.bind(this)(params, fetchOptions);
 	}
 	/**
-	 * Requests a username change confirmation flow for the current user.
-	 * @param params Request parameters.
-	 * @returns A promise that resolves to Promise<'SUCCESS: confirmation e-mail has been sent.'>.
-	 */
-	@formHandler()
-	requestUsernameChange(params: {
-		/** Redirect URL when user clicks on the link. */
-		redirect?: string;
-		/** username(e-mail) user wish to change to. */
-		username: string;
-	}): Promise<'SUCCESS: confirmation e-mail has been sent.'> {
-		return requestUsernameChange.bind(this)(params);
-	}
-	/**
 	 * Reports whether client-side record encryption is on, and whether it is
 	 * currently unlocked.
 	 * @returns { status: 'disabled' | 'locked' | 'unlocked', reason?, user_id?, fingerprint? }
@@ -2547,7 +2552,17 @@ export default class Skapi {
 	 */
 	@formHandler({ preventMultipleCalls: true })
 	signup(
-		params: Form<UserAttributes & { password: String; username?: string }>,
+		params: Form<UserAttributes & {
+			/** Required. Always. */
+			email: string
+			password: String
+			/**
+			 * Optional. When given it becomes the account's PERMANENT login
+			 * username and can never be changed. The e-mail logs the account in
+			 * as well, and keeps doing so after the e-mail is changed.
+			 */
+			username?: string
+		}>,
 		option?: {
 			/**
 			 * When true, the service will send out confirmation E-Mail.

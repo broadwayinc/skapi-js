@@ -103,7 +103,17 @@ export async function deleteAccount(form: Form<{
 }
 
 export async function inviteUser(
-    form: Form<UserAttributes & { openid_id: string; access_group: number; } & { service?: string; owner?: string; }>,
+    form: Form<UserAttributes & {
+        /** Required. The invitation is sent here. */
+        email: string;
+        /**
+         * Optional. Becomes the invited account's PERMANENT login username.
+         * The e-mail logs them in too, so the invitation e-mail stays valid.
+         */
+        username?: string;
+        openid_id: string;
+        access_group: number;
+    } & { service?: string; owner?: string; }>,
     options?: {
         confirmation_url?: string;
         email_subscription?: boolean;
@@ -225,7 +235,7 @@ export async function inviteUser(
 
 export async function createAccount(
     form: Form<
-        UserAttributes & { access_group: number; password: string; } &
+        UserAttributes & { email: string; access_group: number; password: string; } &
         { service?: string; owner?: string; }
     >,
 ): Promise<UserProfile & { email_admin: string; username: string; }> {

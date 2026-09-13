@@ -876,9 +876,15 @@ export async function recoverAccount(
 
 export async function login(
     form: Form<{
-        /** if given, username will be used instead of email. */
+        /**
+         * The account's permanent login username, when it was created with one.
+         * Either this or the e-mail resolves the account.
+         */
         username?: string;
-        /** E-Mail for signin. 64 character max. */
+        /**
+         * The account's current login e-mail. 64 character max.
+         * Required unless 'username' is given.
+         */
         email: string;
         /** Password for signin. Should be at least 6 characters. */
         password: string;
@@ -892,10 +898,14 @@ export async function login(
 
     await this.__authConnection;
 
+    // The normalized (lowercased) form, kept aside rather than substituted. See
+    // the fallback below for why it is not simply assigned over params.email.
+    let normalizedEmail = null;
+
     if (params.email) {
         // incase user uses email instead of username
         try {
-            validator.Email(params.email);
+            normalizedEmail = validator.Email(params.email);
         } catch (err) {
             params.username = params.email;
             delete params.email;
@@ -906,15 +916,45 @@ export async function login(
         throw new SkapiError('Least one of "username" or "email" is required.', { code: 'INVALID_PARAMETER' });
     }
 
-    const resolved = await authentication.bind(this)().authenticateUser(params.username || params.email, params.password);
+    const typed = params.username || params.email;
 
-    return resolved;
+    try {
+        return await authentication.bind(this)().authenticateUser(typed, params.password);
+    }
+    catch (err: any) {
+        // The e-mail alias is always md5(LOWERCASED e-mail), but an account whose
+        // USERNAME happens to be an e-mail-shaped mixed-case string is resolved by
+        // the raw string (signup does not lowercase 'username'). So the raw form is
+        // tried first, and the normalized form only as a fallback: capitalising an
+        // e-mail on a phone keyboard still signs in, and no existing account loses
+        // the handle it already had.
+        // Only retried for "no such user / bad credentials". A signup-confirmation
+        // or disabled-account error means the account WAS found, so it stands.
+        let retryable = err?.code === 'UserNotFoundException' || err?.code === 'NotAuthorizedException';
+
+        if (retryable && normalizedEmail && normalizedEmail !== typed) {
+            return await authentication.bind(this)().authenticateUser(normalizedEmail, params.password);
+        }
+
+        throw err;
+    }
     // INVALID_REQUEST: the account has been blacklisted.
     // NOT_EXISTS: the account does not exist.
 }
 
 export async function signup(
-    form: Form<UserAttributes & { password: String; username?: string; }>,
+    form: Form<UserAttributes & {
+        /** Required. Always. */
+        email: string;
+        password: String;
+        /**
+         * Optional. When given it becomes the account's PERMANENT login username
+         * and can never be changed. The e-mail then logs the account in as well,
+         * and keeps doing so after the e-mail is changed.
+         * Leave it out and the e-mail alone is the login ID.
+         */
+        username?: string;
+    }>,
     option?: {
         signup_confirmation?: boolean | string;
         email_subscription?: boolean;
@@ -1123,6 +1163,22 @@ export async function signup(
                 Value: params[k]
             }));
         }
+    }
+
+    // Both the username and the e-mail have to sign this account in. The Cognito
+    // Username is md5(username) and can never change, so the e-mail is registered
+    // as the pool's preferred_username alias: the same slot updateProfile()
+    // repoints whenever the e-mail changes, which is what keeps e-mail login
+    // following the current address.
+    // Skipped when no username was supplied, because the Cognito Username then
+    // ALREADY is {service}-md5(email) and a second handle would be the same string.
+    // params.email is the value validator.Email() returned, so it is lowercased,
+    // which is what login() has to hash to match.
+    if (params.username && params.email) {
+        attributeList.push(new CognitoUserAttribute({
+            Name: 'preferred_username',
+            Value: this.service + '-' + MD5.hash(params.email)
+        }));
     }
 
     await authentication.bind(this)().signup(newUser.cognitoUsername, params.password, attributeList);
@@ -1677,27 +1733,4 @@ export async function lastVerifiedEmail(params?: {
         return this.user;
     }
     return res;
-}
-
-/**
- * Not official. Bleeding edge.<br>
- * Requests username(e-mail) change.<br>
- * skapi server will send username change confirmation e-mail to user.<br>
- * Username will not be changed when the user did not confirm.<br>
- * Confirmation e-mail is valid within 24 hours.
- */
-export async function requestUsernameChange(params: {
-    /** Redirect URL when user clicks on the link. */
-    redirect?: string;
-    /** username(e-mail) user wish to change to. */
-    username: string;
-}): Promise<'SUCCESS: confirmation e-mail has been sent.'> {
-    await this.__connection;
-
-    params = validator.Params(params, {
-        username: validator.Email,
-        redirect: validator.Url
-    }, ['username']);
-
-    return await request.bind(this)('request-username-change', params, { auth: true });
 }
