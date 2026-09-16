@@ -26,6 +26,9 @@ import {
 	UniqueId,
 	Subscription,
     RequestHistory,
+	Ticket,
+	TicketCondition,
+	TicketAction,
 } from '../Types';
 import { CognitoUserPool } from 'amazon-cognito-identity-js';
 import SkapiError from './error';
@@ -1174,6 +1177,23 @@ export default class Skapi {
 	openIdLogin(params: {
 		token: string;
 		id: string;
+		/**
+		 * Merges this OpenID identity into the existing account whose ORIGINAL login
+		 * ID (its username, or the e-mail it was created with when it has none) is
+		 * this OpenID account's login ID. `true` merges; an array of OpenID attribute
+		 * names also copies those attributes to the account. Merging replaces the
+		 * account's password.
+		 *
+		 * Never merges through an e-mail login alias. openIdLogin() fails with EXISTS,
+		 * with or without merge, when this OpenID account's login ID is the verified
+		 * e-mail login of another account of the project (an account created with a
+		 * username, or one whose e-mail was changed to it), and in the rare case the
+		 * alias cannot be removed safely. Any other account holding that login ID as an
+		 * e-mail login alias has not verified the e-mail, so it loses the alias instead
+		 * and a new OpenID account is created for this login ID: the two accounts then
+		 * share the e-mail address. The alias is removed before signup restrictions are
+		 * checked, so it is gone even when the login is then refused for another reason.
+		 */
 		merge?: boolean | string[];
 		template?: {
 			/** message_id of the template to use for the welcome e-mail (sent the first time this OpenID user account is created). */
@@ -1428,31 +1448,44 @@ export default class Skapi {
 	}
 
 	/**
-	 * Consumes a one-time ticket and executes the ticketed request payload.
+	 * Consumes a ticket: calls its endpoint with `data`, so the ticket's condition is checked and
+	 * its actions run. An anonymous POST goes to `/tp/`, an anonymous GET to `/tg/` with `data`
+	 * as the query string, and a signed-in consumption (`auth: true`) to `/tpa/`, which is POST only.
+	 *
+	 * A failed consumption rejects with a SkapiError: `err.code` is the ticket error code and
+	 * `err.cause` the flat TicketError body (`err.cause.stage`, `err.cause.action`, `err.cause.detail`).
+	 * This holds when the ticket answers HTTP 200 as well (`return200`): the body is inspected, not the status.
 	 * @param params Request parameters.
-	 * @returns A promise that resolves to Promise<any>.
+	 * @returns A promise that resolves to Promise<{ ticket_id: string; consume_id: string; user_id: string; is_test: boolean; timestamp: number; hash: string; }>.
 	 */
 	@formHandler()
 	consumeTicket(params: {
+		/** ID of the ticket to consume. */
 		ticket_id: string;
-		method: string; // GET | POST
+		/** "GET" or "POST". */
+		method: 'GET' | 'POST';
+		/** Consume as the signed-in user. POST only. */
 		auth?: boolean;
+		/** The POST body, or the query string of a GET. */
 		data?: {
 			[key: string]: any;
 		};
-	}): Promise<any> {
+	}): Promise<{ ticket_id: string; consume_id: string; user_id: string; is_test: boolean; timestamp: number; hash: string; }> {
 		return consumeTicket.bind(this)(params);
 	}
 
 	/**
-	 * Lists consumed tickets with optional filters and pagination.
+	 * Lists the tickets the signed-in user has consumed, with optional filters and pagination.
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<any>>.
 	 */
 	@formHandler()
 	getConsumedTickets(
-		params: { ticket_id?: string },
+		params: {
+			/** Only the consumptions of this ticket. */
+			ticket_id?: string;
+		},
 		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<any>> {
 		return getConsumedTickets.bind(this)(params, fetchOptions);
@@ -1460,13 +1493,17 @@ export default class Skapi {
 
 	/**
 	 * Lists issued tickets with optional filters and pagination.
+	 * The project owner gets the full ticket (condition, actions, count, expiry, per-user limit); any other signed-in user gets `ticket_id`, `description`, `count`, `time_to_live` and `timestamp` only.
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<any>>.
 	 */
 	@formHandler()
 	getTickets(
-		params: { ticket_id?: string },
+		params: {
+			/** Absent = every ticket. "<id>" = that ticket. "#<id>#" = the consumption log of that ticket (project owner only). */
+			ticket_id?: string;
+		},
 		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<any>> {
 		return getTickets.bind(this)(params, fetchOptions);
@@ -1548,29 +1585,51 @@ export default class Skapi {
 	}
 
 	/**
-	 * Invites a user by email with optional attributes and invitation email options.
-	 * @param params Payload for the request.
-	 * @param options Optional behavior configuration.
+	 * Invites a user by e-mail. The invitation carries a temporary password and a
+	 * link to accept, valid for 7 days. Admin only (access_group 90 and above).
+	 *
+	 * Every profile attribute passed in `params` is written to the account when the
+	 * invitation is sent and is kept unchanged when the user accepts; accepting only
+	 * activates the account and marks its e-mail verified.
+	 *
+	 * Refused with EXISTS when the e-mail, or the username when one is given, is
+	 * already another account's login ID, and with EXISTS "User is already
+	 * invited." while the e-mail has a pending invitation.
+	 * @param params The invited user's e-mail, and optionally their profile.
+	 * @param options Where to send them after accepting, newsletter opt-in, and a custom template.
 	 * @returns A promise that resolves to Promise<'SUCCESS: Invitation has been sent. (User ID: xxx...)'>.
 	 */
 	@formHandler()
 	inviteUser(
 		params: UserAttributes & {
-			/** Required. The invitation is sent here. */
+			/** Required. The invitation, with the temporary password and the link to accept, is sent here. */
 			email: string
 			/**
-			 * Optional. Becomes the invited account's PERMANENT login username.
-			 * The e-mail logs them in too.
+			 * Optional. Becomes the invited account's PERMANENT login username and
+			 * can never be changed. The e-mail also logs the account in once the
+			 * invitation is accepted (best effort), not while it is pending. Refused
+			 * with EXISTS when the username or the e-mail is already another
+			 * account's login ID.
 			 */
 			username?: string
+			/** ID of an OpenID logger registered in the project, to link the invited account to it. */
 			openid_id?: string
+			/** 1~99. Defaults to 1. 99 is admin level. */
 			access_group?: number
 		},
 		options?: {
+			/** URL the user is taken to after accepting. Must not contain "#". */
 			confirmation_url?: string;
+			/**
+			 * Subscribe the user to Service Email (group 1) once they accept.
+			 * Requires `confirmation_url`. Defaults to false.
+			 */
 			email_subscription?: boolean;
+			/** A custom HTML template for this invitation e-mail. Both fields are required. */
 			template?: {
+				/** URL of the HTML template. Must include the required invitation placeholders. */
 				url: string;
+				/** Subject line of the e-mail. */
 				subject: string;
 			};
 		},
@@ -1580,6 +1639,9 @@ export default class Skapi {
 
 	/**
 	 * Creates a user account directly from admin context.
+	 *
+	 * Refused with EXISTS when the e-mail, or the username when one is given, is
+	 * already another account's login ID.
 	 * @param params Payload for the request.
 	 * @returns A promise that resolves to Promise<UserProfile & { email_admin: string; username: string; }>.
 	 */
@@ -1590,8 +1652,11 @@ export default class Skapi {
 			email: string
 			password: string
 			/**
-			 * Optional. Becomes the account's PERMANENT login username. The
-			 * e-mail logs the account in as well.
+			 * Optional. Becomes the account's PERMANENT login username, which
+			 * always logs the account in. The e-mail is created unverified, so it
+			 * logs the account in only once the user verifies it with verifyEmail()
+			 * after logging in with the username. Refused with EXISTS when the
+			 * username or the e-mail is already another account's login ID.
 			 */
 			username?: string
 			access_group?: number
@@ -1616,6 +1681,29 @@ export default class Skapi {
 	/**
 	 * Updates another user's profile attributes from admin context.
 	 * Requires the target user's user_id plus at least one attribute to update.
+	 *
+	 * Never the caller's own account, the project owner and access group 99 admins
+	 * included: the caller's own user_id is refused with INVALID_REQUEST and
+	 * 'Cannot modify attributes of the current user.' before any request is sent.
+	 * Change your own profile with updateProfile() without user_id.
+	 *
+	 * An admin in access groups 90 ~ 98 cannot update an account whose access group
+	 * is at or above their own, a disabled account included (it counts at the group
+	 * it had): refused with INVALID_REQUEST and 'No access to modify admin.', and
+	 * nothing is written. Access group 99 admins and the project owner are not limited.
+	 *
+	 * A changed e-mail is written unverified: this method never marks an e-mail
+	 * verified, for an admin in access groups 90 ~ 98 or anyone else. The new e-mail
+	 * logs the account in only once the user verifies it with verifyEmail(). The
+	 * previous e-mail stops logging in when the change is written, unless it is the
+	 * e-mail an account without a username was created with, which stays its login
+	 * ID. A username always logs in. The change is refused with EXISTS and
+	 * 'E-mail "user@email.com" is already a login ID in this service.' when the
+	 * e-mail is a login ID another account of the project was granted: the address
+	 * that account was created or invited with, or one it has verified. An e-mail
+	 * login another account holds without having verified the address blocks
+	 * nothing; it is removed, and that account keeps the login ID it was created
+	 * with.
 	 * @param params Target user_id and the attributes to update.
 	 * @returns A promise that resolves to Promise<'SUCCESS: User attributes updated.'>.
 	 */
@@ -2269,6 +2357,7 @@ export default class Skapi {
 	/**
 	 * Gets newsletter subscription status for the requested groups.
 	 * Takes a numeric group, "public", "authorized" or a named newsletter group. Omit the group for every group the user is subscribed to.
+	 * The project owner and admins (access groups 90 ~ 99) get every subscriber of the group instead, and can pass "email" to get only the subscribers whose e-mail address starts with it.
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to Promise<{ active: boolean; timestamp: number; group: number | string; subscribed_email: string; }[]>.
@@ -2278,7 +2367,10 @@ export default class Skapi {
 		params?: {
 			/** Numeric group, "public", "authorized" or a named newsletter group. Omit or null for every group. */
 			group?: number | 'public' | 'authorized' | (string & {}) | null;
+			/** Another user's subscriptions. Project owner only. */
 			user_id?: string;
+			/** Owner and admins only. Returns the subscribers of "group" whose e-mail address starts with this text. Requires "group", cannot be used with "user_id". */
+			email?: string;
 		},
 		fetchOptions?: FetchOptions,
 	): Promise<
@@ -2522,9 +2614,13 @@ export default class Skapi {
 	@formHandler({ preventMultipleCalls: true })
 	login(
 		params: Form<{
-			/** if given, username will be used instead of email. */
+			/** if given, username will be used instead of email. A username always logs its account in. */
 			username?: string;
-			/** E-Mail for signin. 64 character max. */
+			/**
+			 * E-Mail for signin. 64 character max. The e-mail an account without a username
+			 * was created with always logs it in. Any other e-mail (that of an account created
+			 * with a username, or a changed e-mail) logs in only once it is verified (verifyEmail()).
+			 */
 			email: string;
 			/** Password for signin. Should be at least 6 characters. */
 			password: string;
@@ -2558,8 +2654,13 @@ export default class Skapi {
 			password: String
 			/**
 			 * Optional. When given it becomes the account's PERMANENT login
-			 * username and can never be changed. The e-mail logs the account in
-			 * as well, and keeps doing so after the e-mail is changed.
+			 * username, which always logs the account in and can never be changed.
+			 * The e-mail also logs the account in, but only once it is verified:
+			 * opening the signup confirmation link verifies it, and without signup
+			 * confirmation the user verifies it with verifyEmail() after logging in
+			 * with the username. After an e-mail change the new e-mail logs in once
+			 * it is verified the same way. E-mail login is not enabled while that
+			 * e-mail is already another account's login ID.
 			 */
 			username?: string
 		}>,
@@ -2572,7 +2673,7 @@ export default class Skapi {
 			 */
 			signup_confirmation?: boolean | string;
 			/**
-			 * When true, user will be subscribed to the service newsletter (group 1) once they are signed up.
+			 * When true, user will be subscribed to Service Email (group 1) once they are signed up.
 			 * User's signup confirmation is required for this parameter.
 			 * Default is false.
 			 */
@@ -2616,6 +2717,13 @@ export default class Skapi {
 	}
 	/**
 	 * Verifies the user email address with a confirmation code.
+	 * Call it without `code` to send the code, then with the code the user received.
+	 * Once the e-mail is verified it also logs the account in (a few seconds after
+	 * the verification succeeds) when the account was created with a username or its
+	 * e-mail was changed, unless that e-mail is a login ID another account of the
+	 * project was granted: the address that account was created or invited with, or
+	 * one it has verified. An e-mail login another account holds without having
+	 * verified the address is removed, and this account gets the login.
 	 * @param params Payload for the request.
 	 * @returns A promise that resolves to Promise<string>.
 	 */
@@ -2668,6 +2776,19 @@ export default class Skapi {
 	}
 	/**
 	 * Updates profile attributes for the authenticated user.
+	 *
+	 * A changed e-mail is written unverified, and it logs the account in only once
+	 * it is verified with verifyEmail(): the login follows a few seconds after the
+	 * verification succeeds. The previous e-mail stops logging in right after the
+	 * change, unless it is the e-mail an account without a username was created with,
+	 * which stays its login ID. A username always logs in. E-mail login is not added
+	 * while the new e-mail is a login ID another account of the project was granted:
+	 * the address that account was created or invited with, or one it has verified.
+	 * An e-mail login another account holds without having verified the address is
+	 * removed instead, and this account gets the login.
+	 *
+	 * With another user's `user_id` it updates that user from admin context and
+	 * follows the rules of updateUserAttributes(). Your own `user_id` is ignored.
 	 * @param params Payload for the request.
 	 * @returns A promise that resolves to Promise<UserProfile>.
 	 */

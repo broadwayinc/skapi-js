@@ -707,3 +707,206 @@ export type Subscription = {
     get_notified: boolean;
     get_email: boolean;
 }
+
+/** Comparison operator of a ticket condition row. The word forms are normalized to the symbols on registration. For a string value, '>=' means "starts with". */
+export type TicketConditionOperator = '=' | '!=' | '>' | '>=' | '<' | '<=' | 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte';
+
+/**
+ * One row of a ticket condition list (`headers`, `data`, `params`, `user`, `match`).
+ * Rows with the same key are alternatives (any one matching satisfies the key), rows with
+ * different keys must all match. A comparison between incompatible types is a mismatch.
+ */
+export type TicketConditionRow = {
+    /**
+     * `data` and `params` rows: a path into the request, such as "data[object][id]" (the leading
+     * "data" there is the request's own key, not the row list). `headers` rows: the header name,
+     * matched case-insensitively. `user` rows: the consumer attribute name. Never templated.
+     */
+    key: string;
+    /** Absent, with no `value`, on a capture-only row: it never fails and only fills `placeholder`. */
+    operator?: TicketConditionOperator;
+    /** A literal, never templated. A list passes when any member matches. */
+    value?: any;
+    /** `data` and `params` rows only. When the row matches, the value at `key` in the request data is replaced by this before anything else reads it. */
+    setValueWhenMatch?: any;
+    /** `data` and `params` rows only. Remembers the value at `key` under this name for the actions ("placeholder[NAME]"). Must match ^[A-Za-z_][A-Za-z0-9_]*$. */
+    placeholder?: string;
+}
+
+/** An HTTP call whose response must match. `url`, `headers`, `data` and `params` are templated like an action's `exe`; `match` rows are not. */
+export type TicketRequestCondition = {
+    /** http:// or https:// with a hostname. No IP literal, no userinfo, never under the api domain. */
+    url: string;
+    method?: 'GET' | 'POST';
+    headers?: { [name: string]: string };
+    /** Sent as JSON when a content-type header says application/json, else form encoded. */
+    data?: any;
+    params?: { [key: string]: any };
+    /** Rows matched against the response body. */
+    match?: TicketConditionRow[];
+}
+
+/** What a consumption request must look like before the ticket's actions run. Evaluated in the order the keys are listed here; the first failure is the reported one. */
+export type TicketCondition = {
+    /** Answer HTTP 200 even when the consumption fails. For webhooks that retry on errors. */
+    return200?: boolean;
+    /** Absent = both allowed. */
+    method?: 'GET' | 'POST';
+    /**
+     * Verified first, over the raw request body. `secret` names a Secret Key of the project
+     * (never a literal). "stripe" reads "t=<ts>,v1=<hex>" from the header; "hmac-sha256" expects
+     * the hex HMAC of the body, with an optional "sha256=" prefix.
+     */
+    signature?: { header: string; secret: string; scheme: 'stripe' | 'hmac-sha256' };
+    ip?: { operator: TicketConditionOperator; value: string | string[] };
+    user_agent?: { operator: TicketConditionOperator; value: string | string[] };
+    headers?: TicketConditionRow[];
+    /** Rows against the POST body. On a GET the body root is {}. */
+    data?: TicketConditionRow[];
+    /** Rows against the GET query string. On a POST the query root is {}. */
+    params?: TicketConditionRow[];
+    /** Rows against the consumer's attributes (user_id, email, access_group, ...). Signed-in consumption only. */
+    user?: TicketConditionRow[];
+    /** Record ID the consumer must own or have been granted. Signed-in consumption only. */
+    record_access?: string;
+    request?: TicketRequestCondition;
+}
+
+/** The subset of a condition a `req` action can evaluate against its response. A response has no method, query string or status policy. */
+export type TicketResponseCondition = Pick<TicketCondition, 'headers' | 'data' | 'user' | 'record_access' | 'request'>;
+
+/**
+ * One step of a ticket's action chain. Actions run in order; each one's result is readable by
+ * the next as "result[...]". `exe` is templated right before the action runs: a string that is
+ * a whole path ("data[object][id]", "placeholder[NAME]") keeps the value's type, "${...}" inside
+ * text becomes a string, bare words are literal. When an action fails its `err` chain runs
+ * (with "error[code]", "error[message]", ...) and the consumption stops. Nothing is rolled back.
+ */
+export type TicketAction =
+    | {
+        /** Update a Skapi service. Internal: registration refuses it unless the caller is a Skapi super master. */
+        act: 'srvc';
+        exe: { [key: string]: any };
+        err?: TicketAction[];
+    }
+    | {
+        /** Set the access group of a user. */
+        act: 'acsg';
+        exe: {
+            /** 1 ~ 99, or "admin". */
+            group: number | 'admin';
+            /** Blank = the consumer (signed-in consumption only). The project owner cannot be a target. */
+            user_id?: string;
+        };
+        err?: TicketAction[];
+    }
+    | {
+        /** Grant private access to a record. */
+        act: 'acsr';
+        exe: {
+            /** A record ID, not a unique ID. */
+            record_id: string;
+            /** Blank = the consumer. */
+            user_id?: string | string[];
+        };
+        err?: TicketAction[];
+    }
+    | {
+        /** Post a record. Everything but `user_id` is the payload postRecord() sends, so the same rules apply. A `unique_id` makes a retried webhook update the same record instead of adding one. */
+        act: 'pstr';
+        exe: {
+            table: string | {
+                name: string;
+                access_group?: number | 'public' | 'authorized' | 'admin' | 'private';
+                subscription?: NonNullable<PostRecordConfig['table']>['subscription'];
+            };
+            data?: any;
+            index?: { name: string; value: string | number | boolean };
+            tags?: string[];
+            unique_id?: string;
+            /** Update instead of create. */
+            record_id?: string;
+            reference?: string;
+            readonly?: boolean;
+            source?: PostRecordConfig['source'];
+            /** Post as this user instead of the project owner. */
+            user_id?: string;
+        };
+        err?: TicketAction[];
+    }
+    | {
+        /** HTTP request with its own response condition and nested chain. Result: the parsed response body. */
+        act: 'req';
+        exe: {
+            /** http:// or https:// with a hostname. No IP literal, no userinfo, never under the api domain. Redirects are not followed. */
+            url: string;
+            /** Default GET. */
+            method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+            headers?: { [name: string]: string };
+            /** POST and PUT body. Sent as JSON when a content-type header says application/json, else form encoded. */
+            data?: any;
+            /** Query string. */
+            params?: { [key: string]: any };
+            /** Legacy. Rows matched against the response body like `condition.data`. */
+            match?: TicketConditionRow[];
+            /** Evaluated against the response. Captures land in the shared placeholder pool. */
+            condition?: TicketResponseCondition;
+            /** Nested chain. Its paths read the response body. */
+            actions?: TicketAction[];
+        };
+        err?: TicketAction[];
+    };
+
+/** An issued ticket as getTickets() and registerTicket() return it. */
+export type Ticket = {
+    ticket_id: string;
+    description?: string;
+    /** Remaining consumptions. Absent = unlimited. */
+    count?: number;
+    /** Absolute expiry in ms since epoch. Absent = never. */
+    time_to_live?: number;
+    /** true = once per user, n = n times. Absent or 0 = unlimited. Only enforced for signed-in consumers. */
+    limit_per_user?: boolean | number;
+    /** Created at (ms). */
+    timestamp: number;
+    /** Last registered at (ms). */
+    updated?: number;
+    condition?: TicketCondition;
+    actions?: TicketAction[];
+}
+
+export type TicketErrorCode =
+    | 'INVALID_SERVICE'
+    | 'SERVICE_DISABLED'
+    | 'TICKET_NOT_FOUND'
+    | 'TICKET_EXPIRED'
+    | 'TICKET_EXHAUSTED'
+    | 'USER_LIMIT_REACHED'
+    | 'ISSUER_CANNOT_CONSUME'
+    | 'AUTH_REQUIRED'
+    | 'METHOD_NOT_ALLOWED'
+    | 'CONDITION_FAILED'
+    | 'PATH_NOT_FOUND'
+    | 'PLACEHOLDER_MISSING'
+    | 'REQUEST_FAILED'
+    | 'TIMEOUT'
+    | 'ACTION_FAILED'
+    | 'ACTION_FORBIDDEN'
+    | 'INTERNAL_ERROR';
+
+/**
+ * The body a consume endpoint answers with when the consumption fails, and the `cause` of the
+ * SkapiError consumeTicket() rejects with. A success body never has `stage`; an error body
+ * always does, also when the ticket answers HTTP 200 (`return200`).
+ */
+export type TicketError = {
+    code: TicketErrorCode;
+    /** Human readable, one sentence. */
+    message: string;
+    stage: 'ticket' | 'condition' | 'action';
+    /** Only when stage is "action": the action that failed and its place in the chain, such as "actions[1].err[0]". */
+    action?: { act: TicketAction['act']; path: string };
+    /** Code specific, JSON safe. For example { expired_at } on TICKET_EXPIRED, { field, keys } on CONDITION_FAILED, { status, body } on REQUEST_FAILED. */
+    detail?: { [key: string]: any };
+    ticket_id: string;
+}

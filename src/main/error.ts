@@ -1,13 +1,16 @@
+import type { TicketError } from '../Types';
+
 export default class SkapiError extends Error {
     code: string | number;
-    cause: Error;
+    /** The underlying Error, or the flat TicketError body of a failed ticket consumption (consumeTicket). */
+    cause: Error | TicketError;
 
     constructor(
         error: any,
         options?: {
             name?: string;
             code?: string;
-            cause?: Error;
+            cause?: Error | TicketError;
         }) {
 
         if (Array.isArray(error) && error.length <= 2) {

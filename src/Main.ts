@@ -36,5 +36,14 @@ export type {
     Index,
     Tag,
     UniqueId,
-    Subscription
+    Subscription,
+    Ticket,
+    TicketCondition,
+    TicketConditionOperator,
+    TicketConditionRow,
+    TicketRequestCondition,
+    TicketResponseCondition,
+    TicketAction,
+    TicketError,
+    TicketErrorCode
 } from "./Types";

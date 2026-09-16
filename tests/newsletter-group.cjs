@@ -538,6 +538,34 @@ async function test(name, fn) {
         } finally { groupRows = []; }
     });
 
+    // "email": starts-with search on a group's subscriber list (owner and admins).
+
+    await test('email reaches the wire lowercased and trimmed, next to its group', async () => {
+        signIn(skapi);
+        await skapi.getNewsletterSubscription({ group: 'public', email: '  JoHn ' });
+        const wire = wireOf(lastRequest('get-newsletter-subscription'));
+        assert.strictEqual(wire.email, 'john');
+        assert.strictEqual(wire.group, 0);
+    });
+
+    await test('email works with a named group and with fetchOptions paging', async () => {
+        signIn(skapi);
+        await skapi.getNewsletterSubscription({ group: NAME, email: 'ann' }, { limit: 10 });
+        const wire = wireOf(lastRequest('get-newsletter-subscription'));
+        assert.strictEqual(wire.email, 'ann');
+        assert.strictEqual(wire.group, NAME);
+        assert.strictEqual(wire.limit, 10);
+    });
+
+    await test('email needs a group, cannot be blank or too long, and cannot be combined with user_id', async () => {
+        signIn(skapi);
+        await rejects(() => skapi.getNewsletterSubscription({ email: 'john' }), 'email without group');
+        await rejects(() => skapi.getNewsletterSubscription({ group: 'public', email: '   ' }), 'blank email');
+        await rejects(() => skapi.getNewsletterSubscription({ group: 'public', email: 'x'.repeat(256) }), 'email over 255 characters');
+        await rejects(() => skapi.getNewsletterSubscription({ group: 'public', email: 'john', user_id: USER }), 'email with user_id');
+        assert.ok(!captured.some(c => c.route === 'get-newsletter-subscription'), 'a refused call must not reach the wire');
+    });
+
     const failed = results.filter(r => r[0] === 'FAIL');
     console.log(`\n${results.length - failed.length}/${results.length} passed`);
     process.exit(failed.length ? 1 : 0);

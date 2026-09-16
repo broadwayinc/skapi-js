@@ -416,7 +416,14 @@ export async function request(
     let meta = {
         public_identifier: this.__public_identifier,
         service,
-        owner
+        owner,
+        // This SDK resolves an offloaded record payload ({ __data__: <path> } plus its
+        // bin url) itself, in normalizeRecord. The flag tells the record endpoints
+        // (get-records, get-feed, post-record, del-files, del-records) to return the
+        // marker as stored. A request without it is from an older client that cannot
+        // resolve markers, and the server inlines the payload for it instead, which
+        // costs the response budget and the Lambda an S3 read per record.
+        resolves_offloaded_data: true
     };
 
     headers['Content-Meta'] = JSON.stringify(meta);
@@ -735,12 +742,24 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                         rej(new SkapiError(msg || result, { code: (errCode.includes(code) ? code : 'ERROR') }));
                     }
 
-                    else if (typeof result === 'object' && result?.message) {
+                    else if (typeof result === 'object' && (result?.message || result?.stage || result?.code)) {
                         let code = (result?.code || (status ? status.toString() : null) || 'ERROR');
                         let message = result.message;
                         let cause = result?.cause;
+                        if (cause === undefined && result.stage) {
+                            // A ticket consume error is a flat {code, message, stage, action?,
+                            // detail?, ticket_id} with no cause of its own. Keep the whole body
+                            // so err.cause.stage / action / detail read the same on a 4xx as on
+                            // the 200 a return200 ticket answers with (consumeTicket).
+                            cause = result;
+                        }
                         if (typeof message === 'string') {
                             message = message.trim();
+                        }
+                        if (!message) {
+                            // A body with a stage or a code but no message is still an error
+                            // object, not a payload to resolve with: the code stands in.
+                            message = String(code);
                         }
                         rej(new SkapiError(message, { cause, code }));
                     }

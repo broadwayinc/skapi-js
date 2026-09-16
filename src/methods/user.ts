@@ -15,7 +15,11 @@ import {
     FetchOptions,
     DatabaseResponse,
     UserAttributes,
-    UserPublic
+    UserPublic,
+    Ticket,
+    TicketCondition,
+    TicketAction,
+    TicketConditionRow
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
@@ -29,24 +33,31 @@ function map_ticket_obj(t): {
     user_id?: string;
     is_test?: boolean;
     timestamp?: number;
+    updated?: number;
     condition?: any;
+    actions?: any;
     action?: any;
     count?: number;
     time_to_live?: number;
     description?: string;
-    limit_per_user?: number;
+    limit_per_user?: number | boolean;
+    hash?: string;
+    failed?: boolean;
 } {
     let mapper = {
         "tkid": 'ticket_id',
         "cond": 'condition',
         "stmp": 'timestamp',
+        "upd": 'updated',
+        "acts": 'actions',
         "actn": 'action',
         "cnt": 'count',
         "ttl": 'time_to_live',
         'plch': 'placeholder',
         'hash': 'hash',
         'desc': 'description',
-        'pmc': 'limit_per_user'
+        'pmc': 'limit_per_user',
+        'fail': 'failed'
     }
     let new_obj = {};
     for (let k in t) {
@@ -58,7 +69,8 @@ function map_ticket_obj(t): {
             }
             new_obj['ticket_id'] = tkid[1];
             new_obj['consume_id'] = tkid[2];
-            new_obj['user_id'] = tkid[3];
+            // "#<ticket_id>#<consume_id>#<user>": only the first three "#" delimit
+            new_obj['user_id'] = tkid.slice(3).join('#');
 
             // last 4 characters are random chars
             let rand = tkid[2].slice(-4);
@@ -93,18 +105,58 @@ export async function consumeTicket(params: {
     data?: {
         [key: string]: any;
     }
-}): Promise<any> {
-    if (!params.ticket_id) {
+}): Promise<{
+    ticket_id: string;
+    consume_id: string;
+    user_id: string;
+    is_test: boolean;
+    timestamp: number;
+    hash: string;
+}> {
+    if (!params?.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
+    }
+    // The id becomes a path segment: "#", "!", "/" and "?" are reserved and would change the route.
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(params.ticket_id)) {
+        throw new SkapiError('Invalid "ticket_id". Use letters, digits, "_" and "-" (up to 64 chars, starting with a letter or digit).', { code: 'INVALID_PARAMETER' });
     }
     if (!params.method) {
         throw new SkapiError('Method is required. Should be either "GET" or "POST"', { code: 'INVALID_PARAMETER' });
     }
-    let ticket_id = params.ticket_id;
+
+    let method = String(params.method).toUpperCase();
+    if (method !== 'GET' && method !== 'POST') {
+        throw new SkapiError('Method should be either "GET" or "POST".', { code: 'INVALID_PARAMETER' });
+    }
+
+    let auth = !!params.auth;
+    if (auth && method === 'GET') {
+        throw new SkapiError('Signed-in consumption is POST only.', { code: 'INVALID_PARAMETER' });
+    }
 
     await this.__connection;
-    let resp = await request.bind(this)(`https://${this.service.slice(0, 4)}.${this.customApiDomain}/auth/consume/${this.service}/${this.owner}/${ticket_id}`, params?.data || {}, { method: params.method, auth: !!params?.auth });
-    return map_ticket_obj(resp);
+
+    // The short routes carry only the service: the owner is looked up server side.
+    // /tpa/ sends the user's token, /tp/ and /tg/ are open.
+    let route = auth ? 'tpa' : method === 'GET' ? 'tg' : 'tp';
+    let url = `https://${this.service.slice(0, 4)}.${this.customApiDomain}/${route}/${this.service}/${params.ticket_id}`;
+
+    // ignoreService: the body (or query string) is the ticket's data root, so the
+    // service/owner keys request() would otherwise merge in must not land in it.
+    let body = await request.bind(this)(url, params.data || {}, { method, auth }, { ignoreService: true });
+
+    // A return200 ticket answers a failed consumption with HTTP 200, so the status
+    // says nothing: an error body always has "stage", a success body never does.
+    if (body && typeof body === 'object' && body.stage) {
+        throw new SkapiError(body.message, { code: body.code, cause: body });
+    }
+
+    // Only an object is a consumption row to map; the check route answers a JSON string.
+    if (!body || typeof body !== 'object') {
+        return body;
+    }
+
+    return map_ticket_obj(body) as any;
 }
 
 export async function getTickets(params: {
@@ -125,79 +177,49 @@ export async function getConsumedTickets(params: {
     return tickets;
 }
 
+// Project owner (or a Skapi super master) only. A registration is a full replace of the
+// ticket; only its creation time survives. Used by the dashboard and the internal tool.
 export async function registerTicket(
     params: {
+        /** ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$ */
         ticket_id: string;
-        description: string;
-        count?: number;
-        time_to_live?: number;
-        placeholder?: { [key: string]: string };
-        limit_per_user?: number;
-        condition?: {
-            return200?: boolean; // When true, returns 200 when regardless condition mismatch
-            method?: 'GET' | 'POST'; // Defaults to 'GET' method when not given
-            headers?: {
-                key: string;
-                value: string | string[];
-                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
-            }[],
-            ip?: {
-                value: string | string[];
-                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
-            },
-            user_agent?: {
-                value: string | string[];
-                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
-            },
-            data?: {
-                key?: string;
-                value: any | any[];
-                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
-                setValueWhenMatch?: any | any[];
-            }[],
-            params?: {
-                key?: string;
-                value: string | string[];
-                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
-                setValueWhenMatch?: any | any[];
-            }[],
-            user?: {
-                key: string;
-                value: string | string[];
-                operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
-            }[],
-            record_access?: string; // record id user should have access to
-            request?: {
-                url: string;
-                method: 'GET' | 'POST';
-                headers?: {
-                    [key: string]: string;
-                };
-                data?: Record<string, any>;
-                params?: Record<string, any>;
-                match: {
-                    key: string; // key[to][match]
-                    operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'ne' | '>' | '>=' | '<' | '<=' | '=' | '!=';
-                    value: any | any[];
-                }[];
-            }
-        };
+        /** Up to 500 characters. */
+        description?: string;
+        /** Key absent = keep the stored count (a first registration is then unlimited). null = unlimited. An int >= 0 = the remaining count. */
+        count?: number | null;
+        /** true or 1 = once per user, n = n times, false or 0 = unlimited. */
+        limit_per_user?: boolean | number;
+        /** Absolute expiry in ms since epoch, must be in the future. null = never. */
+        time_to_live?: number | null;
+        condition?: TicketCondition;
+        /** At most 50 actions in the whole tree, nested at most 8 deep. [] is stored as none. */
+        actions?: TicketAction[];
+        /** Legacy. Converted to `actions` on write, one action per key in this order: request, update_service, access_group, record_access. */
         action?: {
-            access_group: number; // group number to give access to the user
-            record_access?: string; // record id to give access to the user
+            access_group?: number;
+            record_access?: string;
             request?: {
                 url: string;
-                method: 'GET' | 'POST'; // Defaults to 'GET' method when not given
+                method?: 'GET' | 'POST';
                 headers?: {
                     [key: string]: string;
                 };
                 data?: Record<string, any>;
                 params?: Record<string, any>;
-            }
+                match?: TicketConditionRow[];
+            };
+            update_service?: { [key: string]: any };
         };
+        /** Legacy `{ NAME: "<path>" }`. Converted to capture-only condition rows on write. */
+        placeholder?: { [key: string]: string };
     }
-): Promise<string> {
-    return request.bind(this)('register-ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
+): Promise<{ message: string; ticket: Ticket }> {
+    let resp = await request.bind(this)('register-ticket', Object.assign({ exec: 'reg' }, params), { auth: true });
+    // The ticket comes back as the raw issue row, the shape getTickets() maps.
+    if (resp && typeof resp === 'object' && resp.ticket) {
+        resp.ticket = map_ticket_obj(resp.ticket);
+    }
+    return resp;
 }
 
 export async function unregisterTicket(
@@ -527,7 +549,13 @@ export function authentication() {
                         error = ['Failed to deliver verification code.', 'CODE_DELIVERY_FAILURE'];
                     }
                     else if (code === 'UserLambdaValidationException') {
-                        error = [parsed.message || 'Signup validation failed.', 'INVALID_REQUEST'];
+                        // The pre_signup trigger refuses a login ID that already signs in
+                        // another account (an e-mail held as a username account's e-mail
+                        // alias) with "#EXISTS: ...". That is the same condition Cognito
+                        // itself reports as UsernameExistsException, so it keeps code EXISTS
+                        // instead of turning into INVALID_REQUEST. Every other trigger
+                        // refusal is still INVALID_REQUEST.
+                        error = [parsed.message || 'Signup validation failed.', parsed.code === 'EXISTS' ? 'EXISTS' : 'INVALID_REQUEST'];
                     }
 
                     if (error.length) {
@@ -592,6 +620,18 @@ export async function getProfile(options?: { refreshToken: boolean; }): Promise<
 export async function openIdLogin(params: {
     token: string;
     id: string;
+    /**
+     * Merges this OpenID identity into the existing account whose ORIGINAL login
+     * ID (its username, or the e-mail it was created with when it has none) is
+     * this OpenID account's login ID. `true` merges; an array of OpenID attribute
+     * names also copies those attributes to the account. Merging replaces the
+     * account's password.
+     *
+     * Never merges through an e-mail login alias: when this OpenID account's login
+     * ID reaches an account only through its e-mail login (an account created with
+     * a username, or one whose e-mail was changed to it), openIdLogin() fails with
+     * EXISTS, with or without merge.
+     */
     merge?: boolean | string[];
     template?: {
         /** message_id of the template to use for the welcome e-mail (sent the first time this OpenID user account is created). */
@@ -948,9 +988,14 @@ export async function signup(
         email: string;
         password: String;
         /**
-         * Optional. When given it becomes the account's PERMANENT login username
-         * and can never be changed. The e-mail then logs the account in as well,
-         * and keeps doing so after the e-mail is changed.
+         * Optional. When given it becomes the account's PERMANENT login username,
+         * which always logs the account in and can never be changed. The e-mail also
+         * logs the account in, but only once it is verified: opening the signup
+         * confirmation link verifies it, and without signup confirmation the user
+         * verifies it with verifyEmail() after logging in with the username. After an
+         * e-mail change the new e-mail logs in once it is verified the same way.
+         * E-mail login is not enabled while that e-mail is already another account's
+         * login ID; the username still works.
          * Leave it out and the e-mail alone is the login ID.
          */
         username?: string;
@@ -1165,21 +1210,13 @@ export async function signup(
         }
     }
 
-    // Both the username and the e-mail have to sign this account in. The Cognito
-    // Username is md5(username) and can never change, so the e-mail is registered
-    // as the pool's preferred_username alias: the same slot updateProfile()
-    // repoints whenever the e-mail changes, which is what keeps e-mail login
-    // following the current address.
-    // Skipped when no username was supplied, because the Cognito Username then
-    // ALREADY is {service}-md5(email) and a second handle would be the same string.
-    // params.email is the value validator.Email() returned, so it is lowercased,
-    // which is what login() has to hash to match.
-    if (params.username && params.email) {
-        attributeList.push(new CognitoUserAttribute({
-            Name: 'preferred_username',
-            Value: this.service + '-' + MD5.hash(params.email)
-        }));
-    }
+    // An account created with a username also signs in with its e-mail, through the
+    // pool's preferred_username alias. That alias is NOT sent here: Cognito does not
+    // accept preferred_username during registration when it is an alias attribute, and
+    // an alias is legitimate only for a verified e-mail, so the backend adds it once the
+    // e-mail is verified (the signup confirmation link, or verifyEmail()). Until then only
+    // the username signs in, and the alias is never added when the e-mail already signs
+    // in another account (the backend checks before writing it).
 
     await authentication.bind(this)().signup(newUser.cognitoUsername, params.password, attributeList);
 
@@ -1507,10 +1544,14 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
         return this.user;
     }
 
-    // set alternative signin email
-    if (params.email) {
-        params['preferred_username'] = this.service + '-' + MD5.hash(params.email);
-    }
+    // No preferred_username is sent with a new e-mail. It is the pool's e-mail login alias,
+    // and writing it here pointed login at an address the user had not verified, in the same
+    // call as the e-mail and before any code was confirmed, so anyone could take the login
+    // handle of an e-mail they do not own. Cognito writes the new e-mail unverified; the
+    // backend gives the account that e-mail's login once verifyEmail() confirms it (the
+    // session refresh that follows runs the server claim), and removes an alias the account's
+    // own verified e-mail does not prove. A username, or the e-mail an account without one
+    // was created with, always logs in.
 
     let collision = [
         ['email_public', 'email_verified', "User's e-mail should be verified to set"],

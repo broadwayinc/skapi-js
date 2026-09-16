@@ -3,7 +3,7 @@ import { request } from '../utils/network';
 import { checkAdmin } from './user';
 import { Form, UserAttributes, UserProfile, UserPublic, DatabaseResponse, FetchOptions } from '../Types';
 import SkapiError from '../main/error';
-import { parseUserAttributes, MD5 } from '../utils/utils';
+import { parseUserAttributes } from '../utils/utils';
 
 export async function blockAccount(form: Form<{
     user_id: string;
@@ -104,19 +104,29 @@ export async function deleteAccount(form: Form<{
 
 export async function inviteUser(
     form: Form<UserAttributes & {
-        /** Required. The invitation is sent here. */
+        /**
+         * Required. The invitation is sent here. Refused with EXISTS when it is
+         * already another account's login ID, or while it has a pending invitation.
+         */
         email: string;
         /**
          * Optional. Becomes the invited account's PERMANENT login username.
-         * The e-mail logs them in too, so the invitation e-mail stays valid.
+         * The e-mail also logs them in once they accept the invitation (best
+         * effort), not while it is pending. Refused with EXISTS when the username
+         * or the e-mail is already another account's login ID.
          */
         username?: string;
+        /** ID of an OpenID logger registered in the project, to link the invited account to it. */
         openid_id: string;
+        /** 1~99. The backend defaults it to 1 when omitted. 99 is admin level. */
         access_group: number;
     } & { service?: string; owner?: string; }>,
     options?: {
+        /** URL the user is taken to after accepting. Must not contain "#". */
         confirmation_url?: string;
+        /** Subscribe the user to Service Email (group 1) on accept. Requires confirmation_url. */
         email_subscription?: boolean;
+        /** Custom HTML template for this invitation e-mail. Both fields are required. */
         template?: {
             url: string;
             subject: string;
@@ -428,6 +438,29 @@ export async function resendInvitation(params: Form<{
     return await request.bind(this)('invitation-list', Object.assign({ mode: 'resend' }, params), { auth: true });
 }
 
+/**
+ * Updates another user's profile attributes (admin-edit-profile).
+ *
+ * Never the caller's own account, masters included: its own user_id is refused with
+ * INVALID_REQUEST and 'Cannot modify attributes of the current user.' before any request
+ * is sent (the backend refuses it the same way). Users change their own profile with
+ * updateProfile() without user_id.
+ *
+ * An admin in access groups 90 ~ 98 cannot update an account whose access group is at or
+ * above their own, a disabled account included (it counts at the group it had): refused with
+ * INVALID_REQUEST and 'No access to modify admin.', and nothing is written. Access group 99
+ * admins and the project owner are not limited.
+ *
+ * A changed e-mail is written unverified: this method never marks an e-mail verified, for an
+ * admin in access groups 90 ~ 98 or anyone else. The new e-mail does not log the account in
+ * until the user verifies it with verifyEmail(). The previous e-mail stops logging in when the
+ * change is written, unless it is the e-mail an account without a username was created with,
+ * which stays its login ID. A username always logs in. The change is refused with EXISTS and
+ * 'E-mail "user@email.com" is already a login ID in this service.' when the e-mail is a login
+ * ID another account of the project was granted: the address that account was created or
+ * invited with, or one it has verified. An e-mail login another account holds without having
+ * verified the address blocks nothing; it is removed.
+ */
 export async function updateUserAttributes(
     form: Form<UserAttributes & { user_id: string; }>,
 ): Promise<'SUCCESS: User attributes updated.'> {
@@ -472,6 +505,17 @@ export async function updateUserAttributes(
     delete params.service;
     delete params.owner;
 
+    // admin-edit-profile acts on another account with admin rights, and the rank rule never
+    // limits a master, so the caller's own account would be the one it rewrote with no check on
+    // who asked. The backend refuses it for everyone; refused here as well, with the same code
+    // and text, so the request is never sent. A user id is the account's Cognito sub, unique in
+    // the pool, so an explicit service/owner cannot make the same id another account.
+    // __connection first: the signed-in user is restored there.
+    await this.__connection;
+    if (this.__user?.user_id && params.user_id === this.__user.user_id) {
+        throw new SkapiError('Cannot modify attributes of the current user.', { code: 'INVALID_REQUEST' });
+    }
+
     // user_id is the only required field, but at least one attribute to update must be provided.
     if (Object.keys(params).filter(k => k !== 'user_id' && params[k] !== undefined).length === 0) {
         throw new SkapiError('At least one attribute to update is required.', { code: 'INVALID_PARAMETER' });
@@ -489,10 +533,10 @@ export async function updateUserAttributes(
         }
     }
 
-    // when the e-mail is changed, update the alternative sign-in lookup key as well
-    if (params.email) {
-        params.preferred_username = (service || this.service) + '-' + MD5.hash(params.email);
-    }
+    // No preferred_username is sent with a new e-mail. The e-mail is written unverified, and a
+    // login alias for an address nobody has verified would let the account log in with an
+    // e-mail it may not own. The backend removes the old alias on the change and gives the new
+    // e-mail its login once the user verifies it.
 
     let reqData: { attributes: any; service?: string; owner?: string; } = { attributes: params };
     if (service && owner) {

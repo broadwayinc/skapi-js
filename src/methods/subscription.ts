@@ -41,8 +41,11 @@ export async function getFeed(params?: { access_group?: number; }, fetchOptions?
         }
     );
     let recs = await request.bind(this)('get-feed', params, { auth: true, fetchOptions });
-    for (let i in recs.list) {
-        recs.list[i] = await normalizeRecord.bind(this)(recs.list[i]);
+    if (Array.isArray(recs?.list)) {
+        // Concurrently, the same as getRecords. A feed record whose payload was offloaded
+        // to storage costs a file fetch to resolve, and awaiting them one at a time made a
+        // page of such records as slow as the sum of its fetches.
+        recs.list = await Promise.all(recs.list.map((r: any) => normalizeRecord.bind(this)(r)));
     }
     return recs;
 }
@@ -167,12 +170,15 @@ export async function unblockSubscriber(params: { user_id: string; }): Promise<'
 /**
  * Fetches the user's newsletter subscriptions.<br>
  * Accepts a numeric group, "public", "authorized" or a named newsletter group.<br>
- * When "group" is omitted or null, every group the user is subscribed to is returned.
+ * When "group" is omitted or null, every group the user is subscribed to is returned.<br>
+ * The project owner and admins (access groups 90 ~ 99) get every subscriber of "group" instead,
+ * and can pass "email" to get only the subscribers whose e-mail address starts with it.
  * ```
  * let subscriptions = await skapi.getNewsletterSubscription({ group: 'bunnyquery' });
+ * let johns = await skapi.getNewsletterSubscription({ group: 'public', email: 'john' }); // admins
  * ```
  */
-export async function getNewsletterSubscription(params?: {group?: number | 'public' | 'authorized' | (string & {}) | null;},
+export async function getNewsletterSubscription(params?: {group?: number | 'public' | 'authorized' | (string & {}) | null; user_id?: string; email?: string;},
 fetchOptions?: FetchOptions): Promise<{
     active: boolean;
     timestamp: number;
@@ -192,9 +198,28 @@ fetchOptions?: FetchOptions): Promise<{
 
                 return v;
             },
-            group: v => validator.newsletterGroup(v, { allowNull: true })
+            group: v => validator.newsletterGroup(v, { allowNull: true }),
+            // Starts-with search on the subscriber list. Stored addresses are lowercase.
+            email: v => {
+                if (typeof v !== 'string' || !v.trim()) {
+                    throw new SkapiError('"email" should be a non-empty string.', { code: 'INVALID_PARAMETER' });
+                }
+                if (v.trim().length > 255) {
+                    throw new SkapiError('"email" should be at most 255 characters.', { code: 'INVALID_PARAMETER' });
+                }
+                return v.trim().toLowerCase();
+            }
         }
     );
+
+    if (params.email !== undefined) {
+        if (params.user_id !== undefined && params.user_id !== null) {
+            throw new SkapiError('"email" cannot be used with "user_id".', { code: 'INVALID_PARAMETER' });
+        }
+        if (params.group === undefined || params.group === null) {
+            throw new SkapiError('"group" is required to search by "email".', { code: 'INVALID_PARAMETER' });
+        }
+    }
 
     let data = await request.bind(this)('get-newsletter-subscription', params, { auth: true, fetchOptions: fetchOptions || null });
     let list = data?.list || data;

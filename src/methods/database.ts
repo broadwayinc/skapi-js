@@ -171,6 +171,132 @@ async function blobToText(blob: any): Promise<string> {
 }
 
 /**
+ * Whether a stored `data` value is the S3-offload marker post_record writes when a payload is
+ * kept in storage instead of the record item: exactly { __data__: "<ts>/<size>/__data__/__json__.json" }.
+ * The server encodes a caller payload of that shape ('!J%'), so a raw map like this is always a
+ * real marker.
+ */
+function isOffloadMarker(v: any): boolean {
+    return !!v && typeof v === 'object' && !Array.isArray(v) &&
+        typeof v.__data__ === 'string' && Object.keys(v).length === 1 &&
+        v.__data__.endsWith('/__data__/__json__.json');
+}
+
+/**
+ * Record CDN origin ("https://<host>") per service id, learned from the record file urls this
+ * runtime has already read. Every record file of a service is served by that service's regional
+ * record CDN, so one url of the service is enough to address any other file of it. Used only to
+ * rebuild the url of an offloaded payload whose bin entry is missing (see derivedDataFileUrl).
+ */
+const recordCdnOrigins: Map<string, string> = new Map();
+const RECORD_CDN_ORIGINS_MAX = 1024;
+
+// <ts_b62>/<size_b62>/__data__/__json__.json. Strict, because it is spliced into a url.
+const OFFLOAD_MARKER_PATH = /^[0-9A-Za-z]+\/[0-9A-Za-z]+\/__data__\/__json__\.json$/;
+// A service, owner, uploader or record id segment of a record file key.
+const RECORD_KEY_ID = /^[0-9A-Za-z_-]+$/;
+// A record file key's access group segment: 00 ~ 99, or ** for private.
+const RECORD_KEY_GROUP = /^(\d{2}|\*\*)$/;
+
+/**
+ * The origin and service of a record file url:
+ * https://<host>/auth|publ/service/owner/uploader/records/record/access_group/bin/ts/size/key/name
+ */
+function recordFileUrlParts(url: any): { origin: string; service: string; } | null {
+    if (typeof url !== 'string') {
+        return null;
+    }
+    let sp = url.split('?')[0].split('/');
+    if (sp.length < 15 || sp[0] !== 'https:' || sp[1] !== '' || !sp[2]) {
+        return null;
+    }
+    let key = sp.slice(3);
+    if ((key[0] !== 'publ' && key[0] !== 'auth') || key[4] !== 'records' || key[7] !== 'bin' || !RECORD_KEY_ID.test(key[1])) {
+        return null;
+    }
+    return { origin: sp.slice(0, 3).join('/'), service: key[1] };
+}
+
+function learnRecordCdnOrigin(url: any) {
+    let parts = recordFileUrlParts(url);
+    if (!parts || recordCdnOrigins.get(parts.service) === parts.origin) {
+        return;
+    }
+    if (recordCdnOrigins.size >= RECORD_CDN_ORIGINS_MAX && !recordCdnOrigins.has(parts.service)) {
+        recordCdnOrigins.clear();
+    }
+    recordCdnOrigins.set(parts.service, parts.origin);
+}
+
+/**
+ * The url an offloaded payload's file lives at, rebuilt from the record itself, for a marker
+ * whose bin entry is missing or no longer serves the file. That is a window rather than a lost
+ * payload: an update removes the old data url in its main write and adds the new one in a
+ * follow-up write (with the S3 event as the backup), and an access group move relocates the files
+ * asynchronously while the bin still names the old group's url. post_record writes the
+ * file at
+ *   {publ if group is 00, else auth}/service/owner/uploader/records/record/group/bin/<marker path>
+ * which is everything the record carries except the CDN host. The host comes from another file
+ * url of the same record, else from any file url of the same service read earlier.
+ * Null when any part is unknown or malformed.
+ */
+function derivedDataFileUrl(record: Record<string, any>, markerPath: string): string | null {
+    if (typeof markerPath !== 'string' || !OFFLOAD_MARKER_PATH.test(markerPath)) {
+        return null;
+    }
+
+    let usrTbl = typeof record.usr_tbl === 'string' ? record.usr_tbl.split('/') : null; // user/table/service/group[...]
+    let tbl = typeof record.tbl === 'string' ? record.tbl.split('/') : null; // table/service/group[...]
+
+    let service: string | null = null;
+    let owner: string | null = null;
+    if (typeof record.srvc === 'string') {
+        // "<service>/<owner>" on a record item
+        let s = record.srvc.split('!')[0].split('/');
+        if (s.length === 2) {
+            service = s[0];
+            owner = s[1];
+        }
+    }
+    if (!service) {
+        service = usrTbl?.[2] || tbl?.[1] || null;
+        if (service && service === this.service) {
+            owner = this.owner;
+        }
+    }
+
+    let uploader = typeof record.usr === 'string' && record.usr ? record.usr : (usrTbl?.[0] || null);
+    let group = usrTbl?.[3] || tbl?.[2] || null;
+    let recordId = record.rec;
+
+    for (let id of [service, owner, uploader, recordId]) {
+        if (typeof id !== 'string' || !RECORD_KEY_ID.test(id)) {
+            return null;
+        }
+    }
+    if (typeof group !== 'string' || !RECORD_KEY_GROUP.test(group)) {
+        return null;
+    }
+
+    let origin: string | null = null;
+    if (Array.isArray(record.bin)) {
+        for (let url of record.bin) {
+            let parts = recordFileUrlParts(url);
+            if (parts && parts.service === service) {
+                origin = parts.origin;
+                break;
+            }
+        }
+    }
+    origin = origin || recordCdnOrigins.get(service) || null;
+    if (!origin) {
+        return null;
+    }
+
+    return `${origin}/${group === '00' ? 'publ' : 'auth'}/${service}/${owner}/${uploader}/records/${recordId}/${group}/bin/${markerPath}`;
+}
+
+/**
  * @param _skipBinResolve  Do not mint a signed endpoint for each private file in
  *   `bin`. The deleted-record path needs the mapped shape without that resolution:
  *   getFile('endpoint') appends the caller's id token to the url and fires
@@ -593,20 +719,44 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             // it back (all records in a getRecords batch resolve concurrently via
             // the Promise.all over normalizeRecord) and replace it in the data key.
             // The value must be exactly one key whose string ends with the
-            // reserved suffix AND a matching bin file must exist; otherwise it is
-            // an ordinary user value that merely looks like a marker, so fall
-            // through and return it verbatim.
-            if (
-                r && typeof r === 'object' && !Array.isArray(r) &&
-                typeof r.__data__ === 'string' && Object.keys(r).length === 1 &&
-                r.__data__.endsWith('/__data__/__json__.json')
-            ) {
+            // reserved suffix AND its file must be found (a matching bin url, or
+            // the url derived from the record); otherwise it falls through and is
+            // returned verbatim.
+            if (isOffloadMarker(r)) {
                 let markerPath = r.__data__;
                 let rawUrl = dataFileUrls.find(u => u.endsWith(markerPath)) || null;
                 if (!rawUrl && !_skipDataFetch) {
-                    // A marker whose bin file is missing entirely. Same
-                    // reasoning as the fetch failure below: the payload is
-                    // unreadable, so it must not read as an ordinary value.
+                    // A marker with no bin url. Usually a short window (see
+                    // derivedDataFileUrl), so try the url the file is written at
+                    // before giving up on it.
+                    //
+                    // Yield once first. getRecords, getFeed and bulkPostRecords
+                    // start every record's normalize synchronously, so after one
+                    // await every record of the batch has pre-scanned its bin and
+                    // a CDN origin any of them carries is known.
+                    await Promise.resolve();
+                    let derivedUrl = derivedDataFileUrl.call(this, record, markerPath);
+                    let fetched = false;
+                    let parsed: any;
+                    if (derivedUrl) {
+                        try {
+                            let blob = await getFile.bind(this)(derivedUrl, { dataType: 'blob', _ref: output.reference || null });
+                            // Parsed once, exactly like the bin url path below.
+                            parsed = JSON.parse(await blobToText(blob));
+                            fetched = true;
+                        }
+                        catch (err) {
+                            // Not there (yet) or not readable: the same outcome as
+                            // having no url at all.
+                        }
+                    }
+                    if (fetched) {
+                        output.data = await finishData(parsed);
+                        return;
+                    }
+                    // A marker whose file cannot be found. Same reasoning as the
+                    // fetch failure below: the payload is unreadable, so it must
+                    // not read as an ordinary value.
                     markUnavailable();
                 }
                 if (rawUrl) {
@@ -636,6 +786,30 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                         output.data = await finishData(JSON.parse(text));
                     }
                     catch (err) {
+                        // A bin url that no longer serves the file. The usual cause
+                        // is an access group move: move_folder_s3 copies the file to
+                        // the new group's prefix and deletes the old object, and the
+                        // S3 events swap the bin urls only afterwards, so the bin can
+                        // still name the old location. The url derived from the
+                        // record's CURRENT group is where the file is now. Tried only
+                        // when it differs from the url that just failed.
+                        let derivedUrl = derivedDataFileUrl.call(this, record, markerPath);
+                        let fetched = false;
+                        let parsed: any;
+                        if (derivedUrl && derivedUrl !== rawUrl) {
+                            try {
+                                let blob = await getFile.bind(this)(derivedUrl, { dataType: 'blob', _ref: output.reference || null });
+                                parsed = JSON.parse(await blobToText(blob));
+                                fetched = true;
+                            }
+                            catch (derivedErr) {
+                                // Not there either: fall through to the failure below.
+                            }
+                        }
+                        if (fetched) {
+                            output.data = await finishData(parsed);
+                            return;
+                        }
                         console.error('Failed to fetch offloaded record data:', err);
                         output.data = null;
                         // The payload could not be read, so whether it was
@@ -664,10 +838,13 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
     // the offloaded-data file url immediately. The handler loop below starts every
     // handler before awaiting any of them (collect-then-Promise.all), so the "data"
     // handler's synchronous lookup cannot rely on the "bin" handler having run yet.
+    // It also records the service's CDN origin, for a marker elsewhere whose bin
+    // url is missing (derivedDataFileUrl).
     if (Array.isArray(record.bin)) {
         for (let url of record.bin) {
             try {
                 if (typeof url !== 'string') continue;
+                learnRecordCdnOrigin(url);
                 let sp = url.split('/').slice(3);
                 // Raw, matching the "bin" handler: these segments are never percent-encoded, and
                 // decoding threw URIError on any filename holding a bare '%'.
@@ -1648,10 +1825,19 @@ export async function bulkPostRecords(params) {
     // when encryption actually ran for that element.
     let bulkPlain: { [idx: number]: any } = {};
 
+    // The payload each element put on the wire, by index, read from the RAW element
+    // config before validation or encryption touch it. When the server kept a payload
+    // in storage and echoes a marker for it, this is what the caller gets back instead
+    // of a download of what was just sent. `undefined` sends no data key at all (a
+    // metadata-only update), so only a defined value counts.
+    let postedData: { [idx: number]: { has: boolean; value: any; } } = {};
+
     let validatedBulk = await Promise.all(params.map(async (config, idx) => {
         if (!config || typeof config !== 'object' || Array.isArray(config)) {
             throw new SkapiError(`"params[${idx}]" should be type: <object>.`, { code: 'INVALID_PARAMETER' });
         }
+
+        postedData[idx] = { has: config.data !== undefined, value: config.data };
 
         let mangled = setupPostRecordConfig.bind(this)(config) as {config: PostRecordConfig & { service?: string; owner?: string;  }; is_reference_post?: string;};
         let _config = mangled.config;
@@ -1729,14 +1915,19 @@ export async function bulkPostRecords(params) {
     let records = await Promise.all(recList.map((rec, i) =>
         // Skip decryption for elements we just encrypted: we already hold the
         // plaintext and restore it below, so re-opening the envelope would be
-        // pure waste.
-        normalizeRecord.bind(this)(rec, 'called from postRecord', false, bulkPlain.hasOwnProperty(i))
+        // pure waste. Skip the offloaded payload download for elements that sent
+        // data, for the same reason: it is restored below. An element that sent
+        // no data still fetches, because the stored payload is the only copy.
+        normalizeRecord.bind(this)(rec, 'called from postRecord', postedData[i]?.has === true, bulkPlain.hasOwnProperty(i))
     ));
 
     for (let i = 0; i < records.length; i++) {
         if (bulkPlain.hasOwnProperty(i) && records[i] && !records[i].error) {
             records[i].data = bulkPlain[i];
             records[i].encrypted = { status: 'encrypted' };
+        }
+        else if (postedData[i]?.has && records[i] && !recList[i]?.error && isOffloadMarker(recList[i]?.data)) {
+            records[i].data = postedData[i].value;
         }
     }
 
@@ -1938,12 +2129,17 @@ export async function postRecord(
     // window.sessionStorage.setItem(`${this.service}:post:${rec.rec}`, JSON.stringify(rec));
 
     // If the server offloaded the "data" payload to storage (too large for the
-    // record item), the response carries a { __data__: <path> } marker. Skip the
-    // re-download and return exactly what was posted.
-    let dataOffloaded = !!rec && rec.data && typeof rec.data === 'object' && !Array.isArray(rec.data) && typeof rec.data.__data__ === 'string' && rec.data.__data__.endsWith('/__data__/__json__.json');
-    let record = await normalizeRecord.bind(this)(rec, 'called from postRecord', true, encRes.encrypted);
-    if (dataOffloaded) {
-        record.data = extractedForm.data;
+    // record item), the response carries a { __data__: <path> } marker. When this
+    // write sent the payload, skip the re-download and return exactly what was
+    // sent. That is encRes.plain, not extractedForm.data: a payload passed as
+    // config.data never reaches the form, and a declassify without data sends the
+    // decrypted current payload. When it sent none (a metadata-only update), the
+    // stored payload is the only copy, so it is fetched.
+    let dataOffloaded = !!rec && isOffloadMarker(rec.data);
+    let sentData = !encRes.omit && encRes.send !== undefined;
+    let record = await normalizeRecord.bind(this)(rec, 'called from postRecord', sentData, encRes.encrypted);
+    if (dataOffloaded && sentData && !encRes.encrypted) {
+        record.data = encRes.plain;
     }
     if (encRes.encrypted) {
         // The server echoed the envelope; hand the caller back what they gave
