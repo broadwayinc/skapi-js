@@ -2357,34 +2357,50 @@ export default class Skapi {
 	/**
 	 * Gets newsletter subscription status for the requested groups.
 	 * Takes a numeric group, "public", "authorized" or a named newsletter group. Omit the group for every group the user is subscribed to.
-	 * The project owner and admins (access groups 90 ~ 99) get every subscriber of the group instead, and can pass "email" to get only the subscribers whose e-mail address starts with it.
+	 * The project owner, Skapi staff and access group 99 admins get every subscriber of the group instead, and can pass "email" to get only the subscribers whose e-mail address starts with it.
+	 * An admin in access groups 90 ~ 98 gets the subscriber list too, but reads it through a privacy layer:
+	 * "subscribed_email" is masked ("j**@**.com") and the mask is lossy, so two different subscribers can read the same;
+	 * "subscriber_token" comes with each masked row as an opaque, stable, per address key, and it is the only value that tells such rows apart, so key lists and selections on it, never on the masked address;
+	 * the token is not a readable address and is scoped to this service, owner and group, so it cannot be matched against a token from another group or project;
+	 * "startKey" is sealed by the server and has to be handed back verbatim, which fetchMore already does;
+	 * and "email" is refused with "No access.".
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
-	 * @returns A promise that resolves to Promise<{ active: boolean; timestamp: number; group: number | string; subscribed_email: string; }[]>.
+	 * @returns A promise that resolves to Promise<{ active: boolean; timestamp: number; group: number | string; subscribed_email: string; subscriber_token?: string; }[]>.
 	 */
 	@formHandler()
 	getNewsletterSubscription(
 		params?: {
 			/** Numeric group, "public", "authorized" or a named newsletter group. Omit or null for every group. */
 			group?: number | 'public' | 'authorized' | (string & {}) | null;
-			/** Another user's subscriptions. Project owner only. */
+			/**
+			 * Another user's subscriptions. The project owner's account, Skapi staff and
+			 * admins (access groups 90 ~ 99) only. An admin in access groups 90 ~ 98 reads
+			 * that user's address masked.
+			 */
 			user_id?: string;
-			/** Owner and admins only. Returns the subscribers of "group" whose e-mail address starts with this text. Requires "group", cannot be used with "user_id". */
+			/** Owner, Skapi staff and access group 99 only. Returns the subscribers of "group" whose e-mail address starts with this text. Requires "group", cannot be used with "user_id". Admins 90 ~ 98 are refused with "No access.". */
 			email?: string;
 		},
 		fetchOptions?: FetchOptions,
 	): Promise<
 		| {
 			active: boolean;
+			/** Undefined on a group's whole subscriber list, which the index does not carry it on. */
 			timestamp: number;
 			group: number | string;
 			subscribed_email: string;
+			/** Only when the address above is masked. Opaque, stable per address key. */
+			subscriber_token?: string;
 		}[]
 		| DatabaseResponse<{
 			active: boolean;
+			/** Undefined on a group's whole subscriber list, which the index does not carry it on. */
 			timestamp: number;
 			group: number | string;
 			subscribed_email: string;
+			/** Only when the address above is masked. Opaque, stable per address key. */
+			subscriber_token?: string;
 		}>
 	> {
 		return getNewsletterSubscription.bind(this)(params, fetchOptions);

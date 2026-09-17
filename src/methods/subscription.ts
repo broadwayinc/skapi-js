@@ -171,11 +171,23 @@ export async function unblockSubscriber(params: { user_id: string; }): Promise<'
  * Fetches the user's newsletter subscriptions.<br>
  * Accepts a numeric group, "public", "authorized" or a named newsletter group.<br>
  * When "group" is omitted or null, every group the user is subscribed to is returned.<br>
- * The project owner and admins (access groups 90 ~ 99) get every subscriber of "group" instead,
- * and can pass "email" to get only the subscribers whose e-mail address starts with it.
+ * The project owner, Skapi staff and access group 99 admins get every subscriber of "group"
+ * instead, and can pass "email" to get only the subscribers whose e-mail address starts with it.<br>
+ * An admin in access groups 90 ~ 98 also gets the whole subscriber list of "group", but reads it
+ * through a privacy layer:<br>
+ * - "subscribed_email" is MASKED ("j**@**.com"), and the mask is lossy, so different subscribers
+ * can carry the very same text.<br>
+ * - "subscriber_token" is sent beside it: an opaque, stable, per address token that is different
+ * for different addresses. It is the only value that tells two masked rows apart, so key a list,
+ * a Set or a selection on it, never on the masked address. It is not a readable address and is
+ * scoped to this service, owner and group, so it cannot be compared across groups or projects,
+ * and it is not sent to a caller who reads full addresses.<br>
+ * - "startKey" is sealed by the server. Hand it back verbatim (or just use fetchOptions.fetchMore);
+ * it is refused if anything about it is changed.<br>
+ * - "email" is refused with "No access.".
  * ```
  * let subscriptions = await skapi.getNewsletterSubscription({ group: 'bunnyquery' });
- * let johns = await skapi.getNewsletterSubscription({ group: 'public', email: 'john' }); // admins
+ * let johns = await skapi.getNewsletterSubscription({ group: 'public', email: 'john' }); // owner, staff, group 99
  * ```
  */
 export async function getNewsletterSubscription(params?: {group?: number | 'public' | 'authorized' | (string & {}) | null; user_id?: string; email?: string;},
@@ -184,6 +196,8 @@ fetchOptions?: FetchOptions): Promise<{
     timestamp: number;
     group: number | string;
     subscribed_email: string;
+    /** Only when the address above is masked. Opaque, stable per address key. */
+    subscriber_token?: string;
 }[]> {
     await this.__connection;
     let isAdmin = await checkAdmin.bind(this)();
@@ -242,15 +256,31 @@ fetchOptions?: FetchOptions): Promise<{
         // handed back as a number, which is what callers have always compared against.
         let group: number | string = /^\d+$/.test(subt[0]) ? parseInt(subt[0]) : subt[0];
 
-        result.push({
+        let mapped: Record<string, any> = {
             timestamp: sub['stmp'],
             group,
+            // Still the human field. For an admin in access groups 90 ~ 98 the server put a
+            // mask here instead of the address, so an older app keeps rendering something
+            // readable rather than an opaque string.
             subscribed_email: subt[1],
             active
-        });
+        };
+
+        // The mask is lossy: two different addresses can produce the same text, which loses
+        // rows from anything keyed on the address. The server sends an opaque per address
+        // token beside it for exactly that, so carry it through as the row's identity.
+        // A caller who reads full addresses gets no token, and the key stays absent for them.
+        if (typeof sub['email_token'] === 'string' && sub['email_token']) {
+            mapped.subscriber_token = sub['email_token'];
+        }
+
+        result.push(mapped);
     }
 
     if(data?.list) {
+        // Only the rows are remapped. "startKey" is handed back exactly as it arrived: for an
+        // admin in access groups 90 ~ 98 it is a sealed object the server refuses if a single
+        // byte of it changed, and it is what fetchMore replays on the next page.
         data.list = result;
         return data;
     }

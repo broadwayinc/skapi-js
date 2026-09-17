@@ -65,6 +65,9 @@ const NAME_ERROR = 'Newsletter group name must be 2-20 lowercase alphanumeric ch
 
 let captured = [];
 let subscriptionRows = [];
+// The cursor the subscriber listing answers with. Null means "last page", which is what
+// every test that does not care about paging wants.
+let subscriptionStartKey = null;
 let groupRows = [];
 let newsletterRows = [];
 
@@ -101,7 +104,9 @@ globalThis.fetch = async (url, opt) => {
         captured.push({ route, url: u, body, method: (opt && opt.method) || 'GET' });
 
         if (route === 'get-newsletter-subscription') {
-            return jsonResponse({ list: subscriptionRows, endOfList: true });
+            return jsonResponse(subscriptionStartKey
+                ? { list: subscriptionRows, startKey: subscriptionStartKey, endOfList: false }
+                : { list: subscriptionRows, endOfList: true });
         }
         if (route === 'get-newsletters' || route === 'get-public-newsletters') {
             return jsonResponse({ list: newsletterRows, endOfList: true });
@@ -564,6 +569,80 @@ async function test(name, fn) {
         await rejects(() => skapi.getNewsletterSubscription({ group: 'public', email: 'x'.repeat(256) }), 'email over 255 characters');
         await rejects(() => skapi.getNewsletterSubscription({ group: 'public', email: 'john', user_id: USER }), 'email with user_id');
         assert.ok(!captured.some(c => c.route === 'get-newsletter-subscription'), 'a refused call must not reach the wire');
+    });
+
+    // Masked subscriber rows: an admin in access groups 90 ~ 98 never sees the real address,
+    // and the mask is lossy, so the address cannot be the row's identity any more. The server
+    // sends an opaque per address token beside the mask, and a sealed cursor instead of the
+    // raw DynamoDB key. The SDK's whole job here is to carry both through without touching them.
+
+    await test('a masked row keeps the mask in subscribed_email and carries the token beside it', async () => {
+        signIn(skapi, 90);
+        // Two different subscribers behind ONE mask: the case that used to collapse into a
+        // single row in anything keyed on the address.
+        subscriptionRows = [
+            { subt: '00#a**@**.com', stmp: 1000, email_token: '2eUY7PRYvgv3sTKMoO2BuupbnS2o_6jDlU2p2o95lxXvgQsTpSFN4c5zfBfS' },
+            { subt: '00#a**@**.com', stmp: 1001, email_token: 'hU0IaebU_BF89YIPejXeeLGV_NPe58LSlbtlZJ1y56wa0Dg2D_8gbZAbzf9WlA' },
+            { subt: '@07#c**@**.net', stmp: 1002, email_token: 'Zm9vYmFyYmF6' }
+        ];
+        try {
+            const rows = (await skapi.getNewsletterSubscription({ group: 0 })).list;
+            assert.strictEqual(rows[0].subscribed_email, 'a**@**.com',
+                'the human field still carries the readable mask, so an older app renders something');
+            assert.strictEqual(rows[0].subscriber_token, subscriptionRows[0].email_token,
+                'the wire field is "email_token", the mapped field is "subscriber_token"');
+            assert.strictEqual(rows[1].subscriber_token, subscriptionRows[1].email_token);
+            assert.notStrictEqual(rows[0].subscriber_token, rows[1].subscriber_token,
+                'two identical masks must stay two distinct rows');
+            assert.strictEqual(new Set(rows.map(r => r.subscriber_token)).size, 3,
+                'the token is the value a list, a Set or a selection can be keyed on');
+            // The mask changes nothing about the group token or the inactive marker.
+            assert.strictEqual(rows[2].group, 7);
+            assert.strictEqual(rows[2].active, false);
+            assert.strictEqual(rows[2].subscribed_email, 'c**@**.net');
+        } finally { subscriptionRows = []; }
+    });
+
+    await test('a row that came back with a full address carries no token key at all', async () => {
+        signIn(skapi);
+        subscriptionRows = [{ subt: '00#alice@example.com', stmp: 1 }];
+        try {
+            const rows = (await skapi.getNewsletterSubscription({ group: 0 })).list;
+            assert.strictEqual(rows[0].subscribed_email, 'alice@example.com');
+            assert.ok(!('subscriber_token' in rows[0]),
+                'a caller who reads real addresses gets no token, and the key must not show up as undefined');
+        } finally { subscriptionRows = []; }
+    });
+
+    await test('a sealed cursor comes back untouched and is replayed verbatim by fetchMore', async () => {
+        signIn(skapi, 90);
+        const SEAL = { seal: 'p-mu1DO_27_IDr_mTHpAAhjQJP7RaXCTEA4BjG-cDo2EDVzV83tx3fRyuZ7189qp' };
+        subscriptionRows = [{ subt: '00#a**@**.com', stmp: 1, email_token: 'tok1' }];
+        subscriptionStartKey = SEAL;
+        try {
+            const page1 = await skapi.getNewsletterSubscription({ group: 1 });
+            assert.deepStrictEqual(page1.startKey, SEAL,
+                'the seal IS the cursor: a cursor that was rebuilt, merged into or stripped is refused');
+            assert.strictEqual(Object.keys(page1.startKey).length, 1, 'exactly one key, "seal"');
+
+            await skapi.getNewsletterSubscription({ group: 1 }, { fetchMore: true });
+            assert.deepStrictEqual(wireOf(lastRequest('get-newsletter-subscription')).startKey, SEAL,
+                'the next page has to carry the seal back byte for byte');
+        } finally { subscriptionRows = []; subscriptionStartKey = null; }
+    });
+
+    await test('a plain cursor still pages the same way for a caller who reads full addresses', async () => {
+        signIn(skapi);
+        const KEY = { srvc: `${SERVICE}#${OWNER}`, subt: '00#andrew@example.com', usr: 'andrew@example.com#00' };
+        subscriptionRows = [{ subt: '00#andrew@example.com', stmp: 1 }];
+        subscriptionStartKey = KEY;
+        try {
+            const page1 = await skapi.getNewsletterSubscription({ group: 2 });
+            assert.deepStrictEqual(page1.startKey, KEY, 'nothing changes for a master');
+
+            await skapi.getNewsletterSubscription({ group: 2 }, { fetchMore: true });
+            assert.deepStrictEqual(wireOf(lastRequest('get-newsletter-subscription')).startKey, KEY);
+        } finally { subscriptionRows = []; subscriptionStartKey = null; }
     });
 
     const failed = results.filter(r => r[0] === 'FAIL');
