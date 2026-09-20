@@ -1091,12 +1091,14 @@ function pollClientSecretResponse(
  * call sites pass DIFFERENT queue namespaces — the dispatch path passes the caller's
  * queue string, the history path passes the server-side qid — so a queue match only
  * reaches the polls that were started with that same string. Prefer stopping by id.
+ *
+ * @deprecated Use {@link stopForwardRequestPolling}, which is this same function.
  */
 export function stopClientSecretPolling(
 	this: any,
 	params: {
 		url?: string;
-		method?: 'GET' | 'POST' | 'DELETE' | 'PUT';
+		method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 		id?: string;
 		queue?: string;
 		service?: string;
@@ -1140,6 +1142,9 @@ export function stopClientSecretPolling(
 	return stopped;
 }
 
+/**
+ * @deprecated Use {@link forwardRequestQueueCount}, which is this same function.
+ */
 export function clientSecretRequestQueueCount(
 	params: { service?: string; owner?: string; queue: string },
 	fetchOptions?: FetchOptions
@@ -1165,165 +1170,285 @@ export function clientSecretRequestQueueCount(
 };
 
 /**
- * Relays a request to a destination of your choosing from the server, with a stored
- * client secret substituted in where you put "$CLIENT_SECRET", so the secret never
- * reaches the browser.
+ * Standard base64, padded, of a byte run.
  *
- * ### Streaming
- *
- * `stream: true` makes the server read the destination's response INCREMENTALLY and
- * append the bytes to storage as they arrive, instead of waiting for the whole body.
- * `onStream` then delivers that text to you as it lands.
- *
- * Three things are worth being blunt about:
- *
- * 1. **Skapi parses nothing.** It relays bytes. The text handed to `onStream` is
- *    exactly what the destination wrote, in the order it wrote it, still in whatever
- *    format the destination chose (server-sent events, ndjson, plain text, anything).
- *    Reading that format is yours to do. Skapi has no notion of what is on the other
- *    end of the url.
- * 2. **There are TWO "stream" flags in a streamed call, and they are not the same
- *    flag.** The one inside your own request body (`data.stream`, or whatever that
- *    api calls it) asks the DESTINATION to answer in pieces. This one, the skapi
- *    parameter, tells SKAPI to read that answer incrementally instead of waiting for
- *    the last byte. Neither implies the other: skapi never sends its flag to the
- *    destination, and the destination's field is just another key skapi passes
- *    through untouched. Set both, or neither. Setting one alone does not raise
- *    anything, it just goes quietly wrong:
- *    - **Body asks to stream, skapi buffers.** The destination answers in event
- *      frames and skapi waits for the end and stores the whole transcript as the
- *      response. What lands in the request is a wall of `data: {...}` lines where the
- *      caller expected the parsed document that api normally returns, so every reader
- *      written against that document quietly gives up on it.
- *    - **Skapi streams, the body never asked.** The destination answers with one
- *      plain document, and skapi honestly relays it in pieces as it arrives, so
- *      `onStream` fires and it all looks like it worked. A caller reading frames finds
- *      none, because there never were any.
- *
- *    Skapi cannot catch this for you, and the reason is the same one that lets it
- *    talk to any destination at all: the body is yours, it is never inspected, and
- *    skapi does not know which field (if any) that particular api streams on.
- * 3. **A streamed turn settles with a status and no body.** The text lives in the
- *    chunks, not on the request, so the history of that request stays empty until you
- *    say what should be kept, with {@link clientSecretRequestFinalize}. A turn you
- *    never finalize keeps its chunks indefinitely, on purpose, and the only way to
- *    read it back later is {@link clientSecretRequestStream}.
- *
- * `stream` requires a queue, and mints one for you when you do not name one: chunks
- * are appended to a polling row, and only a queued request has one.
- *
- * ### Live delivery (`realtime: true`)
- *
- * Streamed text is stored first and READ BY POLLING, so it reaches you in steps of one
- * poll interval however fast the destination is actually producing it. `realtime: true`
- * asks the server to ALSO push each chunk over skapi's websocket as it is relayed, and
- * this SDK then listens on it and hands you the text the moment it lands. It changes
- * only speed:
- *
- * - **The poll is still the floor, and stays authoritative.** Every chunk is written to
- *   storage before it is published, the poll still reads that storage, and it is the
- *   poll that fills anything the socket dropped and that settles the request. A socket
- *   that never opens (no session, no websocket in this environment, another streamed
- *   request already listening) or that dies mid-answer costs you nothing but speed:
- *   the read carries on at today's pace and resolves normally. Nothing about it is
- *   reported as an error, because its absence is not one.
- * - **Ordering and duplicates are handled for you.** Fan-out is not ordered, and the
- *   same chunk can reach you on both transports. `onStream` still fires once per chunk,
- *   in sequence order, whichever transport carried it, and a chunk that arrives ahead of
- *   its predecessor is held until the gap closes. You cannot tell which transport a
- *   chunk came in on, beyond it being faster.
- * - **Requires `stream: true`**, and only makes a difference when you pass `onStream`:
- *   that callback is the only place a chunk could go.
- * - **It is a capability.** The room is derived from the request id, and anyone holding
- *   that id can listen to that one request's relayed text (and nothing else). The id is
- *   unguessable and single-use, which is why this is opt-in per request.
- *
- * The reply carries `realtime_group`. Keep it beside the request id if you may want to
- * re-attach later: {@link clientSecretRequestStream} takes it as `realtimeGroup` and
- * reads the same request live.
- *
- * **If your app also uses realtime for its own purposes, read this.** A connection is
- * in ONE room at a time and joining REPLACES the current one, so for as long as a
- * live-delivered request is running, this SDK holds the connection's room and your own
- * `joinRealtime` group is not the one that is joined. On the way out the room is left
- * (not restored, because the SDK cannot read which room you were in), so re-join your
- * group after the request settles. The socket itself is left as it was found: your
- * callback is never replaced, your connection is never closed, and a connection opened
- * here for the read is closed here. An app that never calls `connectRealtime` has none
- * of this to think about.
- *
- * ```js
- * await skapi.clientSecretRequest({
- *     url: 'https://api.example.com/v1/chat',
- *     clientSecretName: 'my_secret',
- *     method: 'POST',
- *     headers: { 'x-api-key': '$CLIENT_SECRET' },
- *     // Both flags, and they are different flags. This "stream" is the destination's
- *     // own field, asking IT to answer in pieces. Skapi passes it through untouched.
- *     data: { model: 'some-model', stream: true, messages: [...] },
- *     // And this one is skapi's, telling it to relay that answer as it arrives.
- *     // Either flag without the other is the quiet failure described above.
- *     stream: true,
- *     // Push each relayed chunk over the websocket too, instead of waiting for the
- *     // next poll tick. Falls back to the poll on its own if the socket cannot open.
- *     realtime: true,
- *     poll: 1000,
- *     onStream: (chunk) => { output.textContent += chunk; },
- *     // A streamed turn settles with a status and no body: the text was the stream.
- *     onResponse: (res) => console.log(res.status)
- * });
- * ```
- *
- * @param params Request parameters.
- * @returns The destination's response, or a status object when the request is queued.
+ * Deliberately NOT b64uFromBytes from utils/crypto: that pair is base64URL and
+ * unpadded, which is right for the keys and ciphertext it was written for and wrong
+ * here. `body_b64` is handed to a plain base64 decoder on the way out, so the bytes
+ * have to travel as plain base64.
  */
-export async function clientSecretRequest(params: {
-	url: string;
-	clientSecretName: string;
-	method: 'GET' | 'POST' | 'DELETE' | 'PUT';
-	headers?: { [key: string]: string };
-	data?: { [key: string]: any };
-	params?: { [key: string]: string };
-	poll?: number; // enable polling with specified latency in ms.
-	queue?: string; // optional queue name to distinguish requests with same url and method. Only effective when polling is enabled. Requests with the same url, method and queue will be handled sequentially on the server side.
-	expires?: number; // optional history expiration time in seconds after it's resolved.
-	/** Relay the destination's response incrementally instead of buffering it. The
-	 *  text is appended to storage as it arrives and read back through `onStream`;
-	 *  the request itself then settles with a status and NO body, and stays that way
-	 *  until clientSecretRequestFinalize says what to keep. Requires a queue (one is
-	 *  minted if you do not name it). Skapi parses none of the relayed text, and this
-	 *  flag is not sent to the destination: asking the destination for a streamed
-	 *  response is a separate field in your own `data`, and the two have to be set
-	 *  together (see the method doc: one without the other fails quietly). */
-	stream?: boolean;
-	/** Also push each relayed chunk over skapi's websocket, so `onStream` fires as the
-	 *  text is relayed instead of on the next poll tick. Requires `stream: true`, and
-	 *  is only useful alongside `onStream`. Purely an accelerator: the chunk table is
-	 *  still written first and still read by the poll, ordering and duplicates are
-	 *  handled for you, and a socket that cannot be opened is not an error - the read
-	 *  simply runs at its normal speed. See the method doc for what it does to a
-	 *  connection your app may also be using. */
-	realtime?: boolean;
-	/** Called with each piece of relayed text as it arrives, in order, with the
-	 *  sequence number it was stored under. Its PRESENCE is what makes polling read
-	 *  the text at all, so a caller that only wants the outcome can poll the very same
-	 *  request without it and simply get the terminal status. Raw text, never parsed. */
-	onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void;
-	onResponse?: (res: any, meta?: { executed?: number }) => void; // response callback that works on both polling request and regular.
-	onError?: (err: any) => void; // error callback that works on both pollubg request error and regular.
-}): Promise<any | void | {
-	id: string; // request id: "stamp:entropy"
-	status: "pending";
-	queue_name: string;
-	in_queue: number;
-	/** Present when `realtime: true` was accepted: the room this request's chunks are
-	 *  published to. The returned `poll()` already listens on it, so this is only
-	 *  needed to re-attach later with clientSecretRequestStream. Keep it beside the
-	 *  id; it cannot be rebuilt from the id alone. */
-	realtime_group?: string;
-	poll?: (arg?: { latency?: number; onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void }) => Promise<any>;
-}> {
+function stdBase64FromBytes(u8: Uint8Array): string {
+	if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+		return Buffer.from(u8).toString('base64');
+	}
+	if (typeof btoa === 'function') {
+		// Chunked: String.fromCharCode.apply on a whole file blows the stack.
+		let binary = '';
+		const chunk = 0x8000;
+		for (let i = 0; i < u8.length; i += chunk) {
+			binary += String.fromCharCode.apply(null, Array.from(u8.subarray(i, i + chunk)));
+		}
+		return btoa(binary);
+	}
+	throw new SkapiError('No base64 encoder available in this environment.', {
+		code: 'NOT_SUPPORTED',
+	});
+}
+
+/**
+ * Ceiling on an encoded raw body.
+ *
+ * A multipart body rides the ordinary request rather than a separate upload, so it
+ * shares that request's payload budget, and this SDK caps a request body at 2 MB of
+ * serialized JSON (MAX_FORM_DATA_SIZE in utils, asserted on the way through
+ * validator.Params and again in request()). The url, the headers and the query string
+ * are in that same 2 MB, hence the headroom subtracted here: without it a body just
+ * under the cap would be refused by the generic assertion instead, with a message that
+ * says nothing about multipart.
+ *
+ * Measured on the ENCODED string, because that is what is counted: base64 costs four
+ * characters per three bytes, so the file itself has to be around a quarter smaller
+ * again. A caller with more than this to send uploads the file first and sends its url.
+ */
+const MAX_FORWARD_BODY_B64 = 2 * 1024 * 1024 - 64 * 1024;
+
+/** A value that is a file rather than a field. See flattenForwardForm. */
+function isFileValue(v: any): boolean {
+	return (
+		(typeof File !== 'undefined' && v instanceof File) ||
+		(typeof Blob !== 'undefined' && v instanceof Blob)
+	);
+}
+
+/**
+ * Strips file values out of a flattened form body.
+ *
+ * extractFormData already separates the files a FORM ELEMENT carries, but a plain
+ * object handed in by a caller is returned as it was given, files and all, and a File
+ * serializes to `{}` in JSON. Dropping them here makes "files are dropped" true for
+ * every shape of first argument rather than only for the ones the extractor knows.
+ *
+ * Only arrays and PLAIN objects are walked into. Anything else with its own class is
+ * left exactly as it was found and handed to the same JSON clone every other parameter
+ * goes through: rebuilding a Date, say, key by key would hand the destination `{}`
+ * where its own serialization would have written a timestamp.
+ */
+function dropFileValues(v: any): any {
+	if (Array.isArray(v)) {
+		let out: any[] = [];
+		for (let i of v) {
+			if (isFileValue(i)) continue;
+			out.push(dropFileValues(i));
+		}
+		return out;
+	}
+	if (v && typeof v === 'object' && !isFileValue(v)) {
+		let proto = Object.getPrototypeOf(v);
+		if (proto !== Object.prototype && proto !== null) {
+			return v;
+		}
+		let out: { [key: string]: any } = {};
+		for (let k in v) {
+			if (isFileValue(v[k])) continue;
+			out[k] = dropFileValues(v[k]);
+		}
+		return out;
+	}
+	return v;
+}
+
+/**
+ * The first argument of {@link forwardRequest}, flattened to a plain key-value object
+ * the way every other form-taking method in this SDK reads one: a submit event uses its
+ * target form, a form element is read field by field, FormData is read entry by entry,
+ * a plain object is used as it is, and repeated field names collapse to an array.
+ *
+ * FILES ARE DROPPED. This object is merged into `data` or `params` and travels as JSON,
+ * where a file has no representation. A caller that needs the file itself relayed asks
+ * for `multipart: true`, which sends the body verbatim instead of flattening it.
+ */
+function flattenForwardForm(form: any): { [key: string]: any } | null {
+	if (form === null || form === undefined) {
+		return null;
+	}
+	// The extractor's `files` half is deliberately not read: see above.
+	let data = extractFormData(form)?.data;
+	if (!data || typeof data !== 'object' || Array.isArray(data)) {
+		return null;
+	}
+	return dropFileValues(data);
+}
+
+/** One entry of a multipart body, the way a browser would append it. */
+function appendMultipartValue(fd: FormData, key: string, v: any) {
+	if (v === undefined) {
+		return;
+	}
+	if (Array.isArray(v)) {
+		for (let i of v) {
+			appendMultipartValue(fd, key, i);
+		}
+		return;
+	}
+	if (isFileValue(v)) {
+		fd.append(key, v as Blob);
+		return;
+	}
+	if (v === null) {
+		fd.append(key, '');
+		return;
+	}
+	if (typeof v === 'object') {
+		fd.append(key, JSON.stringify(v));
+		return;
+	}
+	fd.append(key, String(v));
+}
+
+/**
+ * The first argument of {@link forwardRequest} as a RAW multipart body, byte for byte
+ * the way a browser posting that form would send it, files included.
+ *
+ * The serialization is the platform's own: handing FormData to a Response is what makes
+ * the boundary, the part headers and the file bytes come out exactly as fetch() would
+ * have written them, rather than this SDK inventing a second multipart encoder that
+ * would have to agree with the browser forever.
+ */
+async function buildMultipartBody(
+	form: any,
+): Promise<{ body_b64: string; body_content_type: string }> {
+	if (form === null || form === undefined) {
+		throw new SkapiError('"multipart": true needs a form body in the first argument.', {
+			code: 'INVALID_PARAMETER',
+		});
+	}
+	if (typeof FormData === 'undefined' || typeof Response === 'undefined') {
+		throw new SkapiError('"multipart": true is not available in this environment.', {
+			code: 'NOT_SUPPORTED',
+		});
+	}
+
+	let fd: FormData;
+	if (hasSubmitEvent && form instanceof SubmitEvent) {
+		fd = new FormData(form.target as HTMLFormElement);
+	}
+	else if (hasHTMLFormElement && form instanceof HTMLFormElement) {
+		fd = new FormData(form);
+	}
+	else if (form instanceof FormData) {
+		fd = form;
+	}
+	else if (typeof form === 'object' && !Array.isArray(form)) {
+		fd = new FormData();
+		for (let k in form) {
+			appendMultipartValue(fd, k, form[k]);
+		}
+	}
+	else {
+		throw new SkapiError(
+			'"form" should be a submit event, a form element, FormData, or an object.',
+			{ code: 'INVALID_PARAMETER' },
+		);
+	}
+
+	let serialized = new Response(fd);
+	// Carries the boundary the platform chose. The destination cannot parse the body
+	// without it, which is why it travels beside the bytes rather than being guessed.
+	let body_content_type = serialized.headers.get('content-type');
+	let body_b64 = stdBase64FromBytes(new Uint8Array(await serialized.arrayBuffer()));
+
+	if (body_b64.length > MAX_FORWARD_BODY_B64) {
+		throw new SkapiError(
+			`Multipart body is too large: ${body_b64.length} bytes once base64 encoded, and the limit is ${MAX_FORWARD_BODY_B64}. Upload the file first and send its url instead.`,
+			{ code: 'INVALID_PARAMETER' },
+		);
+	}
+
+	return { body_b64, body_content_type };
+}
+
+/**
+ * What the caller asked to be told about itself, as the wire carries it.
+ *
+ * The values themselves are never built here: `x-skapi-user` and `x-skapi-service` are
+ * written server side from the VERIFIED identity of the request, so this flag says which
+ * of them to send and nothing more.
+ */
+function normalizeSkapiHeaders(v: any): boolean | { user: boolean; service: boolean } {
+	if (v === undefined || v === null) {
+		return undefined;
+	}
+	if (typeof v === 'boolean') {
+		return v;
+	}
+	if (typeof v === 'object' && !Array.isArray(v)) {
+		return { user: !!v.user, service: !!v.service };
+	}
+	throw new SkapiError(
+		'"skapiHeaders" should be type: <boolean> or { user?: boolean; service?: boolean }.',
+		{ code: 'INVALID_PARAMETER' },
+	);
+}
+
+/**
+ * Refuses a caller-supplied header in the reserved prefix.
+ *
+ * The point of the prefix is that a destination can trust it: everything under
+ * "x-skapi-" is written by skapi from the verified request identity, so a caller that
+ * could set one could claim to be any user of any service. Matched case-insensitively,
+ * because a header name is. The server refuses these too; this is here so the refusal
+ * reads as the caller's own mistake instead of arriving as a remote error.
+ */
+function refuseReservedHeaders(v: any) {
+	if (!v || typeof v !== 'object') {
+		return;
+	}
+	for (let k in v) {
+		if (typeof k === 'string' && k.toLowerCase().indexOf('x-skapi-') === 0) {
+			throw new SkapiError(
+				`"headers" cannot set "${k}": the "x-skapi-" prefix is reserved. Use "skapiHeaders" to tell the destination who the caller is.`,
+				{ code: 'INVALID_PARAMETER' },
+			);
+		}
+	}
+}
+
+/**
+ * The one dispatch behind the whole family.
+ *
+ * {@link forwardRequest} and the deprecated {@link clientSecretRequest} differ only in
+ * how a caller spells a request. The queue, the poll and its handle, the streamed read,
+ * the realtime relay and the direct non-queued path are this function and nothing else,
+ * which is what makes a request started under either name readable under either name.
+ *
+ * `requireSecretName` is the only behavioural difference between the two doors: the old
+ * name always names a client secret, the new one may name none.
+ */
+async function dispatchForwardRequest(
+	this: any,
+	params: any,
+	opt?: {
+		/** The legacy door, where "clientSecretName" is required as it always was. */
+		requireSecretName?: boolean;
+		/** Aborting stops THIS CLIENT's poll of the request. Captured here rather than
+		 *  validated into the params because an AbortSignal does not survive the JSON
+		 *  clone every validated field goes through, and because it is this client's
+		 *  own business: it is never sent anywhere. */
+		signal?: AbortSignal;
+	},
+): Promise<any> {
 	let hasSecret = false;
+	// Whether a secret was NAMED at all. The "$CLIENT_SECRET" requirement further down
+	// only means something when there is a secret to substitute, and forwardRequest
+	// makes naming one optional. Read before validation, which keeps only its own keys.
+	let secretNamed = !!(params?.secretName || params?.clientSecretName);
+	let signal = opt?.signal;
+
+	if (signal?.aborted) {
+		throw new SkapiError('"signal" was already aborted.', {
+			code: 'INVALID_REQUEST',
+		});
+	}
 
 	if (typeof params.poll === 'number' && params.poll < 0) {
 		throw new SkapiError('"poll" should be a non-negative number.', {
@@ -1373,11 +1498,16 @@ export async function clientSecretRequest(params: {
 				}
 				return v;
 			},
+			/** The stored client secret to substitute in. Optional: a request that names
+			 *  none is forwarded with only what the caller supplied. */
+			secretName: 'string',
+			/** What "secretName" was called before. Still accepted, and still what
+			 *  clientSecretRequest sends. */
 			clientSecretName: 'string',
 			method: (v: string) => {
 				if (v && typeof v !== 'string') {
 					throw new SkapiError(
-						'"method" should be either "GET" or "POST" or "DELETE" or "PUT".',
+						'"method" should be one of "GET", "POST", "PUT", "PATCH", "DELETE" or "HEAD".',
 						{ code: 'INVALID_PARAMETER' },
 					);
 				}
@@ -1386,10 +1516,12 @@ export async function clientSecretRequest(params: {
 					lo !== 'get' &&
 					lo !== 'post' &&
 					lo !== 'delete' &&
-					lo !== 'put'
+					lo !== 'put' &&
+					lo !== 'patch' &&
+					lo !== 'head'
 				) {
 					throw new SkapiError(
-						'"method" should be either "GET" or "POST" or "DELETE" or "PUT".',
+						'"method" should be one of "GET", "POST", "PUT", "PATCH", "DELETE" or "HEAD".',
 						{ code: 'INVALID_PARAMETER' },
 					);
 				}
@@ -1422,9 +1554,13 @@ export async function clientSecretRequest(params: {
 						{ code: 'INVALID_PARAMETER' },
 					);
 				}
+				refuseReservedHeaders(v);
 				checkClientSecretPlaceholder(v);
 				return v;
 			},
+			/** Which of "x-skapi-user" and "x-skapi-service" the destination is told.
+			 *  The values are written server side from the verified identity. */
+			skapiHeaders: (v: any) => normalizeSkapiHeaders(v),
 			data: (v: any) => {
 				if (v && typeof v !== 'object') {
 					throw new SkapiError('"data" should be type: <object>.', {
@@ -1443,10 +1579,15 @@ export async function clientSecretRequest(params: {
 				checkClientSecretPlaceholder(v);
 				return v;
 			},
+			/** A raw body, base64 encoded, relayed to the destination byte for byte with
+			 *  "body_content_type" as its content type. Built by forwardRequest from
+			 *  "multipart: true"; never a key a caller types. */
+			body_b64: 'string',
+			body_content_type: 'string',
 			expires: 'number',
 			queue: 'string',
 		},
-		['clientSecretName', 'method', 'url'],
+		opt?.requireSecretName ? ['clientSecretName', 'method', 'url'] : ['method', 'url'],
 	);
 
 	// Refused here as well as on the server, because the failure it prevents is a
@@ -1459,9 +1600,23 @@ export async function clientSecretRequest(params: {
 		});
 	}
 
-	if (!hasSecret) {
+	// There is no sane merge of a raw body with a key-value object: one of them would
+	// have to be dropped, and either choice is a quiet surprise.
+	if (params.body_b64 && params.data) {
+		throw new SkapiError('"data" cannot be sent with "multipart": true.', {
+			code: 'INVALID_PARAMETER',
+		});
+	}
+
+	// Only a NAMED secret is substituted, so only a named secret needs somewhere to go.
+	// A request that names none carries exactly what the caller supplied, and asking it
+	// for a placeholder nothing would fill would refuse a legitimate call.
+	if (secretNamed && !hasSecret) {
+		let target = params.method === 'get' || params.method === 'delete' || params.method === 'head'
+			? '"params"'
+			: '"data"';
 		throw new SkapiError(
-			`At least one parameter value should include "$CLIENT_SECRET" in ${params.method.toLowerCase() === 'post' ? '"data"' : '"params"'} or "headers".`,
+			`At least one parameter value should include "$CLIENT_SECRET" in ${target} or "headers".`,
 			{ code: 'INVALID_PARAMETER' },
 		);
 	}
@@ -1483,6 +1638,18 @@ export async function clientSecretRequest(params: {
 					let serviceId = params.service || this.service;
 					let ownerId = params.owner || this.owner;
 					let fullId = `${url}#${serviceId}:${res.id}`;
+					// An abort stops THIS CLIENT's poll of the request, which is what the
+					// signal has always meant here: the request is already on the server
+					// and may already be running at the destination, so it is deliberately
+					// NOT cancelled. cancelForwardRequest is what removes it. Registered
+					// on the id so it also reaches a poll the caller starts later by hand.
+					if (signal) {
+						let onAbort = () => {
+							stopClientSecretPolling.call(this, { id: fullId });
+						};
+						if (signal.aborted) onAbort();
+						else signal.addEventListener('abort', onAbort, { once: true });
+					}
 					Object.assign(res, {
 						// NOT async: an async arrow returns a NEW native promise wrapping the
 						// result, which discards the `stop` handle pollClientSecretResponse
@@ -1540,6 +1707,14 @@ export async function clientSecretRequest(params: {
 
 					if (latency > 0) {
 						let polling = result.poll({latency});
+						// Straight onto the poll's own handle as well as onto the id above:
+						// an abort that lands between the dispatch and the first tick would
+						// otherwise find nothing registered yet and leave the poll running.
+						// Both stops are idempotent.
+						if (signal) {
+							if (signal.aborted) polling.stop();
+							else signal.addEventListener('abort', () => polling.stop(), { once: true });
+						}
 						resolve(polling);
 						return polling;
 					}
@@ -1558,10 +1733,433 @@ export async function clientSecretRequest(params: {
 	}
 }
 
+/**
+ * Relays a request to a destination of your choosing from the server rather than the
+ * browser, optionally with a stored client secret substituted in where you put
+ * "$CLIENT_SECRET", so the secret never reaches the browser.
+ *
+ * ### The form, and the first argument
+ *
+ * The first argument is a submit event, a form element, FormData, a plain object, or
+ * `null` when everything is already in `options`. By default it is FLATTENED to a plain
+ * key-value object (repeated field names collapse to an array) and merged into the
+ * request: into `params` for `GET`, `DELETE` and `HEAD`, into `data` for everything
+ * else. Where a key is in both, the one you typed in `options.data` or `options.params`
+ * wins, because it is the more specific instruction.
+ *
+ * **FILES ARE DROPPED by that flattening**, because the merged object travels as JSON
+ * and a file has no representation in it. Pass `multipart: true` to send the form's own
+ * bytes instead: the body is built exactly as a browser posting that form would build
+ * it, files included, and relayed verbatim with its own content type. A raw body rides
+ * the ordinary request and so shares its size budget, so keep it under 2 MB once
+ * encoded and upload anything larger first, sending its url. `data` is refused
+ * alongside `multipart`, because there is no sane merge of a raw body with a key-value
+ * object.
+ *
+ * ### Naming a secret
+ *
+ * `secretName` is optional. Name one and "$CLIENT_SECRET" is substituted server side in
+ * the url, the headers, `data` and `params`, the secret's access group authorizes the
+ * caller, and the secret's allowed destinations are enforced; at least one value has to
+ * carry the placeholder, or there would be nothing for the secret to fill. Name none and
+ * the request is forwarded with only what you supplied.
+ *
+ * ### Telling the destination who is calling
+ *
+ * `skapiHeaders` is off by default: the destination is told nothing about the caller.
+ * `true` sends both `x-skapi-user` (the caller's user id, omitted entirely for a
+ * signed-out caller) and `x-skapi-service` (the service id); `{ user: true }` or
+ * `{ service: true }` sends only that one. Both are written server side from the
+ * VERIFIED identity of the request, never from anything typed at the call site, and a
+ * header of your own starting with "x-skapi-" is refused for the same reason: the prefix
+ * is what lets a destination trust them.
+ *
+ * ### Streaming
+ *
+ * `stream: true` makes the server read the destination's response INCREMENTALLY and
+ * append the bytes to storage as they arrive, instead of waiting for the whole body.
+ * `onStream` then delivers that text to you as it lands.
+ *
+ * Three things are worth being blunt about:
+ *
+ * 1. **Skapi parses nothing.** It relays bytes. The text handed to `onStream` is
+ *    exactly what the destination wrote, in the order it wrote it, still in whatever
+ *    format the destination chose (server-sent events, ndjson, plain text, anything).
+ *    Reading that format is yours to do. Skapi has no notion of what is on the other
+ *    end of the url.
+ * 2. **There are TWO "stream" flags in a streamed call, and they are not the same
+ *    flag.** The one inside your own request body (`data.stream`, or whatever that
+ *    api calls it) asks the DESTINATION to answer in pieces. This one, the skapi
+ *    parameter, tells SKAPI to read that answer incrementally instead of waiting for
+ *    the last byte. Neither implies the other: skapi never sends its flag to the
+ *    destination, and the destination's field is just another key skapi passes
+ *    through untouched. Set both, or neither. Setting one alone does not raise
+ *    anything, it just goes quietly wrong:
+ *    - **Body asks to stream, skapi buffers.** The destination answers in event
+ *      frames and skapi waits for the end and stores the whole transcript as the
+ *      response. What lands in the request is a wall of `data: {...}` lines where the
+ *      caller expected the parsed document that api normally returns, so every reader
+ *      written against that document quietly gives up on it.
+ *    - **Skapi streams, the body never asked.** The destination answers with one
+ *      plain document, and skapi honestly relays it in pieces as it arrives, so
+ *      `onStream` fires and it all looks like it worked. A caller reading frames finds
+ *      none, because there never were any.
+ *
+ *    Skapi cannot catch this for you, and the reason is the same one that lets it
+ *    talk to any destination at all: the body is yours, it is never inspected, and
+ *    skapi does not know which field (if any) that particular api streams on.
+ * 3. **A streamed turn settles with a status and no body.** The text lives in the
+ *    chunks, not on the request, so the history of that request stays empty until you
+ *    say what should be kept, with {@link forwardRequestFinalize}. A turn you
+ *    never finalize keeps its chunks indefinitely, on purpose, and the only way to
+ *    read it back later is {@link forwardRequestStream}.
+ *
+ * `stream` requires a queue, and mints one for you when you do not name one: chunks
+ * are appended to a polling row, and only a queued request has one.
+ *
+ * ### Live delivery (`realtime: true`)
+ *
+ * Streamed text is stored first and READ BY POLLING, so it reaches you in steps of one
+ * poll interval however fast the destination is actually producing it. `realtime: true`
+ * asks the server to ALSO push each chunk over skapi's websocket as it is relayed, and
+ * this SDK then listens on it and hands you the text the moment it lands. It changes
+ * only speed:
+ *
+ * - **The poll is still the floor, and stays authoritative.** Every chunk is written to
+ *   storage before it is published, the poll still reads that storage, and it is the
+ *   poll that fills anything the socket dropped and that settles the request. A socket
+ *   that never opens (no session, no websocket in this environment, another streamed
+ *   request already listening) or that dies mid-answer costs you nothing but speed:
+ *   the read carries on at today's pace and resolves normally. Nothing about it is
+ *   reported as an error, because its absence is not one.
+ * - **Ordering and duplicates are handled for you.** Fan-out is not ordered, and the
+ *   same chunk can reach you on both transports. `onStream` still fires once per chunk,
+ *   in sequence order, whichever transport carried it, and a chunk that arrives ahead of
+ *   its predecessor is held until the gap closes. You cannot tell which transport a
+ *   chunk came in on, beyond it being faster.
+ * - **Requires `stream: true`**, and only makes a difference when you pass `onStream`:
+ *   that callback is the only place a chunk could go.
+ * - **It is a capability.** The room is derived from the request id, and anyone holding
+ *   that id can listen to that one request's relayed text (and nothing else). The id is
+ *   unguessable and single-use, which is why this is opt-in per request.
+ *
+ * The reply carries `realtime_group`. Keep it beside the request id if you may want to
+ * re-attach later: {@link forwardRequestStream} takes it as `realtimeGroup` and
+ * reads the same request live.
+ *
+ * **If your app also uses realtime for its own purposes, read this.** A connection is
+ * in ONE room at a time and joining REPLACES the current one, so for as long as a
+ * live-delivered request is running, this SDK holds the connection's room and your own
+ * `joinRealtime` group is not the one that is joined. On the way out the room is left
+ * (not restored, because the SDK cannot read which room you were in), so re-join your
+ * group after the request settles. The socket itself is left as it was found: your
+ * callback is never replaced, your connection is never closed, and a connection opened
+ * here for the read is closed here. An app that never calls `connectRealtime` has none
+ * of this to think about.
+ *
+ * ```js
+ * // A form, relayed as fields. Files in it are dropped; pass multipart: true to keep them.
+ * await skapi.forwardRequest(formElement, {
+ *     url: 'https://api.example.com/v1/report',
+ *     secretName: 'my_secret',
+ *     method: 'POST',
+ *     headers: { 'x-api-key': '$CLIENT_SECRET' }
+ * });
+ *
+ * // No form at all: everything is in the options.
+ * await skapi.forwardRequest(null, {
+ *     url: 'https://api.example.com/v1/chat',
+ *     secretName: 'my_secret',
+ *     method: 'POST',
+ *     headers: { 'x-api-key': '$CLIENT_SECRET' },
+ *     // Both flags, and they are different flags. This "stream" is the destination's
+ *     // own field, asking IT to answer in pieces. Skapi passes it through untouched.
+ *     data: { model: 'some-model', stream: true, messages: [...] },
+ *     // And this one is skapi's, telling it to relay that answer as it arrives.
+ *     // Either flag without the other is the quiet failure described above.
+ *     stream: true,
+ *     // Push each relayed chunk over the websocket too, instead of waiting for the
+ *     // next poll tick. Falls back to the poll on its own if the socket cannot open.
+ *     realtime: true,
+ *     poll: 1000,
+ *     onStream: (chunk) => { output.textContent += chunk; },
+ *     // A streamed turn settles with a status and no body: the text was the stream.
+ *     onResponse: (res) => console.log(res.status)
+ * });
+ * ```
+ *
+ * @param form Submit event, form element, FormData, plain object, or null for no form body.
+ * @param options Where to send it, and how.
+ * @returns The destination's response, or a status object when the request is queued.
+ */
+export async function forwardRequest(
+	this: any,
+	form: SubmitEvent | HTMLFormElement | FormData | { [key: string]: any } | null,
+	options: {
+		/** The stored client secret to substitute for "$CLIENT_SECRET". Optional: a
+		 *  request that names none is forwarded with only what you supplied. */
+		secretName?: string;
+		/** Destination url. */
+		url: string;
+		/** Destination method. Defaults to POST. */
+		method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
+		/** Headers to send TO the destination. A name starting with "x-skapi-" is
+		 *  refused: that prefix is written by skapi and nobody else. */
+		headers?: { [key: string]: string };
+		/** Request body. Merged over by nothing: where the form carries the same key,
+		 *  this value wins. Refused with "multipart": true. */
+		data?: { [key: string]: any };
+		/** Query string. The merge target for GET, DELETE and HEAD, and the same
+		 *  collision rule applies. */
+		params?: { [key: string]: string };
+		/** Send the form's own bytes, the way a browser would, files included, instead
+		 *  of flattening it to fields and dropping the files. Keep it under 2 MB once
+		 *  encoded: a raw body travels inside the ordinary request and shares its
+		 *  payload budget. */
+		multipart?: boolean;
+		/** Which of "x-skapi-user" and "x-skapi-service" the destination is told. Off by
+		 *  default. Both values are written server side from the verified identity of
+		 *  the request, never from anything typed here. */
+		skapiHeaders?: boolean | { user?: boolean; service?: boolean };
+		/** The service to run this request against, when it is not this instance's own.
+		 *  An admin dashboard acting on a user's project names it here, together with
+		 *  `owner`. Left out, the request runs against this instance's service. */
+		service?: string;
+		/** The owner of `service`. Only meaningful alongside it. */
+		owner?: string;
+		poll?: number; // enable polling with specified latency in ms.
+		queue?: string; // optional queue name to distinguish requests with same url and method. Only effective when polling is enabled. Requests with the same url, method and queue will be handled sequentially on the server side.
+		expires?: number; // optional history expiration time in seconds after it's resolved.
+		/** Relay the destination's response incrementally instead of buffering it. The
+		 *  text is appended to storage as it arrives and read back through `onStream`;
+		 *  the request itself then settles with a status and NO body, and stays that way
+		 *  until forwardRequestFinalize says what to keep. Requires a queue (one is
+		 *  minted if you do not name it). Skapi parses none of the relayed text, and this
+		 *  flag is not sent to the destination: asking the destination for a streamed
+		 *  response is a separate field in your own `data`, and the two have to be set
+		 *  together (see the method doc: one without the other fails quietly). */
+		stream?: boolean;
+		/** Also push each relayed chunk over skapi's websocket, so `onStream` fires as the
+		 *  text is relayed instead of on the next poll tick. Requires `stream: true`, and
+		 *  is only useful alongside `onStream`. Purely an accelerator: the chunk table is
+		 *  still written first and still read by the poll, ordering and duplicates are
+		 *  handled for you, and a socket that cannot be opened is not an error - the read
+		 *  simply runs at its normal speed. See the method doc for what it does to a
+		 *  connection your app may also be using. */
+		realtime?: boolean;
+		/** Called with each piece of relayed text as it arrives, in order, with the
+		 *  sequence number it was stored under. Its PRESENCE is what makes polling read
+		 *  the text at all, so a caller that only wants the outcome can poll the very same
+		 *  request without it and simply get the terminal status. Raw text, never parsed. */
+		onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void;
+		onResponse?: (res: any, meta?: { executed?: number }) => void; // response callback that works on both polling request and regular.
+		onError?: (err: any) => void; // error callback that works on both polling request error and regular.
+		/** How to resolve the promise with the destination's answer: "text" hands back a
+		 *  string, "json" parses one. A skapi status object is handed back untouched
+		 *  either way. Left out, the answer arrives exactly as the server stored it. */
+		responseType?: 'json' | 'text' | 'response';
+		/** Aborting stops THIS CLIENT polling the request. The request is already on the
+		 *  server and may already be running at the destination, so it is not cancelled:
+		 *  cancelForwardRequest is what removes it. */
+		signal?: AbortSignal;
+	},
+): Promise<any | void | {
+	id: string; // request id: "stamp:entropy"
+	status: "pending";
+	queue_name: string;
+	in_queue: number;
+	/** Present when `realtime: true` was accepted: the room this request's chunks are
+	 *  published to. The returned `poll()` already listens on it, so this is only
+	 *  needed to re-attach later with forwardRequestStream. Keep it beside the
+	 *  id; it cannot be rebuilt from the id alone. */
+	realtime_group?: string;
+	poll?: (arg?: { latency?: number; onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void }) => Promise<any>;
+}> {
+	if (!options || typeof options !== 'object') {
+		throw new SkapiError('"options" is required in the second argument.', {
+			code: 'INVALID_PARAMETER',
+		});
+	}
+
+	// Retired along with the api key injection they configured. Refused rather than
+	// ignored: a silently dropped key is a request that reaches the destination
+	// unauthenticated and fails there, which is a much longer way to find out.
+	if ((options as any).apiKeyHeader !== undefined || (options as any).apiKeyScheme !== undefined) {
+		throw new SkapiError(
+			'"apiKeyHeader" and "apiKeyScheme" are no longer supported. Store the key as a client secret, name it with "secretName", and put "$CLIENT_SECRET" where the key goes.',
+			{ code: 'INVALID_PARAMETER' },
+		);
+	}
+
+	if (
+		options.multipart !== undefined &&
+		options.multipart !== null &&
+		typeof options.multipart !== 'boolean'
+	) {
+		throw new SkapiError('"multipart" should be type: <boolean>.', {
+			code: 'INVALID_PARAMETER',
+		});
+	}
+
+	let responseType = options.responseType;
+	if (responseType !== undefined && responseType !== null) {
+		if (responseType === 'response') {
+			throw new SkapiError(
+				'"responseType": "response" is not available here. The request is relayed from the server and what comes back is the stored answer, not a live Response; the destination\'s status code is the "status_code" of the row forwardRequestHistory lists.',
+				{ code: 'INVALID_PARAMETER' },
+			);
+		}
+		if (responseType !== 'json' && responseType !== 'text') {
+			throw new SkapiError('"responseType" should be either "json" or "text".', {
+				code: 'INVALID_PARAMETER',
+			});
+		}
+	}
+
+	// POST by default, which is what a form with no method attribute of its own would
+	// have meant and what all but a read is.
+	let method = options.method || 'POST';
+	// A method with no body carries the form's fields in the query string instead.
+	let lo = typeof method === 'string' ? method.toLowerCase() : '';
+	let mergeInto = lo === 'get' || lo === 'delete' || lo === 'head' ? 'params' : 'data';
+
+	let params: any = { url: options.url, method };
+	if (options.secretName !== undefined) params.secretName = options.secretName;
+	if (options.headers !== undefined) params.headers = options.headers;
+	if (options.data !== undefined) params.data = options.data;
+	if (options.params !== undefined) params.params = options.params;
+	if (options.skapiHeaders !== undefined) params.skapiHeaders = options.skapiHeaders;
+	// Carried through because validator.Params keeps these two on EVERY method, so the
+	// deprecated clientSecretRequest always forwarded them and the request ran against
+	// the project they name. Leaving them off this list silently re-aimed an admin
+	// dashboard's request at its OWN service: a user's AI key, file or client secret
+	// looked up in the host project instead, which fails or, worse, answers from the
+	// wrong project.
+	if (options.service !== undefined) params.service = options.service;
+	if (options.owner !== undefined) params.owner = options.owner;
+	if (options.queue !== undefined) params.queue = options.queue;
+	if (options.expires !== undefined) params.expires = options.expires;
+	if (options.stream !== undefined) params.stream = options.stream;
+	if (options.realtime !== undefined) params.realtime = options.realtime;
+	if (options.poll !== undefined) params.poll = options.poll;
+	if (options.onStream !== undefined) params.onStream = options.onStream;
+	if (options.onResponse !== undefined) params.onResponse = options.onResponse;
+	if (options.onError !== undefined) params.onError = options.onError;
+
+	if (options.multipart) {
+		// Refused before the body is even built: there is no sane merge of a raw body
+		// with a key-value object, and building one only to drop it would be worse.
+		if (options.data !== undefined && options.data !== null) {
+			throw new SkapiError(
+				'"data" cannot be sent with "multipart": true. The form itself is the body.',
+				{ code: 'INVALID_PARAMETER' },
+			);
+		}
+		let raw = await buildMultipartBody(form);
+		params.body_b64 = raw.body_b64;
+		params.body_content_type = raw.body_content_type;
+	}
+	else {
+		let flat = flattenForwardForm(form);
+		if (flat && Object.keys(flat).length) {
+			// The explicit option wins on a collision: it was typed at the call site,
+			// while the form's value was collected from a page.
+			params[mergeInto] = Object.assign({}, flat, params[mergeInto] || {});
+		}
+	}
+
+	let prom = dispatchForwardRequest.call(this, params, { signal: options.signal });
+
+	if (!responseType) {
+		return prom;
+	}
+
+	return prom.then((res: any) => {
+		// A status object is skapi's own envelope rather than the destination's answer,
+		// and reshaping it would corrupt the very fields it is read for.
+		if (isPollEnvelope(res) || isPollStopped(res)) {
+			return res;
+		}
+		if (responseType === 'text') {
+			return typeof res === 'string' ? res : JSON.stringify(res);
+		}
+		if (typeof res === 'string') {
+			try {
+				return JSON.parse(res);
+			} catch (err) {
+				return res;
+			}
+		}
+		return res;
+	});
+}
+
+/**
+ * @deprecated Use {@link forwardRequest}, which takes the form as its first argument and
+ * makes the client secret optional. This name keeps working exactly as it did: both
+ * names dispatch the same request through the same code, and a request started under
+ * either name is readable under either name.
+ *
+ * @param params Request parameters.
+ * @returns The destination's response, or a status object when the request is queued.
+ */
+export async function clientSecretRequest(params: {
+	url: string;
+	clientSecretName: string;
+	method: 'GET' | 'POST' | 'DELETE' | 'PUT';
+	headers?: { [key: string]: string };
+	data?: { [key: string]: any };
+	params?: { [key: string]: string };
+	poll?: number; // enable polling with specified latency in ms.
+	queue?: string; // optional queue name to distinguish requests with same url and method. Only effective when polling is enabled. Requests with the same url, method and queue will be handled sequentially on the server side.
+	expires?: number; // optional history expiration time in seconds after it's resolved.
+	/** Relay the destination's response incrementally instead of buffering it. The
+	 *  text is appended to storage as it arrives and read back through `onStream`;
+	 *  the request itself then settles with a status and NO body, and stays that way
+	 *  until clientSecretRequestFinalize says what to keep. Requires a queue (one is
+	 *  minted if you do not name it). Skapi parses none of the relayed text, and this
+	 *  flag is not sent to the destination: asking the destination for a streamed
+	 *  response is a separate field in your own `data`, and the two have to be set
+	 *  together (see the method doc: one without the other fails quietly). */
+	stream?: boolean;
+	/** Also push each relayed chunk over skapi's websocket, so `onStream` fires as the
+	 *  text is relayed instead of on the next poll tick. Requires `stream: true`, and
+	 *  is only useful alongside `onStream`. Purely an accelerator: the chunk table is
+	 *  still written first and still read by the poll, ordering and duplicates are
+	 *  handled for you, and a socket that cannot be opened is not an error - the read
+	 *  simply runs at its normal speed. See the method doc for what it does to a
+	 *  connection your app may also be using. */
+	realtime?: boolean;
+	/** Called with each piece of relayed text as it arrives, in order, with the
+	 *  sequence number it was stored under. Its PRESENCE is what makes polling read
+	 *  the text at all, so a caller that only wants the outcome can poll the very same
+	 *  request without it and simply get the terminal status. Raw text, never parsed. */
+	onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void;
+	onResponse?: (res: any, meta?: { executed?: number }) => void; // response callback that works on both polling request and regular.
+	onError?: (err: any) => void; // error callback that works on both pollubg request error and regular.
+}): Promise<any | void | {
+	id: string; // request id: "stamp:entropy"
+	status: "pending";
+	queue_name: string;
+	in_queue: number;
+	/** Present when `realtime: true` was accepted: the room this request's chunks are
+	 *  published to. The returned `poll()` already listens on it, so this is only
+	 *  needed to re-attach later with clientSecretRequestStream. Keep it beside the
+	 *  id; it cannot be rebuilt from the id alone. */
+	realtime_group?: string;
+	poll?: (arg?: { latency?: number; onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void }) => Promise<any>;
+}> {
+	return dispatchForwardRequest.call(this, params, { requireSecretName: true });
+}
+
+/**
+ * @deprecated Use {@link forwardRequestHistory}, which is this same function. A request
+ * started under either name is listed by both.
+ */
 export async function clientSecretRequestHistory(
 	params: {
 		url: string;
-		method: 'GET' | 'POST' | 'DELETE' | 'PUT';
+		method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 		queue?: string;
 		status?: 'pending' | 'running' | 'resolved' | 'failed';
 		/** Compact listing: each item carries label/marker STUBS (request_text,
@@ -1595,7 +2193,7 @@ export async function clientSecretRequestHistory(
 		params,
 		{
 			url: 'string',
-			method: ['GET', 'POST', 'DELETE', 'PUT'],
+			method: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'],
 			queue: 'string',
 			status: ['pending', 'running', 'resolved', 'failed'],
 			// Listing modifiers (see the polling lambda): `compact` returns
@@ -1717,9 +2315,12 @@ export async function clientSecretRequestHistory(
 	return res;
 }
 
+/**
+ * @deprecated Use {@link cancelForwardRequest}, which is this same function.
+ */
 export async function cancelClientSecretRequest(params: {
 	url: string;
-	method: 'GET' | 'POST' | 'DELETE' | 'PUT';
+	method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 	id: string;
 	queue?: string;
 }): Promise<{ removed: boolean; message: string }> {
@@ -1729,7 +2330,7 @@ export async function cancelClientSecretRequest(params: {
 		params,
 		{
 			url: 'string',
-			method: ['GET', 'POST', 'DELETE', 'PUT'],
+			method: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'],
 			id: 'string',
 			queue: 'string'
 		},
@@ -1802,6 +2403,7 @@ export async function cancelClientSecretRequest(params: {
  * @param options Where the request was sent, plus the callbacks to read it with.
  * @returns The request's terminal status, or the stored body when it was finalized.
  *          Carries a `stop()` that ends the read without touching the request itself.
+ * @deprecated Use {@link forwardRequestStream}, which is this same function.
  */
 export function clientSecretRequestStream(
 	this: any,
@@ -1810,7 +2412,7 @@ export function clientSecretRequestStream(
 		/** The url the request was sent to. Required unless `requestId` is a full id. */
 		url?: string;
 		/** The method it was sent with. Required unless `requestId` is a full id. */
-		method?: 'GET' | 'POST' | 'DELETE' | 'PUT';
+		method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 		/** Called with each piece of relayed text, in order, with its sequence number.
 		 *  Raw text: skapi does not parse it. */
 		onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void;
@@ -2065,6 +2667,7 @@ export function clientSecretRequestStream(
  * @param options Where the request was sent. Required unless `requestId` is a full id.
  * @returns `{ finalized, message }`. `finalized: false` with a message when the request
  *          is unknown, has not finished yet, or was never streamed.
+ * @deprecated Use {@link forwardRequestFinalize}, which is this same function.
  */
 export async function clientSecretRequestFinalize(
 	this: any,
@@ -2074,7 +2677,7 @@ export async function clientSecretRequestFinalize(
 		/** The url the request was sent to. Required unless `requestId` is a full id. */
 		url?: string;
 		/** The method it was sent with. Required unless `requestId` is a full id. */
-		method?: 'GET' | 'POST' | 'DELETE' | 'PUT';
+		method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 		service?: string;
 		owner?: string;
 	},
@@ -2096,6 +2699,23 @@ export async function clientSecretRequestFinalize(
 		{ auth },
 	);
 }
+
+/* ------------------------------------------------------------------ *
+ * The forwardRequest family.
+ *
+ * Aliases, not wrappers. Every one of these IS the function above it: same
+ * arguments, same return, same registry of live polls, same request ids. That is
+ * what makes a request started under one name readable under the other, and it is
+ * why there is nothing here that could drift. Only forwardRequest itself is a
+ * separate function, because its first argument is the form.
+ * ------------------------------------------------------------------ */
+
+export const forwardRequestStream = clientSecretRequestStream;
+export const forwardRequestFinalize = clientSecretRequestFinalize;
+export const forwardRequestHistory = clientSecretRequestHistory;
+export const cancelForwardRequest = cancelClientSecretRequest;
+export const stopForwardRequestPolling = stopClientSecretPolling;
+export const forwardRequestQueueCount = clientSecretRequestQueueCount;
 
 export async function sendInquiry(
 	data: Form<{
@@ -2249,201 +2869,4 @@ export async function mock(
 	}
 
 	return request.bind(this)('mock', data, options);
-}
-
-/**
- * Relays a request to a destination of your choosing, from the server rather
- * than the browser, and streams the destination's response back as it arrives.
- *
- * Unlike {@link secureRequest}, the body is relayed VERBATIM: an html form
- * reaches the destination as multipart/form-data, files included. The form's own
- * enctype and method attributes are not used; the method comes from
- * options.method. The destination url and the headers
- * to send with it travel in the Content-Meta header, so nothing has to be mixed
- * into the body. Your service api key is added server side, where the browser
- * cannot read it; when the project has no key set the header is still sent, with
- * the value "none", so a backend can treat a missing header as "not from skapi".
- *
- * The destination's status code and response headers come back to the caller,
- * apart from hop-by-hop headers, set-cookie, and access-control-* (skapi writes
- * those from the project's cors setting, and a duplicate would make the browser
- * reject the response). Headers in `options.headers` go OUTBOUND only and have
- * no bearing on what the browser is allowed to read.
- *
- * ```js
- * // buffered
- * const res = await skapi.forwardRequest(formElement, {
- *     url: 'https://api.example.com/v1/report',
- *     headers: { Accept: 'application/json' }
- * });
- *
- * // streaming: onStream fires per chunk, the promise resolves with the whole body
- * await skapi.forwardRequest(formElement, {
- *     url: 'https://api.example.com/v1/chat',
- *     onStream: (chunk) => { output.textContent += chunk; }
- * });
- * ```
- *
- * This method deliberately bypasses the shared request pipeline: that pipeline
- * flattens forms into JSON, forces its own Content-Type, and reads responses
- * through XMLHttpRequest, which cannot surface bytes before the response is
- * complete.
- */
-export async function forwardRequest(
-	form: any,
-	options: {
-		/** Destination url. Must be http(s) and resolve to a public address. */
-		url: string;
-		/** Destination method. Defaults to POST. */
-		method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
-		/** Headers to send TO the destination. */
-		headers?: { [key: string]: string };
-		/** Header name to carry the service api key. Defaults to "x-api-key". */
-		apiKeyHeader?: string;
-		/** Scheme prefix for the api key, e.g. "Bearer". */
-		apiKeyScheme?: string;
-		/** Called with each chunk of text as it arrives. Presence of this enables streaming. */
-		onStream?: (chunk: string) => void;
-		/** Stops the client receiving the response. The request already sent to
-		 * the destination is NOT cancelled and runs to completion. */
-		signal?: AbortSignal;
-		/** How to resolve the promise. Defaults to 'json' when the destination says json, else 'text'. */
-		responseType?: 'json' | 'text' | 'response';
-	},
-): Promise<any> {
-	await this.__connection;
-
-	if (!options?.url || typeof options.url !== 'string') {
-		throw new SkapiError('"url" is required in the second argument.', {
-			code: 'INVALID_PARAMETER',
-		});
-	}
-	validator.Url(options.url);
-
-	const admin = await this.admin_endpoint;
-	const endpoint = admin?.forward_request;
-	if (!endpoint) {
-		// An older cached endpoint json simply has no entry for this: say so,
-		// rather than failing later with an opaque network error.
-		throw new SkapiError('forwardRequest is not available on this service region yet.', {
-			code: 'NOT_EXISTS',
-		});
-	}
-
-	// The body is relayed as-is. A form element or submit event becomes native
-	// FormData (multipart, boundary chosen by the browser, files preserved);
-	// anything else is sent as json.
-	let body: any = null;
-	let contentType: string | null = null;
-	const el =
-		hasSubmitEvent && form instanceof SubmitEvent
-			? (form.target as HTMLFormElement)
-			: hasHTMLFormElement && form instanceof HTMLFormElement
-				? form
-				: null;
-
-	if (el) {
-		body = new FormData(el);
-	} else if (hasFormData && form instanceof FormData) {
-		body = form;
-	} else if (form !== null && form !== undefined) {
-		body = JSON.stringify(form);
-		contentType = 'application/json';
-	}
-
-	const meta = {
-		public_identifier: this.__public_identifier,
-		service: this.service,
-		owner: this.owner,
-		forward: {
-			url: options.url,
-			method: options.method || 'POST',
-			headers: options.headers || {},
-			apiKeyHeader: options.apiKeyHeader,
-			apiKeyScheme: options.apiKeyScheme,
-		},
-	};
-
-	// A header value is a byte string: fetch() refuses any character above U+00FF,
-	// so a destination url or a header value carrying non-ascii text (a Korean
-	// query string, an accented note) would throw a bare TypeError from fetch and
-	// never leave the browser. Escaping those to \uXXXX keeps this pure ascii and
-	// still valid JSON, so the forwarder's JSON.parse sees the original text.
-	const metaHeader = JSON.stringify(meta).replace(
-		/[\u007f-\uffff]/g,
-		(c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'),
-	);
-	// Measured on the ESCAPED string, since that is what goes on the wire.
-	if (metaHeader.length > 4096) {
-		// Header budget is shared with the tokens below; a destination that needs
-		// more than this wants the payload in the body instead.
-		throw new SkapiError('Destination url and headers are too large for Content-Meta.', {
-			code: 'INVALID_PARAMETER',
-		});
-	}
-
-	const idToken = this.bearerToken || this.session?.idToken?.jwtToken || null;
-	if (!idToken) {
-		throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
-	}
-
-	const headers: { [key: string]: string } = {
-		'Content-Meta': metaHeader,
-		Authorization: idToken,
-	};
-	if (contentType) headers['Content-Type'] = contentType;
-	// FormData intentionally has no Content-Type set here: the browser must add
-	// its own, including the multipart boundary.
-
-	const res = await fetch(endpoint, {
-		method: 'POST',
-		headers,
-		body,
-		signal: options.signal,
-	});
-
-	if (options.responseType === 'response') return res;
-
-	// An error response throws whether or not onStream was supplied. Gating this
-	// on `!options.onStream` meant a streaming caller had the forwarder's own
-	// error body ({"message":"Destination host is not routable.","code":...})
-	// delivered to their callback as if it were backend output, and the promise
-	// then RESOLVED with it. A failure must not look like content.
-	if (!res.ok) {
-		let payload: any = await res.text();
-		try {
-			payload = JSON.parse(payload);
-		} catch { }
-		throw new SkapiError(
-			payload?.message || (typeof payload === 'string' ? payload : JSON.stringify(payload)),
-			{ code: payload?.code || 'ERROR' },
-		);
-	}
-
-	if (options.onStream && res.body) {
-		const reader = res.body.getReader();
-		const decoder = new TextDecoder();
-		let whole = '';
-		for (; ;) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			const chunk = decoder.decode(value, { stream: true });
-			whole += chunk;
-			try {
-				options.onStream(chunk);
-			} catch (err) {
-				// A throwing callback should not strand the reader.
-				console.error(err);
-			}
-		}
-		return whole;
-	}
-
-	const text = await res.text();
-	if (options.responseType === 'text') return text;
-	try {
-		return JSON.parse(text);
-	} catch {
-		return text;
-	}
 }

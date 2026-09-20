@@ -71,6 +71,14 @@ import {
 	clientSecretRequestQueueCount,
 	stopClientSecretPolling,
 	isPollStopped,
+	// The forwardRequest family. Each of these IS the function above it, aliased in
+	// methods/request rather than wrapped, so the two names cannot drift apart.
+	forwardRequestHistory,
+	forwardRequestStream,
+	forwardRequestFinalize,
+	cancelForwardRequest,
+	forwardRequestQueueCount,
+	stopForwardRequestPolling,
 } from '../methods/request';
 import {
 	request,
@@ -452,7 +460,10 @@ export default class Skapi {
 	// Which per-region endpoint file this SDK boots from:
 	// <cdn>/<short_region>/admin-<version>.json and record-<version>.json.
 	// v2 adds forward_request (the streaming forwarder's Function URL), which v1
-	// has no slot for.
+	// has no slot for. This SDK no longer calls that Function URL: forwardRequest
+	// now means the queued forwarder, which goes to the csr gateway like every
+	// other request. The slot stays published for clients that predate the change,
+	// so the version below stays where it is.
 	//
 	// This version must not move ahead of what is published: the fetch below
 	// rejects on a missing file and every call then throws "Service does not
@@ -1253,9 +1264,12 @@ export default class Skapi {
 		return deleteNewsletterGroup.bind(this)(params);
 	}
 	/**
+	 * **Deprecated. Use `forwardRequest(form, options)` instead.**
+	 *
 	 * Sends a secure outbound request using a Skapi client secret key.
 	 * @param params Request parameters.
 	 * @returns A promise that resolves to the final API response, or to a status object when the request is queued.
+	 * @deprecated Use forwardRequest(form, options), which takes the form as its first argument and makes the client secret optional. This name keeps working unchanged, and both dispatch the same request through the same code.
 	 */
 	@formHandler()
 	clientSecretRequest(params: {
@@ -1286,6 +1300,8 @@ export default class Skapi {
 	}
 
 	/**
+	 * **Deprecated. Use `forwardRequestHistory` instead, which is this same function.**
+	 *
 	 * Retrieves the history of client secret requests for a given URL and method.
 	 *
 	 * Listing modifiers: `compact` returns lightweight label/marker stubs
@@ -1299,6 +1315,7 @@ export default class Skapi {
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to a paginated list of request history items.
+	 * @deprecated Use forwardRequestHistory, which is this same function. A request started under either name is listed by both.
 	 */
 	@formHandler()
 	clientSecretRequestHistory(
@@ -1317,11 +1334,8 @@ export default class Skapi {
 	}
 
 	/**
-	 * Cancels a pending client secret request and removes it from the client-side queue if applicable.
-	 * @param params Request parameters.
-	 * @returns A promise that resolves to a result object with removed status and message.
-	 */
-	/**
+	 * **Deprecated. Use `forwardRequestStream` instead, which is this same function.**
+	 *
 	 * Reads a streamed clientSecretRequest that this call did not start: a page reload,
 	 * a second tab, or a turn from history that was never finalized.
 	 *
@@ -1340,6 +1354,7 @@ export default class Skapi {
 	 *     onStream: (chunk) => parser.feed(chunk)
 	 * });
 	 * ```
+	 * @deprecated Use forwardRequestStream, which is this same function.
 	 */
 	clientSecretRequestStream(
 		requestId: string,
@@ -1359,6 +1374,8 @@ export default class Skapi {
 	}
 
 	/**
+	 * **Deprecated. Use `forwardRequestFinalize` instead, which is this same function.**
+	 *
 	 * Stores the version of a streamed response you want KEPT as history, and releases
 	 * the relayed chunks it was assembled from.
 	 *
@@ -1374,6 +1391,7 @@ export default class Skapi {
 	 *     method: 'POST'
 	 * });
 	 * ```
+	 * @deprecated Use forwardRequestFinalize, which is this same function.
 	 */
 	clientSecretRequestFinalize(
 		requestId: string,
@@ -1388,6 +1406,14 @@ export default class Skapi {
 		return clientSecretRequestFinalize.bind(this)(requestId, data, options);
 	}
 
+	/**
+	 * **Deprecated. Use `cancelForwardRequest` instead, which is this same function.**
+	 *
+	 * Cancels a pending client secret request and removes it from the client-side queue if applicable.
+	 * @param params Request parameters.
+	 * @returns A promise that resolves to a result object with removed status and message.
+	 * @deprecated Use cancelForwardRequest, which is this same function.
+	 */
 	@formHandler()
 	cancelClientSecretRequest(params: {
 		url: string;
@@ -1399,6 +1425,8 @@ export default class Skapi {
 	}
 
 	/**
+	 * **Deprecated. Use `stopForwardRequestPolling` instead, which is this same function.**
+	 *
 	 * Stops live polling for client secret requests without cancelling the requests
 	 * themselves. The server-side work continues; only this client stops asking about it.
 	 *
@@ -1414,6 +1442,7 @@ export default class Skapi {
 	 *
 	 * @param params Which polls to stop.
 	 * @returns The number of polls stopped.
+	 * @deprecated Use stopForwardRequestPolling, which is this same function.
 	 */
 	stopClientSecretPolling(params?: {
 		url?: string;
@@ -1427,7 +1456,8 @@ export default class Skapi {
 	}
 
 	/**
-	 * True if a poll result came from stopClientSecretPolling rather than the server.
+	 * True if a poll result came from stopForwardRequestPolling (or its deprecated alias
+	 * stopClientSecretPolling) rather than the server.
 	 * @param res A resolved poll result.
 	 */
 	isPollStopped(res: any): boolean {
@@ -1435,9 +1465,12 @@ export default class Skapi {
 	}
 
 	/**
+	 * **Deprecated. Use `forwardRequestQueueCount` instead, which is this same function.**
+	 *
 	 * Returns the number of requests currently waiting in a named client secret request queue.
 	 * @param params Request parameters.
 	 * @returns A promise that resolves to queue count information.
+	 * @deprecated Use forwardRequestQueueCount, which is this same function.
 	 */
 	clientSecretRequestQueueCount(params: {
 		queue: string;
@@ -1445,6 +1478,173 @@ export default class Skapi {
 		owner?: string;
 	}): Promise<{ queue_name: string; in_queue: number }> {
 		return clientSecretRequestQueueCount.bind(this)(params);
+	}
+
+	/* --------------------------------------------------------------- *
+	 * The forwardRequest family.
+	 *
+	 * Each of these IS the method above it: the imported name is an alias in
+	 * methods/request, not a second implementation, so there is nothing here that
+	 * could drift. A request dispatched under either name is read, cancelled,
+	 * finalized and counted by both.
+	 * --------------------------------------------------------------- */
+
+	/**
+	 * Lists forwarded requests for a given url and method, newest first.
+	 *
+	 * Listing modifiers: `compact` returns lightweight label/marker stubs
+	 * (request_text, response_text, response_complete_marker) instead of the
+	 * full request/response bodies, which stay on the server; `queue_exact`
+	 * restricts a queue listing to exactly the named queue (the queue lookup is
+	 * otherwise a prefix range, so queue "u1" would also match "u1-bg");
+	 * `queue_exclude` drops one queue's rows from the listing. Both queue
+	 * filters are applied server-side after the range read, so a page can come
+	 * back short while more matches remain - keep paging by startKey/endOfList.
+	 *
+	 * The same function as the deprecated clientSecretRequestHistory, so a request
+	 * sent under either name is listed here.
+	 * @param params Request parameters.
+	 * @param fetchOptions Pagination and fetch behavior options.
+	 * @returns A promise that resolves to a paginated list of request history items.
+	 */
+	@formHandler()
+	forwardRequestHistory(
+		params: {
+			url: string;
+			method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
+			queue?: string; // Optional queue name to filter results.
+			status?: 'pending' | 'running' | 'resolved' | 'failed'; // Optional status filter.
+			compact?: boolean; // Return label/marker stubs instead of full request/response bodies.
+			queue_exact?: boolean; // Match the named queue exactly (a bare queue lookup is a prefix range: "u1" also matches "u1-bg").
+			queue_exclude?: string; // Drop this queue's rows from the listing.
+		},
+		fetchOptions?: FetchOptions,
+	): Promise<DatabaseResponse<RequestHistory[]>> {
+		return forwardRequestHistory.bind(this)(params, fetchOptions);
+	}
+
+	/**
+	 * Reads a streamed forwardRequest that this call did not start: a page reload,
+	 * a second tab, or a turn from history that was never finalized.
+	 *
+	 * `onStream` receives the relayed text in order, exactly as the destination sent it.
+	 * skapi does not parse it; whatever grammar those bytes are in belongs to the caller
+	 * and its destination. Pass `since` to resume rather than re-read from the beginning.
+	 *
+	 * When the request is still running this polls until it settles. When it has already
+	 * settled it reads every chunk once and resolves.
+	 *
+	 * ```js
+	 * const parser = createMyParser();
+	 * await skapi.forwardRequestStream(requestId, {
+	 *     url: 'https://api.example.com/v1/chat',
+	 *     method: 'POST',
+	 *     onStream: (chunk) => parser.feed(chunk)
+	 * });
+	 * ```
+	 */
+	forwardRequestStream(
+		requestId: string,
+		options: {
+			url?: string;
+			method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
+			onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void;
+			since?: number;
+			poll?: number;
+			realtimeGroup?: string;
+			onResponse?: (res: any) => void;
+			onError?: (err: any) => void;
+			service?: string;
+			owner?: string;
+		},
+	): Promise<any> {
+		return forwardRequestStream.bind(this)(requestId, options);
+	}
+
+	/**
+	 * Stores the version of a streamed response you want KEPT as history, and releases
+	 * the relayed chunks it was assembled from.
+	 *
+	 * The content is entirely yours. skapi neither validates nor interprets it: it stores
+	 * what you tell it to store. Only the caller who made the request may finalize it.
+	 *
+	 * Until you finalize, the chunks stay indefinitely and every read of that turn has to
+	 * fetch and re-parse all of them, so finalize as soon as you have rendered the answer.
+	 *
+	 * ```js
+	 * await skapi.forwardRequestFinalize(requestId, parser.result(), {
+	 *     url: 'https://api.example.com/v1/chat',
+	 *     method: 'POST'
+	 * });
+	 * ```
+	 */
+	forwardRequestFinalize(
+		requestId: string,
+		data?: any,
+		options?: {
+			url?: string;
+			method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
+			service?: string;
+			owner?: string;
+		},
+	): Promise<{ finalized: boolean; message: string }> {
+		return forwardRequestFinalize.bind(this)(requestId, data, options);
+	}
+
+	/**
+	 * Cancels a queued forwarded request and removes it from the client-side queue if applicable.
+	 * @param params Request parameters.
+	 * @returns A promise that resolves to a result object with removed status and message.
+	 */
+	@formHandler()
+	cancelForwardRequest(params: {
+		url: string;
+		method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
+		id: string; // Request ID to cancel.
+		queue?: string; // Optional queue name the request belongs to, used to remove it from the client-side queue.
+	}): Promise<{ removed: boolean; message: string }> {
+		return cancelForwardRequest.bind(this)(params);
+	}
+
+	/**
+	 * Stops live polling of forwarded requests without cancelling the requests
+	 * themselves. The server-side work continues; only this client stops asking about it.
+	 *
+	 * Use it to drop polling traffic while the user is not looking at the results (a
+	 * hidden tab, a closed view), then simply poll again when they return. Polls run
+	 * one-at-a-time per queue, so a poll for a request that never settles otherwise
+	 * blocks every poll queued behind it.
+	 *
+	 * Pass `id` (with `url` and `method`) to stop one request, `queue` to stop a queue's
+	 * polls, or neither to stop all of them. A stopped poll resolves with
+	 * `{ id, status: 'stopped' }` rather than rejecting, and its `onResponse`/`onError`
+	 * callbacks are not called.
+	 *
+	 * @param params Which polls to stop.
+	 * @returns The number of polls stopped.
+	 */
+	stopForwardRequestPolling(params?: {
+		url?: string;
+		method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
+		id?: string; // Request ID (short form, paired with url+method, or an already-full id).
+		queue?: string; // Queue name the polls were started with.
+		service?: string;
+		owner?: string;
+	}): number {
+		return stopForwardRequestPolling.bind(this)(params || {});
+	}
+
+	/**
+	 * Returns the number of requests currently waiting in a named forward request queue.
+	 * @param params Request parameters.
+	 * @returns A promise that resolves to queue count information.
+	 */
+	forwardRequestQueueCount(params: {
+		queue: string;
+		service?: string;
+		owner?: string;
+	}): Promise<{ queue_name: string; in_queue: number }> {
+		return forwardRequestQueueCount.bind(this)(params);
 	}
 
 	/**
@@ -1862,20 +2062,32 @@ export default class Skapi {
 	}
 	/**
 	 * Relays a request to a destination of your choosing from the server side,
-	 * with the service api key added where the browser cannot read it, and
-	 * streams the destination's response back as it arrives.
+	 * optionally with one of your stored client secrets substituted in where you
+	 * put "$CLIENT_SECRET", so the secret never reaches the browser.
 	 *
-	 * The body is relayed verbatim, so an html form reaches the destination as
-	 * multipart/form-data, files included; the form's own enctype and method
-	 * attributes are not used. Supply options.onStream to receive the response
-	 * chunk by chunk. An error response throws a SkapiError either way; reading
-	 * the status code or a response header needs options.responseType
-	 * 'response'. options.signal stops the client receiving the response, it
-	 * does not cancel the request already sent to the destination.
+	 * The first argument is the form: a submit event, a form element, FormData, a
+	 * plain object, or null when everything is already in the options. It is
+	 * FLATTENED to fields and merged into the request, into `params` for GET,
+	 * DELETE and HEAD and into `data` otherwise; where a key is in both, the one
+	 * you typed in options wins. Files are dropped by that flattening, because
+	 * the merged object travels as JSON. Pass `multipart: true` to relay the
+	 * form's own bytes instead, files included, the way a browser would send
+	 * them; keep that body under 2 MB once encoded, and `data` is refused
+	 * alongside it.
 	 *
-	 * @param form Form element, submit event, FormData, or a plain object. Sent to the destination verbatim.
-	 * @param options Destination url, method, headers, and an optional onStream callback.
-	 * @returns A promise that resolves to the destination's response.
+	 * `secretName` is optional: name one and its value is substituted server side
+	 * and its allowed destinations are enforced, name none and only what you
+	 * supplied is forwarded. `skapiHeaders` tells the destination who is calling,
+	 * from the verified identity of the request; a header of your own starting
+	 * with "x-skapi-" is refused, which is what makes that prefix worth trusting.
+	 *
+	 * Queueing, polling, `stream`, `realtime` and the poll handle on the reply all
+	 * behave exactly as they do for the deprecated clientSecretRequest, because
+	 * they are the same code.
+	 *
+	 * @param form Submit event, form element, FormData, plain object, or null for no form body.
+	 * @param options Destination url and method, the optional secret name, and how to read the answer.
+	 * @returns A promise that resolves to the destination's response, or to a status object when the request is queued.
 	 */
 	// Decorated like every other form-taking method, so
 	// onsubmit="skapi.forwardRequest(event, {...})" works with no preventDefault
@@ -1888,16 +2100,28 @@ export default class Skapi {
 	// have no action.
 	@formHandler()
 	forwardRequest(
-		form: any,
+		form: SubmitEvent | HTMLFormElement | FormData | { [key: string]: any } | null,
 		options: {
+			secretName?: string; // Stored client secret to substitute for "$CLIENT_SECRET". Optional.
 			url: string;
-			method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
-			headers?: { [key: string]: string };
-			apiKeyHeader?: string;
-			apiKeyScheme?: string;
-			onStream?: (chunk: string) => void;
-			signal?: AbortSignal;
-			responseType?: 'json' | 'text' | 'response';
+			method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD'; // Defaults to POST.
+			headers?: { [key: string]: string }; // A name starting with "x-skapi-" is refused.
+			data?: { [key: string]: any }; // Wins over the form on a key collision. Refused with multipart.
+			params?: { [key: string]: string }; // Query string, and the merge target for GET, DELETE and HEAD.
+			multipart?: boolean; // Relay the form's own bytes, files included, instead of flattening it to fields.
+			skapiHeaders?: boolean | { user?: boolean; service?: boolean }; // Send "x-skapi-user" and/or "x-skapi-service", written server side from the verified identity.
+			service?: string; // The service to run the request against when it is not this instance's own, for an admin acting on a user's project. Give "owner" with it.
+			owner?: string; // The owner of "service".
+			poll?: number; // Polling interval in milliseconds. When > 0 the promise resolves with the polled result; when omitted or 0, the status object carries a poll() to start polling manually.
+			queue?: string; // Optional queue name. Requests sharing the same queue are processed sequentially.
+			expires?: number; // Optional expiration time in seconds for the request record.
+			stream?: boolean; // Read the destination's response INCREMENTALLY and relay it as it arrives. Requires a queue, and one is minted when you do not name it. NOTE: this is skapi's own parameter, and is NOT the "stream" field your destination's API may take inside `data`.
+			realtime?: boolean; // Also push each relayed chunk over skapi's websocket. Requires stream: true; an accelerator only.
+			onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void; // Called with each relayed piece of the response, in order, as raw text.
+			onResponse?: (res: any, meta?: { executed?: number }) => void; // Called with the final response once polling resolves, or immediately for non-queued responses.
+			onError?: (err: any) => void; // Called when polling or the initial request fails.
+			responseType?: 'json' | 'text' | 'response'; // How to resolve with the destination's answer. A skapi status object is handed back untouched.
+			signal?: AbortSignal; // Aborting stops THIS CLIENT polling. The queued request is not cancelled; cancelForwardRequest removes it.
 		},
 	): Promise<any> {
 		return forwardRequest.bind(this)(form, options);

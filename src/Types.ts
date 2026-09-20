@@ -618,7 +618,7 @@ export type RequestHistory = {
         onResponse?: (res:any, meta?: { executed?: number })=>void; // meta.executed is when the worker BEGAN executing the request, in milliseconds, when a running poll tick reported it. "res" is the destination's own answer and carries nothing of skapi's, so request-level facts arrive here instead. Absent for a request that began and ended between two ticks; the same value is on the history item as "executed".
         onError?: (err:any)=>void;
         onStream?: (chunk: string, seq: number)=>void;
-    }) => Promise<any>; // function to poll the request status until it settles. The promise resolves with the final result of the request: the third-party API response body when it resolves, or the error payload when it fails. It does not resolve with a RequestHistory item, so "created" and "updated" are not on the polled value. A poll stopped by stopClientSecretPolling() resolves with { id, status: 'stopped' }. Optional argument "latency" can be used to set the latency of the polling in milliseconds. Default latency is 1000ms.
+    }) => Promise<any>; // function to poll the request status until it settles. The promise resolves with the final result of the request: the third-party API response body when it resolves, or the error payload when it fails. It does not resolve with a RequestHistory item, so "created" and "updated" are not on the polled value. A poll stopped by stopForwardRequestPolling() (or its deprecated alias stopClientSecretPolling()) resolves with { id, status: 'stopped' }. Optional argument "latency" can be used to set the latency of the polling in milliseconds. Default latency is 1000ms.
 }
 
 export type DatabaseResponse<T> = {
@@ -746,18 +746,60 @@ export type TicketRequestCondition = {
     match?: TicketConditionRow[];
 }
 
+/**
+ * An HMAC signature over the request, computed with a secret shared with the sender. Verified
+ * before anything else runs: the `timestamp` (when set) must be an integer within `tolerance` of
+ * now, the bytes described by `signed` are signed with the stored secret (`secret_prefix` removed,
+ * then decoded per `secret_encoding`), and the result is compared in constant time against every
+ * `${signature}` captured from the header. Any failure is a plain mismatch.
+ *
+ * Templates (`signed`, `timestamp`) are literal text with these tokens: `${body}` (the raw request
+ * body exactly as received), `${method}` (the HTTP method, upper case), `${header:Name}` (a request
+ * header, case-insensitive; an absent header fails verification) and any capture from `parts` other
+ * than `${signature}`. An unknown token is refused at registration.
+ *
+ * Public-key signature schemes (RSA, ECDSA, Ed25519) are not supported.
+ */
+export type TicketSignatureCondition = {
+    /** The name of a Secret Key of the project, never the secret itself. Must exist at registration. */
+    secret: string;
+    /** The request header carrying the signature. Case-insensitive. Up to 256 characters. */
+    header: string;
+    /** Default 'sha256'. */
+    algorithm?: 'sha256' | 'sha1' | 'sha512';
+    /** How the signature value in the header is encoded. Default 'hex'. */
+    encoding?: 'hex' | 'base64';
+    /** Splits the header value into items, each trimmed. 1 to 8 characters. Absent: the whole header value is one item. */
+    separator?: string;
+    /**
+     * Patterns matched against each header item, in order; the first whose literal text fits
+     * captures the rest. Each pattern is literal text with at most one `${name}` capture (letters,
+     * digits and _; not `body` or `method`). `${signature}` may be captured by several items (any one matching passes) and
+     * must appear in at least one pattern; any other name becomes a token for the templates (the
+     * first capture wins). Items that match no pattern are ignored. Up to 10 patterns of up to 256
+     * characters each. Default ["${signature}"].
+     */
+    parts?: string[];
+    /** Template of the signed bytes. Up to 512 characters. Default "${body}". */
+    signed?: string;
+    /** Template resolving to unix time, in seconds or in milliseconds (a value above 10^12). Up to 512 characters. Absent: no timestamp check. */
+    timestamp?: string;
+    /** Seconds the timestamp may be away from now, 1 to 86400. Only used with `timestamp`. Default 300. */
+    tolerance?: number;
+    /** How the stored secret becomes the HMAC key bytes. Default 'raw'. */
+    secret_encoding?: 'raw' | 'base64' | 'hex';
+    /** Removed from the start of the stored secret before decoding. Up to 64 characters. */
+    secret_prefix?: string;
+}
+
 /** What a consumption request must look like before the ticket's actions run. Evaluated in the order the keys are listed here; the first failure is the reported one. */
 export type TicketCondition = {
     /** Answer HTTP 200 even when the consumption fails. For webhooks that retry on errors. */
     return200?: boolean;
     /** Absent = both allowed. */
     method?: 'GET' | 'POST';
-    /**
-     * Verified first, over the raw request body. `secret` names a Secret Key of the project
-     * (never a literal). "stripe" reads "t=<ts>,v1=<hex>" from the header; "hmac-sha256" expects
-     * the hex HMAC of the body, with an optional "sha256=" prefix.
-     */
-    signature?: { header: string; secret: string; scheme: 'stripe' | 'hmac-sha256' };
+    /** Verified first, over the raw request body. See TicketSignatureCondition. */
+    signature?: TicketSignatureCondition;
     ip?: { operator: TicketConditionOperator; value: string | string[] };
     user_agent?: { operator: TicketConditionOperator; value: string | string[] };
     headers?: TicketConditionRow[];

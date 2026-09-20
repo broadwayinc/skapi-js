@@ -41,6 +41,7 @@ export type {
     TicketCondition,
     TicketConditionOperator,
     TicketConditionRow,
+    TicketSignatureCondition,
     TicketRequestCondition,
     TicketResponseCondition,
     TicketAction,
