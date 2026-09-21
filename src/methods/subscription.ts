@@ -181,7 +181,8 @@ export async function unblockSubscriber(params: { user_id: string; }): Promise<'
  * for different addresses. It is the only value that tells two masked rows apart, so key a list,
  * a Set or a selection on it, never on the masked address. It is not a readable address and is
  * scoped to this service, owner and group, so it cannot be compared across groups or projects,
- * and it is not sent to a caller who reads full addresses.<br>
+ * and it is not sent to a caller who reads full addresses. Do not store it as a lasting id:
+ * the platform can reissue tokens.<br>
  * - "startKey" is sealed by the server. Hand it back verbatim (or just use fetchOptions.fetchMore);
  * it is refused if anything about it is changed.<br>
  * - "email" is refused with "No access.".

@@ -2585,7 +2585,7 @@ export default class Skapi {
 	 * An admin in access groups 90 ~ 98 gets the subscriber list too, but reads it through a privacy layer:
 	 * "subscribed_email" is masked ("j**@**.com") and the mask is lossy, so two different subscribers can read the same;
 	 * "subscriber_token" comes with each masked row as an opaque, stable, per address key, and it is the only value that tells such rows apart, so key lists and selections on it, never on the masked address;
-	 * the token is not a readable address and is scoped to this service, owner and group, so it cannot be matched against a token from another group or project;
+	 * the token is not a readable address and is scoped to this service, owner and group, so it cannot be matched against a token from another group or project, and it is a key for working with a listing, not an id to store: the platform can reissue tokens;
 	 * "startKey" is sealed by the server and has to be handed back verbatim, which fetchMore already does;
 	 * and "email" is refused with "No access.".
 	 * @param params Request parameters.
