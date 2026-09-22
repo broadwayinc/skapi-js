@@ -105,23 +105,32 @@ export async function subscribe(params: { user_id: string; get_feed?: boolean; g
     await this.__connection;
     params = validator.Params(params, {
         user_id: cannotBeSelfId.bind(this),
-        get_feed: ['boolean', ()=>false],
-        get_notified: ['boolean', ()=>false],
+        get_feed: 'boolean',
+        get_notified: 'boolean',
         get_email: v => {
-            if (v && !this.__user.email || !this.__user.email_verified) {
+            // Parenthesized: without them, get_email: false was refused too for a user
+            // with no verified email.
+            if (v && (!this.__user.email || !this.__user.email_verified)) {
                 throw new SkapiError('User has no verified email address.', { code: 'INVALID_REQUEST' });
             }
             return !!v;
         }
     }, ['user_id']);
 
+    // Only the options given are sent. Calling subscribe() again on a subscription
+    // changes those and keeps the rest (a new subscription starts with every option
+    // off), so turning get_notified on or off leaves get_feed as it is. These used to
+    // default to false here, which reset every option left out.
+    let option: { get_feed?: boolean; get_notified?: boolean; get_email?: boolean; } = {};
+    for (let k of ['get_feed', 'get_notified', 'get_email']) {
+        if (typeof params[k] === 'boolean') {
+            option[k] = params[k];
+        }
+    }
+
     let s = await request.bind(this)('subscription', {
         subscribe: params.user_id,
-        option: {
-            get_feed: params.get_feed,
-            get_notified: params.get_notified,
-            get_email: params.get_email || false
-        }
+        option
     }, { auth: true });
 
     let subscription:any = {};

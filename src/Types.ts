@@ -97,15 +97,26 @@ export type PostRecordConfig = {
         /** Number range: 0 ~ 99. 'public' = 0, 'authorized' = 1, 'admin' = 99. '*' is shorthand for 'private'. Default: 'public' */
         access_group?: number | 'private' | '*' | 'public' | 'authorized' | 'admin';
 
-        /** When true, Record will be only accessible for subscribed users. */
+        /** How the record reaches the uploader's subscribers. Signed-in users only. */
         subscription?: {
-            is_subscription_record?: boolean; // When true, this record is a subscription record.
-            upload_to_feed?: boolean; // When true, record will be uploaded to the feed of the subscribers.
-            notify_subscribers?: boolean; // When true, subscribers will receive notification when the record is uploaded.
-            feed_referencing_records?: boolean; // When true, records referencing this record will be included to the subscribers feed.
-            notify_referencing_records?: boolean; // When true, records referencing this record will be notified to subscribers.
+            is_subscription_record?: boolean; // When true, this record is a subscription record: the uploader's subscribers read it with getRecords() through table.subscription.
+            upload_to_feed?: boolean; // When true, the record is added to the getFeed() of the uploader's subscribers who subscribed with get_feed.
+            notify_subscribers?: boolean; // When true, creating the record sends a push notification to the uploader's subscribers who subscribed with get_notified. See "notification".
+            feed_referencing_records?: boolean; // When true, records referencing this record are added to the getFeed() of this record's uploader.
+            notify_referencing_records?: boolean; // When true, every new record referencing this one sends a push notification to this record's uploader's subscribers who subscribed with get_notified.
         } | null; // When null, it will remove all subscription settings from the record.
     };
+
+    /**
+     * Title and body of the push notification the record's creation sends to the uploader's
+     * subscribers with table.subscription.notify_subscribers. Both are required, and together
+     * they must fit 3072 bytes. Without it, subscribers get a default text. Ignored on updates
+     * and without notify_subscribers.
+     */
+    notification?: {
+        title: string;
+        body: string;
+    } | null;
 
     source?: {
         referencing_limit?: number; // Default: null (Infinite)
@@ -207,12 +218,13 @@ export type RecordData = {
         name: string;
         /** Number range: 0 ~ 99 */
         access_group: number | 'private' | 'public' | 'authorized' | 'admin';
-        /** User ID of subscription */
+        /** Subscription settings of the record. See PostRecordConfig.table.subscription. */
         subscription?: {
-            upload_to_feed: boolean; // When true, record will be uploaded to the feed of the subscribers.
-            notify_subscribers: boolean; // When true, subscribers will receive notification when the record is uploaded.
-            feed_referencing_records: boolean; // When true, records referencing this record will be included to the subscribers feed.
-            notify_referencing_records: boolean; // When true, records referencing this record will be notified to subscribers.
+            is_subscription_record: boolean; // When true, this record is a subscription record.
+            upload_to_feed: boolean; // When true, the record is in the getFeed() of the uploader's subscribers who subscribed with get_feed.
+            notify_subscribers: boolean; // When true, creating the record sent a push notification to the uploader's subscribers who subscribed with get_notified.
+            feed_referencing_records: boolean; // When true, records referencing this record are added to the getFeed() of this record's uploader.
+            notify_referencing_records: boolean; // When true, every new record referencing this one sends a push notification to the uploader's subscribers who subscribed with get_notified.
         };
     };
     source: {
@@ -699,12 +711,12 @@ export type UniqueId = {
 }
 
 export type Subscription = {
-    subscriber: string;
-    subscription: string;
+    subscriber: string; // User ID of the subscriber.
+    subscription: string; // User ID of the user subscribed to.
     timestamp: number;
     blocked: boolean;
-    get_feed: boolean;
-    get_notified: boolean;
+    get_feed: boolean; // Records the user posts with upload_to_feed appear in the subscriber's getFeed().
+    get_notified: boolean; // The subscriber gets push notifications for records the user posts with notify_subscribers, and for new references to the user's records with notify_referencing_records. Needs subscribeNotification() on the subscriber's device.
     get_email: boolean;
 }
 

@@ -34,10 +34,10 @@ Skapi provides all the backend features you need for your web application out of
 
 ## Getting Started
 
-### 1. Create a service
+### 1. Create a Project
 
 1. Signup for an account at [skapi.com](https://www.skapi.com/signup).
-2. Log in and create a new service from the `My Services` page.
+2. Log in, name your project, and choose a region. Click Create.
 
 
 ### 2. Initialize the Skapi library
@@ -82,16 +82,6 @@ const skapi = new Skapi("<Project ID>");
 export { skapi }
 ```
 
-### TypeScript (React, Vue, etc.)
-
-```typescript
-import { Skapi } from 'skapi-js';
-import type { RecordData, DatabaseResponse } from 'skapi-js';
-
-const skapi = new Skapi("<Project ID>");
-let databaseRecords: DatabaseResponse<RecordData>;
-```
-
 ### Node.js (CommonJS)
 
 To use Skapi in NodeJS, import the library as shown below:
@@ -132,7 +122,7 @@ Below is an example of how you can use the `mock()` method in HTML forms.
 </form>
 ```
 
-This will send a request to your Skapi service and ping back the response.
+This will send a request to your Skapi project and ping back the response.
 When the request is resolved, the `mock()` method will return the response data as a `Promise` object.
 The response data will be displayed in an alert box.
 

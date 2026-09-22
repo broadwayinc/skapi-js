@@ -2622,10 +2622,10 @@ export default class Skapi {
 		return vapidPublicKey.bind(this)();
 	}
 	/**
-	 * Sends push notifications to one or more users.
-	 * @param params Payload for the request.
-	 * @param user_ids Parameter for this operation.
-	 * @returns A promise that resolves to Promise<"SUCCESS: Notification sent.">.
+	 * Sends push notifications to one or more users. Admins only.
+	 * @param params Title and body of the push. Together at most 3072 bytes.
+	 * @param user_ids Users to push to, up to 1000. Every device each of them registered with subscribeNotification() gets it. Without it, every registered device of the project gets it.
+	 * @returns A promise that resolves to Promise<"SUCCESS: Notification sent.">. The pushes are sent right after it resolves.
 	 */
 	@formHandler()
 	pushNotification(
@@ -3179,7 +3179,9 @@ export default class Skapi {
 	}
 	/**
 	 * Subscribes to another user with optional feed/notification/email preferences.
-	 * @param params Request parameters.
+	 * Calling it again on the same user changes only the options given and keeps the rest,
+	 * so `get_notified` can be turned on or off without touching `get_feed`.
+	 * @param params Request parameters. `get_feed`: the user's records posted with `upload_to_feed` appear in getFeed(). `get_notified`: push notifications for the user's records posted with `notify_subscribers`, and for new references to their records with `notify_referencing_records` (the device also needs subscribeNotification()). A new subscription starts with every option off.
 	 * @returns A promise that resolves to Promise<Subscription>.
 	 */
 	@formHandler()

@@ -1582,6 +1582,20 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
             }],
             access_group: accessGroup.bind(this),
         },
+        notification: v => {
+            if (v === null || v === undefined) {
+                return v;
+            }
+            if (typeof v !== 'object' || Array.isArray(v)) {
+                throw new SkapiError('"notification" should be an object with "title" and "body".', { code: 'INVALID_PARAMETER' });
+            }
+            for (let k of ['title', 'body']) {
+                if (typeof v[k] !== 'string' || !v[k].trim()) {
+                    throw new SkapiError(`"notification.${k}" is required.`, { code: 'INVALID_PARAMETER' });
+                }
+            }
+            return { title: v.title, body: v.body };
+        },
         source: {
             referencing_limit: (v: number) => {
                 if (v === null) {
