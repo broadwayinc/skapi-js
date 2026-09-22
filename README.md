@@ -59,6 +59,8 @@ For vanilla HTML projects, import Skapi in the script tag, and initialize the li
 
 **Be sure to replace `"<Project ID>"`, angle brackets included, with your actual project ID**
 
+If you run code that still has the placeholder, Skapi asks for the Project ID (a prompt in the browser, a question in the terminal in Node.js) and uses your answer until the browser tab is closed or the Node.js process exits.
+
 For more information, check out our [documentation](https://docs.skapi.com/introduction/getting-started.html).
 
 ### For SPA projects:

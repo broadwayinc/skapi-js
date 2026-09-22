@@ -1160,13 +1160,15 @@ export function clientSecretRequestQueueCount(
 		});
 	}
 
-	let p = {
+	const count = () => request.bind(this)('csr-poll', {
 		service: params.service || this.service,
 		owner: params.owner || this.owner,
 		queue: params.queue + ':',
-	}
+	}, { auth: true });
 
-	return request.bind(this)('csr-poll', p, { auth: true });
+	// Created with the docs' placeholder: this.service and this.owner are set only
+	// once the Project ID is entered, so the count waits for it.
+	return this.__projectIdInput ? this.__projectIdInput.then(count) : count();
 };
 
 /**

@@ -19,7 +19,7 @@
  * `require` when there is a real one, and to null otherwise, in which case the
  * storage below degrades to holding nothing rather than throwing.
  */
-function loadNodeModule(name: string): any {
+export function loadNodeModule(name: string): any {
     const g: any = typeof globalThis !== 'undefined' ? (globalThis as any) : undefined;
     const proc = g?.process;
 
@@ -220,11 +220,18 @@ if (win) {
         root.window = {
             _runningInNodeJS: true,
             alert: (message: string) => console.error('[Alert]', message),
-            sessionStorage: {
-                getItem: (key: string) => null,
-                setItem: (key: string, value: string) => {},
-                removeItem: (key: string) => {},
-            },
+            // Node has no browser tab, so the process is the session: values live in
+            // memory until it exits. The Project ID entered for the docs' placeholder
+            // is kept here, so a second `new Skapi('<Project ID>')` in the same process
+            // does not ask again (see utils/project_id_input.ts).
+            sessionStorage: (() => {
+                const store = new Map<string, string>();
+                return {
+                    getItem: (key: string) => (store.has(key) ? store.get(key) : null),
+                    setItem: (key: string, value: string) => { store.set(key, String(value)); },
+                    removeItem: (key: string) => { store.delete(key); },
+                };
+            })(),
             localStorage: {
                 getItem: (key: string) => {
                     const fs = fsMod();

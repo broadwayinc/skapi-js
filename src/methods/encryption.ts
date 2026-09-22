@@ -1623,6 +1623,11 @@ export async function unlockEncryption(this: any, params: { password: string }):
 
 /** Drop keys from memory (and optionally the device) without logging out. */
 export async function lockEncryption(this: any, params?: { forgetDevice?: boolean }): Promise<{ status: string }> {
+    // Created with the docs' placeholder: the encryption state is set up only once
+    // the Project ID is entered, so wait for it rather than report none.
+    if (this.__projectIdInput) {
+        await this.__projectIdInput;
+    }
     let s = encState.call(this);
     if (!s) {
         return { status: 'disabled' };
@@ -2230,6 +2235,11 @@ async function readStoredEnvelope(this: any, record_id: string): Promise<Envelop
 
 /** Pin a peer's key fingerprint after verifying it out of band. */
 export async function pinPeerKey(this: any, params: { user_id: string; fingerprint: string }): Promise<void> {
+    // Created with the docs' placeholder: the encryption state is set up only once
+    // the Project ID is entered, so wait for it rather than report none.
+    if (this.__projectIdInput) {
+        await this.__projectIdInput;
+    }
     let s = encState.call(this);
     if (!s || s.status !== 'unlocked') {
         throw new SkapiError('Encryption is locked.', { code: 'ENCRYPTION_LOCKED' });

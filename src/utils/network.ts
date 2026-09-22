@@ -254,10 +254,13 @@ export async function request(
     method = method.toUpperCase();
 
     let __connection = null;
-    let service = data?.service || this.service;
-    let owner = data?.owner || this.owner;
     let token = null; // idToken
     let endpoint = await getEndpoint.bind(this)(url, !!auth, !!options.stableGateway);
+    // Read AFTER getEndpoint, which waits for the endpoints and therefore for the
+    // Project ID when the instance was created with the docs' placeholder: before
+    // it is entered this.service and this.owner are not set yet.
+    let service = data?.service || this.service;
+    let owner = data?.owner || this.owner;
 
     if (!bypassAwaitConnection) {
         __connection = await this.__connection;
@@ -1130,6 +1133,14 @@ export function formHandler(options?: { preventMultipleCalls: boolean; }) {
 
             const executeMethod = async () => {
                 try {
+                    // An instance created with the docs' placeholder has no service
+                    // until the Project ID is entered, so the method waits for it.
+                    // Everything above (preventDefault on a form submit) has already
+                    // run synchronously, as it must.
+                    if (this.__projectIdInput) {
+                        await this.__projectIdInput;
+                    }
+
                     // execute
                     response = fn.bind(this)(...arg);
 

@@ -141,6 +141,15 @@ import {
 	formatServiceId,
 } from '../utils/utils';
 import {
+	isProjectIdPlaceholder,
+	readSavedProjectId,
+	saveProjectId,
+	forgetSavedProjectId,
+	canAskProjectId,
+	askProjectId,
+	PROJECT_ID_STORAGE_KEY,
+} from '../utils/project_id_input';
+import {
 	blockAccount,
 	unblockAccount,
 	deleteAccount,
@@ -176,6 +185,14 @@ import {
 } from '../methods/encryption';
 
 declare const __SKAPI_VERSION__: string;
+
+// The constructor's arguments once the Project ID is decoded (see _resolveProject).
+type ResolvedProject = {
+	service: string;
+	owner: string;
+	options: Options | any;
+	__etc: any;
+};
 
 type Options = {
 	autoLogin: boolean;
@@ -456,6 +473,12 @@ export default class Skapi {
 
 	private __connection: Promise<Connection>;
 	private __authConnection: Promise<void>;
+	// Set only when the constructor was given the docs' placeholder and is asking
+	// for the Project ID. It settles once the id is entered and _start() has run
+	// with it. Anything that reads this.service or this.owner before awaiting one
+	// of the connection promises waits on it first: formHandler does so for every
+	// decorated method, and the few undecorated ones that need it do it themselves.
+	private __projectIdInput: Promise<void> | null = null;
 	private __network_logs = false;
 	// Which per-region endpoint file this SDK boots from:
 	// <cdn>/<short_region>/admin-<version>.json and record-<version>.json.
@@ -492,21 +515,65 @@ export default class Skapi {
 			});
 		}
 		// The docs' copy-paste placeholder was never replaced. Checked FIRST, before any
-		// decoding or owner validation, so the user gets this message and not a puzzling
-		// "Owner ID is invalid".
-		//
-		// Every spelling the docs have ever used is caught by normalizing away the angle
-		// brackets, spacing and separators the placeholder is written with: '<Project ID>'
-		// (current), 'project_id', and the older 'service_id' / 'SERVICE_ID'. Matching only
-		// the exact literals meant a docs change to a new placeholder form silently
-		// disabled this check, which is what happened when '<Project ID>' was adopted.
-		const placeholderForm = service.trim().toLowerCase().replace(/^<|>$/g, '').replace(/[\s_\-.]+/g, '');
-		if (placeholderForm === 'serviceid' || placeholderForm === 'projectid') {
-			this._alert(`Replace "${service}" with your actual Project ID.`);
-			throw new SkapiError('Project ID is required.', {
-				code: 'INVALID_PARAMETER',
-			});
+		// decoding or owner validation: the placeholder is not an id to validate, it
+		// asks for one. The Project ID entered for it earlier in this session (browser
+		// tab, or Node process) is reused; otherwise the person running the code is
+		// asked for it (utils/project_id_input.ts). Only where nobody can be asked, a
+		// server or a CI job, does the constructor still refuse to start.
+		if (isProjectIdPlaceholder(service)) {
+			const saved = readSavedProjectId();
+			let project: ResolvedProject = null;
+			if (saved) {
+				try {
+					project = this._resolveProject(saved, owner, options, __etc);
+				} catch (err) {
+					// Not an id these arguments can start with: drop it and ask.
+					forgetSavedProjectId(saved);
+				}
+			}
+
+			if (project) {
+				if (isBrowserRuntime()) {
+					console.info(`Skapi: "${service}" was replaced with the Project ID entered earlier in this tab (${saved}). It is kept in sessionStorage under "${PROJECT_ID_STORAGE_KEY}"; delete that entry to enter a different one.`);
+				}
+				this._start(project);
+				// An id that does not reach a project is not kept, so the next page
+				// load asks again instead of failing the same way.
+				this.__connection.catch(() => forgetSavedProjectId(saved));
+			}
+			else if (canAskProjectId()) {
+				this._startAfterProjectIdInput(service, owner, options, __etc);
+			}
+			else {
+				this._alert(`Replace "${service}" with your actual Project ID.`);
+				throw new SkapiError('Project ID is required.', {
+					code: 'INVALID_PARAMETER',
+				});
+			}
+			return;
 		}
+
+		let project: ResolvedProject;
+		try {
+			project = this._resolveProject(service, owner, options, __etc);
+		} catch (err: any) {
+			this._alert(err.message);
+			throw err;
+		}
+		this._start(project);
+	}
+
+	// Turns the constructor's arguments into the service and owner the instance
+	// runs on. A Project ID carries both (an object in the owner position is then
+	// the options); a bare service id takes the owner argument. Throws SkapiError
+	// for arguments the SDK cannot start with, WITHOUT alerting, so the Project ID
+	// prompt can say the answer is invalid and ask again instead.
+	private _resolveProject(
+		service: string,
+		owner: string | Options,
+		options: Options | any,
+		__etc: any,
+	): ResolvedProject {
 		let idSplitLen = service.split('-').length;
 		let isV2 = idSplitLen === 2;
 		let isV1 = idSplitLen === 7;
@@ -524,7 +591,6 @@ export default class Skapi {
 				owner = decoded.owner;
 				service = decoded.service;
 			} catch (err) {
-				this._alert('Service ID is invalid.');
 				throw new SkapiError('Service ID is invalid.', {
 					code: 'INVALID_PARAMETER',
 				});
@@ -543,25 +609,65 @@ export default class Skapi {
 		// window.sessionStorage.removeItem('__skapi_kiss');
 
 		if (!owner || typeof owner !== 'string') {
-			this._alert('Owner ID is invalid.');
 			throw new SkapiError('Owner ID is invalid.', {
 				code: 'INVALID_PARAMETER',
 			});
 		}
 
-
-
 		if (owner !== this.host) {
 			try {
 				validator.UserId(owner, '"owner"');
 			} catch (err: any) {
-				this._alert('Owner ID is invalid.');
 				throw new SkapiError('Owner ID is invalid.', {
 					code: 'INVALID_PARAMETER',
 				});
 			}
 		}
 
+		return { service, owner, options, __etc };
+	}
+
+	// Holds back everything the constructor starts until the Project ID is entered.
+	//
+	// The constructor starts four chains: the two endpoint fetches, the auth
+	// restore and the service connection, and every call on the instance waits on
+	// one of them (request() through getEndpoint, most methods through
+	// __connection). Each is replaced here by a promise that settles after the id
+	// is entered and _start() has started the real chain, and then settles AS that
+	// chain. A call made right after `new Skapi('<Project ID>')` therefore waits
+	// for the answer instead of going out without a service, and nothing reaches
+	// the network before there is an id to send.
+	private _startAfterProjectIdInput(
+		placeholder: string,
+		owner: string | Options,
+		options: Options | any,
+		__etc: any,
+	) {
+		const ready = askProjectId(placeholder, (id) => {
+			this._resolveProject(id, owner, options, __etc);
+		}).then((id) => {
+			saveProjectId(id);
+			this._start(this._resolveProject(id, owner, options, __etc));
+			this.__connection.catch(() => forgetSavedProjectId(id));
+		});
+
+		this.__projectIdInput = ready;
+		this.admin_endpoint = ready.then(() => this.admin_endpoint);
+		this.record_endpoint = ready.then(() => this.record_endpoint);
+		this.__authConnection = ready.then(() => this.__authConnection);
+		this.__connection = ready.then(() => this.__connection);
+
+		// A cancelled prompt rejects all of these, and nothing is obliged to await
+		// them: unhandled, each rejection would end a Node process.
+		for (const p of [ready, this.admin_endpoint, this.record_endpoint, this.__authConnection, this.__connection]) {
+			p.catch(() => {});
+		}
+	}
+
+	// Everything the constructor does once the service and owner are known: reads
+	// the options, then starts the endpoint fetches, the auth restore and the
+	// service connection.
+	private _start({ service, owner, options, __etc }: ResolvedProject) {
 		this.service = service;
 		this.owner = owner;
 		try {
