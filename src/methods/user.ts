@@ -1671,12 +1671,7 @@ export async function getUsers(
     await this.__connection;
 
     const searchForTypes = {
-        'user_id': (v: string) => {
-            if (Array.isArray(v)) {
-                return v.map(id => validator.UserId(id));
-            }
-            return validator.UserId(v)
-        },
+        'user_id': (v: string) => validator.UserId(v),
         'email': 'string',
         'phone_number': 'string',
         'locale': (v: string) => {
@@ -1697,6 +1692,19 @@ export async function getUsers(
 
     let required = ['searchFor', 'value'];
 
+    let checkSingleValue = (v: any, label: 'Value' | 'Range') => {
+        let checker = searchForTypes[params.searchFor];
+        if (typeof checker === 'function') {
+            return checker(v);
+        }
+
+        else if (typeof v !== checker) {
+            throw new SkapiError(`${label} does not match the type of "${params.searchFor}" index.`, { code: 'INVALID_PARAMETER' });
+        }
+
+        return v;
+    };
+
     params = validator.Params(params, {
         searchFor: [
             'user_id',
@@ -1713,38 +1721,17 @@ export async function getUsers(
             'approved'
         ],
         condition: ['>', '>=', '=', '<', '<=', 'gt', 'gte', 'eq', 'lt', 'lte', () => '='],
-        value: (v: any) => {
-            let checker = searchForTypes[params.searchFor];
-            if (typeof checker === 'function') {
-                return checker(v);
-            }
-
-            else if (typeof v !== checker) {
-                throw new SkapiError(`Value does not match the type of "${params.searchFor}" index.`, { code: 'INVALID_PARAMETER' });
-            }
-
-            return v;
-        },
-        range: (v: any) => {
-            let checker = searchForTypes[params.searchFor];
-            if (typeof checker === 'function') {
-                return checker(v);
-            }
-
-            else if (typeof v !== checker) {
-                throw new SkapiError(`Range does not match the type of "${params.searchFor}" index.`, { code: 'INVALID_PARAMETER' });
-            }
-
-            return v;
-        }
+        // "value" may be a list of several exact values to fetch at once (not a range).
+        value: (v: any) => Array.isArray(v) ? v.map(single => checkSingleValue(single, 'Value')) : checkSingleValue(v, 'Value'),
+        range: (v: any) => checkSingleValue(v, 'Range')
     }, required);
 
     if (params?.condition && params?.condition !== '=' && params.hasOwnProperty('range')) {
         throw new SkapiError('Conditions does not apply on range search.', { code: 'INVALID_PARAMETER' });
     }
 
-    if (params.searchFor === 'user_id' && (params.condition !== '=' || params.range)) {
-        throw new SkapiError(`Conditions are not allowed on "${params.searchFor}"`, { code: 'INVALID_PARAMETER' });
+    if (Array.isArray(params.value) && (params.condition !== '=' || params.range)) {
+        throw new SkapiError(`Conditions are not allowed on a list of "${params.searchFor}" values. Search for a single value to use a condition or range.`, { code: 'INVALID_PARAMETER' });
     }
 
     if (typeof params?.value === 'string' && !params?.value) {
