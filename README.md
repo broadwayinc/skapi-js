@@ -36,9 +36,9 @@ Skapi provides all the backend features you need for your web application out of
 
 ### 1. Create a Project
 
-1. Signup for an account at [skapi.com](https://www.skapi.com/signup).
-2. Log in, name your project, and choose a region. Click Create.
-
+1. Sign up for an account at [skapi.com](https://www.skapi.com/signup).
+2. Log in and click **+ New Project**. Give your project a name, an optional description and a region, and click **Continue**.
+3. Choose a plan and proceed.
 
 ### 2. Initialize the Skapi library
 
