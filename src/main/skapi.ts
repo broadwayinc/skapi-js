@@ -257,7 +257,7 @@ export default class Skapi {
 	private hostDomain = 'skapi.com';
 	private target_cdn = 'd3e9syvbtso631';
 	private customApiDomain = 'skapi.dev';
-	private requestBatchSize = 30;
+	private requestBatchSize = 50;
 
 	// privates
 	private __disabledAccount: string | null = null;
@@ -1089,8 +1089,9 @@ export default class Skapi {
 		await this.__connection;
 
 		if (isBrowserRuntime()) {
-			let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
-			let message = `Built with:\n${skapi}Version: ${this.__version}\n\nFull Documentation: https://docs.skapi.com/skapi.md`;
+			let skapi = `%c\r\n          ##\\                          ##\\ \r\n          ## |                         \\__|\r\n #######\\ ## |  ##\\ ######\\   ######\\  ##\\ \r\n##  _____|## | ##  |\\____##\\ ##  __##\\ ## |\r\n\\######\\  ######  \/ ####### |## \/  ## |## |\r\n \\____##\\ ##  _##< ##  __## |## |  ## |## |\r\n#######  |## | \\##\\\\####### |#######  |## |\r\n\\_______\/ \\__|  \\__|\\_______|##  ____\/ \\__|\r\n                             ## |          \r\n                             ## |          \r\n                             \\__|          \r\n`;
+			// let skapi = `%c\r\n          $$\\                          $$\\ \r\n          $$ |                         \\__|\r\n $$$$$$$\\ $$ |  $$\\ $$$$$$\\   $$$$$$\\  $$\\ \r\n$$  _____|$$ | $$  |\\____$$\\ $$  __$$\\ $$ |\r\n\\$$$$$$\\  $$$$$$  \/ $$$$$$$ |$$ \/  $$ |$$ |\r\n \\____$$\\ $$  _$$< $$  __$$ |$$ |  $$ |$$ |\r\n$$$$$$$  |$$ | \\$$\\\\$$$$$$$ |$$$$$$$  |$$ |\r\n\\_______\/ \\__|  \\__|\\_______|$$  ____\/ \\__|\r\n                             $$ |          \r\n                             $$ |          \r\n                             \\__|          \r\n`;
+			let message = `Built with:\n${skapi}Version: ${this.__version}`;
 			console.log(message, `font-family: monospace; color:blue;`);
 			if (this.connection.group === 1) {
 				console.log(
