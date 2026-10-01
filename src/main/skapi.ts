@@ -1214,6 +1214,12 @@ export default class Skapi {
 	/**
 	 * Queries unique ID records by unique_id or condition filters.
 	 *
+	 * With `condition` omitted the unique ID is matched exactly. `gte` / `>=`
+	 * is a prefix search ("unique IDs starting with x") and `lte` / `<=` is a
+	 * suffix search ("unique IDs ending with x"); `gt` / `>` and `lt` / `<`
+	 * are lexicographic. An 'ends with' search returns its matches in the
+	 * order of the unique ID read from its last character backwards.
+	 *
 	 * Refused to a signed out caller when the project's `require_login`
 	 * setting is on: REQUIRE_LOGIN from the SDK, INVALID_REQUEST from the
 	 * backend for a caller that skips it. A project that has never set the
@@ -1234,7 +1240,7 @@ export default class Skapi {
 		params?: Form<{
 			/** Unique ID */
 			unique_id?: string;
-			/** String query condition for the unique_id value. */
+			/** String query condition for the unique_id value. Omitted: exact match. `gte` / `>=`: starts with. `lte` / `<=`: ends with. */
 			condition?: Condition | 'ne' | '!=';
 		}>,
 		fetchOptions?: FetchOptions,
@@ -2261,13 +2267,17 @@ export default class Skapi {
 	 * exactly. With `table` omitted entirely, every table is returned.
 	 * `gte` / `>=` is a prefix search ("table names starting with x"), while
 	 * `gt` / `>` is a lexicographic greater-than that spills past the prefix
-	 * into every later table name.
+	 * into every later table name. `lte` / `<=` is a suffix search ("table
+	 * names ending with x"); its matches come back in the order of the name
+	 * read from its last character backwards.
 	 *
 	 * Every combination:
 	 * - `getTables({})`: every table in the project.
 	 * - `getTables({ table: 'x' })`: exact match on 'x'.
 	 * - `getTables({ table: 'x', condition: 'gte' })`: prefix, every table
 	 *   name starting with 'x'.
+	 * - `getTables({ table: 'x', condition: 'lte' })`: suffix, every table
+	 *   name ending with 'x'.
 	 * - `getTables({ table: '' })`: errors with '"table" should not be empty.'
 	 * - `getTables({ condition: 'gte' })` with no `table`: errors with
 	 *   '"table" is required for condition.'
@@ -2311,7 +2321,7 @@ export default class Skapi {
 		/** If omitted, fetches the full list of tables. */
 		query?: {
 			table?: string;
-			/** Condition operator of table name. Omitted: exact match on the given table name. `gte` / `>=`: prefix. */
+			/** Condition operator of table name. Omitted: exact match on the given table name. `gte` / `>=`: starts with. `lte` / `<=`: ends with. */
 			condition?: Condition;
 		},
 		fetchOptions?: FetchOptions,
@@ -2330,6 +2340,14 @@ export default class Skapi {
 	 * The only condition is `order.condition`, which requires `order.value`.
 	 * Omitting it matches `order.value` exactly.
 	 *
+	 * With `order.by: 'index_name'`, `order.value` is a piece of the name and
+	 * the condition searches the names: `>=` 'starts with', `<=` 'ends with',
+	 * `>` and `<` the names after and before it in order. 'Ends with' matches
+	 * the name segment right under `index` (or the first segment when `index`
+	 * is omitted), and returns what is nested under a match as well, the way
+	 * 'starts with' does: `index: 'Band.'` with `value: 'ers'` and `<=` finds
+	 * Band.Members, Band.Members.name and Band.Singers.
+	 *
 	 * Every combination (`table` is required, so there is no no-argument
 	 * form):
 	 * - `getIndexes({ table: 't' })`: every index of table 't'.
@@ -2339,6 +2357,12 @@ export default class Skapi {
 	 *   the compound index, so Band.name, Band.year.
 	 * - `getIndexes({ table: 't', order: { by: 'index_name', value: 'B' } })`:
 	 *   exact match against the value.
+	 * - `getIndexes({ table: 't', order: { by: 'index_name' } })`: every index
+	 *   of the table, ordered by name.
+	 * - `getIndexes({ table: 't', order: { by: 'index_name', value: 'B', condition: '>=' } })`:
+	 *   the index names that start with 'B'.
+	 * - `getIndexes({ table: 't', order: { by: 'index_name', value: 'e', condition: '<=' } })`:
+	 *   the index names that end with 'e'.
 	 * - `getIndexes({ table: 't', order: { by: 'total_number' } })`: the whole
 	 *   partition, ordered by that attribute.
 	 * - `order.condition` without `order.value`: errors.
@@ -2391,9 +2415,9 @@ export default class Skapi {
 					| 'string_count'
 					| 'index_name'
 					| 'number_of_records';
-				/** Value to query. */
+				/** Value to query. A string when "by" is 'index_name': a piece of the index name. */
 				value?: number | boolean | string;
-				/** Requires "value". Omitted: exact match against "value". */
+				/** Requires "value". Omitted: exact match against "value". With "by" 'index_name': `>=` starts with, `<=` ends with. */
 				condition?: Condition;
 			};
 		},
@@ -2408,7 +2432,9 @@ export default class Skapi {
 	 * `table` and `tag` together match the tag exactly, `table` alone is a
 	 * prefix ('>=') that lists every tag in that table, and neither one
 	 * returns every tag in the project, ordered by record count, descending.
-	 * `gte` / `>=` is a prefix search.
+	 * `gte` / `>=` is a prefix search and `lte` / `<=` is a suffix search:
+	 * with `table` it finds the tags of that table that end with `tag`, and
+	 * with `tag` alone the tags that end with it in every table.
 	 *
 	 * Every combination:
 	 * - `getTags({})`: every tag in the project, ordered by record count,
@@ -2420,6 +2446,10 @@ export default class Skapi {
 	 *   tables.
 	 * - `getTags({ table: 't', tag: 'g', condition: 'gte' })`: prefix, every
 	 *   tag in 't' starting with 'g'.
+	 * - `getTags({ table: 't', tag: 'g', condition: 'lte' })`: suffix, every
+	 *   tag in 't' ending with 'g'.
+	 * - `getTags({ tag: 'g', condition: 'lte' })` with no `table`: every tag
+	 *   ending with 'g', in every table.
 	 * - `getTags({ condition: 'gte' })` with neither `table` nor `tag`: errors
 	 *   with '"table" or "tag" is required for condition.'
 	 *
@@ -2458,7 +2488,7 @@ export default class Skapi {
 			table?: string;
 			/** Tag name */
 			tag?: string;
-			/** String query condition for tag name. Omitted: exact match when `table` and `tag` are both given, prefix when only `table` is given. */
+			/** String query condition for tag name. Omitted: exact match when `table` and `tag` are both given, prefix when only `table` is given. `gte` / `>=`: starts with. `lte` / `<=`: ends with. */
 			condition?: Condition;
 		},
 		fetchOptions?: FetchOptions,

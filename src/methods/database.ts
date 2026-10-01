@@ -2196,7 +2196,7 @@ export async function getTables(
     /** If null fetch all list of tables. */
     query: {
         table: string;
-        /** Condition operator of table name. */
+        /** Condition operator of table name. Omitted: exact match. `gte` / `>=`: starts with. `lte` / `<=`: ends with. */
         condition?: Condition;
     },
     fetchOptions?: FetchOptions
@@ -2268,8 +2268,9 @@ export async function getIndexes(
         order?: {
             /** Key name to order by. */
             by: 'average_number' | 'total_number' | 'number_count' | 'average_bool' | 'total_bool' | 'bool_count' | 'string_count' | 'index_name';
-            /** Value to query. */
+            /** Value to query. A string when "by" is 'index_name': a piece of the index name. */
             value?: number | boolean | string;
+            /** Requires "value". Omitted: exact match. With "by" 'index_name': `>=` starts with, `<=` ends with. */
             condition?: Condition;
         };
     },
@@ -2387,7 +2388,7 @@ export async function getTags(
         table: string;
         /** Tag name */
         tag?: string;
-        /** String query condition for tag name. */
+        /** String query condition for tag name. `gte` / `>=`: starts with. `lte` / `<=`: ends with. */
         condition?: Condition;
     },
     fetchOptions?: FetchOptions
@@ -2426,7 +2427,7 @@ export async function getUniqueId(
     query?: Form<{
         /** Unique ID */
         unique_id?: string;
-        /** String query condition for tag name. */
+        /** String query condition for the unique ID. Omitted: exact match. `gte` / `>=`: starts with. `lte` / `<=`: ends with. */
         condition?: Condition;
     }>,
     fetchOptions?: FetchOptions
