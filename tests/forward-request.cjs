@@ -503,6 +503,34 @@ test('both history names address the same row id', async () => {
     }
 });
 
+test('a history item says when the response came back, and `updated` is left as it was', async () => {
+    // `updated` moves when a streamed request is finalized, so the worker records the
+    // response time once in a field of its own (`rtmp`), and it is projected here as
+    // `responded`. A row settled before the worker recorded it has none.
+    const s = await getSkapi();
+    answer = {
+        list: [
+            { id: '1:a', stts: 'resolved', stmp: 1000, att: 2, rtmp: 5000, utmp: 9000, rslv: { status_code: 200, body: { ok: true } } },
+            { id: '1:b', stts: 'resolved', stmp: 1000, att: 2, utmp: 9000, rslv: { status_code: 200, body: { ok: true } } },
+        ],
+        endOfList: true,
+    };
+    try {
+        const viaNew = (await s.forwardRequestHistory({ url: URL_DEST, method: 'POST' })).list;
+        assert.strictEqual(viaNew[0].responded, 5000);
+        assert.strictEqual(viaNew[0].updated, 9000);
+        assert.strictEqual(viaNew[0].created, 1000);
+        assert.strictEqual(viaNew[0].executed, 2000);
+        assert.ok(!('responded' in viaNew[1]), 'a row with no response time must not invent one');
+        assert.strictEqual(viaNew[1].updated, 9000);
+        const viaOld = (await s.clientSecretRequestHistory({ url: URL_DEST, method: 'POST' })).list;
+        assert.strictEqual(viaOld[0].responded, 5000);
+    }
+    finally {
+        answer = { ok: true };
+    }
+});
+
 test('a PATCH row is addressable by the history and cancel calls', async () => {
     const s = await getSkapi();
     answer = { list: [], endOfList: true };

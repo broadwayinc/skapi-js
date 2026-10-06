@@ -2268,6 +2268,11 @@ export async function clientSecretRequestHistory(
 			// point; a consumer subtracting a raw seconds value from `updated` would be
 			// out by a factor of 1000 and read every call as ~57 years.
 			executed: typeof item?.att === 'number' ? item.att * 1000 : undefined,
+			// When the destination's response finished arriving. The worker writes
+			// `rtmp` once, in milliseconds, at the settle that follows a real response,
+			// and nothing rewrites it. `updated` is not that for a streamed request:
+			// finalizing the request moves `utmp` to the moment of the finalize.
+			responded: typeof item?.rtmp === 'number' ? item.rtmp : undefined,
 			request_body: item?.reqbdy,
 			expires: item?.expt,
 			status: item.stts,
