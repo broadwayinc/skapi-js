@@ -1002,7 +1002,14 @@ export async function signup(
     }>,
     option?: {
         signup_confirmation?: boolean | string;
-        email_subscription?: boolean;
+        /**
+         * The newsletter the user is subscribed to once they confirm their e-mail, with no
+         * newsletter confirmation e-mail of its own: `0` or `'public'` for the public
+         * newsletter, `1` or `'authorized'` for Service Email, the name of a named newsletter
+         * group of the service, or `true` for Service Email. Requires `signup_confirmation`;
+         * a user whose e-mail is never confirmed is never subscribed. Defaults to false.
+         */
+        email_subscription?: boolean | number | string;
         login?: boolean;
         /**
          * Per-call e-mail template overrides.
@@ -1065,15 +1072,27 @@ export async function signup(
     await logout.bind(this)();
 
     option = validator.Params(option || {}, {
-        email_subscription: (v: boolean) => {
-            if (typeof v !== 'boolean') {
-                throw new SkapiError('"option.email_subscription" should be type: <boolean>.', { code: 'INVALID_PARAMETER' });
+        email_subscription: (v: boolean | number | string) => {
+            // false: nothing to subscribe to. true: Service Email, as it has always been.
+            // 0 / 'public' and 1 / 'authorized' are the two numeric groups a signup can
+            // choose; any other string is the name of a named group, in the grammar of
+            // every other group taking method. The access groups 2 ~ 99 are refused.
+            let value: boolean | number | string = v;
+            if (typeof v === 'number' || (typeof v === 'string' && v !== 'public' && v !== 'authorized')) {
+                const group = validator.newsletterGroup(v);
+                if (typeof group === 'number' && group !== 0 && group !== 1) {
+                    throw new SkapiError('"option.email_subscription" takes 0 (public), 1 (authorized), true, false or the name of a newsletter group.', { code: 'INVALID_PARAMETER' });
+                }
+                value = group;
             }
-            if (!option?.signup_confirmation) {
-                // requires to be url or true
+            else if (typeof v !== 'boolean' && typeof v !== 'string') {
+                throw new SkapiError('"option.email_subscription" takes 0 (public), 1 (authorized), true, false or the name of a newsletter group.', { code: 'INVALID_PARAMETER' });
+            }
+            if (value !== false && !option?.signup_confirmation) {
+                // the e-mail has to be confirmed before anyone is subscribed to anything
                 throw new SkapiError('"option.signup_confirmation" is required for email subscription.', { code: 'INVALID_PARAMETER' });
             }
-            return v;
+            return value;
         },
         signup_confirmation: (v: string | boolean) => {
             let value = v;
@@ -1126,7 +1145,8 @@ export async function signup(
     let logUser = option?.login || false;
 
     params.signup_confirmation = option?.signup_confirmation || false;;
-    params.email_subscription = option?.email_subscription || false;
+    // 0 is a subscription (the public newsletter), so it must not fall through to false
+    params.email_subscription = option?.email_subscription === undefined || option?.email_subscription === null ? false : option.email_subscription;
 
     if (params.email_public && !params.signup_confirmation) {
         throw new SkapiError('"option.signup_confirmation" should be true if "email_public" is set to true.', { code: 'INVALID_PARAMETER' });

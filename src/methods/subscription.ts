@@ -415,14 +415,15 @@ export async function registerNewsletterGroup(
 
 /**
  * Deletes a named newsletter group. Only the service owner can call this.<br>
- * Every subscription of the group is removed along with the group itself, so the subscribers
- * are gone for good.<br>
- * A group with a very large number of subscribers may need more than one call: the response
- * says how many subscriptions were removed, and the group is only gone once the call succeeds.
+ * Every subscription of the group and every newsletter sent to it are removed along with the
+ * group itself, so the subscribers and the sent mail are gone for good.<br>
+ * A group with a very large number of subscribers or sent newsletters may need more than one
+ * call: the response says how many were removed, and the group is only gone once the call
+ * succeeds.
  * ```
  * skapi.deleteNewsletterGroup({ group: 'bunnyquery' });
  * ```
- * @returns 'SUCCESS: Group has been deleted along with N subscription(s).'
+ * @returns 'SUCCESS: Group has been deleted along with N subscription(s) and M sent newsletter(s).'
  */
 export async function deleteNewsletterGroup(
     form: Form<{

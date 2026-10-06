@@ -3050,11 +3050,16 @@ export default class Skapi {
 			 */
 			signup_confirmation?: boolean | string;
 			/**
-			 * When true, user will be subscribed to Service Email (group 1) once they are signed up.
-			 * User's signup confirmation is required for this parameter.
+			 * The newsletter the user is subscribed to once they confirm their e-mail, with no
+			 * newsletter confirmation e-mail of its own.
+			 * `0` or `'public'`: the public newsletter. `1` or `'authorized'`: Service Email.
+			 * The name of a named newsletter group: that group, which has to exist and whose
+			 * restriction the account has to meet. `true`: Service Email, as before.
+			 * User's signup confirmation is required for this parameter: a user whose e-mail is
+			 * never confirmed is never subscribed.
 			 * Default is false.
 			 */
-			email_subscription?: boolean;
+			email_subscription?: boolean | number | string;
 			/**
 			 * Automatically login to account after signup. Will not work if signup confirmation is required.
 			 */
