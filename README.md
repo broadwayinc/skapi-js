@@ -11,7 +11,7 @@
 
 ### Zero-Setup Serverless Backend
 
-Skapi is a backend API that runs entirely serverless—no complex installations, no server configurations, and no database management required. Build full-featured web applications faster and focus on what matters: your product.
+Skapi is a backend API that runs entirely serverless: no complex installations, no server configurations, and no database management required. Build full-featured web applications faster and focus on what matters: your product.
 
 ### Works Everywhere: Vanilla HTML, SPAs, and AI Agents
 
@@ -36,8 +36,8 @@ Skapi provides all the backend features you need for your web application out of
 
 ### 1. Create a Project
 
-1. Sign up for an account at [skapi.com](https://www.skapi.com/signup).
-2. Log in and click **+ New Project**. Give your project a name, an optional description and a region, and click **Continue**.
+1. Open [skapi.com/new-project](https://www.skapi.com/new-project). If you are not signed in, it sends you to log in or sign up first and brings you back to the project form.
+2. Give your project a name, an optional description and a region, and click **Continue**.
 3. Choose a plan and proceed.
 
 ### 2. Initialize the Skapi library
@@ -131,11 +131,11 @@ The response data will be displayed in an alert box.
 
 Skapi works seamlessly with AI-powered coding assistants.
 
-To help your assistant understand how to integrate the Skapi API into your project, download and use the system prompt file described below.
+To help your assistant understand how to integrate the Skapi API into your project, download and use the base prompt described below.
 
 ### For Chat-Based Platforms (e.g., ChatGPT, Lovable)
 
-#### 1. Download the system prompt file
+#### 1. Download the base prompt
 
 <a href="https://docs.skapi.com/SKAPI.md" download="SKAPI.md">⬇️ SKAPI.md (Click to Download)</a>
 
@@ -153,7 +153,7 @@ Replace the placeholder project ID with your actual project ID, and customize th
 
 ### For AI Code Generators (e.g., Claude Code, OpenAI Codex, Gemini CLI)
 
-#### 1. Download the system prompt file
+#### 1. Download the base prompt
 
 <a href="https://docs.skapi.com/SKAPI.md" download="SKAPI.md">⬇️ SKAPI.md (Click to Download)</a>
 
