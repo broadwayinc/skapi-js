@@ -15,8 +15,9 @@
  *     site while the form's value was collected from a page,
  *   - `multipart: true` sends the body verbatim as `body_b64` plus
  *     `body_content_type`, keeps the file, and is refused together with `data`,
- *   - `secretName` is OPTIONAL, and the "$CLIENT_SECRET" requirement applies only
- *     when a secret is actually named,
+ *   - `secretName` is OPTIONAL, and a named secret is sent only when "$CLIENT_SECRET"
+ *     appears somewhere (the url, or any value at any depth of headers, data or
+ *     params); with no placeholder the name is left out and the request still goes,
  *   - `skapiHeaders` says which of the identity headers to send, and a header of
  *     the caller's own under "x-skapi-" is refused whatever it says,
  *   - PATCH and HEAD are allowed methods,
@@ -353,7 +354,7 @@ test('a foreign service and owner reach the server exactly as the old method sen
     assert.ok(o.service === FOREIGN.service || o.inUrl, 'the old path carries the foreign service');
 });
 
-test('a named secret goes out as "secretName" and still requires the placeholder', async () => {
+test('a named secret goes out as "secretName" when a placeholder uses it', async () => {
     const s = await getSkapi();
     await s.forwardRequest(null, {
         url: URL_DEST,
@@ -365,14 +366,54 @@ test('a named secret goes out as "secretName" and still requires the placeholder
     assert.strictEqual(b.secretName, 'my_secret');
     assert.ok(!('clientSecretName' in b), 'the new name is what travels');
 
-    const err = await refused(() => s.forwardRequest(null, {
+});
+
+test('a placeholder nested in data, params or headers counts, as the server substitutes it there', async () => {
+    const s = await getSkapi();
+    await s.forwardRequest(null, {
         url: URL_DEST,
         method: 'POST',
         secretName: 'my_secret',
-        data: { nothing: 'to substitute' },
-    }));
-    assert.strictEqual(err.code, 'INVALID_PARAMETER');
-    assert.match(err.message, /\$CLIENT_SECRET/);
+        data: { auth: { keys: ['x', 'Bearer $CLIENT_SECRET'] } },
+    });
+    assert.strictEqual(lastSent().secretName, 'my_secret');
+    assert.deepStrictEqual(lastSent().data.auth.keys, ['x', 'Bearer $CLIENT_SECRET'], 'sent as written; the server fills it in');
+
+    await s.forwardRequest(null, {
+        url: URL_DEST,
+        method: 'GET',
+        secretName: 'my_secret',
+        params: { q: { token: '$CLIENT_SECRET' } },
+    });
+    assert.strictEqual(lastSent().secretName, 'my_secret');
+});
+
+test('a named secret with no placeholder anywhere is left out, and the request still goes', async () => {
+    const s = await getSkapi();
+    await s.forwardRequest(null, {
+        url: URL_DEST,
+        method: 'POST',
+        secretName: 'my_secret',
+        data: { nothing: 'to substitute', nested: { still: 'nothing' } },
+    });
+    const b = lastSent();
+    assert.ok(!('secretName' in b), 'a secret with nowhere to go is not sent');
+    assert.ok(!('clientSecretName' in b));
+    assert.deepStrictEqual(b.data, { nothing: 'to substitute', nested: { still: 'nothing' } });
+
+    // a key named like the placeholder is not a placeholder: keys are never substituted
+    await s.forwardRequest(null, { url: URL_DEST, method: 'POST', secretName: 'my_secret', data: { $CLIENT_SECRET: 'x' } });
+    assert.ok(!('secretName' in lastSent()));
+});
+
+test('a placeholder inside a multipart body does not count: that body is never substituted', async () => {
+    const s = await getSkapi();
+    const fd = new FormData();
+    fd.append('key', '$CLIENT_SECRET');
+    await s.forwardRequest(fd, { url: URL_DEST, method: 'POST', secretName: 'my_secret', multipart: true });
+    const b = lastSent();
+    assert.ok(b.body_b64, 'sent as a raw body');
+    assert.ok(!('secretName' in b));
 });
 
 test('the placeholder can come from the form itself', async () => {

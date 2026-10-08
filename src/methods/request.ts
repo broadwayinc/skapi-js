@@ -1476,11 +1476,22 @@ async function dispatchForwardRequest(
 		params.queue = (this.__user?.user_id || "anonymous") + "-" + generateRandom();
 	}
 
-	let checkClientSecretPlaceholder = (v: any) => {
+	// Every string value at any depth, as the server substitutes it (its json_crawler walks
+	// nested objects and arrays). Keys are never substituted, so they are not read.
+	let checkClientSecretPlaceholder = (v: any, seen = new WeakSet<object>()) => {
+		if (hasSecret || !v || typeof v !== 'object' || seen.has(v)) {
+			return;
+		}
+		seen.add(v);
 		for (let k in v) {
-			if (typeof v[k] === 'string' && v[k].includes('$CLIENT_SECRET')) {
-				hasSecret = true;
-				break;
+			let item = v[k];
+			if (typeof item === 'string') {
+				if (item.includes('$CLIENT_SECRET')) {
+					hasSecret = true;
+					return;
+				}
+			} else if (item && typeof item === 'object') {
+				checkClientSecretPlaceholder(item, seen);
 			}
 		}
 	};
@@ -1610,17 +1621,13 @@ async function dispatchForwardRequest(
 		});
 	}
 
-	// Only a NAMED secret is substituted, so only a named secret needs somewhere to go.
-	// A request that names none carries exactly what the caller supplied, and asking it
-	// for a placeholder nothing would fill would refuse a legitimate call.
+	// A named secret goes only where "$CLIENT_SECRET" is written. With no placeholder in the
+	// url or anywhere in headers, data or params there is nowhere to put it, so the name is
+	// left out and the request is forwarded as written, the same as one that names none.
+	// (A multipart body is sent byte for byte and never substituted, so it does not count.)
 	if (secretNamed && !hasSecret) {
-		let target = params.method === 'get' || params.method === 'delete' || params.method === 'head'
-			? '"params"'
-			: '"data"';
-		throw new SkapiError(
-			`At least one parameter value should include "$CLIENT_SECRET" in ${target} or "headers".`,
-			{ code: 'INVALID_PARAMETER' },
-		);
+		delete params.secretName;
+		delete params.clientSecretName;
 	}
 
 	await this.__connection;
@@ -1761,10 +1768,11 @@ async function dispatchForwardRequest(
  * ### Naming a secret
  *
  * `secretName` is optional. Name one and "$CLIENT_SECRET" is substituted server side in
- * the url, the headers, `data` and `params`, the secret's access group authorizes the
- * caller, and the secret's allowed destinations are enforced; at least one value has to
- * carry the placeholder, or there would be nothing for the secret to fill. Name none and
- * the request is forwarded with only what you supplied.
+ * the url and in the values of the headers, `data` and `params`, at any depth; the
+ * secret's access group authorizes the caller, and the secret's allowed destinations are
+ * enforced. A named secret with no "$CLIENT_SECRET" anywhere has nothing to fill, so the
+ * name is left out and the request is forwarded as written. Nothing is substituted into a
+ * `multipart` body. Name none and the request is forwarded with only what you supplied.
  *
  * ### Telling the destination who is calling
  *
