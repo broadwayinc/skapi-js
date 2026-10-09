@@ -625,7 +625,10 @@ export async function getNewsletters(
         'bounced': 'bnce',
         'url': 'url',
         'delivered': 'delv',
-        'group': 'grp'
+        'group': 'grp',
+        // saved without sending (the dry address), and when a Send sent it
+        'dry': 'dry',
+        'sent': 'sent'
     };
     let defaults = {
         'message_id': '',
@@ -639,7 +642,9 @@ export async function getNewsletters(
         // The sent-mail row is keyed by the group and does not carry it as its own
         // attribute, so the group the caller asked for is what comes back. A backend
         // that starts projecting "grp" takes over without another change here.
-        'group': params.group
+        'group': params.group,
+        'dry': false,
+        'sent': 0
     };
 
     mails.list = mails.list.map(m => {
@@ -648,6 +653,8 @@ export async function getNewsletters(
             remapped[k] = m[remap[k]] || defaults[k];
         }
         remapped['bounced'] = String(remapped['bounced']);
+        remapped['dry'] = !!remapped['dry'];
+        if (!remapped['sent']) delete remapped['sent'];
         return remapped;
     });
 

@@ -315,6 +315,13 @@ export type Newsletter = {
      * A number for the 0 ~ 99 groups, the group name for a named newsletter group.
      */
     group: number | string;
+    /**
+     * true: mailed to the group's dry address, so it is stored and was sent to nobody. The
+     * Newsletters page's Send button, or a ticket's Send newsletter action, sends it later.
+     */
+    dry?: boolean;
+    /** When the Send button or a ticket's Send newsletter action sent it, in ms. Absent on a newsletter that went out by e-mail. */
+    sent?: number;
 }
 
 export type NewsletterGroup = {
@@ -920,7 +927,7 @@ export type TicketResponseCondition = Pick<TicketCondition, 'headers' | 'data' |
  * Registration refuses anything else inside `${ }` (an unknown root such as `${id}`, keys under
  * a root that takes none such as `${ip[x]}`, `${placeholder}` or `${headers}` without a key,
  * broken brackets) with a message listing these forms, `${result}` (gone: an answer is read as
- * `${response}` in the action's Then chain, or captured by its Check), and a reference written
+ * `${response}` in the action's Then chain, or captured there by a Condition action), and a reference written
  * where it can never resolve (`${response}` outside a Then chain, `${error}` outside an `err`
  * chain, `${record_access}` when the condition names no record). When the action runs, a
  * reference that does not resolve fails it before it does anything: PATH_NOT_FOUND,
@@ -928,10 +935,11 @@ export type TicketResponseCondition = Pick<TicketCondition, 'headers' | 'data' |
  * on a request that is not signed in. Its `err` chain runs and the consumption stops.
  *
  * Every action but resp and cond answers something (the record, the response body, a SUCCESS
- * text) and may carry a Check (`condition`: rows on that answer, a key "" the whole text; a miss
- * fails the action) and a Then chain (`actions`, reading the answer as `${response}`). `retry:
- * true` on acsg, acsr, pstr and req tries a failure again, up to 3 more times, 1, 2 and 4
- * seconds apart, while the time budget holds them; never for a failure inside Then.
+ * text) and may carry a Then chain (`actions`, reading the answer as `${response}`). A Condition
+ * action in that chain checks the answer: its `response` rows read it whole (key "") or by key,
+ * whatever its shape. `retry: true` on acsg, acsr, pstr, req, mail and nlsd tries a failure again,
+ * up to 3 more times, 1, 2 and 4 seconds apart, while the time budget holds them; never for a
+ * failure inside Then.
  */
 export type TicketAction =
     | {
@@ -942,8 +950,6 @@ export type TicketAction =
             group: number | 'admin' | `${string}\${${string}}${string}`;
             /** Blank = the consumer (signed-in consumption only). The project owner cannot be a target. */
             user_id?: string;
-            /** The Check: rows on the answer. */
-            condition?: TicketAnswerCondition;
             /** The Then chain, reading the answer as `${response}`. */
             actions?: TicketAction[];
         };
@@ -958,7 +964,6 @@ export type TicketAction =
             record_id: string;
             /** Blank = the consumer. */
             user_id?: string | string[];
-            condition?: TicketAnswerCondition;
             actions?: TicketAction[];
         };
         err?: TicketAction[];
@@ -984,8 +989,6 @@ export type TicketAction =
             source?: PostRecordConfig['source'];
             /** Post as this user instead of the project owner. */
             user_id?: string;
-            /** The Check: rows on the record posted, such as `record_id`. */
-            condition?: TicketAnswerCondition;
             /** The Then chain, reading the record as `${response}` (`${response[record_id]}`). */
             actions?: TicketAction[];
         };
@@ -1054,13 +1057,54 @@ export type TicketAction =
             params?: { [key: string]: any };
             /** Legacy. Registration moves these rows to the end of `condition.data`. */
             match?: TicketConditionRow[];
-            /** Checked against the response. Captures land in the shared placeholder pool. See TicketResponseCondition. */
+            /** Skapi's own billing rows only. A response check is a Condition action in `actions`, whose `response` rows read the answer. */
             condition?: TicketResponseCondition;
             /**
              * Nested chain, run when the response passes `condition`. It reads the response body
              * as `${response}` and `${response[key]}`, while `${data}` is still the incoming
              * request body. Any action can nest, including another req with its own `secretName`.
              */
+            actions?: TicketAction[];
+        };
+        err?: TicketAction[];
+        retry?: boolean;
+    }
+    | {
+        /**
+         * Send e-mail: one e-mail from a CUSTOM template of the project (the Custom tab of the
+         * Automated Emails page) to one address, from the project's alias. Counts as one e-mail
+         * send (the plan's monthly sends, the Free owner cap and the complaint shutoff apply; a
+         * refusal is QUOTA_EXCEEDED). Answers "SUCCESS: E-mail sent to <address>."
+         */
+        act: 'mail';
+        exe: {
+            /** The template's ID, as the Custom tab and the upload reply show it. Literal; it must be stored when the ticket is registered. */
+            template: string;
+            /** The recipient: one address, or a reference that gives one, such as "${user[email]}" or "${data[email]}". */
+            to: string;
+            /**
+             * Values for the placeholders the template carries, by name: { "order": "${data[order][id]}" } fills
+             * ${order}. Templated. "service_name" and "email" (the recipient) are filled by default and may be
+             * overwritten here. Up to 30.
+             */
+            placeholders?: { [name: string]: string | number | boolean };
+            actions?: TicketAction[];
+        };
+        err?: TicketAction[];
+        retry?: boolean;
+    }
+    | {
+        /**
+         * Send newsletter: a stored newsletter of a group, dry or already sent, to every subscriber of the
+         * group, the way an e-mailed newsletter goes out (one e-mail send per subscriber, same gates).
+         * Answers "SUCCESS: Newsletter sent to the subscribers of <group>."
+         */
+        act: 'nlsd';
+        exe: {
+            /** "public", "authorized", a number from 2 to 99, or a named group. Literal. */
+            group: 'public' | 'authorized' | number | string;
+            /** The newsletter's message_id (getNewsletters()). Literal; it must be stored under the group when the ticket is registered. */
+            newsletter: string;
             actions?: TicketAction[];
         };
         err?: TicketAction[];
@@ -1107,16 +1151,13 @@ export type TicketAction =
             user?: TicketCondition['user'];
             record_access?: string;
             placeholder?: { key: string; operator: TicketConditionOperator; value: any }[];
+            /** Rows on the enclosing action's answer, inside a Then chain only: a key reads a field, "" the whole answer as text. */
             response?: TicketConditionRow[];
+            /** Rows on the failure, inside an err chain only: code, message, detail, action, path, or "" for the whole error as text. */
             error?: TicketConditionRow[];
         };
         err?: TicketAction[];
     };
-
-/** The Check of an action: rows on its answer (TicketConditionRow, keys paths in the answer; "" is the whole answer as text). */
-export type TicketAnswerCondition = {
-    data?: TicketConditionRow[];
-};
 
 /** What a consumption answers when no Respond action composes the answer. */
 export type TicketReceipt = {

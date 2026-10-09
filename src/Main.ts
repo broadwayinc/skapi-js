@@ -43,7 +43,6 @@ export type {
     TicketConditionRow,
     TicketSignatureCondition,
     TicketResponseCondition,
-    TicketAnswerCondition,
     TicketAction,
     TicketReceipt,
     TicketError,
