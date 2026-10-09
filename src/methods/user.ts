@@ -58,7 +58,8 @@ function map_ticket_obj(t): {
         'hash': 'hash',
         'desc': 'description',
         'pmc': 'limit_per_user',
-        'fail': 'failed'
+        'fail': 'failed',
+        'rv': 'rules_version'
     }
     let new_obj = {};
     for (let k in t) {

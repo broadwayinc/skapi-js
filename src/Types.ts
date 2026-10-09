@@ -773,7 +773,7 @@ export type TicketConditionRow = {
      * Where the row looks, relative to its own list and written without `${ }`:
      * - `data` rows: a path into the request body. "id" is the body's `id`, "order[id]" is `order.id`.
      * - `params` rows: a path into the query string, read the same way.
-     * - `data` rows of a req action's response condition: a path into the response body ("status" is the response's `status`).
+     * - `response` rows of a cond action: a path into the enclosing action's answer ("body[status]" is a response's body.status, "record_id" a posted record's id); "" is the whole answer as text.
      * - `headers` rows: the header name, matched case-insensitively.
      * - `user` rows: the consumer attribute name.
      *
@@ -892,11 +892,10 @@ export type TicketCondition = {
 }
 
 /**
- * What a `req` action checks on the response before its nested actions run: `headers` and
- * `data` rows work as in the ticket's condition (captures and `setValueWhenMatch` included).
- * `headers` rows read the response headers and `data` row keys are paths into the parsed
- * response body. `user` and `record_access` still check the consumer, so they only work for
- * signed requests. A response that is not 2xx fails before this is checked.
+ * Skapi's own billing rows only (the super master registers them): the response check a `req`
+ * carried before 2026-10-09. Anyone else checks a response with a cond action in the req's
+ * Then chain. `headers` rows read the response headers and `data` row keys are paths into the
+ * parsed body; `user` and `record_access` check the consumer.
  */
 export type TicketResponseCondition = Pick<TicketCondition, 'headers' | 'data' | 'user' | 'record_access'>;
 
@@ -919,7 +918,7 @@ export type TicketResponseCondition = Pick<TicketCondition, 'headers' | 'data' |
  * | `${user}`, `${user[key]}` | The signed-in user's attributes. Signed requests only. |
  * | `${ip}`, `${user_agent}`, `${method}` | The caller's IP address, User-Agent and HTTP method. |
  * | `${record_access}` | The record ID the condition's `record_access` names. Signed requests only. |
- * | `${response}`, `${response[key]}` | The answer of the enclosing action, in its Then chain (`actions`) and the `err` chains inside it: the record a pstr posted, the parsed body of a req's response, the SUCCESS text of acsg and acsr. |
+ * | `${response}`, `${response[key]}` | The answer of the enclosing action, in its Then chain (`actions`) and the `err` chains inside it: the record a pstr posted, the response of a req ({ status, headers, body }), the SUCCESS text of acsg, acsr, mail and nlsd. |
  * | `${error}`, `${error[key]}` | In an `err` chain, the failure: `code`, `message`, `detail`, `action` (the act) and `path`. |
  * | `${ticket}`, `${ticket[key]}` | This consumption: `id`, `service`, `owner`, `consume_id`, `timestamp` and `hash`. |
  * | `${CLIENT_SECRET}` | Reserved. See `secretName` on the req action. |
@@ -934,7 +933,7 @@ export type TicketResponseCondition = Pick<TicketCondition, 'headers' | 'data' |
  * PLACEHOLDER_MISSING for a placeholder that was never captured, or AUTH_REQUIRED for `${user}`
  * on a request that is not signed in. Its `err` chain runs and the consumption stops.
  *
- * Every action but resp and cond answers something (the record, the response body, a SUCCESS
+ * Every action but resp and cond answers something (the record, the response as { status, headers, body }, a SUCCESS
  * text) and may carry a Then chain (`actions`, reading the answer as `${response}`). A Condition
  * action in that chain checks the answer: its `response` rows read it whole (key "") or by key,
  * whatever its shape. `retry: true` on acsg, acsr, pstr, req, mail and nlsd tries a failure again,
@@ -996,7 +995,7 @@ export type TicketAction =
         retry?: boolean;
     }
     | {
-        /** HTTP request with its own response condition and nested chain. Answers the parsed response body. */
+        /** HTTP request with a nested chain on its response. Answers the whole response: { status, headers, body }. */
         act: 'req';
         exe: {
             /**
@@ -1060,9 +1059,11 @@ export type TicketAction =
             /** Skapi's own billing rows only. A response check is a Condition action in `actions`, whose `response` rows read the answer. */
             condition?: TicketResponseCondition;
             /**
-             * Nested chain, run when the response passes `condition`. It reads the response body
-             * as `${response}` and `${response[key]}`, while `${data}` is still the incoming
-             * request body. Any action can nest, including another req with its own `secretName`.
+             * Nested chain, run on an answer below 300. It reads the response as `${response}`:
+             * `${response[status]}`, `${response[headers][content-type]}` (header names in
+             * lowercase) and `${response[body][key]}`, while `${data}` is still the incoming
+             * request body. A cond in it checks the response. Any action can nest, including
+             * another req with its own `secretName`.
              */
             actions?: TicketAction[];
         };
@@ -1143,18 +1144,13 @@ export type TicketAction =
          */
         act: 'cond';
         exe: {
-            data?: TicketConditionRow[];
-            params?: TicketConditionRow[];
-            headers?: TicketCondition['headers'];
-            ip?: TicketCondition['ip'];
-            user_agent?: TicketCondition['user_agent'];
-            user?: TicketCondition['user'];
-            record_access?: string;
-            placeholder?: { key: string; operator: TicketConditionOperator; value: any }[];
-            /** Rows on the enclosing action's answer, inside a Then chain only: a key reads a field, "" the whole answer as text. */
-            response?: TicketConditionRow[];
-            /** Rows on the failure, inside an err chain only: code, message, detail, action, path, or "" for the whole error as text. */
-            error?: TicketConditionRow[];
+            /**
+             * Rows on the answer of the action whose Then chain this Condition is in, whatever its shape: a key is
+             * a path in the answer ("record_id" on a posted record, "body[status]" or "headers[content-type]" on a
+             * response), "" the whole answer as text. A row that does not pass fails the chain here with
+             * CONDITION_FAILED. Inside a Then chain only; answers nothing.
+             */
+            response: TicketConditionRow[];
         };
         err?: TicketAction[];
     };
@@ -1198,6 +1194,15 @@ export type Ticket = {
      * https://docs.skapi.com/deprecated/deprecated.html#tickets-saved-before-this-release
      */
     legacy?: boolean;
+    /**
+     * The rules the ticket was saved under. 2: an HTTP request's answer is the whole response
+     * ({ status, headers, body }). Absent on a ticket saved before 2026-10-09: its req actions
+     * keep answering the body alone, as it was written to read them, until it is registered
+     * again (the dashboard moves such references under [body] when the ticket is opened).
+     * Returned to the project owner. See
+     * https://docs.skapi.com/deprecated/deprecated.html#a-request-s-answer-was-its-body
+     */
+    rules_version?: number;
 }
 
 export type TicketErrorCode =
