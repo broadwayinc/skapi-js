@@ -19,7 +19,8 @@ import {
     Ticket,
     TicketCondition,
     TicketAction,
-    TicketConditionRow
+    TicketConditionRow,
+    TicketReceipt
 } from '../Types';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
@@ -98,21 +99,16 @@ function map_ticket_obj(t): {
     return new_obj;
 }
 
-export async function consumeTicket(params: {
+// Resolves with the receipt (TicketReceipt), or with whatever a Respond action of the ticket
+// answered: its `body` as sent, or the receipt again when it set none. `T` names that body.
+export async function consumeTicket<T = TicketReceipt>(params: {
     ticket_id: string;
     method: string; // GET | POST
     auth?: boolean;
     data?: {
         [key: string]: any;
     }
-}): Promise<{
-    ticket_id: string;
-    consume_id: string;
-    user_id: string;
-    is_test: boolean;
-    timestamp: number;
-    hash: string;
-}> {
+}): Promise<T> {
     if (!params?.ticket_id) {
         throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
     }
@@ -151,8 +147,9 @@ export async function consumeTicket(params: {
         throw new SkapiError(body.message, { code: body.code, cause: body });
     }
 
-    // Only an object is a consumption row to map; the check route answers a JSON string.
-    if (!body || typeof body !== 'object') {
+    // Only the receipt is a consumption row to map (a Respond's body is handed over as sent;
+    // the check route answers a JSON string).
+    if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.tkid !== 'string') {
         return body;
     }
 
@@ -161,11 +158,35 @@ export async function consumeTicket(params: {
 
 export async function getTickets(params: {
     ticket_id?: string;
+    /** A log listing only ('#<ticket>#' or '@<ticket>#<consume id>#'): rows from this time on, in ms. */
+    from?: number;
+    /** A log listing only: rows up to this time, in ms. */
+    to?: number;
 }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<any[]>> {
     await this.__connection;
     let tickets = await request.bind(this)('ticket', Object.assign({ exec: 'list' }, params || {}), { auth: true, fetchOptions });
     tickets.list = tickets.list.map(map_ticket_obj);
     return tickets;
+}
+
+// Project owner only. Deletes the ticket's log rows before `before` (default now; later than
+// now is clipped to now) in the background over the next minutes. The remaining count and the
+// per-user limits stay. Resolves with the time the backend applied.
+export async function clearTicketLog(
+    params: {
+        ticket_id: string;
+        /** Milliseconds since the epoch. Default: now. */
+        before?: number;
+    }
+): Promise<{ message: string; ticket_id: string; before: number }> {
+    if (!params?.ticket_id) {
+        throw new SkapiError('Ticket ID is required.', { code: 'INVALID_PARAMETER' });
+    }
+    let before = params.before === undefined || params.before === null ? Date.now() : params.before;
+    if (typeof before !== 'number' || !Number.isInteger(before) || before <= 0) {
+        throw new SkapiError('"before" should be a time in milliseconds since the epoch.', { code: 'INVALID_PARAMETER' });
+    }
+    return request.bind(this)('register-ticket', { exec: 'clearlog', ticket_id: params.ticket_id, before }, { auth: true });
 }
 
 export async function getConsumedTickets(params: {

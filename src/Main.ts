@@ -43,7 +43,9 @@ export type {
     TicketConditionRow,
     TicketSignatureCondition,
     TicketResponseCondition,
+    TicketAnswerCondition,
     TicketAction,
+    TicketReceipt,
     TicketError,
     TicketErrorCode
 } from "./Types";

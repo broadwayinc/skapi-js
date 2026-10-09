@@ -29,6 +29,7 @@ import {
 	Ticket,
 	TicketCondition,
 	TicketAction,
+	TicketReceipt,
 } from '../Types';
 import { CognitoUserPool } from 'amazon-cognito-identity-js';
 import SkapiError from './error';
@@ -125,6 +126,7 @@ import {
 	getTickets,
 	registerTicket,
 	unregisterTicket,
+	clearTicketLog,
 	_out,
 	openIdLogin,
 	loginWithToken,
@@ -1765,14 +1767,17 @@ export default class Skapi {
 	 * its actions run. An anonymous POST goes to `/tp/`, an anonymous GET to `/tg/` with `data`
 	 * as the query string, and a signed-in consumption (`auth: true`) to `/tpa/`, which is POST only.
 	 *
+	 * Resolves with the receipt (TicketReceipt: ticket_id, consume_id, user_id, is_test, timestamp, hash),
+	 * or with the body a Respond action of the ticket answered, as sent and whatever its status. `T` names that body.
+	 *
 	 * A failed consumption rejects with a SkapiError: `err.code` is the ticket error code and
 	 * `err.cause` the flat TicketError body (`err.cause.stage`, `err.cause.action`, `err.cause.detail`).
 	 * This holds when the ticket answers HTTP 200 as well (`return200`): the body is inspected, not the status.
 	 * @param params Request parameters.
-	 * @returns A promise that resolves to Promise<{ ticket_id: string; consume_id: string; user_id: string; is_test: boolean; timestamp: number; hash: string; }>.
+	 * @returns A promise that resolves to Promise<T>, the receipt or the Respond body.
 	 */
 	@formHandler()
-	consumeTicket(params: {
+	consumeTicket<T = TicketReceipt>(params: {
 		/** ID of the ticket to consume. */
 		ticket_id: string;
 		/** "GET" or "POST". */
@@ -1783,8 +1788,9 @@ export default class Skapi {
 		data?: {
 			[key: string]: any;
 		};
-	}): Promise<{ ticket_id: string; consume_id: string; user_id: string; is_test: boolean; timestamp: number; hash: string; }> {
-		return consumeTicket.bind(this)(params);
+	}): Promise<T> {
+		// bind() drops the generic, so the receipt type it infers is widened to T here
+		return consumeTicket.bind(this)(params) as unknown as Promise<T>;
 	}
 
 	/**
@@ -1814,12 +1820,32 @@ export default class Skapi {
 	@formHandler()
 	getTickets(
 		params: {
-			/** Absent = every ticket. "<id>" = that ticket. "#<id>#" = the consumption log of that ticket (project owner only). */
+			/** Absent = every ticket. "<id>" = that ticket. "#<id>#" = the consumption log of that ticket, "@<id>#<consume id>#" the action rows of one consumption (project owner only). */
 			ticket_id?: string;
+			/** A log listing only: rows from this time on, in milliseconds since the epoch. */
+			from?: number;
+			/** A log listing only: rows up to this time, in milliseconds since the epoch. */
+			to?: number;
 		},
 		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<any>> {
 		return getTickets.bind(this)(params, fetchOptions);
+	}
+
+	/**
+	 * Deletes a ticket's log rows before a time, in the background over the next minutes. The ticket's
+	 * remaining count and its per-user limits are unchanged. Project owner only.
+	 * @param params Request parameters.
+	 * @returns A promise that resolves to Promise<{ message: string; ticket_id: string; before: number }>, `before` being the time applied (later than now is clipped to now).
+	 */
+	@formHandler()
+	clearTicketLog(params: {
+		/** The ticket whose log rows go. */
+		ticket_id: string;
+		/** Rows before this time, in milliseconds since the epoch. Default: now. */
+		before?: number;
+	}): Promise<{ message: string; ticket_id: string; before: number }> {
+		return clearTicketLog.bind(this)(params);
 	}
 
 	/**

@@ -912,46 +912,60 @@ export type TicketResponseCondition = Pick<TicketCondition, 'headers' | 'data' |
  * | `${user}`, `${user[key]}` | The signed-in user's attributes. Signed requests only. |
  * | `${ip}`, `${user_agent}`, `${method}` | The caller's IP address, User-Agent and HTTP method. |
  * | `${record_access}` | The record ID the condition's `record_access` names. Signed requests only. |
- * | `${response}`, `${response[key]}` | The parsed body of the enclosing req action's response. Only in that req's nested `actions` and their `err` chains. |
- * | `${result}`, `${result[key]}` | The result of the previous action in the same chain. A nested chain and an `err` chain start without one. |
+ * | `${response}`, `${response[key]}` | The answer of the enclosing action, in its Then chain (`actions`) and the `err` chains inside it: the record a pstr posted, the parsed body of a req's response, the SUCCESS text of acsg and acsr. |
  * | `${error}`, `${error[key]}` | In an `err` chain, the failure: `code`, `message`, `detail`, `action` (the act) and `path`. |
- * | `${ticket}`, `${ticket[key]}` | This consumption: `id`, `service`, `owner`, `consume_id` and `timestamp`. |
+ * | `${ticket}`, `${ticket[key]}` | This consumption: `id`, `service`, `owner`, `consume_id`, `timestamp` and `hash`. |
  * | `${CLIENT_SECRET}` | Reserved. See `secretName` on the req action. |
  *
  * Registration refuses anything else inside `${ }` (an unknown root such as `${id}`, keys under
  * a root that takes none such as `${ip[x]}`, `${placeholder}` or `${headers}` without a key,
- * broken brackets) with a message listing these forms, and a reference written where it can
- * never resolve (`${response}` outside a req's nested actions, `${error}` outside an `err`
+ * broken brackets) with a message listing these forms, `${result}` (gone: an answer is read as
+ * `${response}` in the action's Then chain, or captured by its Check), and a reference written
+ * where it can never resolve (`${response}` outside a Then chain, `${error}` outside an `err`
  * chain, `${record_access}` when the condition names no record). When the action runs, a
  * reference that does not resolve fails it before it does anything: PATH_NOT_FOUND,
  * PLACEHOLDER_MISSING for a placeholder that was never captured, or AUTH_REQUIRED for `${user}`
  * on a request that is not signed in. Its `err` chain runs and the consumption stops.
+ *
+ * Every action but resp and cond answers something (the record, the response body, a SUCCESS
+ * text) and may carry a Check (`condition`: rows on that answer, a key "" the whole text; a miss
+ * fails the action) and a Then chain (`actions`, reading the answer as `${response}`). `retry:
+ * true` on acsg, acsr, pstr and req tries a failure again, up to 3 more times, 1, 2 and 4
+ * seconds apart, while the time budget holds them; never for a failure inside Then.
  */
 export type TicketAction =
     | {
-        /** Set the access group of a user. */
+        /** Set the access group of a user. Answers the SUCCESS text the grant returns. */
         act: 'acsg';
         exe: {
             /** 1 ~ 99, or "admin", or a reference that gives one when the action runs, such as "${placeholder[GROUP]}". */
             group: number | 'admin' | `${string}\${${string}}${string}`;
             /** Blank = the consumer (signed-in consumption only). The project owner cannot be a target. */
             user_id?: string;
+            /** The Check: rows on the answer. */
+            condition?: TicketAnswerCondition;
+            /** The Then chain, reading the answer as `${response}`. */
+            actions?: TicketAction[];
         };
         err?: TicketAction[];
+        retry?: boolean;
     }
     | {
-        /** Grant private access to a record. */
+        /** Grant private access to a record. Answers the SUCCESS text the grant returns. */
         act: 'acsr';
         exe: {
             /** A record ID, not a unique ID. */
             record_id: string;
             /** Blank = the consumer. */
             user_id?: string | string[];
+            condition?: TicketAnswerCondition;
+            actions?: TicketAction[];
         };
         err?: TicketAction[];
+        retry?: boolean;
     }
     | {
-        /** Post a record. Everything but `user_id` is the payload postRecord() sends, so the same rules apply. A `unique_id` makes a retried webhook update the same record instead of adding one. */
+        /** Post a record. Everything but `user_id` is the payload postRecord() sends, so the same rules apply. A `unique_id` makes a retried webhook update the same record instead of adding one. Answers the record (RecordData). */
         act: 'pstr';
         exe: {
             table: string | {
@@ -970,11 +984,16 @@ export type TicketAction =
             source?: PostRecordConfig['source'];
             /** Post as this user instead of the project owner. */
             user_id?: string;
+            /** The Check: rows on the record posted, such as `record_id`. */
+            condition?: TicketAnswerCondition;
+            /** The Then chain, reading the record as `${response}` (`${response[record_id]}`). */
+            actions?: TicketAction[];
         };
         err?: TicketAction[];
+        retry?: boolean;
     }
     | {
-        /** HTTP request with its own response condition and nested chain. Result: the parsed response body. */
+        /** HTTP request with its own response condition and nested chain. Answers the parsed response body. */
         act: 'req';
         exe: {
             /**
@@ -1045,7 +1064,74 @@ export type TicketAction =
             actions?: TicketAction[];
         };
         err?: TicketAction[];
+        retry?: boolean;
+    }
+    | {
+        /**
+         * Respond: answers the consumer now, then stops or goes on. One per run: a second Respond
+         * on a path that already answered is refused at registration, and ALREADY_RESPONDED when
+         * it runs. consumeTicket() resolves with the body (or the receipt), whatever the status.
+         */
+        act: 'resp';
+        exe: {
+            /** The HTTP status, 100 to 599, or a reference. Default 200. An error status is still an answer, not a failure. */
+            status?: number | string;
+            /** Any JSON, templated; absent: the receipt { tkid, hash }. A `stage` key is refused (that is how an error is told apart). */
+            body?: any;
+            /**
+             * What happens after the answer. Absent or "stop": the rest of the chain does not run.
+             * "0m": goes on at once, in the background. "<n>m" | "<n>h" | "<n>d" (n >= 1): goes on
+             * after that delay, to the minute. A number: a time in ms since the epoch, to the second
+             * (a literal in the past is refused at registration; a templated one goes on at once).
+             * A run that goes on counts toward the plan's queued ticket runs for the month; Free and
+             * Standard stop at theirs (QUOTA_EXCEEDED), Premium is billed past it.
+             */
+            resume?: 'stop' | '0m' | `${number}m` | `${number}h` | `${number}d` | number | string;
+        };
+        err?: TicketAction[];
+    }
+    | {
+        /**
+         * Condition: rows inside a chain, under the rules of the ticket's own condition. A part
+         * that fails fails the chain here with CONDITION_FAILED (the action's `err` chain runs).
+         * Answers nothing. `response` rows only inside a Then chain, `error` rows only inside an
+         * `err` chain, `placeholder` rows name placeholders (and may compare with null).
+         */
+        act: 'cond';
+        exe: {
+            data?: TicketConditionRow[];
+            params?: TicketConditionRow[];
+            headers?: TicketCondition['headers'];
+            ip?: TicketCondition['ip'];
+            user_agent?: TicketCondition['user_agent'];
+            user?: TicketCondition['user'];
+            record_access?: string;
+            placeholder?: { key: string; operator: TicketConditionOperator; value: any }[];
+            response?: TicketConditionRow[];
+            error?: TicketConditionRow[];
+        };
+        err?: TicketAction[];
     };
+
+/** The Check of an action: rows on its answer (TicketConditionRow, keys paths in the answer; "" is the whole answer as text). */
+export type TicketAnswerCondition = {
+    data?: TicketConditionRow[];
+};
+
+/** What a consumption answers when no Respond action composes the answer. */
+export type TicketReceipt = {
+    ticket_id: string;
+    /** Id of this consumption: base62 of the timestamp in milliseconds, followed by 4 random characters. */
+    consume_id: string;
+    /** The consumer. The user id on the signed-in endpoint, else "<ip>(<user agent>)". */
+    user_id: string;
+    /** Always false here: dry runs go through the check URL, which consumeTicket() never calls. */
+    is_test: boolean;
+    /** When the consumption happened, in milliseconds. Decoded from consume_id. */
+    timestamp: number;
+    /** Proof string of the consumption. */
+    hash: string;
+};
 
 /** An issued ticket as getTickets() and registerTicket() return it. */
 export type Ticket = {
@@ -1090,6 +1176,8 @@ export type TicketErrorCode =
     | 'TIMEOUT'
     | 'ACTION_FAILED'
     | 'ACTION_FORBIDDEN'
+    | 'QUOTA_EXCEEDED'
+    | 'ALREADY_RESPONDED'
     | 'INTERNAL_ERROR';
 
 /**
