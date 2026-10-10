@@ -741,8 +741,9 @@ export type Subscription = {
 export type TicketConditionOperator = '=' | '!=' | '>' | '>=' | '<' | '<=' | 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte';
 
 /**
- * One row of a ticket condition list: `headers`, `data`, `params` or `user` of a ticket's
- * condition, or `headers`, `data` or `user` of a req action's response condition.
+ * One row of a ticket condition list: `headers`, `body`, `params` or `user` of a ticket's
+ * condition, the `response` rows of a cond action, or `headers`, `data` or `user` of the
+ * response condition Skapi's own rows carry.
  *
  * How a list decides:
  * - Rows on the same key are alternatives: the key passes when any one of them matches.
@@ -751,9 +752,14 @@ export type TicketConditionOperator = '=' | '!=' | '>' | '>=' | '<' | '<=' | 'eq
  * - A field missing from the request is a mismatch for its key, '!=' included, not an error.
  *   The only rows that pass on a missing field are `= undefined` and `!= null`.
  * - Every row is read, in order. For each key the FIRST matching row wins: its `setValueWhenMatch`
- *   applies and its `placeholder` captures, and later rows on that key are skipped. A row that
- *   does not match captures nothing, so several rows on one key, each with its own
- *   `setValueWhenMatch`, followed by a catch-all row, work as a lookup table.
+ *   replaces the value (in the data itself where the field exists) and its `placeholder` captures
+ *   the result. The later match rows on that key are skipped without being evaluated, so nothing
+ *   is re-checked against the replaced value; a later row on another key whose path runs through
+ *   the replaced field reads the replacement. A row that does not match captures nothing, so
+ *   several rows on one key, each with its own `setValueWhenMatch`, followed by a catch-all row,
+ *   work as a lookup table. At the ticket's condition keys and values are literal: `${...}` inside
+ *   a row is plain text. In a cond action the key is literal but `value` and `setValueWhenMatch`
+ *   may hold `${response...}` and `${placeholder[NAME]}`, resolved before the comparison.
  * - A capture-only row (a `placeholder` and no `operator`) never counts toward passing. It
  *   captures whenever its field exists.
  * - Header names ignore case, and header values are always strings. Query string values are
@@ -761,7 +767,7 @@ export type TicketConditionOperator = '=' | '!=' | '>' | '>=' | '<' | '<=' | 'eq
  *   `?code=LAUNCH24` the string "LAUNCH24". '=' is strict, so it compares the parsed value: a
  *   `params` row needs `value: 2`, not "2", to match `?qty=2`.
  *
- * null and undefined (`data` and `params` rows only, in a response condition too):
+ * null and undefined (`body` and `params` rows only, in a response condition too):
  * - `= null` passes when the field is present and null. `!= null` passes otherwise, a missing field included.
  * - `= undefined` passes when the field is missing. `!= undefined` passes when it is present, null included.
  * - '>', '>=', '<' and '<=' never pass with null or undefined.
@@ -771,7 +777,7 @@ export type TicketConditionOperator = '=' | '!=' | '>' | '>=' | '<' | '<=' | 'eq
 export type TicketConditionRow = {
     /**
      * Where the row looks, relative to its own list and written without `${ }`:
-     * - `data` rows: a path into the request body. "id" is the body's `id`, "order[id]" is `order.id`.
+     * - `body` rows: a path into the request body. "id" is the body's `id`, "order[id]" is `order.id`.
      * - `params` rows: a path into the query string, read the same way.
      * - `response` rows of a cond action: a path into the enclosing action's answer ("body[status]" is a response's body.status, "record_id" a posted record's id); "" is the whole answer as text.
      * - `headers` rows: the header name, matched case-insensitively.
@@ -785,13 +791,13 @@ export type TicketConditionRow = {
     /**
      * A literal, never templated. A list is read as described in TicketConditionOperator.
      * null, a list containing null, and undefined (an `operator` with no `value` key) are for
-     * `data` and `params` rows only.
+     * `body` and `params` rows only.
      */
     value?: string | number | boolean | null | undefined | Array<string | number | boolean | null>;
-    /** `data` and `params` rows only. When this row is the first matching row of its key, the value at `key` in the request data is replaced by this before anything else reads it. null replaces nothing. */
+    /** `body` and `params` rows only. When this row is the first matching row of its key, the value at `key` in the request data is replaced by this before anything else reads it. null replaces nothing. */
     setValueWhenMatch?: any;
     /**
-     * `data` and `params` rows only. Remembers the value at `key` under this name, and the
+     * `body` and `params` rows only. Remembers the value at `key` under this name, and the
      * actions read it as `${placeholder[NAME]}`. A match row captures only when it is the first
      * matching row of its key. A field that is missing captures nothing. Must match
      * ^[A-Za-z_][A-Za-z0-9_]*$.
@@ -873,7 +879,8 @@ export type TicketCondition = {
     /** Rows against the request headers. See TicketConditionRow. Every row compares with a value: null, or no `value`, is refused. */
     headers?: TicketConditionRow[];
     /** Rows against the request body. Refused when `method` is 'GET': a GET request has no body. */
-    data?: TicketConditionRow[];
+    /** Rows against the request body ("data" before 2026-10-09; registration still accepts that name and stores "body"). */
+    body?: TicketConditionRow[];
     /** Rows against the query string, read on GET and on POST. */
     params?: TicketConditionRow[];
     /**
@@ -911,7 +918,7 @@ export type TicketResponseCondition = Pick<TicketCondition, 'headers' | 'data' |
  *
  * | Reference | Reads |
  * |---|---|
- * | `${data}`, `${data[key]}` | The incoming request body (a text body too), or one key of it: `${data[id]}` is the body's `id`, `${data[order][id]}` its `order.id`. Always the incoming body, also in nested actions. |
+ * | `${body}`, `${body[key]}` | The incoming request body (a text body too), or one key of it: `${body[id]}` is the body's `id`, `${body[order][id]}` its `order.id`. Always the incoming body, also in nested actions. |
  * | `${params}`, `${params[key]}` | The incoming query string, or one key of it. |
  * | `${headers[name]}` | An incoming header, name case-insensitive. Authorization and Cookie read "<redacted>". |
  * | `${placeholder[NAME]}` | A value a condition row captured with `placeholder`. |
@@ -926,7 +933,7 @@ export type TicketResponseCondition = Pick<TicketCondition, 'headers' | 'data' |
  * Registration refuses anything else inside `${ }` (an unknown root such as `${id}`, keys under
  * a root that takes none such as `${ip[x]}`, `${placeholder}` or `${headers}` without a key,
  * broken brackets) with a message listing these forms, `${result}` (gone: an answer is read as
- * `${response}` in the action's Then chain, or captured there by a Condition action), and a reference written
+ * `${response}` in the action's Then chain, or captured there by a Check answer action), and a reference written
  * where it can never resolve (`${response}` outside a Then chain, `${error}` outside an `err`
  * chain, `${record_access}` when the condition names no record). When the action runs, a
  * reference that does not resolve fails it before it does anything: PATH_NOT_FOUND,
@@ -938,7 +945,9 @@ export type TicketResponseCondition = Pick<TicketCondition, 'headers' | 'data' |
  * action in that chain checks the answer: its `response` rows read it whole (key "") or by key,
  * whatever its shape. `retry: true` on acsg, acsr, pstr, req, mail and nlsd tries a failure again,
  * up to 3 more times, 1, 2 and 4 seconds apart, while the time budget holds them; never for a
- * failure inside Then.
+ * failure inside Then, nor for a refusal waiting cannot change (a bad address, a missing template
+ * or newsletter, the month's e-mail sends used up). An e-mail or newsletter already queued is
+ * never sent twice: bookkeeping that fails afterwards is a `warning` on the log row, not a failure.
  */
 export type TicketAction =
     | {
@@ -999,7 +1008,7 @@ export type TicketAction =
         act: 'req';
         exe: {
             /**
-             * http:// or https:// with a hostname, such as "https://api.example.com/orders/${data[id]}".
+             * http:// or https:// with a hostname, such as "https://api.example.com/orders/${body[id]}".
              * The scheme is always written out, so a URL that is one whole reference is refused.
              * No IP literal, no userinfo, never under the api domain. Redirects are not followed.
              * A value put into the URL with `${...}` is percent-encoded, so it cannot add path
@@ -1056,12 +1065,12 @@ export type TicketAction =
             params?: { [key: string]: any };
             /** Legacy. Registration moves these rows to the end of `condition.data`. */
             match?: TicketConditionRow[];
-            /** Skapi's own billing rows only. A response check is a Condition action in `actions`, whose `response` rows read the answer. */
+            /** Skapi's own billing rows only. A response check is a Check answer action (cond) in `actions`, whose `response` rows read the answer. */
             condition?: TicketResponseCondition;
             /**
              * Nested chain, run on an answer below 300. It reads the response as `${response}`:
              * `${response[status]}`, `${response[headers][content-type]}` (header names in
-             * lowercase) and `${response[body][key]}`, while `${data}` is still the incoming
+             * lowercase) and `${response[body][key]}`, while `${body}` is still the incoming
              * request body. A cond in it checks the response. Any action can nest, including
              * another req with its own `secretName`.
              */
@@ -1081,10 +1090,10 @@ export type TicketAction =
         exe: {
             /** The template's ID, as the Custom tab and the upload reply show it. Literal; it must be stored when the ticket is registered. */
             template: string;
-            /** The recipient: one address, or a reference that gives one, such as "${user[email]}" or "${data[email]}". */
+            /** The recipient: one address, or a reference that gives one, such as "${user[email]}" or "${body[email]}". */
             to: string;
             /**
-             * Values for the placeholders the template carries, by name: { "order": "${data[order][id]}" } fills
+             * Values for the placeholders the template carries, by name: { "order": "${body[order][id]}" } fills
              * ${order}. Templated. "service_name" and "email" (the recipient) are filled by default and may be
              * overwritten here. Up to 30.
              */
@@ -1137,18 +1146,20 @@ export type TicketAction =
     }
     | {
         /**
-         * Condition: rows inside a chain, under the rules of the ticket's own condition. A part
-         * that fails fails the chain here with CONDITION_FAILED (the action's `err` chain runs).
-         * Answers nothing. `response` rows only inside a Then chain, `error` rows only inside an
-         * `err` chain, `placeholder` rows name placeholders (and may compare with null).
+         * Check answer: rows on the answer of the action whose Then chain this is, under the
+         * rules of the ticket's own condition rows. A key no row matches fails the chain here with
+         * CONDITION_FAILED (the enclosing action's `err` chain runs). Answers nothing. Inside a
+         * Then chain only.
          */
         act: 'cond';
         exe: {
             /**
              * Rows on the answer of the action whose Then chain this Condition is in, whatever its shape: a key is
              * a path in the answer ("record_id" on a posted record, "body[status]" or "headers[content-type]" on a
-             * response), "" the whole answer as text. A row that does not pass fails the chain here with
-             * CONDITION_FAILED. Inside a Then chain only; answers nothing.
+             * response), "" the whole answer as text. `value` and `setValueWhenMatch` may hold `${response...}` and
+             * `${placeholder[NAME]}`, resolved right before the comparison; any other reference is refused. A row's
+             * placeholder captures the replaced value when the row has one. A key no row matches fails the chain
+             * here with CONDITION_FAILED. Inside a Then chain only; answers nothing.
              */
             response: TicketConditionRow[];
         };
