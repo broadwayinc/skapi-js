@@ -902,9 +902,12 @@ export type TicketCondition = {
  * Skapi's own billing rows only (the super master registers them): the response check a `req`
  * carried before 2026-10-09. Anyone else checks a response with a cond action in the req's
  * Then chain. `headers` rows read the response headers and `data` row keys are paths into the
- * parsed body; `user` and `record_access` check the consumer.
+ * parsed body (they keep that name here: the ticket's own body rows are `body`); `user` and
+ * `record_access` check the consumer.
  */
-export type TicketResponseCondition = Pick<TicketCondition, 'headers' | 'data' | 'user' | 'record_access'>;
+export type TicketResponseCondition = Pick<TicketCondition, 'headers' | 'user' | 'record_access'> & {
+    data?: TicketConditionRow[];
+};
 
 /**
  * One step of a ticket's action chain. Actions run in order. When an action fails its `err`
