@@ -1,7 +1,7 @@
 
 import SkapiError from '../main/error';
 import { encState, maybeEncryptFile } from '../methods/encryption';
-import { Form, FetchOptions, DatabaseResponse, ProgressCallback } from '../Types';
+import { Form, FetchOptions, DatabaseResponse, ProgressCallback, UploadFilesParams, UploadFilesResult, FileUploadError } from '../Types';
 import validator from './validator';
 import { MD5, generateRandom, extractFormData, isBrowserRuntime } from './utils';
 // import { authentication, getJwtToken } from '../methods/user';
@@ -855,18 +855,70 @@ function update_startKey_keys(option: Record<string, any>) {
     return Object.assign({ startKeyHistory: this.__startKeyHistory[url][hashedParam] }, fetched);
 }
 
+/**
+ * Why one file was not stored, as a SkapiError with a `code`.
+ *
+ * Storage answers a refused POST with an XML body ("<Code>AccessDenied</Code>"),
+ * the transport with a bare string ('Network error', 'Aborted'), and a 429 with
+ * no Retry-After with 'Too many requests'. Callers used to get only the File
+ * back, so a file that "would not upload" could not be told apart from a network
+ * blip. The raw rejection stays on `cause`.
+ */
+function toFileUploadError(err: any): SkapiError {
+    if (err instanceof SkapiError) {
+        return err;
+    }
+    if (typeof err === 'string') {
+        let text = err.trim();
+        if (text === 'Network error') {
+            return new SkapiError('Network error', { code: 'NETWORK_ERROR' });
+        }
+        if (text === 'Aborted') {
+            return new SkapiError('Aborted', { code: 'ABORTED' });
+        }
+        if (text === 'Timeout') {
+            return new SkapiError('Timeout', { code: 'TIMEOUT' });
+        }
+        if (text === 'Too many requests') {
+            return new SkapiError('Too many requests', { code: 'TOO_MANY_REQUESTS' });
+        }
+        let code = /<Code>([^<]+)<\/Code>/.exec(text)?.[1]?.trim() || '';
+        let message = /<Message>([^<]+)<\/Message>/.exec(text)?.[1]?.trim() || '';
+        if (code || message) {
+            return new SkapiError(message || code, { code: code || 'UPLOAD_FAILED', cause: text as any });
+        }
+        return new SkapiError(text.length > 300 ? text.slice(0, 300) : (text || 'Upload failed.'), { code: 'UPLOAD_FAILED', cause: text as any });
+    }
+    if (err && typeof err === 'object') {
+        let code = (err as any).code || (err as any).Code;
+        let message = (err as any).message || (err as any).Message;
+        if (code || message) {
+            return new SkapiError(String(message || code), { code: String(code || 'UPLOAD_FAILED'), cause: err });
+        }
+    }
+    return new SkapiError('Upload failed.', { code: 'UPLOAD_FAILED', cause: err });
+}
+
 export async function uploadFiles(
     fileList: FormData | HTMLFormElement | SubmitEvent,
-    params: {
-        record_id: string; // Record ID of a record to upload files to.
-        progress?: ProgressCallback;
-    }
-): Promise<{ completed: File[]; failed: File[]; bin_endpoints: string[] }> {
+    params: UploadFilesParams
+): Promise<UploadFilesResult> {
     await this.__connection;
-    let { record_id, service = this.service, progress } = (params as { [key: string]: any })
+    let { record_id, service = this.service, progress, timeout, throwOnFileError = false } = (params as { [key: string]: any })
 
     if (!record_id) {
         throw new SkapiError('"record_id" is required.', { code: 'INVALID_PARAMETER' });
+    }
+
+    // Checked here, before any byte moves, so a typo cannot turn into an upload
+    // with no limit, or one that times out at once.
+    if (timeout !== undefined && timeout !== null) {
+        if (typeof timeout !== 'number' || !Number.isFinite(timeout) || timeout < 0) {
+            throw new SkapiError('"timeout" should be a number of milliseconds, 0 or more.', { code: 'INVALID_PARAMETER' });
+        }
+    }
+    else {
+        timeout = 0;
     }
 
     if (hasSubmitEvent && fileList instanceof SubmitEvent) {
@@ -898,11 +950,17 @@ export async function uploadFiles(
     let fetchProgress = (
         url: string,
         body: FormData,
-        progressCallback: (p: ProgressEvent) => void
+        progressCallback: (p: ProgressEvent) => void,
+        fileName: string
     ) => {
         return new Promise((res, rej) => {
             xhr = new XMLHttpRequest();
             xhr.open('POST', url);
+            // One file's whole budget: XHR counts from send() to the end of the
+            // response, and a retried 429 opens a fresh request with a fresh budget.
+            if (timeout > 0) {
+                xhr.timeout = timeout;
+            }
             xhr.onload = () => {
                 let result = xhr.responseText;
                 try {
@@ -918,7 +976,7 @@ export async function uploadFiles(
                     let retryDelayMs = getRetryDelayMs(retryAfter);
                     if (retryDelayMs !== null) {
                         setTimeout(() => {
-                            fetchProgress(url, body, progressCallback).then(res, rej);
+                            fetchProgress(url, body, progressCallback, fileName).then(res, rej);
                         }, retryDelayMs);
                     }
                     else {
@@ -931,7 +989,8 @@ export async function uploadFiles(
             };
             xhr.onerror = () => rej('Network error');
             xhr.onabort = () => rej('Aborted');
-            xhr.ontimeout = () => rej('Timeout');
+            // Only reachable with a timeout set: an XHR with none never times out.
+            xhr.ontimeout = () => rej(new SkapiError(`Upload timeout: "${fileName}" was not finished within ${timeout} ms.`, { code: 'TIMEOUT' }));
 
             // xhr.addEventListener('error', rej);
             if (xhr.upload && typeof progressCallback === 'function') {
@@ -953,9 +1012,10 @@ export async function uploadFiles(
         return result;
     }
 
-    let completed = [];
-    let failed = [];
-    let bin_endpoints = [];
+    let completed: File[] = [];
+    let failed: File[] = [];
+    let errors: FileUploadError[] = [];
+    let bin_endpoints: string[] = [];
 
     for (let [key, f] of (fileList as any).entries()) {
         if (!(f instanceof File)) {
@@ -1002,15 +1062,21 @@ export async function uploadFiles(
                         total: p.total,
                         abort: () => xhr.abort()
                     }
-                ) : null
+                ) : null,
+                f.name
             );
             completed.push(f);
         } catch (err) {
             failed.push(f);
+            let error = toFileUploadError(err);
+            errors.push({ file: f, name: f.name, error });
+            if (throwOnFileError) {
+                throw error;
+            }
         }
     }
 
-    return { completed, failed, bin_endpoints };
+    return { completed, failed, errors, bin_endpoints };
 }
 
 const pendPromise: Record<string, Promise<any> | null> = {};

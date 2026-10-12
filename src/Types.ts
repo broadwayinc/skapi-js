@@ -1,3 +1,5 @@
+import type SkapiError from './main/error';
+
 export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | '>' | '>=' | '<' | '<=' | '=';
 
 
@@ -600,6 +602,51 @@ export type ProgressCallback = (e: {
     failed?: File[]; // Only for uploadFiles()
     abort: () => void; // Aborts current data transfer. When abort is triggered during the FileList is on trasmit, it will continue to next file.
 }) => void;
+
+/** One file of an uploadFiles() call that storage did not accept. */
+export type FileUploadError = {
+    /** The File as it was given: the same object that is listed in `failed`. */
+    file: File;
+    /** The file's name. */
+    name: string;
+    /**
+     * Why it was not stored. `code` is the storage error code ('AccessDenied', 'EntityTooLarge' ...),
+     * or 'NETWORK_ERROR', 'TIMEOUT' (see UploadFilesParams.timeout), 'ABORTED' (the progress callback's
+     * abort()), 'TOO_MANY_REQUESTS', or 'UPLOAD_FAILED' when storage gave no code. `cause` holds the raw
+     * response or rejection, when there was one.
+     */
+    error: SkapiError;
+};
+
+/** What uploadFiles() resolves with. */
+export type UploadFilesResult = {
+    /** Files that are stored. */
+    completed: File[];
+    /** Files storage did not accept. */
+    failed: File[];
+    /** Why each file in `failed` was not stored, one entry per file in the same order. Empty when every file was stored. */
+    errors: FileUploadError[];
+    /** Endpoint of every file, in the order they were given, whether or not it was stored. */
+    bin_endpoints: string[];
+};
+
+export type UploadFilesParams = {
+    /** Record ID of the record to attach the files to. */
+    record_id: string;
+    /** Callback for upload progress. Useful when building a progress bar. */
+    progress?: ProgressCallback;
+    /**
+     * Milliseconds one file's upload may take. A file that takes longer is aborted and counted as failed with
+     * the code 'TIMEOUT'; the next file is then uploaded. Every file gets the full time. Omitted or 0: no limit.
+     */
+    timeout?: number;
+    /**
+     * Reject at the first file storage does not accept, with that file's error (a SkapiError, see FileUploadError),
+     * instead of resolving with it listed in `failed` and `errors`. The files stored before it stay stored.
+     * Default false.
+     */
+    throwOnFileError?: boolean;
+};
 
 export type FetchOptions = {
     /** Maximum number of records to fetch per call */

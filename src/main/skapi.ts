@@ -30,6 +30,8 @@ import {
 	TicketCondition,
 	TicketAction,
 	TicketReceipt,
+	UploadFilesParams,
+	UploadFilesResult,
 } from '../Types';
 import { CognitoUserPool } from 'amazon-cognito-identity-js';
 import SkapiError from './error';
@@ -2955,19 +2957,18 @@ export default class Skapi {
 		return deleteFiles.bind(this)(params);
 	}
 	/**
-	 * Uploads files to an existing record and returns completed and failed results.
+	 * Uploads files to an existing record. Resolves with the files stored (`completed`), the files storage did not accept (`failed`) and why (`errors`, one entry per failed file with a SkapiError that carries the storage code).
+	 * `timeout` (milliseconds) aborts a file that takes longer and counts it as failed with the code 'TIMEOUT'; by default a file has no time limit.
+	 * `throwOnFileError` rejects at the first file that fails, with that file's error, instead of resolving; the files stored before it stay stored.
 	 * @param fileList Files or form event containing files.
 	 * @param params Request parameters.
-	 * @returns A promise that resolves to Promise<{ completed: File[], failed: File[], bin_endpoints: string[] }>.
+	 * @returns A promise that resolves to Promise<UploadFilesResult>.
 	 */
 	@formHandler()
 	uploadFiles(
 		fileList: FormData | HTMLFormElement | SubmitEvent,
-		params: {
-			record_id: string; // Record ID of a record to upload files to.
-			progress?: ProgressCallback;
-		},
-	): Promise<{ completed: File[]; failed: File[]; bin_endpoints: string[] }> {
+		params: UploadFilesParams,
+	): Promise<UploadFilesResult> {
 		return uploadFiles.bind(this)(fileList, params);
 	}
 	/**
