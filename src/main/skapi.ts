@@ -12,6 +12,8 @@ import {
 	NewsletterGroup,
 	Form,
 	PostRecordConfig,
+	PostRecordsItem,
+	PostRecordsResult,
 	UserPublic,
 	FileInfo,
 	RTCEvent,
@@ -51,6 +53,7 @@ import {
 	deleteFiles,
 	getUniqueId,
 	bulkPostRecords,
+	postRecords,
 } from '../methods/database';
 import {
 	connectRealtime,
@@ -3219,6 +3222,17 @@ export default class Skapi {
 		files?: { name: string; file: File }[],
 	): Promise<RecordData> {
 		return postRecord.bind(this)(params, config, files);
+	}
+	/**
+	 * Creates or updates several records in one call, 100 records to a request. Each item is the two arguments of postRecord() as one object: `{ data, config }`.
+	 * Resolves with `list`, the records that were saved in the order their items were given, and `failed`, the items that were not saved, each with its `index` in the input, a `code` and a `message`.
+	 * A refused item never rejects the call, and the items after it are still posted; only a failure of a request itself (connection, sign-in, a server error) rejects, and the records saved before it stay saved.
+	 * Files are not attached here: use uploadFiles() on a saved record.
+	 * @param items Non-empty array of `{ data, config }` items.
+	 * @returns A promise that resolves to Promise<PostRecordsResult>.
+	 */
+	postRecords(items: PostRecordsItem[]): Promise<PostRecordsResult> {
+		return postRecords.bind(this)(items);
 	}
 	/**
 	 * Fetches subscriber/subscription relationships with filters and pagination. At least one of `subscriber` or `subscription` must be provided.

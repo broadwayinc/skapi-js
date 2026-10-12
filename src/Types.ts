@@ -618,6 +618,26 @@ export type FileUploadError = {
     error: SkapiError;
 };
 
+/** One item of postRecords(): the two arguments postRecord() takes, as one object. */
+export type PostRecordsItem = {
+    /**
+     * The record's data, as postRecord()'s first argument: an object, or null. Leave it out (undefined)
+     * to keep a record's stored data as it is on an update. Files are not attached here: attach them
+     * with uploadFiles() to the saved record.
+     */
+    data?: Record<string, any> | null;
+    /** The record's configuration, as postRecord()'s second argument. */
+    config: PostRecordConfig;
+};
+
+/** What postRecords() resolves with. `list.length + failed.length` is the number of items given. */
+export type PostRecordsResult = {
+    /** The records that were saved, in the order their items were given. */
+    list: RecordData[];
+    /** The items that were not saved, in the order they were given. `index` is the item's position in the input. */
+    failed: { index: number; code: string; message: string; }[];
+};
+
 /** What uploadFiles() resolves with. */
 export type UploadFilesResult = {
     /** Files that are stored. */

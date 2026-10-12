@@ -33,6 +33,27 @@ function getRetryDelayMs(retryAfter: string | null): number | null {
     return null;
 }
 
+// Bounded 429 handling. A 429 that carried Retry-After used to be retried for as long as the
+// server kept answering 429, with no cap, so a throttled endpoint held the caller for ever.
+// A request is now retried at most RATE_LIMIT_MAX_RETRIES times, each wait the server's
+// Retry-After plus a little jitter (or a growing default when it says 0, so a burst of
+// clients does not come back in step), then it fails with TOO_MANY_REQUESTS naming the
+// endpoint. A 429 WITHOUT Retry-After still fails at once, as it always did.
+const RATE_LIMIT_MAX_RETRIES = 6;
+const RATE_LIMIT_MAX_WAIT_MS = 60000;
+
+function rateLimitWaitMs(retryDelayMs: number, attempt: number): number {
+    // `attempt` counts from 0 on the first retry.
+    let base = retryDelayMs > 0 ? retryDelayMs : Math.min(RATE_LIMIT_MAX_WAIT_MS, 500 * Math.pow(2, attempt));
+    base = Math.min(RATE_LIMIT_MAX_WAIT_MS, base);
+    let jitter = Math.floor(Math.random() * Math.min(1000, Math.max(50, base * 0.25)));
+    return base + jitter;
+}
+
+function rateLimitExhausted(what: string): SkapiError {
+    return new SkapiError(`Too many requests: ${what} still answered 429 after ${RATE_LIMIT_MAX_RETRIES} retries.`, { code: 'TOO_MANY_REQUESTS' });
+}
+
 function toPercent(loaded: number, total: number): number {
     return total > 0 ? (loaded / total) * 100 : 0;
 }
@@ -180,6 +201,8 @@ async function getEndpoint(dest: string, auth: boolean, stableGateway?: boolean)
         case 'get-uniqueid':
         case 'get-index':
         case 'get-signed-url':
+        // Bulk upload permits (record stack, POST /get-signed-urls). See uploadFiles.
+        case 'get-signed-urls':
         case 'extract-file-text':
         // The server-side spreadsheet reader (record stack, GridQuery Lambda, POST /grid-query on
         // every record gateway). Missing from this table it was an "invalid url" to the SDK, so
@@ -658,7 +681,7 @@ function stripDecrypted(response: any): any {
     return response;
 }
 
-function _fetch(url: string, opt: any, progress?: ProgressCallback) {
+function _fetch(url: string, opt: any, progress?: ProgressCallback, attempt = 0) {
     return new Promise(
         (res, rej) => {
             let xhr = new XMLHttpRequest();
@@ -710,9 +733,13 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback) {
                     let retryAfter = xhr.getResponseHeader('Retry-After');
                     let retryDelayMs = getRetryDelayMs(retryAfter);
                     if (retryDelayMs !== null) {
+                        if (attempt >= RATE_LIMIT_MAX_RETRIES) {
+                            rej(rateLimitExhausted(`"${url.split('?')[0]}"`));
+                            return;
+                        }
                         setTimeout(() => {
-                            _fetch(url, opt, progress).then(res, rej);
-                        }, retryDelayMs);
+                            _fetch(url, opt, progress, attempt + 1).then(res, rej);
+                        }, rateLimitWaitMs(retryDelayMs, attempt));
                     }
                     else {
                         rej('Too many requests');
@@ -899,6 +926,54 @@ function toFileUploadError(err: any): SkapiError {
     return new SkapiError('Upload failed.', { code: 'UPLOAD_FAILED', cause: err });
 }
 
+// Upload permits for many files at once (POST /get-signed-urls). With at least this many
+// files, uploadFiles asks for the permits of up to BULK_PERMITS_MAX_FILES files in ONE request
+// instead of one request per file; the files themselves still go up one after another.
+// A region whose record stack does not serve the route yet answers 404, 501, or the
+// gateway's own 403 for a route it does not know; uploadFiles then goes back to one permit
+// per file and remembers that for the instance.
+const BULK_PERMITS_MIN_FILES = 5;
+const BULK_PERMITS_MAX_FILES = 100;
+
+type UploadPermit = { fields: Record<string, string> | null; url: string; cdn: string; };
+
+function isMissingRoute(err: any): boolean {
+    let code = String(err?.code ?? '');
+    if (code === '404' || code === '501') {
+        return true;
+    }
+    let message = String(err?.message ?? err ?? '');
+    return /missing authentication token/i.test(message) || /not implemented/i.test(message) || (code === '403' && /not found/i.test(message));
+}
+
+/** One permit or one error per file, in order, from a /get-signed-urls answer. */
+function permitsFromBulkAnswer(answer: any, count: number): (UploadPermit | SkapiError)[] {
+    let list = Array.isArray(answer?.list) ? answer.list : [];
+    let failed = Array.isArray(answer?.failed) ? answer.failed : [];
+    let out: (UploadPermit | SkapiError)[] = new Array(count);
+
+    for (let item of failed) {
+        if (item && Number.isInteger(item.index) && item.index >= 0 && item.index < count) {
+            out[item.index] = new SkapiError(String(item.message || 'Upload permit refused.'), { code: String(item.code || 'ERROR') });
+        }
+    }
+
+    for (let i = 0; i < count; i++) {
+        if (out[i]) {
+            continue;
+        }
+        let permit = list[i];
+        if (permit && typeof permit.url === 'string') {
+            out[i] = { fields: permit.fields || null, url: permit.url, cdn: permit.cdn };
+        }
+        else {
+            out[i] = new SkapiError('No upload permit was answered for this file.', { code: 'ERROR' });
+        }
+    }
+
+    return out;
+}
+
 export async function uploadFiles(
     fileList: FormData | HTMLFormElement | SubmitEvent,
     params: UploadFilesParams
@@ -951,7 +1026,8 @@ export async function uploadFiles(
         url: string,
         body: FormData,
         progressCallback: (p: ProgressEvent) => void,
-        fileName: string
+        fileName: string,
+        attempt = 0
     ) => {
         return new Promise((res, rej) => {
             xhr = new XMLHttpRequest();
@@ -975,9 +1051,13 @@ export async function uploadFiles(
                     let retryAfter = xhr.getResponseHeader('Retry-After');
                     let retryDelayMs = getRetryDelayMs(retryAfter);
                     if (retryDelayMs !== null) {
+                        if (attempt >= RATE_LIMIT_MAX_RETRIES) {
+                            rej(rateLimitExhausted(`the upload of "${fileName}" to "${url}"`));
+                            return;
+                        }
                         setTimeout(() => {
-                            fetchProgress(url, body, progressCallback, fileName).then(res, rej);
-                        }, retryDelayMs);
+                            fetchProgress(url, body, progressCallback, fileName, attempt + 1).then(res, rej);
+                        }, rateLimitWaitMs(retryDelayMs, attempt));
                     }
                     else {
                         rej('Too many requests');
@@ -1017,61 +1097,117 @@ export async function uploadFiles(
     let errors: FileUploadError[] = [];
     let bin_endpoints: string[] = [];
 
+    let entries: [string, File][] = [];
     for (let [key, f] of (fileList as any).entries()) {
-        if (!(f instanceof File)) {
-            continue;
+        if (f instanceof File) {
+            entries.push([key, f]);
         }
+    }
+
+    // Many files: their permits come BULK_PERMITS_MAX_FILES to a request. Few files, or a
+    // region without the route: one permit per file, exactly the request made before.
+    let bulk = entries.length >= BULK_PERMITS_MIN_FILES && !(this as any).__bulkPermitsUnavailable;
+
+    let position = 0;
+    while (position < entries.length) {
+        let chunk = entries.slice(position, position + (bulk ? BULK_PERMITS_MAX_FILES : 1));
+        position += chunk.length;
 
         // Seal the bytes before they leave, when the record they attach to is
         // encrypted. Returns the file untouched otherwise, so the off path is
         // unchanged. `uploadKey` carries the __skenc__ marker and the PLAINTEXT
         // size; `sizeKey` must declare the CIPHERTEXT size, because that is what
         // the object actually weighs and what the backend bills.
-        let sealed = await maybeEncryptFile.bind(this)(record_id, key, f);
-        let uploadFile = sealed.file;
-        let uploadKey = sealed.key;
-
-        let signedParams = Object.assign({
-            key: uploadKey + '/' + uploadFile.name,
-            sizeKey: toBase62(uploadFile.size),
-            contentType: uploadFile.type || null
-        }, getSignedParams);
-
-        let { fields = null, url, cdn } = await request.bind(this)('get-signed-url', signedParams, { auth: !!this.__user });
-        bin_endpoints.push(cdn);
-        
-        let form = new FormData();
-        for (let name in fields) {
-            form.append(name, fields[name]);
+        let prepared: { file: File; uploadFile: File; params: Record<string, any>; }[] = [];
+        for (let [key, f] of chunk) {
+            let sealed = await maybeEncryptFile.bind(this)(record_id, key, f);
+            prepared.push({
+                file: f,
+                uploadFile: sealed.file,
+                params: {
+                    key: sealed.key + '/' + sealed.file.name,
+                    sizeKey: toBase62(sealed.file.size),
+                    contentType: sealed.file.type || null
+                }
+            });
         }
 
-        form.append('file', uploadFile);
+        let permits: (UploadPermit | SkapiError)[] | null = null;
 
-        try {
-            await fetchProgress(
-                url,
-                form,
-                typeof progress === 'function' ? (p: ProgressEvent) => progress(
-                    {
-                        status: 'upload',
-                        progress: toPercent(p.loaded, p.total),
-                        currentFile: f,
-                        completed,
-                        failed,
-                        loaded: p.loaded,
-                        total: p.total,
-                        abort: () => xhr.abort()
-                    }
-                ) : null,
-                f.name
-            );
-            completed.push(f);
-        } catch (err) {
-            failed.push(f);
-            let error = toFileUploadError(err);
-            errors.push({ file: f, name: f.name, error });
-            if (throwOnFileError) {
-                throw error;
+        if (bulk) {
+            try {
+                let answer = await request.bind(this)('get-signed-urls', Object.assign({ files: prepared.map(p => p.params) }, getSignedParams), { auth: !!this.__user });
+                permits = permitsFromBulkAnswer(answer, prepared.length);
+            }
+            catch (err) {
+                if (!isMissingRoute(err)) {
+                    throw err;
+                }
+                // This region has no bulk route yet: this chunk and the rest of the
+                // call go one permit per file, and so does every later call.
+                (this as any).__bulkPermitsUnavailable = true;
+                bulk = false;
+            }
+        }
+
+        if (!permits) {
+            permits = [];
+            for (let p of prepared) {
+                let { fields = null, url, cdn } = await request.bind(this)('get-signed-url', Object.assign(p.params, getSignedParams), { auth: !!this.__user });
+                permits.push({ fields, url, cdn });
+            }
+        }
+
+        for (let i = 0; i < prepared.length; i++) {
+            let { file: f, uploadFile } = prepared[i];
+            let permit = permits[i];
+
+            if (permit instanceof SkapiError) {
+                // Refused before it had an endpoint: the slot stays, empty.
+                bin_endpoints.push('');
+                failed.push(f);
+                errors.push({ file: f, name: f.name, error: permit });
+                if (throwOnFileError) {
+                    throw permit;
+                }
+                continue;
+            }
+
+            bin_endpoints.push(permit.cdn);
+
+            let form = new FormData();
+            for (let name in permit.fields || {}) {
+                form.append(name, permit.fields[name]);
+            }
+
+            form.append('file', uploadFile);
+
+            try {
+                await fetchProgress(
+                    permit.url,
+                    form,
+                    typeof progress === 'function' ? (p: ProgressEvent) => progress(
+                        {
+                            status: 'upload',
+                            progress: toPercent(p.loaded, p.total),
+                            currentFile: f,
+                            completed,
+                            failed,
+                            loaded: p.loaded,
+                            total: p.total,
+                            abort: () => xhr.abort()
+                        }
+                    ) : null,
+                    f.name
+                );
+                completed.push(f);
+            } catch (err) {
+                failed.push(f);
+                let error = toFileUploadError(err);
+                errors.push({ file: f, name: f.name, error });
+                if (throwOnFileError) {
+                    throw error;
+                }
             }
         }
     }

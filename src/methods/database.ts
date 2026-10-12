@@ -14,7 +14,7 @@ import {
     Index,
     Tag,
     UniqueId
-} from '../Types';
+, PostRecordsItem, PostRecordsResult } from '../Types';
 import SkapiError from '../main/error';
 import { encState, isEnvelope, maybeEncrypt, maybeDecrypt, addRecipients, dropRecipientsAndRoll, encryptedFileFromUrl, decryptFileBlob, parseFileMarker, bindRecordDek, convertRecordFiles, isCiphertextFile, CT_FORM_KEY, CT_FILE_SUFFIX } from './encryption';
 import { extractFormData, fromBase62, isBrowserRuntime } from '../utils/utils';
@@ -2703,3 +2703,111 @@ function recordAccess(params: {
     );
 }
 
+
+// Records per /post-record request made by postRecords(). The record Lambda runs a bulk
+// request's items one after another inside its 28 s, and this is the ceiling the route is
+// documented with.
+export const POST_RECORDS_CHUNK_SIZE = 100;
+
+/**
+ * postRecords(items): several postRecord() calls as one call, POST_RECORDS_CHUNK_SIZE records
+ * to a request, with a result per item.
+ *
+ * Each item is `{ data, config }`, the two arguments of postRecord(). An item that fails the
+ * same local check a single postRecord() runs is reported by its index and never sent; the
+ * others go out. The server runs a bulk request's records in order and stops at the first it
+ * refuses, so the records after a refused one are sent again in the next request: every item
+ * ends up either in `list` (saved, input order) or in `failed` (index, code, message). Only a
+ * failure of a request itself (connection, sign-in, a 5xx) rejects the call; the records the
+ * requests before it saved stay saved.
+ */
+export async function postRecords(items: PostRecordsItem[]): Promise<PostRecordsResult> {
+    await this.__connection;
+
+    if (!Array.isArray(items) || !items.length) {
+        throw new SkapiError('"items" should be a non-empty array.', { code: 'INVALID_PARAMETER' });
+    }
+
+    let list: RecordData[] = [];
+    let failed: PostRecordsResult['failed'] = [];
+    let queue: { index: number; config: PostRecordConfig & { data?: any; }; }[] = [];
+
+    for (let index = 0; index < items.length; index++) {
+        let item: any = items[index];
+        try {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) {
+                throw new SkapiError(`"items[${index}]" should be an object with "config".`, { code: 'INVALID_PARAMETER' });
+            }
+            let config = item.config;
+            if (!config || typeof config !== 'object' || Array.isArray(config)) {
+                throw new SkapiError(`"items[${index}].config" is required.`, { code: 'INVALID_PARAMETER' });
+            }
+
+            // The same check a single postRecord() runs, on a copy: the caller's object is
+            // left as it was, and bulkPostRecords runs it again on what is sent.
+            setupPostRecordConfig.bind(this)(Object.assign({}, config));
+
+            let merged: any = Object.assign({}, config);
+            delete merged.data;
+
+            // `config.data` wins over `data`, the precedence postRecord() has. Undefined
+            // sends no data key at all (a metadata-only update); null is a real null.
+            let payload = config.data !== undefined ? config.data : item.data;
+            if (payload !== undefined) {
+                let extracted = payload !== null && typeof payload === 'object' ? extractFormData(payload) : { data: payload, files: [] };
+                if (extracted.files && extracted.files.length) {
+                    throw new SkapiError(`"items[${index}].data" carries files. postRecords() does not attach files; use uploadFiles() on the saved record.`, { code: 'INVALID_PARAMETER' });
+                }
+                merged.data = extracted.data;
+            }
+
+            queue.push({ index, config: merged });
+        }
+        catch (err) {
+            failed.push({
+                index,
+                code: String((err as any)?.code || 'INVALID_PARAMETER'),
+                message: String((err as any)?.message || err)
+            });
+        }
+    }
+
+    let position = 0;
+    while (position < queue.length) {
+        let chunk = queue.slice(position, position + POST_RECORDS_CHUNK_SIZE);
+        let answered = await bulkPostRecords.bind(this)(chunk.map(q => Object.assign({}, q.config)));
+
+        if (!Array.isArray(answered) || !answered.length) {
+            // Nothing came back for the chunk: report it rather than ask again for ever.
+            for (let q of chunk) {
+                failed.push({ index: q.index, code: 'ERROR', message: 'The server answered nothing for this record.' });
+            }
+            position += chunk.length;
+            continue;
+        }
+
+        let taken = Math.min(answered.length, chunk.length);
+        for (let k = 0; k < taken; k++) {
+            let rec: any = answered[k];
+            if (rec && rec.record_id) {
+                list.push(rec);
+            }
+            else {
+                let reason = rec?.error || {};
+                failed.push({
+                    index: chunk[k].index,
+                    code: String(reason.code || 'ERROR'),
+                    message: String(reason.message || 'The record was not saved.')
+                });
+            }
+        }
+
+        // The server stops at the first record it refuses: the ones after it were not
+        // tried, and the next request starts there.
+        position += taken;
+    }
+
+    failed.sort((a, b) => a.index - b.index);
+
+    return { list, failed };
+}

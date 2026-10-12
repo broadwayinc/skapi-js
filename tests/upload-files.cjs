@@ -19,7 +19,15 @@
  *     failed with code 'TIMEOUT' and the next file is sent; with no `timeout` the
  *     XHR has none,
  *   - a `timeout` that is not a number of milliseconds is refused before any byte
- *     moves.
+ *     moves,
+ *   - with five files or more the permits come from ONE /get-signed-urls request (100 to
+ *     a request), with fewer from one /get-signed-url request per file as before; a region
+ *     that answers 404, 501 or the gateway's 403 for the bulk route sends the instance back
+ *     to one permit per file, for good; a file the server refuses a permit for is in
+ *     `failed` and `errors` with the server's code and an empty endpoint slot, and the
+ *     others are still stored,
+ *   - a storage POST that keeps answering 429 with Retry-After is retried 6 times and then
+ *     counted failed with TOO_MANY_REQUESTS naming the file, never retried for ever.
  *
  * Run: node ./tests/upload-files.cjs
  */
@@ -82,11 +90,33 @@ const jsonResponse = o => new Response(JSON.stringify(o), { status: 200, headers
 
 /** Signed-url requests the SDK made, in order. */
 let signed = [];
+/** Bulk permit requests (/get-signed-urls) the SDK made, in order: the parsed bodies. */
+let bulkSigned = [];
+/**
+ * What each bulk permit request is answered with, in order: {} signs every file,
+ * { failed: [{ index, code, message }] } refuses those files, { missing: 403 | 404 | 501 }
+ * answers the way a region without the route does.
+ */
+let bulkPlan = [];
+let cdnCounter = 0;
 
 globalThis.fetch = async (url, opt) => {
     const u = String(url);
     if (/\/admin-v[\d.]+\.json/.test(u)) return new Response(fs.readFileSync(path.join(FIXTURES, 'admin-v1.json')));
     if (/\/record-v[\d.]+\.json/.test(u)) return new Response(fs.readFileSync(path.join(FIXTURES, 'record-v1.json')));
+    if (u.includes('get-signed-urls')) {
+        let body = null;
+        try { body = JSON.parse(opt && opt.body); } catch (e) { body = opt && opt.body; }
+        bulkSigned.push(body);
+        const step = bulkPlan.shift() || {};
+        if (step.missing === 403) return new Response(JSON.stringify({ message: 'Missing Authentication Token' }), { status: 403, headers: { 'content-type': 'application/json' } });
+        if (step.missing === 404) return new Response(JSON.stringify({ message: 'Not Found' }), { status: 404, headers: { 'content-type': 'application/json' } });
+        if (step.missing === 501) return new Response('Not Implemented', { status: 501, headers: { 'content-type': 'text/plain' } });
+        const failed = step.failed || [];
+        const refused = new Set(failed.map(f => f.index));
+        const list = body.files.map((f, i) => refused.has(i) ? null : { fields: { key: 'k' + i, policy: 'p' }, url: BUCKET, cdn: 'https://cdn.example.test/bulk' + (++cdnCounter) });
+        return jsonResponse({ list, failed });
+    }
     if (u.includes('get-signed-url')) {
         let body = null;
         try { body = JSON.parse(opt && opt.body); } catch (e) { body = opt && opt.body; }
@@ -173,6 +203,21 @@ async function getSkapi() {
     }
     return skapi;
 }
+
+/** A new instance: the "no bulk route here" memory is per instance. */
+async function freshSkapi() {
+    const s = new Skapi(SERVICE, OWNER, { autoLogin: false });
+    await s.__connection;
+    return s;
+}
+
+function formOfMany(n) {
+    const fd = new FormData();
+    for (let i = 0; i < n; i++) fd.append('doc', new File(['bytes ' + i], 'f' + i + '.txt', { type: 'text/plain' }));
+    return fd;
+}
+
+const RATE_LIMITED = { status: 429, headers: { 'Retry-After': '0.01' } };
 
 const ACCESS_DENIED = '<?xml version="1.0" encoding="UTF-8"?><Error><Code>AccessDenied</Code><Message>Access Denied</Message><RequestId>r</RequestId></Error>';
 const TOO_LARGE = '<?xml version="1.0" encoding="UTF-8"?><Error><Code>EntityTooLarge</Code><Message>Your proposed upload exceeds the maximum allowed size</Message></Error>';
@@ -320,11 +365,164 @@ test('a timeout that is not a number of milliseconds is refused before anything 
 });
 
 /* ------------------------------------------------------------------ *
+ * Bulk permits
+ * ------------------------------------------------------------------ */
+
+test('five files ask for their permits in ONE request to get-signed-urls, none to get-signed-url, and are stored as before', async () => {
+    const s = await getSkapi();
+    const r = await s.uploadFiles(formOfMany(5), { record_id: 'rec1' });
+    assert.strictEqual(bulkSigned.length, 1);
+    assert.strictEqual(signed.length, 0);
+    const body = bulkSigned[0];
+    assert.strictEqual(body.request, 'post');
+    assert.strictEqual(body.id, 'rec1');
+    assert.ok(typeof body.reserved_key === 'string' && body.reserved_key.length > 0);
+    assert.strictEqual(body.files.length, 5);
+    assert.deepStrictEqual(Object.keys(body.files[0]).sort(), ['contentType', 'key', 'sizeKey']);
+    assert.ok(body.files[2].key.endsWith('/f2.txt'));
+    assert.strictEqual(body.files[2].contentType, 'text/plain');
+    assert.deepStrictEqual(names(r.completed), ['f0.txt', 'f1.txt', 'f2.txt', 'f3.txt', 'f4.txt']);
+    assert.deepStrictEqual(r.failed, []);
+    assert.deepStrictEqual(r.errors, []);
+    assert.strictEqual(r.bin_endpoints.length, 5);
+    assert.ok(r.bin_endpoints.every(e => e.startsWith('https://cdn.example.test/bulk')));
+    assert.strictEqual(bucketPosts.length, 5, 'the files still go up one by one');
+});
+
+test('four files keep one permit request per file', async () => {
+    const s = await getSkapi();
+    const r = await s.uploadFiles(formOfMany(4), { record_id: 'rec1' });
+    assert.strictEqual(bulkSigned.length, 0);
+    assert.strictEqual(signed.length, 4);
+    assert.strictEqual(r.completed.length, 4);
+});
+
+test('250 files are three permit requests of 100, 100 and 50', async () => {
+    const s = await getSkapi();
+    const r = await s.uploadFiles(formOfMany(250), { record_id: 'rec1' });
+    assert.deepStrictEqual(bulkSigned.map(b => b.files.length), [100, 100, 50]);
+    assert.strictEqual(signed.length, 0);
+    assert.strictEqual(r.completed.length, 250);
+    assert.strictEqual(r.bin_endpoints.length, 250);
+    assert.strictEqual(bucketPosts.length, 250);
+});
+
+test('a file the server refuses a permit for is failed with the server code, keeps an empty endpoint slot, and the others are stored', async () => {
+    const s = await getSkapi();
+    bulkPlan = [{ failed: [{ index: 1, code: 'INVALID_REQUEST', message: 'Single record cannot hold more than 100 binary files.' }] }];
+    const r = await s.uploadFiles(formOfMany(5), { record_id: 'rec1' });
+    assert.deepStrictEqual(names(r.completed), ['f0.txt', 'f2.txt', 'f3.txt', 'f4.txt']);
+    assert.deepStrictEqual(names(r.failed), ['f1.txt']);
+    assert.strictEqual(r.errors.length, 1);
+    assert.strictEqual(r.errors[0].name, 'f1.txt');
+    assert.ok(r.errors[0].error instanceof SkapiError);
+    assert.strictEqual(r.errors[0].error.code, 'INVALID_REQUEST');
+    assert.strictEqual(r.errors[0].error.message, 'Single record cannot hold more than 100 binary files.');
+    assert.strictEqual(r.bin_endpoints.length, 5);
+    assert.strictEqual(r.bin_endpoints[1], '');
+    assert.strictEqual(bucketPosts.length, 4, 'the refused file was never posted');
+});
+
+test('throwOnFileError rejects at a refused permit with the server error, and the files after it are not sent', async () => {
+    const s = await getSkapi();
+    bulkPlan = [{ failed: [{ index: 2, code: 'EXISTS', message: 'File already exists.' }] }];
+    const err = await rejected(() => s.uploadFiles(formOfMany(5), { record_id: 'rec1', throwOnFileError: true }));
+    assert.strictEqual(err.code, 'EXISTS');
+    assert.strictEqual(err.message, 'File already exists.');
+    assert.strictEqual(bucketPosts.length, 2);
+});
+
+test('a region without the bulk route (403 Missing Authentication Token) falls back to one permit per file, and the instance never asks again', async () => {
+    const s = await freshSkapi();
+    bulkPlan = [{ missing: 403 }];
+    const r = await s.uploadFiles(formOfMany(5), { record_id: 'rec1' });
+    assert.strictEqual(bulkSigned.length, 1, 'asked once');
+    assert.strictEqual(signed.length, 5, 'then one permit per file');
+    assert.deepStrictEqual(names(r.completed), ['f0.txt', 'f1.txt', 'f2.txt', 'f3.txt', 'f4.txt']);
+    assert.strictEqual(r.bin_endpoints.length, 5);
+    assert.ok(r.bin_endpoints.every(e => e.startsWith('https://cdn.example.test/')));
+
+    const again = await s.uploadFiles(formOfMany(6), { record_id: 'rec1' });
+    assert.strictEqual(bulkSigned.length, 1, 'not asked a second time on this instance');
+    assert.strictEqual(signed.length, 11);
+    assert.strictEqual(again.completed.length, 6);
+});
+
+test('a 404 and a plain 501 for the bulk route fall back the same way', async () => {
+    for (const missing of [404, 501]) {
+        const s = await freshSkapi();
+        bulkPlan = [{ missing }];
+        signed = [];
+        bulkSigned = [];
+        bucketPlan = [];
+        const r = await s.uploadFiles(formOfMany(5), { record_id: 'rec1' });
+        assert.strictEqual(bulkSigned.length, 1, String(missing));
+        assert.strictEqual(signed.length, 5, String(missing));
+        assert.strictEqual(r.completed.length, 5, String(missing));
+    }
+});
+
+test('any other failure of the bulk permit request rejects the call, as a failed single permit request always has', async () => {
+    const s = await freshSkapi();
+    globalThis.__bulkOverride = true;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opt) => {
+        if (String(url).includes('get-signed-urls')) {
+            return new Response(JSON.stringify({ message: 'Service has exceeded cloud storage limit.', code: 'EXCEED_LIMIT' }), { status: 400, headers: { 'content-type': 'application/json' } });
+        }
+        return realFetch(url, opt);
+    };
+    try {
+        const err = await rejected(() => s.uploadFiles(formOfMany(5), { record_id: 'rec1' }));
+        assert.strictEqual(err.code, 'EXCEED_LIMIT');
+        assert.strictEqual(bucketPosts.length, 0);
+    }
+    finally {
+        globalThis.fetch = realFetch;
+    }
+});
+
+/* ------------------------------------------------------------------ *
+ * 429 on the storage POST is bounded
+ * ------------------------------------------------------------------ */
+
+test('a storage POST that keeps answering 429 with Retry-After is retried 6 times, then failed with TOO_MANY_REQUESTS naming the file', async () => {
+    const s = await getSkapi();
+    bucketPlan = Array(12).fill(RATE_LIMITED);
+    const started = Date.now();
+    const r = await s.uploadFiles(formOf('slow.txt'), { record_id: 'rec1' });
+    assert.ok(Date.now() - started < 5000, 'bounded');
+    assert.deepStrictEqual(names(r.failed), ['slow.txt']);
+    assert.strictEqual(r.errors[0].error.code, 'TOO_MANY_REQUESTS');
+    assert.strictEqual(r.errors[0].error.message, `Too many requests: the upload of "slow.txt" to "${BUCKET}" still answered 429 after 6 retries.`);
+    assert.strictEqual(bucketPosts.length, 7, 'one try and six retries');
+});
+
+test('a 429 that clears is retried and the file is stored', async () => {
+    const s = await getSkapi();
+    bucketPlan = [RATE_LIMITED, RATE_LIMITED, { status: 204 }];
+    const r = await s.uploadFiles(formOf('a.txt'), { record_id: 'rec1' });
+    assert.deepStrictEqual(names(r.completed), ['a.txt']);
+    assert.strictEqual(bucketPosts.length, 3);
+});
+
+test('a 429 without Retry-After still fails at once, as before', async () => {
+    const s = await getSkapi();
+    bucketPlan = [{ status: 429 }];
+    const r = await s.uploadFiles(formOf('a.txt'), { record_id: 'rec1' });
+    assert.strictEqual(r.errors[0].error.code, 'TOO_MANY_REQUESTS');
+    assert.strictEqual(r.errors[0].error.message, 'Too many requests');
+    assert.strictEqual(bucketPosts.length, 1);
+});
+
+/* ------------------------------------------------------------------ *
  * Run
  * ------------------------------------------------------------------ */
 (async () => {
     for (const [name, fn] of tests) {
         signed = [];
+        bulkSigned = [];
+        bulkPlan = [];
         bucketPlan = [];
         bucketPosts = [];
         try {
