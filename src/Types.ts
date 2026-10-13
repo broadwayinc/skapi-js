@@ -3,8 +3,15 @@ import type SkapiError from './main/error';
 export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | '>' | '>=' | '<' | '<=' | '=';
 
 
+/**
+ * ICE servers for a WebRTC connection: one url (default "stun:stun.skapi.com:3468"), or a list of
+ * { urls, username?, credential? }. A TURN relay, for users whose network blocks direct
+ * connections, goes in the list with its login; keep a STUN entry beside it.
+ */
+export type RTCIceOption = string | Array<{ urls: string | string[]; username?: string; credential?: string; }>;
+
 export type RTCReceiverParams = {
-    ice?: string;
+    ice?: RTCIceOption;
     media?: {
         video: boolean;
         audio: boolean;
@@ -13,7 +20,7 @@ export type RTCReceiverParams = {
 
 export type RTCConnectorParams = {
     cid: string;
-    ice?: string;
+    ice?: RTCIceOption;
     media?: {
         video: boolean;
         audio: boolean;

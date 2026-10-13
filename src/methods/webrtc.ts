@@ -36,6 +36,53 @@ async function processBuffer(buffer: { [recipient: string]: any[] }, recipient: 
     return proceed;
 }
 
+const DEFAULT_ICE = 'stun:stun.skapi.com:3468';
+
+/**
+ * The ICE servers the browser is given. `ice` is one url (the default, Skapi's STUN server, when
+ * omitted), or a list of RTCIceServer objects: { urls, username?, credential? }. A list is how a
+ * TURN relay is added, since a relay needs a login; keep a STUN entry in the list so the browser
+ * still connects directly whenever it can, and relays only when it must.
+ */
+function iceServers(ice: any): RTCIceServer[] {
+    if (ice === undefined || ice === null || ice === '') {
+        return [{ urls: DEFAULT_ICE }];
+    }
+    const validUrl = (u: any) => typeof u === 'string' && /^(stun|stuns|turn|turns):/.test(u);
+    if (typeof ice === 'string') {
+        if (!validUrl(ice)) {
+            throw new SkapiError(`"ice" should be a "stun:", "stuns:", "turn:" or "turns:" url, or a list of { urls, username, credential }.`, { code: 'INVALID_PARAMETER' });
+        }
+        return [{ urls: ice }];
+    }
+    if (!Array.isArray(ice) || !ice.length) {
+        throw new SkapiError(`"ice" should be a url string, or a non-empty list of { urls, username, credential }.`, { code: 'INVALID_PARAMETER' });
+    }
+    return ice.map((server: any, i: number) => {
+        if (!server || typeof server !== 'object' || Array.isArray(server)) {
+            throw new SkapiError(`"ice[${i}]" should be an object: { urls, username, credential }.`, { code: 'INVALID_PARAMETER' });
+        }
+        const urls = server.urls;
+        const list = Array.isArray(urls) ? urls : [urls];
+        if (!list.length || !list.every(validUrl)) {
+            throw new SkapiError(`"ice[${i}].urls" should be a "stun:", "stuns:", "turn:" or "turns:" url, or a list of them.`, { code: 'INVALID_PARAMETER' });
+        }
+        const out: RTCIceServer = { urls };
+        for (const key of ['username', 'credential'] as const) {
+            if (server[key] !== undefined) {
+                if (typeof server[key] !== 'string') {
+                    throw new SkapiError(`"ice[${i}].${key}" should be type: <string>.`, { code: 'INVALID_PARAMETER' });
+                }
+                out[key] = server[key];
+            }
+        }
+        if (list.some((u: string) => /^turns?:/.test(u)) && (!out.username || !out.credential)) {
+            throw new SkapiError(`"ice[${i}]" is a TURN server: it needs "username" and "credential".`, { code: 'INVALID_PARAMETER' });
+        }
+        return out;
+    });
+}
+
 export async function answerSdpOffer(offer: any, recipient: string) {
     if (!this?.session?.accessToken?.jwtToken) {
         throw new SkapiError('Access token is required.', { code: 'INVALID_PARAMETER' });
@@ -231,7 +278,7 @@ export async function connectRTC(
             }
             return v;
         },
-        ice: ['string', () => 'stun:stun.skapi.com:3468'],
+        ice: v => v, // a url, or a list of RTCIceServer; checked by iceServers() below
         media: v => v,
         channels: ['text-chat', 'file-transfer', 'video-chat', 'voice-chat', 'gaming', {
             // negotiated: 'boolean',
@@ -268,9 +315,7 @@ export async function connectRTC(
 
     // Call STUN server to get IP address
     const configuration = {
-        iceServers: [
-            { urls: ice }
-        ]
+        iceServers: iceServers(ice)
     };
 
     if (!__peerConnection?.[cid]) {
@@ -395,13 +440,12 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
             }
         }
 
-        let { ice = 'stun:stun.skapi.com:3468' } = params;
+        // the same option as connectRTC(): both ends need the relay for a relayed call to connect
+        const servers = iceServers(params.ice);
 
         if (!__peerConnection?.[sender]) {
             __peerConnection[sender] = new RTCPeerConnection({
-                iceServers: [
-                    { urls: ice }
-                ]
+                iceServers: servers
             });
         }
 
