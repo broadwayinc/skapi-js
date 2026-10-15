@@ -341,6 +341,15 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                                 // receive answer from the receiver
                                 if (__peerConnection[msg.sender_cid].signalingState === 'have-local-offer') {
                                     await __peerConnection[msg.sender_cid].setRemoteDescription(new RTCSessionDescription(rtc.sdpanswer));
+                                    // The relay delivers each message from its own invocation, so the
+                                    // receiver's ICE candidates can arrive before its answer. Until the
+                                    // answer is set they are buffered; add them now, the way the receiver
+                                    // side does after the offer. Waiting for a later candidate to flush
+                                    // them is not enough: when every candidate overtook the answer there
+                                    // is none, the caller never learns the receiver's addresses and the
+                                    // call connects only where the receiver's checks reach the caller
+                                    // unaided (same network), while across two NATs it never connects.
+                                    await receiveIceCandidate.bind(this)(null, msg.sender_cid);
                                 }
                                 else {
                                     throw new SkapiError(`Invalid signaling state.`, { code: 'INVALID_REQUEST' });
