@@ -3156,7 +3156,10 @@ export default class Skapi {
 		return verifyPhoneNumber.bind(this)(params, options);
 	}
 	/**
-	 * Sends a password reset verification code to the user email.
+	 * Sends a password reset code to the user's e-mail. The e-mail comes from the service's
+	 * "forgot_password" template (the Password Reset Email on the Automated Emails page), or
+	 * from `options.template.forgot_password` for this call alone; a message_id that does not
+	 * exist falls back to the template in use, or the built-in default.
 	 * @param params Payload for the request.
 	 * @returns A promise that resolves to Promise<"SUCCESS: Verification code has been sent.">.
 	 */
@@ -3168,8 +3171,8 @@ export default class Skapi {
 		}>,
 		options?: {
 			template?: {
-				/** message_id of the template to use for the password-reset verification e-mail. */
-				verification?: string;
+				/** message_id of the password reset template to use for this call. */
+				forgot_password?: string;
 			};
 		},
 	): Promise<'SUCCESS: Verification code has been sent.'> {

@@ -1341,7 +1341,9 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>,
         return;
     }
 
-    // Optional per-call template override for the verification e-mail.
+    // Optional per-call template override for the verification e-mail (verifyEmail). A phone
+    // number is verified by SMS, whose text is the service's own setting (template_sms_verification),
+    // so the override has nothing to reach there.
     let clientMetadata: { [k: string]: string } | undefined;
     const verificationMid = options?.template?.verification;
     if (verificationMid !== undefined) {
@@ -1409,9 +1411,15 @@ export async function forgotPassword(
         email: string;
     }>,
     options?: {
+        /**
+         * Per-call e-mail template override. The password reset code always goes out by e-mail,
+         * from the service's "forgot_password" template (its own kind, apart from the
+         * "verification" template verifyEmail() uses). A message_id that does not exist falls
+         * back to the template in use, or the built-in default.
+         */
         template?: {
-            /** message_id of the template to use for the password-reset verification e-mail. */
-            verification?: string;
+            /** message_id of the password reset template to use for this call. */
+            forgot_password?: string;
         };
     }): Promise<"SUCCESS: Verification code has been sent."> {
 
@@ -1422,12 +1430,22 @@ export async function forgotPassword(
     }, ['email']);
 
     let clientMetadata: { [k: string]: string } | undefined;
-    const verificationMid = options?.template?.verification;
-    if (verificationMid !== undefined) {
-        if (typeof verificationMid !== 'string' || !verificationMid) {
-            throw new SkapiError('"template.verification" should be a non-empty <string> (template message_id).', { code: 'INVALID_PARAMETER' });
+    if (options?.template !== undefined) {
+        if (typeof options.template !== 'object' || options.template === null || Array.isArray(options.template)) {
+            throw new SkapiError('"template" should be type: <object>.', { code: 'INVALID_PARAMETER' });
         }
-        clientMetadata = { template_verification: verificationMid };
+        // The password reset e-mail is its own template kind now; the old key names the e-mail
+        // verification template, which this call never sends.
+        if ((options.template as any).verification !== undefined) {
+            throw new SkapiError('"template.verification" is not an option of forgotPassword(). Use "template.forgot_password" (template message_id).', { code: 'INVALID_PARAMETER' });
+        }
+        const forgotPasswordMid = options.template.forgot_password;
+        if (forgotPasswordMid !== undefined) {
+            if (typeof forgotPasswordMid !== 'string' || !forgotPasswordMid) {
+                throw new SkapiError('"template.forgot_password" should be a non-empty <string> (template message_id).', { code: 'INVALID_PARAMETER' });
+            }
+            clientMetadata = { template_forgot_password: forgotPasswordMid };
+        }
     }
 
     return new Promise(async (res, rej) => {
