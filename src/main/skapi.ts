@@ -7,6 +7,7 @@ import {
 	RecordData,
 	Condition,
 	UserAttributes,
+	UserVisibilityFlag,
 	UserProfile,
 	Newsletter,
 	NewsletterGroup,
@@ -2048,12 +2049,12 @@ export default class Skapi {
 	 * login another account holds without having verified the address blocks
 	 * nothing; it is removed, and that account keeps the login ID it was created
 	 * with.
-	 * @param params Target user_id and the attributes to update.
+	 * @param params Target user_id and the attributes to update. Not the `*_public` visibility flags: they are set when the account is created and are the user's own afterwards; the backend refuses them from an admin.
 	 * @returns A promise that resolves to Promise<'SUCCESS: User attributes updated.'>.
 	 */
 	@formHandler()
 	updateUserAttributes(
-		params: UserAttributes & { user_id: string },
+		params: Omit<UserAttributes, UserVisibilityFlag> & { user_id: string },
 	): Promise<'SUCCESS: User attributes updated.'> {
 		return updateUserAttributes.bind(this)(params);
 	}

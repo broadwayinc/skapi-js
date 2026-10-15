@@ -1,7 +1,7 @@
 import validator from '../utils/validator';
 import { request } from '../utils/network';
 import { checkAdmin } from './user';
-import { Form, UserAttributes, UserProfile, UserPublic, DatabaseResponse, FetchOptions } from '../Types';
+import { Form, UserAttributes, UserVisibilityFlag, UserProfile, UserPublic, DatabaseResponse, FetchOptions } from '../Types';
 import SkapiError from '../main/error';
 import { parseUserAttributes } from '../utils/utils';
 
@@ -460,9 +460,16 @@ export async function resendInvitation(params: Form<{
  * ID another account of the project was granted: the address that account was created or
  * invited with, or one it has verified. An e-mail login another account holds without having
  * verified the address blocks nothing; it is removed.
+ *
+ * Public visibility (email_public, phone_number_public, address_public, gender_public,
+ * birthdate_public) is not an admin's to change: it is set when the account is created, with
+ * createAccount() or inviteUser(), and afterwards only the user changes it, with updateProfile()
+ * on their own account. A request that carries one is refused with INVALID_PARAMETER and
+ * '"email_public" cannot be changed by an admin. Public visibility is set when the account is
+ * created, and afterwards only by the user.'
  */
 export async function updateUserAttributes(
-    form: Form<UserAttributes & { user_id: string; }>,
+    form: Form<Omit<UserAttributes, UserVisibilityFlag> & { user_id: string; }>,
 ): Promise<'SUCCESS: User attributes updated.'> {
     let params: any = validator.Params(form, {
         user_id: (v: string) => validator.UserId(v, '"user_id"'),
@@ -484,11 +491,9 @@ export async function updateUserAttributes(
         gender: 'string',
         birthdate: (v: string) => v ? validator.Birthdate(v) : "",
         phone_number: (v: string) => v ? validator.PhoneNumber(v) : "",
-        email_public: 'boolean',
-        phone_number_public: 'boolean',
-        address_public: 'boolean',
-        gender_public: 'boolean',
-        birthdate_public: 'boolean',
+        // The *_public flags are not here: public visibility is set when the account is
+        // created (createAccount, inviteUser) and is the user's own afterwards (updateProfile
+        // on their own account). The backend refuses them from an admin by name.
         misc: 'string',
         picture: (v: string) => v ? validator.Url(v) : "",
         profile: (v: string) => v ? validator.Url(v) : "",

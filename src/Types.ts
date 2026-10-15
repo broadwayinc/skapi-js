@@ -352,6 +352,9 @@ export type NewsletterGroup = {
     endpoint: string;
 }
 
+/** The public visibility flags: set when an account is created, the user's own afterwards; never changed by an admin's updateUserAttributes(). */
+export type UserVisibilityFlag = 'email_public' | 'phone_number_public' | 'address_public' | 'gender_public' | 'birthdate_public';
+
 export type UserAttributes = {
     /** User's name */
     name?: string;
