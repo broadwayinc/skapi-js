@@ -2,6 +2,7 @@ import { SkapiError } from "../Main";
 import { RTCResolved, RTCEvent, RTCConnectorParams, RTCReceiverParams, WebSocketMessage, RTCConnector } from "../Types";
 import { extractFormData } from "../utils/utils";
 import validator from "../utils/validator";
+import { requestIceServers, peekIceServers } from "./realtime";
 
 export const __peerConnection: { [sender: string]: RTCPeerConnection } = {};
 export const __dataChannel: { [sender: string]: { [label: string]: RTCDataChannel } } = {};
@@ -37,6 +38,25 @@ async function processBuffer(buffer: { [recipient: string]: any[] }, recipient: 
 }
 
 const DEFAULT_ICE = 'stun:stun.skapi.com:3468';
+
+/**
+ * The ICE servers for a call that gave no `ice`: Skapi's STUN server plus the TURN relay with a
+ * credential for this user, from the realtime server. Without an answer (older backend, no relay
+ * configured for the region) it is the STUN server alone, as before the relay existed. A relay
+ * is what connects two peers whose networks allow no direct path; STUN cannot.
+ */
+async function defaultIceServers(): Promise<RTCIceServer[]> {
+    let cached = peekIceServers();
+    if (!cached) {
+        try {
+            cached = await requestIceServers.bind(this)();
+        } catch (err) {
+            cached = null;
+        }
+    }
+    let servers = cached ? cached.servers : [{ urls: DEFAULT_ICE }];
+    return servers.some(s => (Array.isArray(s.urls) ? s.urls : [s.urls]).some(u => /^stuns?:/.test(u))) ? servers : [{ urls: DEFAULT_ICE }, ...servers];
+}
 
 /**
  * The ICE servers the browser is given. `ice` is one url (the default, Skapi's STUN server, when
@@ -313,9 +333,9 @@ export async function connectRTC(
         throw new SkapiError('Realtime connection is not ready.', { code: 'INVALID_REQUEST' });
     }
 
-    // Call STUN server to get IP address
+    // the ICE servers: the caller's own list, or Skapi's STUN server and TURN relay
     const configuration = {
-        iceServers: iceServers(ice)
+        iceServers: ice === undefined || ice === null || ice === '' ? await defaultIceServers.bind(this)() : iceServers(ice)
     };
 
     if (!__peerConnection?.[cid]) {
@@ -441,7 +461,7 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
         }
 
         // the same option as connectRTC(): both ends need the relay for a relayed call to connect
-        const servers = iceServers(params.ice);
+        const servers = params.ice === undefined || params.ice === null || params.ice === '' ? await defaultIceServers.bind(this)() : iceServers(params.ice);
 
         if (!__peerConnection?.[sender]) {
             __peerConnection[sender] = new RTCPeerConnection({

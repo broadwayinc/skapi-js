@@ -5,6 +5,58 @@ import { extractFormData } from '../utils/utils';
 import { request } from '../utils/network';
 import { DatabaseResponse, FetchOptions, RealtimeCallback, WebSocketMessage } from '../Types';
 import { answerSdpOffer, receiveIceCandidate, __peerConnection, __receiver_ringing, closeRTC, respondRTC, __caller_ringing, __rtcEvents } from './webrtc';
+
+let __iceWaiters: Array<(v: any) => void> = [];
+// The last answer, kept while its credential is valid: a call started later uses it at once.
+let __iceCache: { servers: RTCIceServer[]; expires: number | null; at: number } | null = null;
+
+function iceAnswer(v: any): { servers: RTCIceServer[]; expires: number | null } | null {
+    return v && Array.isArray(v.servers) && v.servers.length ? { servers: v.servers, expires: typeof v.expires === 'number' ? v.expires : null } : null;
+}
+
+/** The cached ICE servers while they are good for at least another minute, else null. */
+export function peekIceServers(): { servers: RTCIceServer[]; expires: number | null } | null {
+    if (!__iceCache) return null;
+    let now = Math.floor(Date.now() / 1000);
+    // an answer without an expiry (STUN alone) is kept for an hour
+    let until = __iceCache.expires ?? __iceCache.at + 3600;
+    return until - 60 > now ? { servers: __iceCache.servers, expires: __iceCache.expires } : null;
+}
+
+/**
+ * Asks the realtime server for the ICE servers a call should use: Skapi's STUN server and,
+ * where the project's region has a relay key configured, the TURN relay with a credential made
+ * for this user (valid for hours; `expires` is its unix time). Resolves with null when the
+ * server does not answer in time (an older backend, a dropped socket), and the caller falls
+ * back to STUN alone, which is what every call used before the relay existed.
+ */
+export async function requestIceServers(timeoutMs = 2500, sock?: WebSocket): Promise<{ servers: RTCIceServer[]; expires: number | null } | null> {
+    let socket: WebSocket = sock || (this.__socket ? await this.__socket : null);
+    if (!socket || socket.readyState !== 1 || !this?.session?.accessToken?.jwtToken) {
+        return null;
+    }
+    return new Promise(resolve => {
+        let done = false;
+        let timer = setTimeout(() => {
+            if (done) return;
+            done = true;
+            __iceWaiters = __iceWaiters.filter(w => w !== settle);
+            resolve(null);
+        }, timeoutMs);
+        let settle = (v: any) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve(iceAnswer(v));
+        };
+        __iceWaiters.push(settle);
+        try {
+            socket.send(JSON.stringify({ action: 'ice', token: this.session.accessToken.jwtToken }));
+        } catch (err) {
+            settle(null);
+        }
+    });
+}
 import { getJwtToken } from './user';
 
 // let __roomList: {
@@ -174,6 +226,11 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                     }));
                 }
 
+                // The ICE servers for calls, asked for now so a call started later finds
+                // them cached: a relay answer can take a second or two when the server is
+                // cold, which a call should not wait for.
+                requestIceServers.bind(this)(5000, socket).catch(() => null);
+
                 // // keep alive
 
                 // Define worker script as a string
@@ -232,9 +289,32 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                     case !!data?.['#error']:
                         type = 'error';
                         break;
+                    case !!data?.['#ice']:
+                        type = 'ice';
+                        break;
                 }
 
                 if (!type) {
+                    // API Gateway answers an action the deployed handler does not know (an
+                    // older backend asked for "ice") with its own error object: settle the
+                    // waiters now with "no relay here" instead of letting them time out.
+                    if (data?.requestId && data?.connectionId && __iceWaiters.length) {
+                        let waiters = __iceWaiters.splice(0);
+                        for (let w of waiters) {
+                            w(null);
+                        }
+                    }
+                    return;
+                }
+
+                if (type === 'ice') {
+                    // the answer to requestIceServers(): not a message for the app
+                    let answer = iceAnswer(data['#ice']);
+                    if (answer) __iceCache = { ...answer, at: Math.floor(Date.now() / 1000) };
+                    let waiters = __iceWaiters.splice(0);
+                    for (let w of waiters) {
+                        w(data['#ice']);
+                    }
                     return;
                 }
 
