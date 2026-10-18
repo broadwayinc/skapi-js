@@ -132,6 +132,7 @@ import {
 	getTickets,
 	registerTicket,
 	unregisterTicket,
+	updateTicket,
 	clearTicketLog,
 	_out,
 	openIdLogin,
@@ -1088,6 +1089,7 @@ export default class Skapi {
 
 	private registerTicket = registerTicket.bind(this);
 	private unregisterTicket = unregisterTicket.bind(this);
+	private updateTicket = updateTicket.bind(this);
 
 	/**
 	 * Returns the current SDK version and prints runtime version details in browser environments.

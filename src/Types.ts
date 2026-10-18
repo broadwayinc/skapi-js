@@ -1277,6 +1277,8 @@ export type Ticket = {
     updated?: number;
     condition?: TicketCondition;
     actions?: TicketAction[];
+    /** false while the ticket is switched off: it answers TICKET_DISABLED and its queued runs are skipped. */
+    enabled?: boolean;
     /**
      * true on a ticket saved before this release (the dashboard marks it "previous rules"). It
      * keeps running by the rules it was saved with until it is registered again, which applies

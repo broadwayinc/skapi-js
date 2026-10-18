@@ -59,7 +59,8 @@ function map_ticket_obj(t): {
         'desc': 'description',
         'pmc': 'limit_per_user',
         'fail': 'failed',
-        'rv': 'rules_version'
+        'rv': 'rules_version',
+        'on': 'enabled'
     }
     let new_obj = {};
     for (let k in t) {
@@ -207,6 +208,8 @@ export async function registerTicket(
         ticket_id: string;
         /** Up to 500 characters. */
         description?: string;
+        /** false registers the ticket switched off (updateTicket() switches it later). Absent keeps the stored state; a new ticket is on. */
+        enabled?: boolean;
         /** Key absent = keep the stored count (a first registration is then unlimited). null = unlimited. An int >= 0 = the remaining count. */
         count?: number | null;
         /** true or 1 = once per user, n = n times, false or 0 = unlimited. */
@@ -250,6 +253,28 @@ export async function unregisterTicket(
     }
 ): Promise<string> {
     return request.bind(this)('register-ticket', Object.assign({ exec: 'unreg' }, params), { auth: true });
+}
+
+// Project owner only. Switches a ticket on or off without touching its definition: off, it
+// answers TICKET_DISABLED to every call and its queued runs are skipped (logged as skipped:
+// disabled); on again, it runs as before. Resolves with the ticket as getTickets() lists it.
+export async function updateTicket(
+    params: {
+        ticket_id: string;
+        enabled: boolean;
+    }
+): Promise<{ message: string; ticket: any }> {
+    if (!params?.ticket_id) {
+        throw new SkapiError('"ticket_id" is required.', { code: 'INVALID_PARAMETER' });
+    }
+    if (typeof params.enabled !== 'boolean') {
+        throw new SkapiError('"enabled" should be true or false.', { code: 'INVALID_PARAMETER' });
+    }
+    let resp = await request.bind(this)('register-ticket', { exec: 'update', ticket_id: params.ticket_id, enabled: params.enabled }, { auth: true });
+    if (resp?.ticket) {
+        resp.ticket = map_ticket_obj(resp.ticket);
+    }
+    return resp;
 }
 
 // Refresh a token that is merely ABOUT to expire, not only one that already has.
