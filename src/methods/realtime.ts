@@ -4,7 +4,7 @@ import validator from '../utils/validator';
 import { extractFormData } from '../utils/utils';
 import { request } from '../utils/network';
 import { DatabaseResponse, FetchOptions, RealtimeCallback, WebSocketMessage } from '../Types';
-import { answerSdpOffer, receiveIceCandidate, __peerConnection, __receiver_ringing, closeRTC, respondRTC, __caller_ringing, __rtcEvents } from './webrtc';
+import { answerSdpOffer, receiveIceCandidate, acceptAnswer, discardSignals, queueSignal, __peerConnection, __receiver_ringing, closeRTC, respondRTC, __caller_ringing } from './webrtc';
 
 let __iceWaiters: Array<(v: any) => void> = [];
 // The last answer, kept while its credential is valid: a call started later uses it at once.
@@ -376,37 +376,51 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                             if (__peerConnection?.[msg.sender_cid]) {
                                 closeRTC.bind(this)({ cid: msg.sender_cid });
                             }
+                            else {
+                                // a call that was never answered here: its offer must not be answered with the next call's
+                                discardSignals(msg.sender_cid);
+                            }
                             msg.type = 'rtc:closed';
                             cb(msg);
                             return;
                         }
                         if (rtc.candidate) {
-                            receiveIceCandidate.bind(this)(rtc.candidate, msg.sender_cid);
+                            queueSignal(msg.sender_cid, () => receiveIceCandidate.bind(this)(rtc.candidate, msg.sender_cid)).catch(err => this.log('rtc candidate', err));
                         }
                         if (rtc.sdpoffer) {
-                            answerSdpOffer.bind(this)(rtc.sdpoffer, msg.sender_cid);
-                            if (!__receiver_ringing[msg.sender_cid]) {
-                                __receiver_ringing[msg.sender_cid] = msg.sender_cid;
-                                delete msg.message;
+                            if (__peerConnection?.[msg.sender_cid]) {
+                                // a call in progress: the other side added or removed a track, or a channel. Answer it.
+                                queueSignal(msg.sender_cid, () => answerSdpOffer.bind(this)(rtc, msg.sender_cid)).catch(err => this.log('rtc offer', err));
+                            }
+                            else {
+                                queueSignal(msg.sender_cid, () => answerSdpOffer.bind(this)(rtc, msg.sender_cid)).catch(err => this.log('rtc offer', err)); // kept until the call is answered
+                                if (!__receiver_ringing[msg.sender_cid]) {
+                                    __receiver_ringing[msg.sender_cid] = msg.sender_cid;
+                                    delete msg.message;
 
-                                msg.connectRTC = respondRTC.bind(this)(msg);
-                                msg.type = 'rtc:incoming';
-                                msg.hangup = (() => {
-                                    if (__peerConnection[msg.sender_cid]) {
-                                        closeRTC.bind(this)({ cid: msg.sender_cid });
-                                    }
-                                    else if (__receiver_ringing[msg.sender_cid]) {
-                                        delete __receiver_ringing[msg.sender_cid];
-                                        socket.send(JSON.stringify({
-                                            action: 'rtc',
-                                            uid: msg.sender_cid,
-                                            content: { hungup: this.user.user_id },
-                                            token: this.session.accessToken.jwtToken
-                                        }));
-                                    }
-                                }).bind(this);
+                                    // what the caller said about the call, and what it is sending, readable before answering
+                                    msg.meta = rtc.meta && typeof rtc.meta === 'object' && !Array.isArray(rtc.meta) ? rtc.meta : {};
+                                    msg.sources = rtc.sources && typeof rtc.sources === 'object' ? Array.from(new Set(Object.values(rtc.sources).filter(v => typeof v === 'string'))) as string[] : [];
 
-                                cb(msg);
+                                    msg.connectRTC = respondRTC.bind(this)(msg);
+                                    msg.type = 'rtc:incoming';
+                                    msg.hangup = (() => {
+                                        if (__peerConnection[msg.sender_cid]) {
+                                            closeRTC.bind(this)({ cid: msg.sender_cid });
+                                        }
+                                        else if (__receiver_ringing[msg.sender_cid]) {
+                                            delete __receiver_ringing[msg.sender_cid];
+                                            socket.send(JSON.stringify({
+                                                action: 'rtc',
+                                                uid: msg.sender_cid,
+                                                content: { hungup: this.user.user_id },
+                                                token: this.session.accessToken.jwtToken
+                                            }));
+                                        }
+                                    }).bind(this);
+
+                                    cb(msg);
+                                }
                             }
                         }
                         if (rtc.pickup) {
@@ -417,24 +431,8 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                             }
                         }
                         if (rtc.sdpanswer) {
-                            if (__peerConnection[msg.sender_cid]) {
-                                // receive answer from the receiver
-                                if (__peerConnection[msg.sender_cid].signalingState === 'have-local-offer') {
-                                    await __peerConnection[msg.sender_cid].setRemoteDescription(new RTCSessionDescription(rtc.sdpanswer));
-                                    // The relay delivers each message from its own invocation, so the
-                                    // receiver's ICE candidates can arrive before its answer. Until the
-                                    // answer is set they are buffered; add them now, the way the receiver
-                                    // side does after the offer. Waiting for a later candidate to flush
-                                    // them is not enough: when every candidate overtook the answer there
-                                    // is none, the caller never learns the receiver's addresses and the
-                                    // call connects only where the receiver's checks reach the caller
-                                    // unaided (same network), while across two NATs it never connects.
-                                    await receiveIceCandidate.bind(this)(null, msg.sender_cid);
-                                }
-                                else {
-                                    throw new SkapiError(`Invalid signaling state.`, { code: 'INVALID_REQUEST' });
-                                }
-                            }
+                            // the other side's answer to an offer of ours: the first one, or a renegotiation
+                            queueSignal(msg.sender_cid, () => acceptAnswer.bind(this)(rtc, msg.sender_cid)).catch(err => this.log('rtc answer', err));
                         }
                     }
                 }

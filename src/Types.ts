@@ -10,22 +10,53 @@ export type Condition = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | '>' | '>=' | '<' | 
  */
 export type RTCIceOption = string | Array<{ urls: string | string[]; username?: string; credential?: string; }>;
 
+/**
+ * What a local track is. The SDK names the tracks it captures itself ('camera', 'microphone',
+ * 'screen'); a stream or track the app passes is 'custom' unless the app names it in share().
+ * The other side reads the name on its 'track' event, as `source`.
+ */
+export type RTCMediaSource = 'camera' | 'microphone' | 'screen' | 'custom' | (string & {});
+
+/** Screen capture: true, or the options of getDisplayMedia() plus a contentHint for the video track. */
+export type RTCScreenOption = boolean | (DisplayMediaStreamOptions & { contentHint?: 'text' | 'detail' | 'motion'; });
+
+/**
+ * The media a side sends. A MediaStream is sent as it is. An object names what the SDK should
+ * capture: `audio` and `video` are passed to getUserMedia() (a boolean or track constraints),
+ * `screen` to getDisplayMedia(). Omitted, or everything false, sends no media.
+ */
+export type RTCMediaOption = MediaStream | (MediaStreamConstraints & { screen?: RTCScreenOption; });
+
+/** Codec order and sender limits, applied to every track of the kind, now and when one is added later. */
+export type RTCEncodingOption = {
+    video?: {
+        codecs?: string[]; // preferred first, by name ('VP9', 'H264', 'AV1') or mime type ('video/VP9'); the rest keep their order after them
+        maxBitrate?: number; // bits per second
+        maxFramerate?: number;
+        scaleResolutionDownBy?: number; // 2 sends half the width and height
+    };
+    audio?: {
+        codecs?: string[];
+        maxBitrate?: number; // bits per second
+    };
+};
+
+/** A data channel to open: a preset name, or RTCDataChannelInit with `protocol` as its label. */
+export type RTCChannelOption = RTCDataChannelInit | 'default' | 'text-chat' | 'file-transfer' | 'video-chat' | 'voice-chat' | 'gaming';
+
 export type RTCReceiverParams = {
     ice?: RTCIceOption;
-    media?: {
-        video: boolean;
-        audio: boolean;
-    } | MediaStream | MediaStreamConstraints;
+    icePolicy?: 'all' | 'relay'; // 'relay' sends everything through the TURN relay, even where a direct path exists
+    media?: RTCMediaOption;
+    receive?: { audio?: boolean; video?: boolean; }; // ask for a kind you do not send yourself, so it arrives without a renegotiation
+    encoding?: RTCEncodingOption;
+    channels?: RTCChannelOption[]; // channels this side opens; the caller opens 'default' when omitted, the answering side none
 }
 
-export type RTCConnectorParams = {
+export type RTCConnectorParams = RTCReceiverParams & {
     cid: string;
-    ice?: RTCIceOption;
-    media?: {
-        video: boolean;
-        audio: boolean;
-    } | MediaStream | MediaStreamConstraints;
-    channels?: Array<RTCDataChannelInit | 'text-chat' | 'file-transfer' | 'video-chat' | 'voice-chat' | 'gaming'>;
+    meta?: Record<string, any>; // a small JSON object the other side reads on its 'rtc:incoming' message before it answers
+    ringTimeout?: number; // milliseconds to wait for an answer; none by default
 }
 
 export type RTCConnector = {
@@ -33,17 +64,38 @@ export type RTCConnector = {
     connection: Promise<RTCResolved>;
 }
 
+/** Options of share(): for 'screen' the getDisplayMedia() options plus contentHint, for 'camera' and 'microphone' the track constraints, for a stream or track of your own `source`, its name on the other side. */
+export type RTCShareOptions = {
+    [key: string]: any;
+    contentHint?: 'text' | 'detail' | 'motion';
+    source?: string;
+};
+
 export type RTCResolved = {
+    cid: string;
     target: RTCPeerConnection;
     channels: {
         [protocol: string]: RTCDataChannel
     };
     hangup: () => void;
-    media: MediaStream;
+    media: MediaStream; // every local track on the call, camera, microphone, screen and what share() added
+    meta: Record<string, any>; // what the caller passed as `meta`, on both sides
+    /** Local tracks, all of them or those of one source. */
+    tracks: (source?: RTCMediaSource) => MediaStreamTrack[];
+    /** Adds the screen, the camera, the microphone, or a stream or track of your own to the call, and resolves with the tracks added. The other side gets them on its 'track' event. */
+    share: (what: 'screen' | 'camera' | 'microphone' | MediaStream | MediaStreamTrack, options?: RTCShareOptions) => Promise<MediaStreamTrack[]>;
+    /** Takes the tracks of a source, or one track, off the call and stops them. */
+    unshare: (what: RTCMediaSource | MediaStreamTrack) => void;
+    /** Swaps a track for another of the same kind without a new negotiation: a camera switch, a new microphone. The old track is stopped. */
+    replace: (what: RTCMediaSource | MediaStreamTrack, track: MediaStreamTrack) => Promise<void>;
+    /** Pauses or resumes what is sent: `audio` the microphone, `video` the camera and other video, `screen` the screen. true pauses, false resumes, omitted leaves it. */
+    mute: (what: { audio?: boolean; video?: boolean; screen?: boolean; }) => void;
+    /** Opens a data channel during the call. */
+    addChannel: (protocol: string, init?: RTCDataChannelInit) => RTCDataChannel;
 }
 
 export type RTCEvent = {
-    type: 'track' | 'connectionstatechange' | 'close' | 'message' | 'open' | 'bufferedamountlow' | 'error' | 'icecandidate' | 'icecandidateend' | 'icegatheringstatechange' | 'negotiationneeded' | 'signalingstatechange';
+    type: 'track' | 'trackmute' | 'trackunmute' | 'trackended' | 'unshare' | 'connectionstatechange' | 'close' | 'message' | 'open' | 'bufferedamountlow' | 'error' | 'icecandidate' | 'icecandidateend' | 'icecandidateerror' | 'iceconnectionstatechange' | 'icegatheringstatechange' | 'negotiationneeded' | 'signalingstatechange' | 'ringtimeout';
     [key: string]: any;
 }
 
@@ -52,6 +104,8 @@ export type WebSocketMessage = {
     message?: any;
     connectRTC?: (params: RTCReceiverParams, callback: (e: RTCEvent) => void) => Promise<RTCResolved>;
     hangup?: () => void; // Reject incoming RTC connection.
+    meta?: Record<string, any>; // rtc:incoming: what the caller passed as `meta`
+    sources?: string[]; // rtc:incoming: what the caller is sending, e.g. ['camera', 'microphone'] or ['screen']
     sender?: string; // user_id of the sender
     sender_cid?: string; // scid of the sender
     sender_rid?: string; // group of the sender

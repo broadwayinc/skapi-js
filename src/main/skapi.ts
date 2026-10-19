@@ -260,7 +260,6 @@ export default class Skapi {
 	private __uniqueIdsPersistTimer: ReturnType<typeof setTimeout> | null = null;
 	private userPool: CognitoUserPool | null = null;
 	private __socket: Promise<WebSocket> | null = null;
-	private __mediaStream: MediaStream = null;
 
 	private host = 'skapi';
 	private hostDomain = 'skapi.com';
@@ -1159,7 +1158,11 @@ export default class Skapi {
 	}
 
 	/**
-	 * Creates or joins a WebRTC session and returns an RTC connector for streaming events and controls.
+	 * Calls another user over WebRTC: the camera and microphone, the screen, a stream of your own, data channels, or any mix of them.
+	 * `media` names what to send (`{ audio, video, screen }`, or a MediaStream), `receive` what to take without sending, `channels` the data channels to open,
+	 * `meta` a small JSON object the other side reads on its `rtc:incoming` message, `ringTimeout` how long to wait for an answer.
+	 * Resolves with an RTCConnector whose `connection` resolves, once the other side answers, with the running call: its peer connection, channels, local media,
+	 * and the controls `share()`, `unshare()`, `replace()`, `mute()` and `addChannel()`.
 	 * @param params Request parameters.
 	 * @param callback Callback invoked for events or updates.
 	 * @returns A promise that resolves to Promise<RTCConnector>.
