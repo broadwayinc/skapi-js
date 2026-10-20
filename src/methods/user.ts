@@ -60,7 +60,9 @@ function map_ticket_obj(t): {
         'pmc': 'limit_per_user',
         'fail': 'failed',
         'rv': 'rules_version',
-        'on': 'enabled'
+        'on': 'enabled',
+        'qn': 'queued',
+        'qdue': 'queued_due'
     }
     let new_obj = {};
     for (let k in t) {

@@ -1333,6 +1333,10 @@ export type Ticket = {
     actions?: TicketAction[];
     /** false while the ticket is switched off: it answers TICKET_DISABLED and its queued runs are skipped. */
     enabled?: boolean;
+    /** Queued runs of the ticket that have not run yet: the rest of a chain that a Respond with a `resume` left for later. Absent = none counted. */
+    queued?: number;
+    /** When the most recently queued run is due, in ms since the epoch. */
+    queued_due?: number;
     /**
      * true on a ticket saved before this release (the dashboard marks it "previous rules"). It
      * keeps running by the rules it was saved with until it is registered again, which applies
