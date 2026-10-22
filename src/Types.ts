@@ -71,6 +71,19 @@ export type RTCShareOptions = {
     source?: string;
 };
 
+/** A file sent or received over a call. `mime` is the file's type, or application/octet-stream when the sender's browser knew none. */
+export type RTCFileInfo = {
+    id: string;
+    name: string;
+    size: number;
+    mime: string;
+};
+
+export type RTCSendFileOptions = {
+    name?: string; // the name the other side gets; the file's own name by default
+    onProgress?: (sent: number, total: number) => void; // bytes handed to the connection so far
+};
+
 export type RTCResolved = {
     cid: string;
     target: RTCPeerConnection;
@@ -92,10 +105,12 @@ export type RTCResolved = {
     mute: (what: { audio?: boolean; video?: boolean; screen?: boolean; }) => void;
     /** Opens a data channel during the call. */
     addChannel: (protocol: string, init?: RTCDataChannelInit) => RTCDataChannel;
+    /** Sends a file straight to the other side, in order, over a reliable data channel the SDK opens itself. Resolves once the other side has the whole file; it gets 'fileprogress' events and then a 'file' event holding the File. */
+    sendFile: (file: Blob, options?: RTCSendFileOptions) => Promise<RTCFileInfo>;
 }
 
 export type RTCEvent = {
-    type: 'track' | 'trackmute' | 'trackunmute' | 'trackended' | 'unshare' | 'connectionstatechange' | 'close' | 'message' | 'open' | 'bufferedamountlow' | 'error' | 'icecandidate' | 'icecandidateend' | 'icecandidateerror' | 'iceconnectionstatechange' | 'icegatheringstatechange' | 'negotiationneeded' | 'signalingstatechange' | 'ringtimeout';
+    type: 'track' | 'trackmute' | 'trackunmute' | 'trackended' | 'unshare' | 'connectionstatechange' | 'close' | 'message' | 'open' | 'bufferedamountlow' | 'error' | 'file' | 'fileprogress' | 'icecandidate' | 'icecandidateend' | 'icecandidateerror' | 'iceconnectionstatechange' | 'icegatheringstatechange' | 'negotiationneeded' | 'signalingstatechange' | 'ringtimeout';
     [key: string]: any;
 }
 

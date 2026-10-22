@@ -1,5 +1,5 @@
 import { SkapiError } from "../Main";
-import { RTCResolved, RTCEvent, RTCConnectorParams, RTCReceiverParams, WebSocketMessage, RTCConnector, RTCEncodingOption, RTCChannelOption, RTCShareOptions, RTCMediaSource } from "../Types";
+import { RTCResolved, RTCEvent, RTCConnectorParams, RTCReceiverParams, WebSocketMessage, RTCConnector, RTCEncodingOption, RTCChannelOption, RTCShareOptions, RTCMediaSource, RTCFileInfo, RTCSendFileOptions } from "../Types";
 import { extractFormData } from "../utils/utils";
 import validator from "../utils/validator";
 import { requestIceServers, peekIceServers } from "./realtime";
@@ -31,7 +31,14 @@ type PeerState = {
     encoding: RTCEncodingOption | null;
     receive: { audio?: boolean; video?: boolean } | null; // the answering side's `receive`, applied once the offer is set: a transceiver made before that would not be matched with the offer's
     ringTimer: any;
+    fileIn: FileIn | null; // the file arriving right now (the other side sends one at a time)
+    fileQueue: Promise<any>; // this side's sends, one after another
+    fileAcks: Map<string, { resolve: (v: any) => void; reject: (e: any) => void }>; // sends waiting for the other side's receipt
+    fileChannelWaiters: Array<{ resolve: (c: RTCDataChannel) => void; reject: (e: any) => void }>;
 };
+
+type FileIn = { id: string; name: string; size: number; mime: string; received: number; reported: number; chunks: ArrayBuffer[] };
+
 const __peerState: { [cid: string]: PeerState } = {};
 
 const __signalChain: { [cid: string]: Promise<any> } = {};
@@ -78,6 +85,17 @@ async function processBuffer(buffer: { [recipient: string]: any[] }, recipient: 
 
 const DEFAULT_ICE = 'stun:stun.skapi.com:3468';
 const CONTENT_HINTS = ['text', 'detail', 'motion'];
+/**
+ * Files go over a channel of their own that the SDK opens when the first file is sent: ordered
+ * and reliable, 16 KiB chunks, the sender pausing while the connection's buffer is full. On the
+ * wire: a text header, the bytes, a text end mark, and a text receipt back from the other side.
+ */
+const FILE_CHANNEL = 'skapi-file';
+const FILE_CHUNK = 16 * 1024;
+const FILE_HIGH_WATER = 1024 * 1024;
+const FILE_LOW_WATER = 256 * 1024;
+const FILE_PROGRESS_EVERY = 256 * 1024;
+
 const CHANNEL_PRESETS: { [name: string]: RTCDataChannelInit } = {
     'text-chat': { ordered: true, maxRetransmits: 10, protocol: 'text-chat' },
     'file-transfer': { ordered: false, maxPacketLifeTime: 3000, protocol: 'file-transfer' },
@@ -333,8 +351,25 @@ function newState(polite: boolean, meta: Record<string, any>, encoding: RTCEncod
         remoteSources: {},
         encoding,
         receive: null,
-        ringTimer: null
+        ringTimer: null,
+        fileIn: null,
+        fileQueue: Promise.resolve(),
+        fileAcks: new Map(),
+        fileChannelWaiters: []
     };
+}
+
+/** Every send waiting for a receipt, and every sendFile() waiting for the channel, fails with the call. */
+function failFileTransfers(st: PeerState) {
+    const err = new SkapiError('The file channel closed.', { code: 'INVALID_REQUEST' });
+    for (const ack of st.fileAcks.values()) {
+        ack.reject(err);
+    }
+    st.fileAcks.clear();
+    for (const w of st.fileChannelWaiters.splice(0)) {
+        w.reject(err);
+    }
+    st.fileIn = null;
 }
 
 /** Closes a connection that never got as far as a signal to the other side (capture refused), without telling anyone. */
@@ -342,6 +377,7 @@ function discardPeer(cid: string) {
     const st = __peerState[cid];
     if (st) {
         clearTimeout(st.ringTimer);
+        failFileTransfers(st);
         for (const off of st.cleanup.values()) {
             off();
         }
@@ -608,7 +644,12 @@ function openChannel(cid: string, option: RTCChannelOption): RTCDataChannel {
     }
     const channel = pc.createDataChannel(label, init);
     __dataChannel[cid][label] = channel;
-    handleDataChannel.call(this, cid, channel, label);
+    if (label === FILE_CHANNEL) {
+        handleFileChannel.call(this, cid, channel, label);
+    }
+    else {
+        handleDataChannel.call(this, cid, channel, label);
+    }
     return channel;
 }
 
@@ -626,7 +667,108 @@ function watchChannels(cid: string) {
         }
         this.log('ondatachannel', `received data channel "${key}".`);
         __dataChannel[cid][key] = channel;
-        handleDataChannel.call(this, cid, channel, key);
+        if (channel.label === FILE_CHANNEL) {
+            handleFileChannel.call(this, cid, channel, key);
+        }
+        else {
+            handleDataChannel.call(this, cid, channel, key);
+        }
+    };
+}
+
+/** The SDK's file channel, open or opening. Opened here when no side has sent a file yet. */
+function ensureFileChannel(cid: string): Promise<RTCDataChannel> {
+    const st = __peerState[cid];
+    const existing = __dataChannel[cid] && __dataChannel[cid][FILE_CHANNEL];
+    if (existing && existing.readyState === 'open') {
+        return Promise.resolve(existing);
+    }
+    if (!existing) {
+        openChannel.call(this, cid, { protocol: FILE_CHANNEL, ordered: true });
+    }
+    return new Promise((resolve, reject) => st.fileChannelWaiters.push({ resolve, reject }));
+}
+
+/**
+ * The file channel's traffic is the SDK's, not the app's: the app sees 'fileprogress' events while
+ * a file arrives and a 'file' event with the File when it is whole, and gets its sendFile() promise
+ * resolved when the other side's receipt comes back.
+ */
+function handleFileChannel(cid: string, channel: RTCDataChannel, stored: string) {
+    const emit = (e: any) => {
+        const fn = __rtcEvents[cid];
+        if (fn) {
+            fn(e);
+        }
+    };
+    const progress = (f: FileIn) => emit({ type: 'fileprogress', target: channel, timestamp: now(), label: channel.label, id: f.id, name: f.name, size: f.size, mime: f.mime, received: f.received });
+    channel.binaryType = 'arraybuffer';
+    channel.onopen = (event) => {
+        const st = __peerState[cid];
+        if (st) {
+            for (const w of st.fileChannelWaiters.splice(0)) {
+                w.resolve(channel);
+            }
+        }
+        this.log('dataChannel', `file channel "${channel.label}" is open.`);
+        emit({ type: 'open', target: channel, timeStamp: event.timeStamp, readyState: channel.readyState, label: channel.label, id: channel.id, ordered: channel.ordered, protocol: channel.protocol });
+    };
+    channel.onmessage = (event) => {
+        const st = __peerState[cid];
+        if (!st) {
+            return;
+        }
+        if (typeof event.data === 'string') {
+            let m: any;
+            try { m = JSON.parse(event.data); } catch (err) { return; }
+            if (m && m.k === 'file') {
+                st.fileIn = { id: String(m.id), name: typeof m.name === 'string' && m.name ? m.name : 'file', size: Number(m.size) || 0, mime: typeof m.type === 'string' ? m.type : '', received: 0, reported: 0, chunks: [] };
+                progress(st.fileIn);
+            }
+            else if (m && m.k === 'end' && st.fileIn && st.fileIn.id === m.id) {
+                const f = st.fileIn;
+                st.fileIn = null;
+                const file = new File(f.chunks, f.name, { type: f.mime });
+                if (f.reported !== f.received) {
+                    progress(f);
+                }
+                emit({ type: 'file', target: channel, timestamp: now(), label: channel.label, id: f.id, name: f.name, size: f.received, mime: f.mime, file });
+                try { channel.send(JSON.stringify({ k: 'done', id: f.id })); } catch (err) { this.log('file receipt', err); }
+            }
+            else if (m && m.k === 'done') {
+                const ack = st.fileAcks.get(m.id);
+                if (ack) {
+                    st.fileAcks.delete(m.id);
+                    ack.resolve(null);
+                }
+            }
+            return;
+        }
+        if (st.fileIn && event.data instanceof ArrayBuffer) {
+            st.fileIn.chunks.push(event.data);
+            st.fileIn.received += event.data.byteLength;
+            if (st.fileIn.received - st.fileIn.reported >= FILE_PROGRESS_EVERY) {
+                st.fileIn.reported = st.fileIn.received;
+                progress(st.fileIn);
+            }
+        }
+    };
+    channel.onerror = (event: any) => {
+        emit({ type: 'error', target: channel, timeStamp: event.timeStamp, error: event.error?.message, errorCode: event.error?.errorDetail, readyState: channel.readyState, label: channel.label });
+    };
+    channel.onclose = (event) => {
+        const st = __peerState[cid];
+        if (st) {
+            failFileTransfers(st);
+        }
+        this.log(`${channel.label}: closed`, null);
+        emit({ type: 'close', target: channel, timeStamp: event.timeStamp, readyState: channel.readyState, label: channel.label, id: channel.id });
+        if (__dataChannel[cid] && __dataChannel[cid][stored] === channel) {
+            delete __dataChannel[cid][stored];
+            if (Object.keys(__dataChannel[cid]).length === 0) {
+                closeRTC.call(this, { cid });
+            }
+        }
     };
 }
 
@@ -852,6 +994,7 @@ export async function closeRTC(params: { cid?: string; close_all?: boolean }): P
         const st = __peerState[cid];
         if (st) {
             clearTimeout(st.ringTimer);
+            failFileTransfers(st);
             for (const off of st.cleanup.values()) {
                 off();
             }
@@ -1079,6 +1222,62 @@ function resolved(cid: string): RTCResolved {
                 throw invalid('addChannel() takes RTCDataChannelInit as its second argument.');
             }
             return openChannel.call(self, cid, init ? { ...init, protocol } : protocol);
+        },
+        sendFile: (file: Blob, options?: RTCSendFileOptions) => {
+            alive();
+            if (typeof Blob === 'undefined' || !(file instanceof Blob)) {
+                throw invalid('sendFile() needs a File or Blob.');
+            }
+            const opt: any = isPlainObject(options) ? options : {};
+            if (opt.name !== undefined && (typeof opt.name !== 'string' || !opt.name)) {
+                throw invalid('"name" should be a non-empty string.');
+            }
+            if (opt.onProgress !== undefined && typeof opt.onProgress !== 'function') {
+                throw invalid('"onProgress" should be a function.');
+            }
+            const name: string = opt.name || (file as File).name || 'file';
+            const mime = file.type || 'application/octet-stream';
+            const size = file.size;
+            const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+            const run = async (): Promise<RTCFileInfo> => {
+                alive();
+                const channel = await ensureFileChannel.call(self, cid);
+                channel.bufferedAmountLowThreshold = FILE_LOW_WATER;
+                const receipt = new Promise<void>((resolve, reject) => st.fileAcks.set(id, { resolve, reject }));
+                receipt.catch(() => { });
+                channel.send(JSON.stringify({ k: 'file', id, name, size, type: mime }));
+                let offset = 0;
+                while (offset < size) {
+                    if (channel.readyState !== 'open') {
+                        throw new SkapiError('The file channel closed.', { code: 'INVALID_REQUEST' });
+                    }
+                    if (channel.bufferedAmount > FILE_HIGH_WATER) {
+                        // the connection's buffer is full: wait for it to drain instead of piling the whole file into memory
+                        await new Promise<void>(resolve => {
+                            const go = () => {
+                                channel.removeEventListener('bufferedamountlow', go);
+                                channel.removeEventListener('close', go);
+                                resolve();
+                            };
+                            channel.addEventListener('bufferedamountlow', go);
+                            channel.addEventListener('close', go);
+                        });
+                        continue;
+                    }
+                    const chunk = await file.slice(offset, offset + FILE_CHUNK).arrayBuffer();
+                    channel.send(chunk);
+                    offset += chunk.byteLength;
+                    if (opt.onProgress) {
+                        try { opt.onProgress(offset, size); } catch (err) { self.log('onProgress', err); }
+                    }
+                }
+                channel.send(JSON.stringify({ k: 'end', id }));
+                await receipt;
+                return { id, name, size, mime };
+            };
+            const p = st.fileQueue.then(run, run);
+            st.fileQueue = p.catch(() => { });
+            return p;
         }
     };
 }

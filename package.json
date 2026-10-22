@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "2.2.14",
+  "version": "2.2.15",
   "description": "Serverless Backend API for Web Developers.",
   "main": "dist/skapi.cjs",
   "browser": "dist/skapi.browser.mjs",

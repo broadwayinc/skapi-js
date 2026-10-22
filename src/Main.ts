@@ -21,6 +21,8 @@ export type {
     RTCEncodingOption,
     RTCChannelOption,
     RTCShareOptions,
+    RTCFileInfo,
+    RTCSendFileOptions,
     WebSocketMessage,
     RealtimeCallback,
     DelRecordQuery,
