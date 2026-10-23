@@ -1120,22 +1120,45 @@ export async function login(
 
     const typed = params.username || params.email;
 
+    // The e-mail alias is always {service}-md5(LOWERCASED e-mail): that is the one
+    // spelling Cognito knows an e-mail account by, so the lowercased e-mail is tried
+    // FIRST. An e-mail typed with Caps Lock on, or capitalised by a phone keyboard,
+    // then signs in on the first attempt. The raw string is kept as a fallback for
+    // the one case it still resolves: an account whose USERNAME is an e-mail-shaped
+    // mixed-case string (signup does not lowercase 'username').
+    //
+    // History: until 2.2.17 the order was the other way round, raw first and the
+    // lowercased form on retry, and the retry keyed on Cognito's own error names
+    // (UserNotFoundException, NotAuthorizedException). authenticateUser() renames
+    // both to INCORRECT_USERNAME_OR_PASSWORD before they get here, so the retry
+    // never ran and a capitalised e-mail was refused as a wrong password.
+    const first = normalizedEmail || typed;
+    const fallback = normalizedEmail && normalizedEmail !== typed ? typed : null;
+
     try {
-        return await authentication.bind(this)().authenticateUser(typed, params.password);
+        return await authentication.bind(this)().authenticateUser(first, params.password);
     }
     catch (err: any) {
-        // The e-mail alias is always md5(LOWERCASED e-mail), but an account whose
-        // USERNAME happens to be an e-mail-shaped mixed-case string is resolved by
-        // the raw string (signup does not lowercase 'username'). So the raw form is
-        // tried first, and the normalized form only as a fallback: capitalising an
-        // e-mail on a phone keyboard still signs in, and no existing account loses
-        // the handle it already had.
-        // Only retried for "no such user / bad credentials". A signup-confirmation
-        // or disabled-account error means the account WAS found, so it stands.
-        let retryable = err?.code === 'UserNotFoundException' || err?.code === 'NotAuthorizedException';
+        // Only retried for "no such user / bad credentials", under the name
+        // authenticateUser() gives them (the raw Cognito names are kept in case a
+        // path hands them through unmapped). A signup-confirmation or
+        // disabled-account error means the account WAS found, so it stands.
+        const retryable = err?.code === 'INCORRECT_USERNAME_OR_PASSWORD'
+            || err?.code === 'UserNotFoundException'
+            || err?.code === 'NotAuthorizedException';
 
-        if (retryable && normalizedEmail && normalizedEmail !== typed) {
-            return await authentication.bind(this)().authenticateUser(normalizedEmail, params.password);
+        if (retryable && fallback) {
+            try {
+                return await authentication.bind(this)().authenticateUser(fallback, params.password);
+            }
+            catch (second: any) {
+                // The fallback found an account (confirmation needed, disabled): its
+                // error stands. It found none: the FIRST error stands, since the
+                // lowercased address is the one an e-mail account is stored under,
+                // and "incorrect password" must not turn into "no such account".
+                const notFound = ['INCORRECT_USERNAME_OR_PASSWORD', 'NOT_EXISTS', 'UserNotFoundException', 'NotAuthorizedException'];
+                throw notFound.includes(second?.code) ? err : second;
+            }
         }
 
         throw err;
