@@ -1332,6 +1332,11 @@ function encryptionView(rawConfig: any, validated: any): any {
  * Refuse a database READ from a session with no signed-in user when the project
  * says users must sign in.
  *
+ * Applies to getRecords() only. The metadata listings (getTables, getTags,
+ * getIndexes, getUniqueId) ran through this too from September 2026 until
+ * 2.2.17, when the gate was removed on both the SDK and the backend (owner
+ * decision, 2026-10-23): they answer any caller that knows the project id.
+ *
  * `require_login` is set by the project owner and arrives on the unauthenticated
  * connection response, so this can be decided before any credential exists.
  * Enforced only when the flag is PRESENT and exactly `true`: a project that has
@@ -2201,7 +2206,6 @@ export async function getTables(
     },
     fetchOptions?: FetchOptions
 ): Promise<DatabaseResponse<Table>> {
-    await requireLoginGate.call(this, 'getTables');
     let res = await request.bind(this)('get-table', validator.Params(query || {}, {
         // Escaped, because storage holds the escaped form: a lookup for a table literally named
         // "a/b" has to go out as "a%2Fb" or it matches nothing. The response is decoded below, so
@@ -2276,7 +2280,6 @@ export async function getIndexes(
     },
     fetchOptions?: FetchOptions
 ): Promise<DatabaseResponse<Index>> {
-    await requireLoginGate.call(this, 'getIndexes');
     if (!query?.table) {
         throw new SkapiError('"table" is required.', { code: 'INVALID_PARAMETER' });
     }
@@ -2393,7 +2396,6 @@ export async function getTags(
     },
     fetchOptions?: FetchOptions
 ): Promise<DatabaseResponse<Tag>> {
-    await requireLoginGate.call(this, 'getTags');
 
     let res = await request.bind(this)(
         'get-tag',
@@ -2432,7 +2434,6 @@ export async function getUniqueId(
     }>,
     fetchOptions?: FetchOptions
 ): Promise<DatabaseResponse<UniqueId>> {
-    await requireLoginGate.call(this, 'getUniqueId');
 
     let res = await request.bind(this)(
         'get-uniqueid',

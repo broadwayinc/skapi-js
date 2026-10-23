@@ -1242,12 +1242,10 @@ export default class Skapi {
 	 * are lexicographic. An 'ends with' search returns its matches in the
 	 * order of the unique ID read from its last character backwards.
 	 *
-	 * Refused to a signed out caller when the project's `require_login`
-	 * setting is on: REQUIRE_LOGIN from the SDK, INVALID_REQUEST from the
-	 * backend for a caller that skips it. A project that has never set the
-	 * flag counts as ON. This listing used to be served to anyone who knew
-	 * the project id, and called with no `unique_id` it enumerates every
-	 * unique ID in the project.
+	 * Served to any caller that knows the project id, signed in or not: the
+	 * project's `require_login` setting does not apply to this listing (it did
+	 * from September 2026 until 2.2.17).
+	 * Called with no `unique_id` it enumerates every unique ID in the project.
 	 *
 	 * The listing is NOT filtered by access group: a row is keyed by the
 	 * unique ID alone, so any caller who gets past the sign in check sees the
@@ -2353,15 +2351,9 @@ export default class Skapi {
 	 * match you want. Omit the key to get the default: an explicit undefined
 	 * or null `condition` is rejected with INVALID_PARAMETER.
 	 *
-	 * Refused to a signed out caller when the project's `require_login`
-	 * setting is on. The SDK throws REQUIRE_LOGIN before the request leaves,
-	 * and the backend refuses the same call with INVALID_REQUEST, so a direct
-	 * HTTP call or an older SDK with no gate is refused too. A project that
-	 * has never set the flag counts as ON, the same default
-	 * `getConnectionInfo()` already reports as `conf.require_login`. Table
-	 * metadata used to be served to anyone who knew the project id, so an
-	 * integration that listed tables with no signed in user now gets an error
-	 * where it used to get a list.
+	 * Served to any caller that knows the project id, signed in or not: the
+	 * project's `require_login` setting does not apply to this listing (it did
+	 * from September 2026 until 2.2.17).
 	 *
 	 * Table NAMES are never filtered: every table in the project is listed,
 	 * whatever access group the records inside it live in. The per access
@@ -2438,11 +2430,9 @@ export default class Skapi {
 	 * key to get the default: an explicit undefined or null condition is
 	 * rejected with INVALID_PARAMETER.
 	 *
-	 * Refused to a signed out caller when the project's `require_login`
-	 * setting is on: REQUIRE_LOGIN from the SDK, INVALID_REQUEST from the
-	 * backend for a caller that skips it. A project that has never set the
-	 * flag counts as ON. Index metadata used to be served to anyone who knew
-	 * the project id.
+	 * Served to any caller that knows the project id, signed in or not: the
+	 * project's `require_login` setting does not apply to this listing (it did
+	 * from September 2026 until 2.2.17).
 	 *
 	 * The listing is NOT filtered by access group, for any caller. A stored
 	 * index row is keyed by table and index name with the access group left
@@ -2525,11 +2515,9 @@ export default class Skapi {
 	 * key to get the default: an explicit undefined or null `condition` is
 	 * rejected with INVALID_PARAMETER.
 	 *
-	 * Refused to a signed out caller when the project's `require_login`
-	 * setting is on: REQUIRE_LOGIN from the SDK, INVALID_REQUEST from the
-	 * backend for a caller that skips it. A project that has never set the
-	 * flag counts as ON. Tag metadata used to be served to anyone who knew
-	 * the project id.
+	 * Served to any caller that knows the project id, signed in or not: the
+	 * project's `require_login` setting does not apply to this listing (it did
+	 * from September 2026 until 2.2.17).
 	 *
 	 * The listing is NOT filtered by access group, for any caller. A stored
 	 * tag row is keyed by tag and table name with the access group left out
