@@ -360,6 +360,11 @@ export type Connection = {
          * anonymous record WRITES. Defaults to true.
          */
         require_login?: boolean;
+        /**
+         * Whether visitors may sign in with a temporary account (anonymousLogin()).
+         * Off until the project owner turns it on. Unrelated to `prevent_anonymous`.
+         */
+        anonymous_login?: boolean;
     },
     ai_agent?: string; // AI agent info.
 }
@@ -517,6 +522,11 @@ export type UserProfile = {
 
      */
     approved: string;
+    /**
+     * true on a temporary account made with anonymousLogin(): no e-mail, no password, deleted
+     * 30 minutes after the visitor's last keep-alive. Absent on every other account.
+     */
+    anonymous?: boolean;
     /** Last login timestamp(Seconds). */
     log: number;
     /** Shows true when user has verified their E-Mail. */
@@ -611,6 +621,8 @@ export type UserPublic = {
 
      */
     approved: string;
+    /** true on a temporary account made with anonymousLogin(). Absent on every other account. */
+    anonymous?: boolean;
     /** Account created timestamp(13 digit milliseconds). */
     timestamp: number;
     /** Last login timestamp(Seconds). */
@@ -826,6 +838,11 @@ export type ConnectionInfo = {
          * anonymous record WRITES. Defaults to true.
          */
         require_login?: boolean;
+        /**
+         * Whether visitors may sign in with a temporary account (anonymousLogin()).
+         * Off until the project owner turns it on. Unrelated to `prevent_anonymous`.
+         */
+        anonymous_login?: boolean;
     }
 };
 

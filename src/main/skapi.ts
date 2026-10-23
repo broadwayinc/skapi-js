@@ -137,6 +137,8 @@ import {
 	_out,
 	openIdLogin,
 	loginWithToken,
+	anonymousLogin,
+	startAnonymousKeepAlive,
 } from '../methods/user';
 import {
 	extractFormData,
@@ -872,6 +874,13 @@ export default class Skapi {
 						if (encryptionConfig) {
 							startDeviceUnlock.bind(this)();
 						}
+						// An anonymous session restored from storage: beat now, so a
+						// page that was closed for a while learns at once whether its
+						// account was swept (the beat signs it out then), and every
+						// 10 minutes after. Not awaited, for the reason given above.
+						if (this.user?.anonymous) {
+							startAnonymousKeepAlive.bind(this)(true);
+						}
 						// only run login listeners if user is logged in (auto login successful)
 						this._runOnLoginListeners(this.user);
 						this._runOnUserUpdateListeners(this.user);
@@ -1341,6 +1350,21 @@ export default class Skapi {
 		openid: { [attribute: string]: string };
 	}> {
 		return openIdLogin.bind(this)(params);
+	}
+
+	/**
+	 * Signs the visitor in with a temporary anonymous account: no e-mail, no password, access
+	 * group 1, `anonymous: true` on the profile. The account lives while a page holds its
+	 * session (the SDK sends a keep-alive every 10 minutes, and once when a page load restores
+	 * the session) and is deleted 30 minutes after the last keep-alive, or at once on logout().
+	 * It cannot edit its profile, change or reset its password, verify an e-mail or a phone
+	 * number, or subscribe to newsletters. Requires the project's "Anonymous Login" setting.
+	 * Resolves to the current profile when the page already holds an anonymous session, and is
+	 * refused with INVALID_REQUEST while another user is logged in.
+	 * @returns A promise that resolves to Promise<UserProfile>.
+	 */
+	anonymousLogin(): Promise<UserProfile> {
+		return anonymousLogin.bind(this)();
 	}
 
 	/**

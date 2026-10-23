@@ -210,6 +210,10 @@ async function getEndpoint(dest: string, auth: boolean, stableGateway?: boolean)
         // reach a Lambda that was deployed and answering. Found by a live end-to-end run, not by
         // a unit test: nothing below this line is exercised without a network.
         case 'grid-query':
+        // Anonymous accounts (record stack, AnonymousLogin Lambda): /anonymous-login is public,
+        // /anonymous-session carries the token. See anonymousLogin() in methods/user.ts.
+        case 'anonymous-login':
+        case 'anonymous-session':
         case 'grant-private-access':
         case 'request-private-access-key':
         case 'get-ws-group':

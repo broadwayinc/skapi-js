@@ -875,8 +875,105 @@ export async function checkAdmin() {
     return false;
 }
 
+// ---------------------------------------------------------------------------
+// Anonymous accounts (anonymousLogin()).
+//
+// A temporary account the backend creates with no e-mail and a random password nobody keeps
+// (record stack, /anonymous-login). It lives while a page holds its session: this keep-alive
+// moves the account's expiry to now + 30 minutes on every beat (/anonymous-session), and the
+// backend deletes the account 30 minutes after the last one. A beat every 10 minutes leaves two
+// missed beats of margin; a background tab's timers are slowed to once a minute, well inside.
+// One timer per module, as the SDK holds one Cognito session at a time (cognitoUser above).
+// ---------------------------------------------------------------------------
+const ANONYMOUS_KEEPALIVE_MS = 10 * 60 * 1000;
+let anonymousKeepAliveTimer: any = null;
+
+function stopAnonymousKeepAlive() {
+    if (anonymousKeepAliveTimer) {
+        clearInterval(anonymousKeepAliveTimer);
+        anonymousKeepAliveTimer = null;
+    }
+}
+
+async function anonymousKeepAlive(): Promise<void> {
+    if (!this.__user?.anonymous) {
+        stopAnonymousKeepAlive();
+        return;
+    }
+
+    try {
+        await request.bind(this)('anonymous-session', {}, { auth: true });
+    }
+    catch (err: any) {
+        if (err?.code === 'NOT_EXISTS') {
+            // The account is gone (swept after 30 minutes without a beat, or deleted by an
+            // admin): the session is over. The page can call anonymousLogin() again.
+            this.log('anonymousKeepAlive:account gone, signing out', err);
+            await _out.bind(this)();
+            return;
+        }
+        // offline, a server error: the next beat tries again
+        this.log('anonymousKeepAlive:failed', err);
+    }
+}
+
+/** Starts (or restarts) the keep-alive of the current anonymous session. */
+export function startAnonymousKeepAlive(beatNow: boolean = false) {
+    stopAnonymousKeepAlive();
+
+    anonymousKeepAliveTimer = setInterval(() => {
+        anonymousKeepAlive.bind(this)();
+    }, ANONYMOUS_KEEPALIVE_MS);
+
+    // never keeps a Node process alive on its own
+    if (typeof anonymousKeepAliveTimer?.unref === 'function') {
+        anonymousKeepAliveTimer.unref();
+    }
+
+    if (beatNow) {
+        anonymousKeepAlive.bind(this)();
+    }
+}
+
+/**
+ * Refuses what a temporary account may not do (owner decision 2026-10-23): edit its profile,
+ * change or reset its password, verify an e-mail or a phone number, subscribe to newsletters,
+ * or disable itself. The backend refuses the same operations by the account's username.
+ */
+export function refuseAnonymous(what: string) {
+    if (this.__user?.anonymous) {
+        throw new SkapiError(`Anonymous accounts cannot ${what}.`, { code: 'INVALID_REQUEST' });
+    }
+}
+
+export async function anonymousLogin(): Promise<UserProfile> {
+    await this.__authConnection;
+
+    if (this.__user) {
+        if (this.__user.anonymous) {
+            // the page already holds a temporary account: keep it
+            startAnonymousKeepAlive.bind(this)();
+            return this.user;
+        }
+        throw new SkapiError('A user is already logged in. Log out first.', { code: 'INVALID_REQUEST' });
+    }
+
+    // { username, password }: the backend creates the account and hands its credentials out
+    // once. The login below is the ordinary one, so the session is stored and refreshed like any
+    // other, and the password is never needed again.
+    let credentials = await request.bind(this)('anonymous-login', null);
+
+    let profile = await authentication.bind(this)().authenticateUser(credentials.username, credentials.password, true);
+
+    startAnonymousKeepAlive.bind(this)();
+
+    return profile;
+}
+
 export async function _out(global: boolean = false) {
     let toReturn = null;
+
+    stopAnonymousKeepAlive();
 
     if (cognitoUser) {
         if (global) {
@@ -925,6 +1022,22 @@ export async function logout(params?: Form<{ global: boolean; }>): Promise<'SUCC
     await this.__connection;
 
     let { data } = extractFormData(params);
+
+    if (this.__user?.anonymous) {
+        // A temporary account ends with its session (owner decision 2026-10-23). Best effort:
+        // whatever happens here the page is signed out below, and the backend sweeps the
+        // account 30 minutes after its last keep-alive anyway. No global sign-out either: the
+        // account is being deleted, and Cognito would refuse the call for a user that is gone.
+        try {
+            await request.bind(this)('anonymous-session', { end: true }, { auth: true });
+        }
+        catch (err) {
+            this.log('logout:anonymous account not ended', err);
+        }
+
+        await _out.bind(this)();
+        return 'SUCCESS: The user has been logged out.';
+    }
 
     await _out.bind(this)(data?.global);
     return 'SUCCESS: The user has been logged out.';
@@ -1304,6 +1417,7 @@ export async function signup(
 
 export async function disableAccount(): Promise<'SUCCESS: account has been disabled.'> {
     await this.__connection;
+    refuseAnonymous.bind(this)('be disabled');
     let result = await request.bind(this)('remove-account', { disable: this.__user.user_id }, { auth: true });
     await logout.bind(this)();
     return result;
@@ -1350,6 +1464,8 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>,
     if (!cognitoUser) {
         throw new SkapiError('The user has to be logged in.', { code: 'INVALID_REQUEST' });
     }
+
+    refuseAnonymous.bind(this)('verify an e-mail or a phone number');
 
     if (attribute === 'email' || attribute === 'phone_number') {
         if (!this.__user.hasOwnProperty(attribute)) {
@@ -1527,6 +1643,8 @@ export async function changePassword(params: {
         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
     }
 
+    refuseAnonymous.bind(this)('change their password');
+
     let p = validator.Params(params, {
         'current_password': 'string',
         'new_password': 'string'
@@ -1590,6 +1708,8 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
     if (!this.session) {
         throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
     }
+
+    refuseAnonymous.bind(this)('edit their profile');
 
     let params = validator.Params(form || {}, {
         user_id: (v: string) => validator.UserId(v),
@@ -1842,6 +1962,7 @@ export async function lastVerifiedEmail(params?: {
     revert: boolean;
 }): Promise<string | UserProfile> {
     await this.__connection;
+    refuseAnonymous.bind(this)('change their e-mail');
     let res = await request.bind(this)('last-verified-email', params, { auth: true });
     if (res.includes('SUCCESS')) {
         await authentication.bind(this)().getSession({ refreshToken: true });

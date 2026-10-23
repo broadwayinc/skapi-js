@@ -10,7 +10,7 @@ import {
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
 import { request } from '../utils/network';
-import { checkAdmin } from './user';
+import { checkAdmin, refuseAnonymous } from './user';
 import { normalizeRecord } from './database';
 import { extractFormData } from '../utils/utils';
 
@@ -210,6 +210,7 @@ fetchOptions?: FetchOptions): Promise<{
     subscriber_token?: string;
 }[]> {
     await this.__connection;
+    refuseAnonymous.bind(this)('subscribe to newsletters');
     let isAdmin = await checkAdmin.bind(this)();
 
     params = validator.Params(
@@ -322,6 +323,7 @@ export async function subscribeNewsletter(
     }>
 ): Promise<string> {
     await this.__connection;
+    refuseAnonymous.bind(this)('subscribe to newsletters');
 
     let params = validator.Params(
         form || {},
@@ -472,6 +474,7 @@ export async function unsubscribeNewsletter(
     params: { group: number | 'public' | 'authorized' | (string & {}) | null; }
 ): Promise<string> {
     await this.__connection;
+    refuseAnonymous.bind(this)('subscribe to newsletters');
 
     params = validator.Params(
         params,

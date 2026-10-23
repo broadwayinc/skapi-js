@@ -483,8 +483,25 @@ function extractFormData(
     return { data: form, files };
 }
 
+/**
+ * Whether a Cognito username is an anonymous account's: "{service}-anon<hex>". The server
+ * writes the username and it never changes, so this is the one marker of a temporary account
+ * (anonymousLogin()); the backend reads the same rule (response_interface.is_anonymous_username).
+ */
+function isAnonymousUsername(username: any): boolean {
+    if (typeof username !== 'string') return false;
+    let parts = username.split('-');
+    return parts.length === 2 && parts[1].startsWith('anon');
+}
+
 function parseUserAttributes(attr: { [key: string]: any }) {
     let user: any = {};
+
+    // anonymous: true on a temporary account, derived from the token's username; absent otherwise
+    if (isAnonymousUsername(attr?.['cognito:username'])) {
+        user.anonymous = true;
+    }
+
     // parse attribute structure: [ { Name, Value }, ... ]
     for (let name in attr) {
         let value = attr[name];
@@ -811,6 +828,7 @@ export {
     MD5,
     generateRandom,
     parseUserAttributes,
+    isAnonymousUsername,
     compressCompoundId,
     decompressCompoundId,
     formatServiceId,
