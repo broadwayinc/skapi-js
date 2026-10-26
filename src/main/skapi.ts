@@ -139,6 +139,7 @@ import {
 	loginWithToken,
 	anonymousLogin,
 	startAnonymousKeepAlive,
+	verifyAnonymousSession,
 } from '../methods/user';
 import {
 	extractFormData,
@@ -483,6 +484,11 @@ export default class Skapi {
 
 	private __connection: Promise<Connection>;
 	private __authConnection: Promise<void>;
+	// The restore-time anonymous keep-alive beat, parked here so verifyAnonymousSession() can
+	// await it from outside the constructor (awaiting it inside __authConnection would deadlock,
+	// since the beat itself awaits __connection -> __authConnection). Null when there is no
+	// restored anonymous session to verify, and cleared on sign-out.
+	private __anonymousVerified: Promise<void> | null = null;
 	// Set only when the constructor was given the docs' placeholder and is asking
 	// for the Project ID. It settles once the id is entered and _start() has run
 	// with it. Anything that reads this.service or this.owner before awaiting one
@@ -877,9 +883,12 @@ export default class Skapi {
 						// An anonymous session restored from storage: beat now, so a
 						// page that was closed for a while learns at once whether its
 						// account was swept (the beat signs it out then), and every
-						// 10 minutes after. Not awaited, for the reason given above.
+						// 10 minutes after. Not awaited, for the reason given above;
+						// its promise is parked on __anonymousVerified so
+						// verifyAnonymousSession() can await this one beat instead of
+						// forcing a token refresh.
 						if (this.user?.anonymous) {
-							startAnonymousKeepAlive.bind(this)(true);
+							this.__anonymousVerified = startAnonymousKeepAlive.bind(this)(true) || null;
 						}
 						// only run login listeners if user is logged in (auto login successful)
 						this._runOnLoginListeners(this.user);
@@ -1363,6 +1372,25 @@ export default class Skapi {
 	 */
 	anonymousLogin(): Promise<UserProfile> {
 		return anonymousLogin.bind(this)();
+	}
+
+	/**
+	 * Verifies a temporary anonymous session that autoLogin restored on this page load, and
+	 * resolves to the current profile, or null when there is no live session.
+	 *
+	 * A temporary account is deleted by the server a while after its last keep-alive, so a session
+	 * brought back from storage may belong to an account that is already gone even though its token
+	 * has not expired. This awaits the one keep-alive beat the constructor already sent for the
+	 * restored session: the beat checks the account with the stored token and signs out when the
+	 * server reports it gone. Use it before relying on a restored anonymous session (for example
+	 * before connectRealtime); when it resolves to null, call anonymousLogin() to get a fresh
+	 * account. Unlike getProfile({ refreshToken: true }) it forces no token refresh, so a swept
+	 * account does not trigger the Cognito client's retry of a refresh that can never succeed.
+	 * For a non-anonymous or signed-out session it simply returns the current profile.
+	 * @returns A promise that resolves to Promise<UserProfile | null>.
+	 */
+	verifyAnonymousSession(): Promise<UserProfile | null> {
+		return verifyAnonymousSession.bind(this)();
 	}
 
 	/**

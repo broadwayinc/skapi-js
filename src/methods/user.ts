@@ -917,8 +917,15 @@ async function anonymousKeepAlive(): Promise<void> {
     }
 }
 
-/** Starts (or restarts) the keep-alive of the current anonymous session. */
-export function startAnonymousKeepAlive(beatNow: boolean = false) {
+/**
+ * Starts (or restarts) the keep-alive of the current anonymous session. When `beatNow` is true
+ * the first beat is fired at once and its promise is returned, so a caller that needs to know
+ * whether the restored account is still alive (verifyAnonymousSession) can await that one beat
+ * rather than forcing a token refresh. The beat uses the stored token as it is, so for a session
+ * whose token has not expired it costs one `/anonymous-session` round trip and no Cognito call;
+ * it signs the session out when the server answers NOT_EXISTS.
+ */
+export function startAnonymousKeepAlive(beatNow: boolean = false): Promise<void> | void {
     stopAnonymousKeepAlive();
 
     anonymousKeepAliveTimer = setInterval(() => {
@@ -931,8 +938,28 @@ export function startAnonymousKeepAlive(beatNow: boolean = false) {
     }
 
     if (beatNow) {
-        anonymousKeepAlive.bind(this)();
+        return anonymousKeepAlive.bind(this)();
     }
+}
+
+/**
+ * Awaits the restore-time liveness check of a brought-back anonymous session and returns the
+ * resulting profile, or the current profile when there is nothing anonymous to verify.
+ *
+ * On a page load the constructor starts one keep-alive beat for a restored anonymous session and
+ * parks its promise on `__anonymousVerified` (it cannot be awaited inside the constructor, because
+ * the beat awaits `__connection` which awaits `__authConnection`, so awaiting it there would
+ * deadlock). This method awaits that already-in-flight beat from outside that chain. If the server
+ * swept the account the beat has signed it out, so this resolves to null and the caller can make a
+ * fresh account. No Cognito refresh is forced, so a swept account no longer triggers the Cognito
+ * client's retry of a doomed refresh.
+ */
+export async function verifyAnonymousSession(): Promise<UserProfile | null> {
+    await this.__connection;
+    if (this.__anonymousVerified) {
+        try { await this.__anonymousVerified; } catch (err) { this.log('verifyAnonymousSession', err); }
+    }
+    return this.user;
 }
 
 /**
@@ -974,6 +1001,7 @@ export async function _out(global: boolean = false) {
     let toReturn = null;
 
     stopAnonymousKeepAlive();
+    this.__anonymousVerified = null;
 
     if (cognitoUser) {
         if (global) {
