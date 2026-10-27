@@ -1301,7 +1301,8 @@ export type TicketAction =
             /**
              * What happens after the answer. Absent or "stop": the rest of the chain does not run.
              * "0m": goes on at once, in the background. "<n>m" | "<n>h" | "<n>d" (n >= 1): goes on
-             * after that delay, to the minute. A number: a time in ms since the epoch, to the second
+             * after that delay, rounded to the nearest whole minute (the run starts a few seconds
+             * after that :00, so a repeating chain keeps its grid). A number: a time in ms since the epoch, to the second
              * (a literal in the past is refused at registration; a templated one goes on at once).
              * A run that goes on counts toward the plan's queued ticket runs for the month; Free and
              * Standard stop at theirs (QUOTA_EXCEEDED), Premium is billed past it.
@@ -1345,6 +1346,15 @@ export type TicketReceipt = {
     timestamp: number;
     /** Proof string of the consumption. */
     hash: string;
+    /**
+     * true when the ticket has a concurrency setting, every slot was taken and the call was put
+     * in the ticket's line: the receipt came back at once (HTTP 202, or 200 under return200) and
+     * the chain runs when its turn comes, first in first out. A Respond of the chain reaches
+     * nobody then. See https://docs.skapi.com/tickets/introduction.html#one-at-a-time-concurrency
+     */
+    queued?: true;
+    /** The call's place in the line, 1 = next; set with `queued`. */
+    position?: number;
 };
 
 /** An issued ticket as getTickets() and registerTicket() return it. */
@@ -1369,6 +1379,30 @@ export type Ticket = {
     queued?: number;
     /** When the most recently queued run is due, in ms since the epoch. */
     queued_due?: number;
+    /**
+     * How many consumptions of the ticket may be in flight at once, 1 to 100. Absent = unlimited.
+     * In flight: running now, or answered with a Respond whose rest still waits to go on (the
+     * wait holds its slot). A ticket that calls its own endpoint (a closed loop) should always
+     * have 1: while it runs, every other request gets TICKET_BUSY whatever `when_full` says, so
+     * one loop can never become two. Without the setting every extra call to its endpoint starts
+     * another copy that re-queues itself forever, multiplying the chain's calls, posts and queued
+     * runs until the ticket is switched off. See https://docs.skapi.com/tickets/introduction.html#one-at-a-time-concurrency
+     */
+    concurrency?: number;
+    /**
+     * What a call gets when every slot is taken: 'queue' (the default) puts it in the ticket's
+     * line and answers a receipt with `queued: true`; 'refuse' fails it with TICKET_BUSY. A ticket
+     * whose actions call its own endpoint keeps its line to itself: only its own next round may
+     * wait, an outside call is refused even under 'queue'. The setting has no effect on such a
+     * ticket.
+     */
+    when_full?: 'queue' | 'refuse';
+    /** Consumptions in flight now (slots in use). Returned to the project owner when `concurrency` is set. */
+    running?: number;
+    /** Consumptions waiting in the line. Returned to the project owner when `concurrency` is set. */
+    waiting?: number;
+    /** true when the ticket's actions hold a req to its own endpoint (a ticket that keeps itself going). */
+    self_calling?: boolean;
     /**
      * true on a ticket saved before this release (the dashboard marks it "previous rules"). It
      * keeps running by the rules it was saved with until it is registered again, which applies
@@ -1407,6 +1441,7 @@ export type TicketErrorCode =
     | 'ACTION_FORBIDDEN'
     | 'QUOTA_EXCEEDED'
     | 'ALREADY_RESPONDED'
+    | 'TICKET_BUSY'
     | 'INTERNAL_ERROR';
 
 /**

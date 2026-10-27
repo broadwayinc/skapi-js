@@ -62,7 +62,12 @@ function map_ticket_obj(t): {
         'rv': 'rules_version',
         'on': 'enabled',
         'qn': 'queued',
-        'qdue': 'queued_due'
+        'qdue': 'queued_due',
+        'cc': 'concurrency',
+        'cf': 'when_full',
+        'cn': 'running',
+        'ln': 'waiting',
+        'sc': 'self_calling'
     }
     let new_obj = {};
     for (let k in t) {
@@ -105,6 +110,9 @@ function map_ticket_obj(t): {
 
 // Resolves with the receipt (TicketReceipt), or with whatever a Respond action of the ticket
 // answered: its `body` as sent, or the receipt again when it set none. `T` names that body.
+// A ticket with a concurrency setting whose slots are all taken answers the receipt at once with
+// `queued: true` and `position` (HTTP 202): the chain runs later, first in first out, and its
+// Respond reaches nobody. With when_full "refuse" the call rejects with TICKET_BUSY (HTTP 429).
 export async function consumeTicket<T = TicketReceipt>(params: {
     ticket_id: string;
     method: string; // GET | POST
