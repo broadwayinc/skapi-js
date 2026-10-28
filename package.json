@@ -40,8 +40,7 @@
   "dependencies": {
     "amazon-cognito-identity-js": "^6.3.16",
     "cocochex": "^1.0.4",
-    "qpass": "^1.2.1",
-    "skapi-js": "^2.2.21"
+    "qpass": "^1.2.1"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
