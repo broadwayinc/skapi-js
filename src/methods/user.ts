@@ -222,8 +222,8 @@ export async function registerTicket(
         enabled?: boolean;
         /** Key absent = keep the stored count (a first registration is then unlimited). null = unlimited. An int >= 0 = the remaining count. */
         count?: number | null;
-        /** true or 1 = once per user, n = n times, false or 0 = unlimited. */
-        limit_per_user?: boolean | number;
+        /** true or 1 = once per user, n = n times, false, 0 or null = unlimited. */
+        limit_per_user?: boolean | number | null;
         /** Absolute expiry in ms since epoch, must be in the future. null = never. */
         time_to_live?: number | null;
         condition?: TicketCondition;
