@@ -323,6 +323,9 @@ export async function getJwtToken() {
             }
             catch (err) {
                 this.log('request:new token error', err);
+                if (err?.code === 'NETWORK_ERROR') {
+                    throw err; // the user is still signed in; this request fails for lack of network, as any request would
+                }
                 throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
             }
         }
@@ -351,6 +354,14 @@ function refreshSession(session, cognitoUser) {
             this.log('getSession:refreshSessionCallback', { refreshErr, refreshedSession });
 
             if (refreshErr) {
+                if (refreshErr?.code === 'NetworkError') {
+                    // The server never answered: that says nothing about the session, which is kept with its
+                    // tokens as they are. The next request refreshes again; a realtime socket keeps reconnecting.
+                    // Only an answer from the server (an expired or revoked refresh token, a deleted user) ends it.
+                    this.log('getSession:refreshSessionCallback', 'network error: session kept');
+                    rej(new SkapiError('Network error', { code: 'NETWORK_ERROR' }));
+                    return;
+                }
                 _out.bind(this)();
                 rej(refreshErr);
             }

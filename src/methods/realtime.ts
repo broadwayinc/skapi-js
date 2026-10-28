@@ -4,7 +4,7 @@ import validator from '../utils/validator';
 import { extractFormData } from '../utils/utils';
 import { request } from '../utils/network';
 import { DatabaseResponse, FetchOptions, RealtimeCallback, WebSocketMessage } from '../Types';
-import { answerSdpOffer, receiveIceCandidate, acceptAnswer, discardSignals, queueSignal, __peerConnection, __receiver_ringing, closeRTC, respondRTC, __caller_ringing } from './webrtc';
+import { answerSdpOffer, receiveIceCandidate, acceptAnswer, discardSignals, queueSignal, __peerConnection, __peerState, __receiver_ringing, closeRTC, respondRTC, __caller_ringing, signalKey, rejectRinging, resumeCalls } from './webrtc';
 
 let __iceWaiters: Array<(v: any) => void> = [];
 // The last answer, kept while its credential is valid: a call started later uses it at once.
@@ -83,6 +83,38 @@ export function currentSocketRoom(): string {
 let __keepAliveInterval = null;
 let closedByIntention = true;
 let reconnectAttempts = 0;
+let reconnectTimer = null;
+
+const RECONNECT_WAIT = 3000; // before the first attempt after an unexpected close; doubled each time it fails
+const RECONNECT_MAX_WAIT = 30000;
+
+/**
+ * Another attempt to reopen a socket that closed on its own, after a growing wait. Attempts go on
+ * while the page is open and the user is signed in: a network that is down for a minute comes back,
+ * and the socket with it. An attempt that fails (no network for the token or the handshake, a
+ * handshake the server refused) schedules the next; closeRealtime() ends them.
+ */
+function scheduleReconnect(cb: RealtimeCallback) {
+    if (closedByIntention || reconnectTimer) {
+        return;
+    }
+    if (!this.session) {
+        this.log('realtime reconnect', 'No session: not reconnecting.');
+        cb({ type: 'error', message: 'Skapi: Realtime connection closed. User login is required.' });
+        return;
+    }
+    reconnectAttempts++;
+    const wait = Math.min(RECONNECT_MAX_WAIT, RECONNECT_WAIT * Math.pow(2, reconnectAttempts - 1));
+    this.log('realtime reconnect', `Reconnecting to WebSocket server in ${wait} ms... attempt ${reconnectAttempts}`);
+    cb({ type: 'reconnect', message: 'Reconnecting to WebSocket server...' + reconnectAttempts });
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectRealtime.bind(this)(cb, 0, 'reconnect').catch(err => {
+            this.log('realtime reconnect', err);
+            scheduleReconnect.bind(this)(cb);
+        });
+    }, wait);
+}
 
 async function prepareWebsocket() {
     if (typeof window === 'undefined' || (window as any)._runningInNodeJS) {
@@ -120,6 +152,8 @@ export async function closeRealtime(): Promise<void> {
 
     // __roomList = {};
     reconnectAttempts = 0;
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
 
     if (__keepAliveInterval) {
         __keepAliveInterval.terminate();
@@ -159,7 +193,8 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
         // if the connection was closed intentionally, and it's not a reconnect attempt
         visibilitychange = () => {
             if (!document.hidden && !closedByIntention) {
-                connectRealtime.bind(this)(cb, 0, 'reconnect');
+                // the tab is back: try now rather than at the end of the wait; a failure keeps the schedule
+                connectRealtime.bind(this)(cb, 0, 'reconnect').catch(err => this.log('realtime visibilitychange', err));
             }
         }
 
@@ -206,10 +241,14 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
         setTimeout(async () => {
           try {
             let socket: WebSocket = await prepareWebsocket.bind(this)();
+            let opened = false; // onclose before onopen: the handshake failed
 
             socket.onopen = () => {
+                opened = true;
                 closedByIntention = false;
                 reconnectAttempts = 0;
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
 
                 if (reconnect !== 'reconnect') {
                     window.addEventListener('visibilitychange', visibilitychange);
@@ -259,6 +298,11 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                 };
 
                 resolve(socket);
+
+                if (reconnect === 'reconnect') {
+                    // the calls that went on while the socket was down: they signal through this socket now
+                    resumeCalls.call(this);
+                }
             };
 
             socket.onmessage = async (event) => {
@@ -364,38 +408,50 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                     // rtc signaling
                     if (msg.sender !== this.user.user_id) {
                         let rtc = msg.message;
+                        // The call the signal is for: keyed by the other side's connection id when the call
+                        // started. A signal that names the call (`call`) finds it even from a connection id
+                        // this side has never seen (the other side's socket reconnected).
+                        const key = signalKey.call(this, msg.sender_cid, rtc);
+                        const named = typeof rtc.call === 'string' && !!rtc.call;
+                        const ours = (id: string) => !named || id === rtc.call; // a named signal acts on its own call only, never on a later one from the same connection
                         if (rtc.hungup) {
                             // otherside has hung up the call
-                            if (__caller_ringing[msg.sender_cid]) {
-                                __caller_ringing[msg.sender_cid](false);
-                                delete __caller_ringing[msg.sender_cid];
+                            let acted = false;
+                            if (__caller_ringing[key] && ours(__peerState[key]?.callId)) {
+                                __caller_ringing[key](false);
+                                delete __caller_ringing[key];
+                                acted = true;
                             }
-                            if (__receiver_ringing[msg.sender_cid]) {
-                                delete __receiver_ringing[msg.sender_cid];
+                            if (__receiver_ringing[key] && ours(__receiver_ringing[key])) {
+                                delete __receiver_ringing[key];
+                                acted = true;
                             }
-                            if (__peerConnection?.[msg.sender_cid]) {
-                                closeRTC.bind(this)({ cid: msg.sender_cid });
+                            if (__peerConnection?.[key] && ours(__peerState[key]?.callId)) {
+                                closeRTC.bind(this)({ cid: key }, !!rtc.lost);
+                                acted = true;
                             }
-                            else {
+                            else if (!__peerConnection?.[key]) {
                                 // a call that was never answered here: its offer must not be answered with the next call's
-                                discardSignals(msg.sender_cid);
+                                discardSignals(key, named ? rtc.call : undefined);
                             }
-                            msg.type = 'rtc:closed';
-                            cb(msg);
+                            if (acted || !named) {
+                                msg.type = 'rtc:closed';
+                                cb(msg);
+                            }
                             return;
                         }
                         if (rtc.candidate) {
-                            queueSignal(msg.sender_cid, () => receiveIceCandidate.bind(this)(rtc.candidate, msg.sender_cid)).catch(err => this.log('rtc candidate', err));
+                            queueSignal(key, () => receiveIceCandidate.bind(this)(rtc.candidate, key)).catch(err => this.log('rtc candidate', err));
                         }
                         if (rtc.sdpoffer) {
-                            if (__peerConnection?.[msg.sender_cid]) {
-                                // a call in progress: the other side added or removed a track, or a channel. Answer it.
-                                queueSignal(msg.sender_cid, () => answerSdpOffer.bind(this)(rtc, msg.sender_cid)).catch(err => this.log('rtc offer', err));
+                            if (__peerConnection?.[key]) {
+                                // a call in progress: the other side added or removed a track, or a channel, or restarts ICE. Answer it.
+                                queueSignal(key, () => answerSdpOffer.bind(this)(rtc, key)).catch(err => this.log('rtc offer', err));
                             }
                             else {
-                                queueSignal(msg.sender_cid, () => answerSdpOffer.bind(this)(rtc, msg.sender_cid)).catch(err => this.log('rtc offer', err)); // kept until the call is answered
-                                if (!__receiver_ringing[msg.sender_cid]) {
-                                    __receiver_ringing[msg.sender_cid] = msg.sender_cid;
+                                queueSignal(key, () => answerSdpOffer.bind(this)(rtc, key)).catch(err => this.log('rtc offer', err)); // kept until the call is answered
+                                if (!__receiver_ringing[key]) {
+                                    __receiver_ringing[key] = named ? rtc.call : key; // the call's name while it rings, so only its own hang-up ends the ringing
                                     delete msg.message;
 
                                     // what the caller said about the call, and what it is sending, readable before answering
@@ -405,17 +461,11 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                                     msg.connectRTC = respondRTC.bind(this)(msg);
                                     msg.type = 'rtc:incoming';
                                     msg.hangup = (() => {
-                                        if (__peerConnection[msg.sender_cid]) {
-                                            closeRTC.bind(this)({ cid: msg.sender_cid });
+                                        if (__peerConnection[key]) {
+                                            closeRTC.bind(this)({ cid: key });
                                         }
-                                        else if (__receiver_ringing[msg.sender_cid]) {
-                                            delete __receiver_ringing[msg.sender_cid];
-                                            socket.send(JSON.stringify({
-                                                action: 'rtc',
-                                                uid: msg.sender_cid,
-                                                content: { hungup: this.user.user_id },
-                                                token: this.session.accessToken.jwtToken
-                                            }));
+                                        else if (__receiver_ringing[key]) {
+                                            rejectRinging.call(this, key);
                                         }
                                     }).bind(this);
 
@@ -425,14 +475,14 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                         }
                         if (rtc.pickup) {
                             // receiver has answered the call
-                            if (__caller_ringing[msg.sender_cid]) {
-                                __caller_ringing[msg.sender_cid](true);
-                                delete __caller_ringing[msg.sender_cid];
+                            if (__caller_ringing[key] && ours(__peerState[key]?.callId)) {
+                                __caller_ringing[key](true);
+                                delete __caller_ringing[key];
                             }
                         }
                         if (rtc.sdpanswer) {
-                            // the other side's answer to an offer of ours: the first one, or a renegotiation
-                            queueSignal(msg.sender_cid, () => acceptAnswer.bind(this)(rtc, msg.sender_cid)).catch(err => this.log('rtc answer', err));
+                            // the other side's answer to an offer of ours: the first one, a renegotiation, or an ICE restart
+                            queueSignal(key, () => acceptAnswer.bind(this)(rtc, key)).catch(err => this.log('rtc answer', err));
                         }
                     }
                 }
@@ -442,24 +492,27 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
             };
 
             socket.onclose = () => {
-                if (closedByIntention) {
+                if (closedByIntention && opened) {
                     this.log('realtime onclose', 'WebSocket connection closed.');
                     cb({ type: 'close', message: 'WebSocket connection closed.' });
                 }
+                else if (closedByIntention) {
+                    // closeRealtime() before the first socket ever opened, or the handshake of the first one failed
+                    this.log('realtime onclose', 'WebSocket closed before it opened.');
+                    failed(new SkapiError('WebSocket closed before it opened.', { code: 'INVALID_REQUEST' }));
+                    cb({ type: 'error', message: 'Skapi: WebSocket connection failed.' });
+                }
                 else {
-                    this.log('realtime onclose', 'WebSocket unexpected close.');
-                    cb({ type: 'error', message: 'Skapi: WebSocket unexpected close.' });
-
-                    reconnectAttempts++;
-                    if (reconnectAttempts < 3) {
-                        this.log('realtime onclose', 'Reconnecting to WebSocket server...' + reconnectAttempts);
-                        cb({ type: 'reconnect', message: 'Reconnecting to WebSocket server...' + reconnectAttempts });
-                        connectRealtime.bind(this)(cb, 3000, 'reconnect');
+                    if (!opened) {
+                        // a reconnect whose handshake failed: settle this attempt so the next one starts fresh
+                        this.log('realtime onclose', 'WebSocket closed before it opened.');
+                        failed(new SkapiError('WebSocket closed before it opened.', { code: 'INVALID_REQUEST' }));
                     }
                     else {
-                        this.log('realtime onclose', 'Max reconnection attempts reached.');
-                        cb({ type: 'error', message: 'Skapi: Max reconnection attempts reached.' });
+                        this.log('realtime onclose', 'WebSocket unexpected close.');
+                        cb({ type: 'error', message: 'Skapi: WebSocket unexpected close.' });
                     }
+                    scheduleReconnect.bind(this)(cb);
                 }
             };
 

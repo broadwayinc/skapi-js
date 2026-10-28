@@ -30,6 +30,9 @@ type PeerState = {
     remoteSources: { [mid: string]: string }; // what the other side says its tracks are, by transceiver mid
     encoding: RTCEncodingOption | null;
     receive: { audio?: boolean; video?: boolean } | null; // the answering side's `receive`, applied once the offer is set: a transceiver made before that would not be matched with the offer's
+    callId: string | null; // the call's name in every signal, the same on both sides: a signal from a connection id this side has never seen still finds its call
+    peerCid: string; // the other side's connection id as of its last signal, where this side's signals go; the key of this entry until its socket reconnected and the server gave it another
+    recovery: Recovery | null; // set while the connection is down and being brought back
     ringTimer: any;
     fileIn: FileIn | null; // the file arriving right now (the other side sends one at a time)
     fileQueue: Promise<any>; // this side's sends, one after another
@@ -39,7 +42,85 @@ type PeerState = {
 
 type FileIn = { id: string; name: string; size: number; mime: string; received: number; reported: number; chunks: ArrayBuffer[] };
 
-const __peerState: { [cid: string]: PeerState } = {};
+/**
+ * A connection that dropped is not closed: the browser often brings it back by itself within a
+ * few seconds, and when it does not, an ICE restart finds a new path (a phone that moved from
+ * Wi-Fi to mobile data, a router that changed the port). `restarts` counts the restarts sent;
+ * `wait` is the pause before the first one; `deadline` ends the call when nothing helped.
+ */
+type Recovery = { restarts: number; wait: any; deadline: any };
+
+const RECOVERY_WAIT = 3000; // 'disconnected' is often momentary: this long before the first ICE restart
+const RECOVERY_RESTARTS = 2; // ICE restarts before 'failed' ends the call
+const RECOVERY_DEADLINE = 15000; // without 'connected' this long after the drop, the call is lost
+
+export const __peerState: { [cid: string]: PeerState } = {};
+
+/**
+ * Connection ids that stand for a call keyed under another one. A call is keyed by the other
+ * side's connection id when it started. When that side's realtime socket reconnects, the server
+ * gives it a new id, and its signals arrive from that id; the call itself goes on (the media and
+ * data channels run between the browsers, not through the socket). The new id is aliased to the
+ * key, so the app's handle, the events and closeRTC() keep working under the old one.
+ */
+const __cidAlias: { [cid: string]: string } = {};
+
+export function resolveKey(cid: string): string {
+    return __cidAlias[cid] || cid;
+}
+
+function callOwner(callId: string): string | null {
+    for (const key in __peerState) {
+        if (__peerState[key].callId === callId) {
+            return key;
+        }
+    }
+    return null;
+}
+
+function newCallId(): string {
+    return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+/** The other side now signals from another connection id. Remembered, so this side's signals reach it, and told to the app. */
+function rebindPeer(key: string, cid: string) {
+    const st = __peerState[key];
+    if (!st || st.peerCid === cid) {
+        return;
+    }
+    const previous = st.peerCid;
+    if (__cidAlias[previous] === key) {
+        delete __cidAlias[previous];
+    }
+    st.peerCid = cid;
+    if (cid !== key) {
+        __cidAlias[cid] = key;
+    }
+    this.log('rtc cidchange', `"${key}" now signals from "${cid}".`);
+    const cb = __rtcEvents[key];
+    if (cb) {
+        cb({ type: 'cidchange', target: __peerConnection[key], timestamp: now(), cid, previous });
+    }
+}
+
+/**
+ * Which call a signal belongs to: the key of its entry here. The sender's connection id, unless
+ * the signal names its call and that call is keyed under an earlier id of the sender (its socket
+ * reconnected): then the new id is aliased to the key, and this side's signals go to it from now on.
+ */
+export function signalKey(senderCid: string, content: any): string {
+    if (content && typeof content.call === 'string' && content.call) {
+        const owner = callOwner(content.call);
+        if (owner) {
+            if (owner !== senderCid) {
+                rebindPeer.call(this, owner, senderCid);
+            }
+            return owner;
+        }
+        return senderCid;
+    }
+    return resolveKey(senderCid);
+}
 
 const __signalChain: { [cid: string]: Promise<any> } = {};
 
@@ -227,9 +308,18 @@ function checkMedia(media: any): any {
         throw invalid(`"media" should be a MediaStream, or an object: { audio, video, screen }.`);
     }
     for (const key of ['audio', 'video']) {
-        if (media[key] !== undefined && typeof media[key] !== 'boolean' && !isPlainObject(media[key])) {
-            throw invalid(`"media.${key}" should be a boolean or track constraints.`);
+        const v = media[key];
+        if (isTrack(v)) {
+            // a track of the app's own, sent as the microphone or the camera: no capture, no permission prompt
+            if (v.kind !== key) {
+                throw invalid(`"media.${key}" is ${v.kind === 'audio' ? 'an audio' : 'a video'} track.`);
+            }
+            continue;
         }
+        if (v === undefined || typeof v === 'boolean' || isPlainObject(v)) {
+            continue;
+        }
+        throw invalid(`"media.${key}" should be a boolean, track constraints, or a MediaStreamTrack.`);
     }
     if (media.screen !== undefined && typeof media.screen !== 'boolean' && !isPlainObject(media.screen)) {
         throw invalid(`"media.screen" should be true, or the options of getDisplayMedia().`);
@@ -240,8 +330,17 @@ function checkMedia(media: any): any {
     return media;
 }
 
+function isTrack(v: any): v is MediaStreamTrack {
+    return typeof MediaStreamTrack !== 'undefined' && v instanceof MediaStreamTrack;
+}
+
+/** `audio` or `video` as something to capture: true or constraints. A track given is not captured (it is an object too, so it is ruled out first). */
+function wantsUser(v: any): boolean {
+    return v === true || (isPlainObject(v) && !isTrack(v));
+}
+
 function wantsCapture(media: any): boolean {
-    return isPlainObject(media) && !!(media.audio || media.video || media.screen);
+    return isPlainObject(media) && !!(wantsUser(media.audio) || wantsUser(media.video) || media.screen);
 }
 
 function requireSecureContext() {
@@ -336,7 +435,7 @@ function checkMeta(meta: any): Record<string, any> {
     }
 }
 
-function newState(polite: boolean, meta: Record<string, any>, encoding: RTCEncodingOption | null): PeerState {
+function newState(key: string, polite: boolean, meta: Record<string, any>, encoding: RTCEncodingOption | null): PeerState {
     return {
         polite,
         makingOffer: false,
@@ -351,6 +450,9 @@ function newState(polite: boolean, meta: Record<string, any>, encoding: RTCEncod
         remoteSources: {},
         encoding,
         receive: null,
+        callId: null,
+        peerCid: key,
+        recovery: null,
         ringTimer: null,
         fileIn: null,
         fileQueue: Promise.resolve(),
@@ -377,6 +479,7 @@ function discardPeer(cid: string) {
     const st = __peerState[cid];
     if (st) {
         clearTimeout(st.ringTimer);
+        clearRecovery(st);
         failFileTransfers(st);
         for (const off of st.cleanup.values()) {
             off();
@@ -442,7 +545,30 @@ async function captureInto(cid: string, media: any): Promise<void> {
         addLocalTracks.call(this, cid, media.getTracks(), media);
         return;
     }
-    const { screen, ...constraints } = media;
+    const { screen, audio, video } = media;
+    const given = [audio, video].filter(isTrack) as MediaStreamTrack[];
+    if (given.length) {
+        // the app's own tracks, sent as the microphone and the camera alongside what is captured
+        for (const track of given) {
+            st.sources.set(track, track.kind === 'audio' ? 'microphone' : 'camera');
+        }
+        if (!st.user) {
+            st.user = new MediaStream(given);
+        }
+        else {
+            for (const track of given) {
+                st.user.addTrack(track);
+            }
+        }
+        addLocalTracks.call(this, cid, given, st.user);
+    }
+    const constraints: MediaStreamConstraints = {};
+    if (wantsUser(audio)) {
+        constraints.audio = audio;
+    }
+    if (wantsUser(video)) {
+        constraints.video = video;
+    }
     if (constraints.audio || constraints.video) {
         const tracks = await captureUser(cid, constraints);
         addLocalTracks.call(this, cid, tracks, st.user);
@@ -782,12 +908,38 @@ async function sendSignal(cid: string, content: any) {
     if (!socket || socket.readyState !== 1) {
         throw new SkapiError('Realtime connection is not ready.', { code: 'INVALID_REQUEST' });
     }
-    socket.send(JSON.stringify({
+    socket.send(JSON.stringify(signalEnvelope.call(this, cid, content)));
+}
+
+/**
+ * A signal of a call, addressed to the other side's current connection id (the relay delivers to
+ * one connection only) and naming the call (`call`), so the other side finds the call even when
+ * this side's own connection id has changed since the call started.
+ */
+function signalEnvelope(key: string, content: any) {
+    const st = __peerState[key];
+    const body = { ...content };
+    if (st && st.callId) {
+        body.call = st.callId;
+    }
+    return {
         action: 'rtc',
-        uid: cid,
-        content,
+        uid: st ? st.peerCid : key,
+        content: body,
         token: this.session.accessToken.jwtToken
-    }));
+    };
+}
+
+/** A signal sent without awaiting the socket: from a socket handler, or where a failure is logged rather than thrown. */
+function postSignal(key: string, content: any) {
+    if (!this.__socket) {
+        return;
+    }
+    Promise.resolve(this.__socket).then((s: WebSocket) => {
+        if (s && s.readyState === 1 && this?.session?.accessToken?.jwtToken) {
+            s.send(JSON.stringify(signalEnvelope.call(this, key, content)));
+        }
+    }, () => null);
 }
 
 /** What each local track is, by the mid of its transceiver, for the other side's 'track' events. */
@@ -823,7 +975,7 @@ function rememberRemoteSources(cid: string, sources: any) {
  * (the one that answered the call) drops its own and answers; the other side ignores the
  * incoming one. The browser raises negotiationneeded again if something is still left to agree.
  */
-async function sendOffer(cid: string, extra: any = {}) {
+async function sendOffer(cid: string, extra: any = {}, options?: RTCOfferOptions) {
     const pc = __peerConnection[cid];
     const st = __peerState[cid];
     if (!pc || !st || pc.signalingState === 'closed') {
@@ -831,8 +983,11 @@ async function sendOffer(cid: string, extra: any = {}) {
     }
     try {
         st.makingOffer = true;
-        const offer = await pc.createOffer();
-        if (pc.signalingState !== 'stable') {
+        const offer = await pc.createOffer(options);
+        // An ICE restart may replace an offer of this side's own that is still waiting for its
+        // answer (one sent while the socket was down never arrived); any other offer waits for stable.
+        const replacing = !!(options && options.iceRestart) && pc.signalingState === 'have-local-offer';
+        if (pc.signalingState !== 'stable' && !replacing) {
             this.log('sendOffer', `offer to "${cid}" dropped: an offer from the other side came first.`);
             return;
         }
@@ -883,6 +1038,9 @@ async function answerOffer(content: any, cid: string) {
         return;
     }
     rememberRemoteSources(cid, content.sources);
+    if (!st.callId && typeof content.call === 'string' && content.call) {
+        st.callId = content.call; // the caller named the call in its first offer
+    }
     this.log('answerSdpOffer from', cid);
     await pc.setRemoteDescription(new RTCSessionDescription(content.sdpoffer)); // the polite side's own pending offer is rolled back by this
     if (st.receive) {
@@ -937,10 +1095,33 @@ export async function acceptAnswer(content: any, cid: string) {
     await receiveIceCandidate.call(this, null, cid);
 }
 
-/** Drops what was kept for a call that never opened on this side: its offer and candidates, once the other side hung up. */
-export function discardSignals(cid: string) {
-    delete __rtcSdpOfferBuffer[cid];
-    delete __rtcCandidatesBuffer[cid];
+/**
+ * Drops what was kept for a call that never opened on this side: its offer and candidates, once
+ * the other side hung up. With `callId`, only that call's: a hang-up of an earlier call from the
+ * same connection must not take the offer of the next one with it.
+ */
+export function discardSignals(cid: string, callId?: string) {
+    if (!callId) {
+        delete __rtcSdpOfferBuffer[cid];
+        delete __rtcCandidatesBuffer[cid];
+        return;
+    }
+    for (const buffer of [__rtcSdpOfferBuffer, __rtcCandidatesBuffer]) {
+        if (buffer[cid]) {
+            buffer[cid] = buffer[cid].filter((item: any) => !(item && item.call === callId));
+            if (!buffer[cid].length) {
+                delete buffer[cid];
+            }
+        }
+    }
+}
+
+/** The answering side's refusal of a call that rings: the caller's `connection` never resolves. Also used after the caller hung up meanwhile. */
+export function rejectRinging(cid: string) {
+    const callId = __receiver_ringing[cid];
+    delete __receiver_ringing[cid];
+    discardSignals(cid, callId !== cid ? callId : undefined);
+    postSignal.call(this, cid, callId && callId !== cid ? { hungup: this.user.user_id, call: callId } : { hungup: this.user.user_id });
 }
 
 export async function receiveIceCandidate(candidate: any, recipient: string) {
@@ -968,7 +1149,7 @@ export async function receiveIceCandidate(candidate: any, recipient: string) {
     }
 }
 
-export async function closeRTC(params: { cid?: string; close_all?: boolean }): Promise<void> {
+export async function closeRTC(params: { cid?: string; close_all?: boolean }, lost?: boolean): Promise<void> {
     if (typeof window === 'undefined' || (window as any)._runningInNodeJS) {
         throw new SkapiError('WebRTC is not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
     }
@@ -976,7 +1157,7 @@ export async function closeRTC(params: { cid?: string; close_all?: boolean }): P
         cid: checkCid,
         close_all: 'boolean'
     });
-    let socket: WebSocket = this.__socket ? await this.__socket : null;
+    let socket: WebSocket = this.__socket ? await this.__socket.catch(() => null) : null;
     let { cid, close_all = false } = params || {};
 
     if (!close_all && !cid) {
@@ -987,6 +1168,12 @@ export async function closeRTC(params: { cid?: string; close_all?: boolean }): P
         if (!cid) {
             throw new SkapiError(`"cid" is required.`, { code: 'INVALID_PARAMETER' });
         }
+        cid = resolveKey(cid); // the app may hold the other side's current connection id; the call is keyed by its first
+        for (const alias in __cidAlias) {
+            if (__cidAlias[alias] === cid) {
+                delete __cidAlias[alias];
+            }
+        }
 
         delete __rtcSdpOfferBuffer[cid];
         delete __rtcCandidatesBuffer[cid];
@@ -994,6 +1181,7 @@ export async function closeRTC(params: { cid?: string; close_all?: boolean }): P
         const st = __peerState[cid];
         if (st) {
             clearTimeout(st.ringTimer);
+            clearRecovery(st);
             failFileTransfers(st);
             for (const off of st.cleanup.values()) {
                 off();
@@ -1012,16 +1200,16 @@ export async function closeRTC(params: { cid?: string; close_all?: boolean }): P
         delete __dataChannel[cid];
 
         if (__peerConnection?.[cid]) {
+            if (lost && __rtcEvents[cid]) {
+                // the connection could not be brought back, on this side or the other: the call ends as lost, not as a hang-up
+                __rtcEvents[cid]({ type: 'lost', target: __peerConnection[cid], timestamp: now() });
+            }
             if (__peerConnection[cid].connectionState !== 'closed') {
                 __peerConnection[cid].close();
 
                 if (socket && socket.readyState === 1 && this?.session?.accessToken?.jwtToken) {
-                    socket.send(JSON.stringify({
-                        action: 'rtc',
-                        uid: cid,
-                        content: { hungup: this.user.user_id },
-                        token: this.session.accessToken.jwtToken
-                    }));
+                    // `lost` travels with the hang-up, so the other side ends the call the same way
+                    socket.send(JSON.stringify(signalEnvelope.call(this, cid, lost ? { hungup: this.user.user_id, lost: true } : { hungup: this.user.user_id })));
                 }
             }
 
@@ -1342,7 +1530,8 @@ export async function connectRTC(
     const fresh = !__peerConnection?.[cid];
     if (fresh) {
         __peerConnection[cid] = new RTCPeerConnection(configuration);
-        __peerState[cid] = newState(false, meta, encoding);
+        __peerState[cid] = newState(cid, false, meta, encoding);
+        __peerState[cid].callId = newCallId();
     }
     const pc = __peerConnection[cid];
     const st = __peerState[cid];
@@ -1446,7 +1635,7 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
         const fresh = !__peerConnection?.[sender];
         if (fresh) {
             __peerConnection[sender] = new RTCPeerConnection(configuration);
-            __peerState[sender] = newState(true, isPlainObject(msg.meta) ? msg.meta : {}, encoding);
+            __peerState[sender] = newState(sender, true, isPlainObject(msg.meta) ? msg.meta : {}, encoding);
         }
         const st = __peerState[sender];
 
@@ -1483,12 +1672,7 @@ export function respondRTC(msg: WebSocketMessage): (params: RTCReceiverParams, c
         peerConnectionHandler.call(this, sender);
         await queueSignal(sender, () => answerSdpOffer.call(this, null, sender));
 
-        socket.send(JSON.stringify({
-            action: 'rtc',
-            uid: sender,
-            content: { pickup: this.user.user_id },
-            token: this.session.accessToken.jwtToken
-        }));
+        socket.send(JSON.stringify(signalEnvelope.call(this, sender, { pickup: this.user.user_id })));
 
         return resolved.call(this, sender);
     }
@@ -1511,12 +1695,122 @@ async function sendIceCandidate(event, recipient) {
     let candidate = event.candidate;
     this.log('ice gathering state set to', __peerConnection[recipient]?.iceGatheringState);
 
-    socket.send(JSON.stringify({
-        action: 'rtc',
-        uid: recipient,
-        content: { candidate },
-        token: this.session.accessToken.jwtToken
-    }));
+    if (socket && socket.readyState === 1) {
+        socket.send(JSON.stringify(signalEnvelope.call(this, recipient, { candidate })));
+    }
+}
+
+/* ---- a dropped connection ---- */
+
+function clearRecovery(st: PeerState) {
+    if (st.recovery) {
+        clearTimeout(st.recovery.wait);
+        clearTimeout(st.recovery.deadline);
+        st.recovery = null;
+    }
+}
+
+/** An ICE restart: a new offer with new credentials, so the browsers look for a path again. `counted` is false for the one sent because the socket came back. */
+function restartIce(key: string, counted = true) {
+    const pc = __peerConnection[key];
+    const st = __peerState[key];
+    if (!pc || !st || !st.recovery || pc.signalingState === 'closed') {
+        return;
+    }
+    if (counted) {
+        st.recovery.restarts++;
+    }
+    this.log('rtc restart', `ICE restart ${st.recovery.restarts} to "${key}".`);
+    sendOffer.call(this, key, {}, { iceRestart: true }).catch(err => this.log('rtc restart', err));
+}
+
+/**
+ * The connection is down. The first time, the app hears `reconnecting` and the deadline starts.
+ * 'disconnected' gets a pause first, since the browser often recovers by itself; 'failed' gets
+ * an ICE restart at once, and after the restarts allowed, the call is given up.
+ */
+function dropped(key: string, state: string) {
+    const pc = __peerConnection[key];
+    const st = __peerState[key];
+    if (!pc || !st || pc.signalingState === 'closed') {
+        return;
+    }
+    if (!st.recovery) {
+        st.recovery = { restarts: 0, wait: null, deadline: setTimeout(() => giveUp.call(this, key), RECOVERY_DEADLINE) };
+        this.log('rtc reconnecting', `"${key}" is ${state}.`);
+        const cb = __rtcEvents[key];
+        if (cb) {
+            cb({ type: 'reconnecting', target: pc, timestamp: now(), state, iceState: pc.iceConnectionState });
+        }
+    }
+    const r = st.recovery;
+    if (state === 'failed') {
+        clearTimeout(r.wait);
+        r.wait = null;
+        if (r.restarts < RECOVERY_RESTARTS) {
+            restartIce.call(this, key);
+        }
+        else {
+            giveUp.call(this, key);
+        }
+    }
+    else if (!r.wait && r.restarts === 0) {
+        r.wait = setTimeout(() => {
+            r.wait = null;
+            if (__peerState[key] === st && st.recovery === r && pc.connectionState !== 'connected') {
+                restartIce.call(this, key);
+            }
+        }, RECOVERY_WAIT);
+    }
+}
+
+/** 'connected' again after a drop. */
+function recovered(key: string) {
+    const st = __peerState[key];
+    if (!st || !st.recovery) {
+        return;
+    }
+    clearRecovery(st);
+    this.log('rtc reconnected', key);
+    const cb = __rtcEvents[key];
+    if (cb) {
+        cb({ type: 'reconnected', target: __peerConnection[key], timestamp: now() });
+    }
+}
+
+/** Nothing brought the connection back: the call ends as lost, on both sides. */
+function giveUp(key: string) {
+    const st = __peerState[key];
+    if (!st || !st.recovery) {
+        return;
+    }
+    clearRecovery(st);
+    this.log('rtc lost', key);
+    closeRTC.call(this, { cid: key }, true).catch(err => this.log('rtc lost', err)); // raises 'lost', then closes
+}
+
+/**
+ * The realtime socket is open again, with a new connection id from the server. Every call tells
+ * the other side so with an empty signal: it arrives from the new id, naming the call, and the
+ * other side's signals come to the new id from then on. A call that is being brought back gets
+ * another ICE restart with it, since one sent while the socket was down never arrived. (When both
+ * sides' sockets reopen at the same moment, each writes to the other's old id, and the call is
+ * lost at the deadline; a new one follows.)
+ */
+export function resumeCalls() {
+    for (const key in __peerState) {
+        const st = __peerState[key];
+        const pc = __peerConnection[key];
+        if (!pc || pc.signalingState === 'closed' || !st.armed) {
+            continue;
+        }
+        if (st.recovery) {
+            restartIce.call(this, key, false);
+        }
+        else {
+            postSignal.call(this, key, {});
+        }
+    }
 }
 
 function peerConnectionHandler(key: string) {
@@ -1622,9 +1916,14 @@ function peerConnectionHandler(key: string) {
             });
 
             let state = peer.connectionState;
-            // Clean up on disconnection
-            if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-                // Close all associated data channels
+            if (state === 'connected') {
+                recovered.call(this, key);
+            }
+            else if (state === 'disconnected' || state === 'failed') {
+                // not the end of the call: the browser, or an ICE restart, brings the connection back more often than not
+                dropped.call(this, key, state);
+            }
+            else if (state === 'closed') {
                 closeRTC.bind(this)({ cid: key });
             }
         }

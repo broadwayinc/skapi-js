@@ -23,9 +23,16 @@ export type RTCScreenOption = boolean | (DisplayMediaStreamOptions & { contentHi
 /**
  * The media a side sends. A MediaStream is sent as it is. An object names what the SDK should
  * capture: `audio` and `video` are passed to getUserMedia() (a boolean or track constraints),
- * `screen` to getDisplayMedia(). Omitted, or everything false, sends no media.
+ * `screen` to getDisplayMedia(). Either may instead be a MediaStreamTrack the page already
+ * holds, sent as the microphone or the camera without a new capture (so without a new permission
+ * prompt); pass `track.clone()` to keep using the original after the call, since hanging up
+ * stops every track on the call. Omitted, or everything false, sends no media.
  */
-export type RTCMediaOption = MediaStream | (MediaStreamConstraints & { screen?: RTCScreenOption; });
+export type RTCMediaOption = MediaStream | {
+    audio?: boolean | MediaTrackConstraints | MediaStreamTrack;
+    video?: boolean | MediaTrackConstraints | MediaStreamTrack;
+    screen?: RTCScreenOption;
+};
 
 /** Codec order and sender limits, applied to every track of the kind, now and when one is added later. */
 export type RTCEncodingOption = {
@@ -110,7 +117,7 @@ export type RTCResolved = {
 }
 
 export type RTCEvent = {
-    type: 'track' | 'trackmute' | 'trackunmute' | 'trackended' | 'unshare' | 'connectionstatechange' | 'close' | 'message' | 'open' | 'bufferedamountlow' | 'error' | 'file' | 'fileprogress' | 'icecandidate' | 'icecandidateend' | 'icecandidateerror' | 'iceconnectionstatechange' | 'icegatheringstatechange' | 'negotiationneeded' | 'signalingstatechange' | 'ringtimeout';
+    type: 'track' | 'trackmute' | 'trackunmute' | 'trackended' | 'unshare' | 'connectionstatechange' | 'reconnecting' | 'reconnected' | 'lost' | 'cidchange' | 'close' | 'message' | 'open' | 'bufferedamountlow' | 'error' | 'file' | 'fileprogress' | 'icecandidate' | 'icecandidateend' | 'icecandidateerror' | 'iceconnectionstatechange' | 'icegatheringstatechange' | 'negotiationneeded' | 'signalingstatechange' | 'ringtimeout';
     [key: string]: any;
 }
 
