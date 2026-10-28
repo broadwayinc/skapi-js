@@ -886,12 +886,28 @@ function normalizeTypedString(v: string) {
             return value;
         case "!N%":
             // !N%0
+            // The stored number is the value shifted up by 2^52, fraction included:
+            // -1.2 is stored as 4503599627370494.8. Unshift the whole part, then put the
+            // fraction back as text so no float arithmetic rounds it.
             let splitDec = value.split('.');
             let calcNumb = Number(splitDec[0]) - 4503599627370496;
             if (splitDec.length === 1) {
                 return calcNumb;
             }
-            return parseFloat(calcNumb.toString() + '.' + splitDec[1]);
+            let fraction = splitDec[1];
+            if (calcNumb >= 0 || !/[1-9]/.test(fraction)) {
+                return parseFloat(calcNumb.toString() + '.' + fraction);
+            }
+            // Negative with a fraction: calcNumb + 0.fraction = -((|calcNumb| - 1) + (1 - 0.fraction)).
+            // 1 - 0.fraction, digit by digit: the last non-zero digit d becomes 10 - d,
+            // every digit before it 9 - digit, and the trailing zeros drop.
+            let digits = fraction.replace(/0+$/, '');
+            let complement = '';
+            for (let i = 0; i < digits.length; i++) {
+                let d = Number(digits[i]);
+                complement += String(i === digits.length - 1 ? 10 - d : 9 - d);
+            }
+            return parseFloat('-' + (-calcNumb - 1).toString() + '.' + complement);
         case "!B%":
             // !B%1
             return value === '1';
