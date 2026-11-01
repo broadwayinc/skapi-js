@@ -88,6 +88,171 @@ let reconnectTimer = null;
 const RECONNECT_WAIT = 3000; // before the first attempt after an unexpected close; doubled each time it fails
 const RECONNECT_MAX_WAIT = 30000;
 
+// The keep-alive. One ping a minute keeps the socket open (API Gateway closes a socket after 10
+// minutes with nothing from the client). A server that answers a ping with {"#pong"} also lets the
+// SDK notice a socket that died WITHOUT closing (a phone that changed networks, a laptop that slept),
+// which the browser itself may not report for minutes: once a socket has answered one ping, a ping it
+// leaves unanswered for PONG_TIMEOUT is a dropped connection. A socket that never answered (a server
+// without the answering route) is never timed out, which is how every socket behaved before 2.2.23.
+const PING_INTERVAL = 60000;
+const PONG_TIMEOUT = 10000;
+// Any frame from the server proves the socket alive (see onmessage), so a busy group's socket
+// could stay "alive" for ever while its own sends and pings go nowhere (a half-dead connection that
+// still receives). This many pings in a row with no pong at all, whatever else arrived, is a drop.
+const PONGLESS_PINGS_DEAD = 3;
+
+// API Gateway closes every connection 2 hours after it opened, whatever happens on it. Rather than
+// lose the ~3 s between that close and the first reconnect attempt (and whatever was sent in them),
+// the SDK opens a fresh socket this long before the cut and switches over: the old one closes on
+// its own and nobody notices.
+const CONNECTION_LIFETIME = 2 * 60 * 60 * 1000;
+const RENEW_BEFORE = 5 * 60 * 1000;
+const RENEW_JITTER = 2 * 60 * 1000; // spread, so a fleet that connected together does not renew together
+
+// The reconnect waits (3, 6, 12, 24, 30 s) each get a random addition of up to this share of the
+// wait, so every client of a region that went down does not come back in the same second: new
+// connections are capped at 500 a second per region.
+const RECONNECT_JITTER = 0.5;
+
+// API Gateway's frame size; the message is refused before it is sent, rather than closing the socket.
+const MAX_FRAME_BYTES = 32 * 1024;
+
+// OUTGOING GROUPING. A page that posts to its group faster than one message per SEND_WINDOW ms (a
+// game sending on every tick, a drawing board on every mouse move) has its messages gathered and
+// sent as one, so a flood of 120 sends a second leaves as 10. Every send is one request against the
+// region's shared quota and one server run, so this is where the cost of a fast app is decided.
+// A message that comes SEND_WINDOW or more after the one before goes at once: a chat, or a game
+// that ticks slower than the window, never waits. Grouped messages reach every member in order.
+const SEND_WINDOW = 100;
+
+// Sent with joinRoom: this SDK reads grouped join/leave updates ("#presence" frames, see
+// presenceNotices). A connection that does not say so keeps getting one notice frame per event.
+const REALTIME_PROTOCOL = 2;
+
+// Pings the current socket at once: the tab is back, or the network is. Set by the open socket.
+let __pingNow: (() => void) | null = null;
+
+// MESSAGE ORDER. Each broadcast carries a per-sender number (`#seq`), so a receiver can put two
+// messages of one sender back in the order they were sent even when the server's fan-out runs
+// delivered them swapped (every broadcast is its own run; a quick pair can overtake). A message out
+// of order waits up to SEQ_WAIT for the gap to fill, then is delivered anyway (a lost message must
+// not block the ones after it). Messages from senders without a number (older SDKs) go straight
+// through, as they always did.
+const SEQ_WAIT = 1500;
+let __sendSeq = 0;
+// per sender connection: the next number expected and the messages waiting for it
+const __order: { [cid: string]: { next: number; waiting: { [seq: number]: () => void }; timer: any } } = {};
+
+function deliverInOrder(cid: string, seq: number, deliver: () => void) {
+    let o = __order[cid];
+    if (!o) {
+        // the first numbered message from this connection sets the baseline
+        o = __order[cid] = { next: seq, waiting: {}, timer: null };
+    }
+    if (seq < o.next) {
+        deliver(); // a late duplicate or something from before a resync: let the app see it
+        return;
+    }
+    o.waiting[seq] = deliver;
+    const drain = () => {
+        while (o.waiting[o.next]) {
+            const d = o.waiting[o.next];
+            delete o.waiting[o.next];
+            o.next++;
+            d();
+        }
+        if (o.timer) {
+            clearTimeout(o.timer);
+            o.timer = null;
+        }
+        const left = Object.keys(o.waiting);
+        if (left.length) {
+            // a gap: give the missing one SEQ_WAIT to arrive, then skip to what we have
+            o.timer = setTimeout(() => {
+                o.timer = null;
+                o.next = Math.min(...Object.keys(o.waiting).map(Number));
+                drain();
+            }, SEQ_WAIT);
+        }
+    };
+    drain();
+}
+
+function forgetOrder(cid: string) {
+    const o = __order[cid];
+    if (!o) return;
+    clearTimeout(o.timer);
+    for (const k of Object.keys(o.waiting).sort((a, b) => Number(a) - Number(b))) {
+        o.waiting[Number(k)]();
+    }
+    delete __order[cid];
+}
+
+// OUTGOING GROUPING state (see SEND_WINDOW): the group messages waiting for the window to end.
+let __sendQueue: { group: string; items: any[]; timer: any } | null = null;
+// when this page last posted to each group (see SEND_WINDOW)
+const __lastSendAt: { [group: string]: number } = {};
+
+// Sends held until the group has heard this connection's own USER_JOINED. The server groups join
+// notices and sends broadcasts at once, so without this a member's first messages could reach the
+// others before they know the member is there (a game would see a move from a player not yet
+// listed). Set by joinRealtime, cleared by the notice; a timer clears it too, so a notice that never
+// comes (an older server) costs at most JOIN_WAIT of delay.
+const JOIN_WAIT = 3000;
+let __awaitJoin: { group: string; sends: (() => void)[]; timer: any } | null = null;
+
+function releaseJoin() {
+    if (!__awaitJoin) return;
+    const a = __awaitJoin;
+    __awaitJoin = null;
+    clearTimeout(a.timer);
+    for (const s of a.sends) s();
+}
+
+type PresenceNotice = [WebSocketMessage['code'], string];
+
+function presenceCodes(c: any): PresenceNotice[] {
+    switch (c) {
+        case 'j':
+            return [['USER_JOINED', 'has joined the message group.']];
+        case 'l':
+            return [['USER_LEFT', 'has left the message group.']];
+        case 'd':
+            // a disconnect has always been two notices, and pages listen for either
+            return [['USER_DISCONNECTED', 'has been disconnected.'], ['USER_LEFT', 'has left the message group.']];
+        default:
+            return [];
+    }
+}
+
+/**
+ * A "#presence" frame as the notices the callback has always received, in order.
+ *
+ * The server groups the joins and leaves of a busy group into one frame:
+ * {"#presence": [[code, user_id, cid], ...], "#srid": group}, code "j" (joined), "l" (left) or
+ * "d" (disconnected). Each event becomes the notice a frame of its own used to carry: same `code`,
+ * `message`, `sender`, `sender_cid` and `sender_rid`, so a page needs no change to read them.
+ */
+function presenceNotices(data: any): WebSocketMessage[] {
+    const group = data?.['#srid'] || null;
+    const notices: WebSocketMessage[] = [];
+    for (const e of data['#presence']) {
+        if (!Array.isArray(e)) continue;
+        const [c, user_id, cid] = e;
+        for (const [code, text] of presenceCodes(c)) {
+            notices.push({
+                type: 'notice',
+                message: `User "${user_id}" ${text}`,
+                sender: user_id || null,
+                sender_cid: cid ? 'cid:' + cid : null,
+                sender_rid: group,
+                code
+            });
+        }
+    }
+    return notices;
+}
+
 /**
  * Another attempt to reopen a socket that closed on its own, after a growing wait. Attempts go on
  * while the page is open and the user is signed in: a network that is down for a minute comes back,
@@ -104,7 +269,8 @@ function scheduleReconnect(cb: RealtimeCallback) {
         return;
     }
     reconnectAttempts++;
-    const wait = Math.min(RECONNECT_MAX_WAIT, RECONNECT_WAIT * Math.pow(2, reconnectAttempts - 1));
+    const base = Math.min(RECONNECT_MAX_WAIT, RECONNECT_WAIT * Math.pow(2, reconnectAttempts - 1));
+    const wait = Math.round(base * (1 + Math.random() * RECONNECT_JITTER));
     this.log('realtime reconnect', `Reconnecting to WebSocket server in ${wait} ms... attempt ${reconnectAttempts}`);
     cb({ type: 'reconnect', message: 'Reconnecting to WebSocket server...' + reconnectAttempts });
     reconnectTimer = setTimeout(() => {
@@ -137,6 +303,7 @@ async function prepareWebsocket() {
 
 
 let visibilitychange = null;
+let online = null;
 
 export async function closeRealtime(): Promise<void> {
     if (typeof window === 'undefined' || (window as any)._runningInNodeJS) {
@@ -168,6 +335,14 @@ export async function closeRealtime(): Promise<void> {
     catch (e) { }
 
     window.removeEventListener('visibilitychange', visibilitychange);
+    window.removeEventListener('online', online);
+    __pingNow = null;
+    if (__sendQueue) {
+        clearTimeout(__sendQueue.timer);
+        __sendQueue = null;
+    }
+    releaseJoin();
+    for (const cid of Object.keys(__order)) forgetOrder(cid);
     this.__socket = null;
     return null;
 }
@@ -193,8 +368,18 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
         // if the connection was closed intentionally, and it's not a reconnect attempt
         visibilitychange = () => {
             if (!document.hidden && !closedByIntention) {
-                // the tab is back: try now rather than at the end of the wait; a failure keeps the schedule
+                // the tab is back: a socket that looks open may have died meanwhile, ask it now
+                if (__pingNow) __pingNow();
+                // a closed one: try now rather than at the end of the wait; a failure keeps the schedule
                 connectRealtime.bind(this)(cb, 0, 'reconnect').catch(err => this.log('realtime visibilitychange', err));
+            }
+        }
+
+        online = () => {
+            if (!closedByIntention) {
+                // the network is back: the same two checks as a tab coming back
+                if (__pingNow) __pingNow();
+                connectRealtime.bind(this)(cb, 0, 'reconnect').catch(err => this.log('realtime online', err));
             }
         }
 
@@ -243,6 +428,103 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
             let socket: WebSocket = await prepareWebsocket.bind(this)();
             let opened = false; // onclose before onopen: the handshake failed
 
+            // The keep-alive of THIS socket (see PING_INTERVAL).
+            let pongSeen = false; // the server answers pings: from now on an unanswered one means a dead socket
+            let pongTimer = null;
+            let pingSentAt = 0;
+            let ponglessPings = 0; // pings since the last "#pong" (see PONGLESS_PINGS_DEAD)
+            let worker: Worker = null;
+            let renewTimer = null;
+
+            const stopPinging = () => {
+                clearTimeout(pongTimer);
+                pongTimer = null;
+                clearTimeout(renewTimer);
+                renewTimer = null;
+                if (worker) {
+                    worker.terminate();
+                    if (__keepAliveInterval === worker) __keepAliveInterval = null;
+                    worker = null;
+                }
+                if (__pingNow === ping) __pingNow = null;
+            };
+
+            const ping = () => {
+                if (socket.readyState !== 1) return;
+                try {
+                    socket.send(JSON.stringify({ action: 'keepAlive' }));
+                } catch (e) {
+                    return;
+                }
+                if (pongSeen) {
+                    ponglessPings++;
+                    if (ponglessPings >= PONGLESS_PINGS_DEAD) {
+                        // other frames may still arrive, but nothing we send comes back: dead
+                        dropSocket('No answer to several keep-alives in a row: the connection is dropped.');
+                        return;
+                    }
+                    if (!pongTimer) {
+                        pingSentAt = Date.now();
+                        pongTimer = setTimeout(noPong, PONG_TIMEOUT);
+                    }
+                }
+            };
+
+            // The socket died without closing (see noPong and PONGLESS_PINGS_DEAD): let it go quietly
+            // (its own close event, whenever the browser gets to it, must not schedule a second
+            // reconnect) and take the path of an unexpected close.
+            const dropSocket = (why: string) => {
+                this.log('realtime keepalive', why);
+                stopPinging();
+                socket.onopen = null;
+                socket.onmessage = null;
+                socket.onclose = null;
+                socket.onerror = null;
+                try {
+                    socket.close();
+                } catch (e) { }
+                cb({ type: 'error', message: 'Skapi: WebSocket unexpected close.' });
+                scheduleReconnect.bind(this)(cb);
+            };
+
+            const noPong = () => {
+                pongTimer = null;
+                if (closedByIntention || socket.readyState !== 1) return;
+                if (Date.now() - pingSentAt > PONG_TIMEOUT * 3) {
+                    // The timer ran far too late: the page was frozen in the background, and the
+                    // answer may be waiting in the queue. Ask again rather than give the socket up.
+                    ping();
+                    return;
+                }
+                // No answer from a socket that answered before (and nothing else arrived either).
+                dropSocket('No answer to the keep-alive: the connection is dropped.');
+            };
+
+            // The planned switch to a fresh socket before API Gateway's 2-hour cut (CONNECTION_LIFETIME).
+            // A new connection is opened while this one still works; once it is open the room is joined
+            // again and this one is closed deliberately, so the app sees no gap. Not announced as a
+            // reconnect: nothing was lost.
+            const renew = () => {
+                renewTimer = null;
+                if (closedByIntention || socket.readyState !== 1 || this.__socket !== mineRef.value) return;
+                this.log('realtime renew', 'Opening a fresh connection before the 2-hour limit.');
+                const old = socket;
+                this.__socket = null; // so connectRealtime opens a new one instead of returning this
+                connectRealtime.bind(this)(cb, 0, 'renew').then(() => {
+                    // the new socket is open and joined: this one may go, quietly
+                    old.onclose = null;
+                    old.onerror = null;
+                    stopPinging();
+                    try {
+                        old.close();
+                    } catch (e) { }
+                }).catch(err => {
+                    // could not open a new one: keep this socket; its natural close reconnects as usual
+                    this.log('realtime renew', err);
+                    if (!this.__socket) this.__socket = mineRef.value;
+                });
+            };
+
             socket.onopen = () => {
                 opened = true;
                 closedByIntention = false;
@@ -250,31 +532,40 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                 clearTimeout(reconnectTimer);
                 reconnectTimer = null;
 
-                if (reconnect !== 'reconnect') {
+                if (reconnect !== 'reconnect' && reconnect !== 'renew') {
                     window.addEventListener('visibilitychange', visibilitychange);
+                    window.addEventListener('online', online);
                 }
 
                 this.log('realtime onopen', 'Connected to WebSocket server.');
-                cb({ type: 'success', message: 'Connected to WebSocket server.' });
+                if (reconnect !== 'renew') {
+                    cb({ type: 'success', message: 'Connected to WebSocket server.' });
+                }
+
+                // a new connection id: the order baselines of the old one do not apply
+                for (const cid of Object.keys(__order)) forgetOrder(cid);
 
                 if (__current_socket_room) {
                     socket.send(JSON.stringify({
                         action: 'joinRoom',
                         rid: __current_socket_room,
-                        token: this.session.accessToken.jwtToken
+                        token: this.session.accessToken.jwtToken,
+                        ver: REALTIME_PROTOCOL
                     }));
                 }
+
+                renewTimer = setTimeout(renew, CONNECTION_LIFETIME - RENEW_BEFORE - Math.random() * RENEW_JITTER);
 
                 // The ICE servers for calls, asked for now so a call started later finds
                 // them cached: a relay answer can take a second or two when the server is
                 // cold, which a call should not wait for.
                 requestIceServers.bind(this)(5000, socket).catch(() => null);
 
-                // // keep alive
-
-                // Define worker script as a string
+                // Keep alive. The clock runs in a Worker because a background tab slows the page's
+                // own timers down; the first tick is at once, so the first answer (and with it
+                // whether the server answers at all) arrives right after opening.
                 const workerScript = /*js*/`
-                    let interval = 15000; // Set interval time 15 seconds
+                    let interval = ${PING_INTERVAL};
 
                     function runInterval() {
                         postMessage({ type: "ping" });
@@ -286,16 +577,10 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
 
                 // Create a Blob URL for the worker
                 const blob = new Blob([workerScript], { type: "application/javascript" });
-                __keepAliveInterval = new Worker(URL.createObjectURL(blob));
-
-                // Listen for messages from the worker
-                __keepAliveInterval.onmessage = (event) => {
-                    if (socket.readyState === 1) {
-                        socket.send(JSON.stringify({
-                            action: 'keepAlive'
-                        }));
-                    }
-                };
+                worker = new Worker(URL.createObjectURL(blob));
+                __keepAliveInterval = worker;
+                worker.onmessage = ping;
+                __pingNow = ping;
 
                 resolve(socket);
 
@@ -305,14 +590,67 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                 }
             };
 
-            socket.onmessage = async (event) => {
-                let data = ''
+            socket.onmessage = (event) => {
+                // ANY frame from the server proves the socket alive, not only the "#pong" a ping
+                // asked for: an overloaded region may throttle a ping and its answer while messages
+                // still flow, and every client of that region taking its socket for dead at the same
+                // moment would reconnect into the overload all at once. Only "#pong" arms the
+                // deadline (pongSeen), so a server that never answers pings still never times out.
+                clearTimeout(pongTimer);
+                pongTimer = null;
+
+                let data: any = '';
 
                 try {
                     data = JSON.parse(decodeURI(event.data));
                     this.log('socket onmessage', data);
                 }
                 catch (e) {
+                    return;
+                }
+
+                readFrame(data);
+            };
+
+            // One frame from the server. A "#batch" frame comes back through here once for each
+            // message it carries, so a batched message reaches the callback exactly as if it had
+            // come in a frame of its own.
+            const readFrame = (data: any) => {
+                if (data?.['#pong'] !== undefined) {
+                    // the answer to a keep-alive: not a message for the app
+                    pongSeen = true;
+                    ponglessPings = 0;
+                    clearTimeout(pongTimer);
+                    pongTimer = null;
+                    return;
+                }
+
+                if (Array.isArray(data?.['#presence'])) {
+                    // grouped joins and leaves: one callback per event, as if each had its own frame
+                    for (const notice of presenceNotices(data)) {
+                        noticeSeen(notice);
+                        try {
+                            cb(notice);
+                        } catch (err) {
+                            // a callback that throws must not cost the notices after it
+                            setTimeout(() => { throw err; });
+                        }
+                    }
+                    return;
+                }
+
+                if (Array.isArray(data?.['#batch'])) {
+                    // A busy group's messages, sent together by the server (one frame per member
+                    // per window instead of one per message): each one, in order, as if alone.
+                    for (const entry of data['#batch']) {
+                        if (!entry || typeof entry !== 'object') continue;
+                        try {
+                            readFrame(entry);
+                        } catch (err) {
+                            // a callback that throws must not cost the messages after it
+                            setTimeout(() => { throw err; });
+                        }
+                    }
                     return;
                 }
 
@@ -370,6 +708,21 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                     sender_rid: data?.['#srid'] || null,
                     code: data?.['#code'] || null
                 };
+
+                if (type === 'message' && typeof data?.['#seq'] === 'number' && msg.sender_cid) {
+                    // a numbered broadcast: delivered in its sender's order (see SEQ_WAIT)
+                    deliverInOrder(msg.sender_cid, data['#seq'], () => deliverMessage(msg));
+                    return;
+                }
+
+                if (type === 'message') {
+                    deliverMessage(msg);
+                    return;
+                }
+
+                if (type === 'notice') {
+                    noticeSeen(msg);
+                }
 
                 if (type === 'notice') {
                     // if (__current_socket_room && (msg.code === 'USER_LEFT' || msg.code === 'USER_DISCONNECTED')) {
@@ -491,7 +844,37 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                 }
             };
 
+            // A group message for the app. A message the sender grouped (SEND_WINDOW) carries several
+            // under `__skapi_batch`; each reaches the callback on its own, in order, as a message of
+            // its own with the same sender fields.
+            const deliverMessage = (msg: WebSocketMessage) => {
+                const payload = msg.message;
+                if (payload && typeof payload === 'object' && Array.isArray(payload.__skapi_batch)) {
+                    for (const one of payload.__skapi_batch) {
+                        try {
+                            cb({ ...msg, message: one });
+                        } catch (err) {
+                            setTimeout(() => { throw err; });
+                        }
+                    }
+                    return;
+                }
+                cb(msg);
+            };
+
+            // A join or leave notice. The connection's own USER_JOINED releases the sends held since
+            // joinRealtime (see JOIN_WAIT); a member that left is forgotten by the order keeper.
+            const noticeSeen = (notice: WebSocketMessage) => {
+                if (notice.code === 'USER_JOINED' && __awaitJoin && notice.sender_rid === __awaitJoin.group && notice.sender === this.user?.user_id) {
+                    releaseJoin();
+                }
+                if ((notice.code === 'USER_LEFT' || notice.code === 'USER_DISCONNECTED') && notice.sender_cid) {
+                    forgetOrder(notice.sender_cid);
+                }
+            };
+
             socket.onclose = () => {
+                stopPinging();
                 if (closedByIntention && opened) {
                     this.log('realtime onclose', 'WebSocket connection closed.');
                     cb({ type: 'close', message: 'WebSocket connection closed.' });
@@ -575,39 +958,125 @@ export async function postRealtime(message: any, recipient: string, notification
     }
 
     if (socket.readyState === 1) {
+        const token = `IdT:${this.service}:${this.owner}:` + (this.bearerToken || this.session?.idToken?.jwtToken || 'null');
+        let isUser = true;
         try {
             validator.UserId(recipient);
-            socket.send(JSON.stringify({
+        } catch (err) {
+            isUser = false;
+        }
+
+        if (isUser) {
+            const frame = JSON.stringify({
                 action: 'sendMessage',
                 uid: recipient,
                 content: message,
                 notification: notificationStr,
                 notificationConfig: notification?.config || {},
-                // token: this.session.accessToken.jwtToken
-                token: `IdT:${this.service}:${this.owner}:` + (this.bearerToken || this.session?.idToken?.jwtToken || 'null')
-            }));
+                token
+            });
+            checkFrameSize(frame);
+            socket.send(frame);
+            return { type: 'success', message: 'Message sent.' };
+        }
 
-        } catch (err) {
-            this.log('postRealtime:err', { err });
-            if (__current_socket_room !== recipient) {
-                throw new SkapiError(`User has not joined to the recipient group. Run joinRealtime({ group: "${recipient}" })`, { code: 'INVALID_REQUEST' });
-            }
+        if (__current_socket_room !== recipient) {
+            throw new SkapiError(`User has not joined to the recipient group. Run joinRealtime({ group: "${recipient}" })`, { code: 'INVALID_REQUEST' });
+        }
 
-            socket.send(JSON.stringify({
+        // The frame as it would go alone: refused now if too big, whatever grouping does with it.
+        const alone = JSON.stringify({ action: 'broadcast', rid: recipient, content: message, notification: notificationStr, notificationConfig: notification?.config || {}, token, '#seq': 0 });
+        checkFrameSize(alone);
+
+        const send = (content: any) => {
+            const frame = JSON.stringify({
                 action: 'broadcast',
                 rid: recipient,
-                content: message,
+                content,
                 notification: notificationStr,
                 notificationConfig: notification?.config || {},
-                // token: this.session.accessToken.jwtToken,
-                token: `IdT:${this.service}:${this.owner}:` + (this.bearerToken || this.session?.idToken?.jwtToken || 'null')
-            }));
+                token,
+                seq: __sendSeq++
+            });
+            if (socket.readyState !== 1) return;
+            try {
+                socket.send(frame);
+            } catch (err) {
+                this.log('postRealtime:send', err);
+            }
+        };
+
+        const queueSend = () => {
+            if (notification) {
+                // a message with a notification is never grouped: its notification is its own
+                send(message);
+                return;
+            }
+            const now = Date.now();
+            if (__sendQueue && __sendQueue.group === recipient) {
+                // a window is open: this one goes with it
+                __sendQueue.items.push(message);
+                return;
+            }
+            if (__sendQueue) {
+                flushSendQueue(send); // a different group: what waits for the old one goes now
+            }
+            const sinceLast = now - (__lastSendAt[recipient] || 0);
+            __lastSendAt[recipient] = now;
+            if (sinceLast >= SEND_WINDOW) {
+                // not a flood: at once, as always
+                send(message);
+                return;
+            }
+            // Sends are coming faster than one per window: gather them.
+            __sendQueue = {
+                group: recipient,
+                items: [message],
+                timer: setTimeout(() => flushSendQueue(send), SEND_WINDOW)
+            };
+        };
+
+        if (__awaitJoin && __awaitJoin.group === recipient) {
+            // the group has not heard this connection's own join yet (see JOIN_WAIT)
+            __awaitJoin.sends.push(queueSend);
+        } else {
+            queueSend();
         }
 
         return { type: 'success', message: 'Message sent.' };
     }
 
     throw new SkapiError('Realtime connection is not open. Try reconnecting with connectRealtime().', { code: 'INVALID_REQUEST' });
+}
+
+function flushSendQueue(send: (content: any) => void) {
+    if (!__sendQueue) return;
+    const q = __sendQueue;
+    __sendQueue = null;
+    clearTimeout(q.timer);
+    __lastSendAt[q.group] = Date.now();
+    if (q.items.length === 1) {
+        send(q.items[0]);
+        return;
+    }
+    // Several messages as one frame. The receiving SDK hands each to the callback on its own
+    // (deliverMessage); a frame that would be too big is split.
+    let items = q.items;
+    while (items.length) {
+        let n = items.length;
+        while (n > 1 && JSON.stringify({ __skapi_batch: items.slice(0, n) }).length > MAX_FRAME_BYTES - 2048) {
+            n = Math.ceil(n / 2);
+        }
+        send(n === 1 ? items[0] : { __skapi_batch: items.slice(0, n) });
+        items = items.slice(n);
+    }
+}
+
+function checkFrameSize(frame: string) {
+    const size = new Blob([frame]).size;
+    if (size > MAX_FRAME_BYTES) {
+        throw new SkapiError(`Message is ${size} bytes; a realtime message can be at most ${MAX_FRAME_BYTES} bytes including its headers.`, { code: 'INVALID_PARAMETER' });
+    }
 }
 
 export async function joinRealtime(params: { group?: string | null }): Promise<{ type: 'success', message: string }> {
@@ -640,12 +1109,22 @@ export async function joinRealtime(params: { group?: string | null }): Promise<{
     // direction: a join it cannot receive is not a join, and a LEAVE is already true
     // of a connection that is gone, so the room state below is updated either way and
     // the next connectRealtime re-joins from it.
+    if (__sendQueue) {
+        flushSendQueue(() => null); // what waited for the old group is dropped: it is left
+    }
+    releaseJoin();
+
     if (socket.readyState === 1) {
         socket.send(JSON.stringify({
             action: 'joinRoom',
             rid: group,
-            token: this.session.accessToken.jwtToken
+            token: this.session.accessToken.jwtToken,
+            ver: REALTIME_PROTOCOL
         }));
+        if (group) {
+            // the first sends wait for the group to hear this connection's join (JOIN_WAIT)
+            __awaitJoin = { group, sends: [], timer: setTimeout(releaseJoin, JOIN_WAIT) };
+        }
     }
 
     __current_socket_room = group;
