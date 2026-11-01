@@ -584,8 +584,10 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
 
                 resolve(socket);
 
-                if (reconnect === 'reconnect') {
-                    // the calls that went on while the socket was down: they signal through this socket now
+                if (reconnect === 'reconnect' || reconnect === 'renew') {
+                    // The calls that went on while the socket was down, or across the planned renewal:
+                    // they signal through this socket now, and the other side has to learn its new
+                    // connection id (an empty signal per call; the peer aliases the new id to the call).
                     resumeCalls.call(this);
                 }
             };
