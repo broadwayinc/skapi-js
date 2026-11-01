@@ -34,17 +34,19 @@ export type RTCMediaOption = MediaStream | {
     screen?: RTCScreenOption;
 };
 
-/** Codec order and sender limits, applied to every track of the kind, now and when one is added later. */
+/** Codec order, sender limits and priority, applied to every track of the kind, now and when one is added later. */
 export type RTCEncodingOption = {
     video?: {
         codecs?: string[]; // preferred first, by name ('VP9', 'H264', 'AV1') or mime type ('video/VP9'); the rest keep their order after them
         maxBitrate?: number; // bits per second
         maxFramerate?: number;
         scaleResolutionDownBy?: number; // 2 sends half the width and height
+        priority?: 'very-low' | 'low' | 'medium' | 'high'; // what this kind gets when the bandwidth is short: the browser trims the lower priority first
     };
     audio?: {
         codecs?: string[];
         maxBitrate?: number; // bits per second
+        priority?: 'very-low' | 'low' | 'medium' | 'high'; // 'high' for the voice and 'low' for the video keeps the voice whole on a thin connection
     };
 };
 

@@ -387,9 +387,15 @@ function checkEncoding(encoding: any): RTCEncodingOption | null {
                 throw invalid(`"encoding.${kind}.${key}" should be a positive number.`);
             }
         }
+        if (e.priority !== undefined && !PRIORITIES.includes(e.priority)) {
+            throw invalid(`"encoding.${kind}.priority" should be "very-low", "low", "medium" or "high".`);
+        }
     }
     return encoding;
 }
+
+// What a kind of track gets when the bandwidth is short: the browser trims the lower priority first.
+const PRIORITIES = ['very-low', 'low', 'medium', 'high'];
 
 function checkChannels(channels: any, fallback: RTCChannelOption[]): RTCChannelOption[] {
     if (channels === undefined || channels === null) {
@@ -730,6 +736,12 @@ function applyEncodingParameters(cid: string) {
             if (e[key] !== undefined) {
                 wanted[key] = e[key];
             }
+        }
+        if (e.priority !== undefined) {
+            // `priority` weighs the track in the browser's bandwidth split when the network is short;
+            // `networkPriority` is the same wish for the packets' own marking, where the browser supports it
+            wanted.priority = e.priority;
+            wanted.networkPriority = e.priority;
         }
         if (!Object.keys(wanted).length) {
             continue;
