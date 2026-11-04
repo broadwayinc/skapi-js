@@ -2098,7 +2098,7 @@ export default class Skapi {
 	 * previous e-mail stops logging in when the change is written, unless it is the
 	 * e-mail an account without a username was created with, which stays its login
 	 * ID. A username always logs in. The change is refused with EXISTS and
-	 * 'E-mail "user@email.com" is already a login ID in this service.' when the
+	 * 'E-mail "user@email.com" is already a login ID in this project.' when the
 	 * e-mail is a login ID another account of the project was granted: the address
 	 * that account was created or invited with, or one it has verified. An e-mail
 	 * login another account holds without having verified the address blocks
