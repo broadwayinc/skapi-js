@@ -906,12 +906,57 @@ export async function checkAdmin() {
 // ---------------------------------------------------------------------------
 const ANONYMOUS_KEEPALIVE_MS = 10 * 60 * 1000;
 let anonymousKeepAliveTimer: any = null;
+let lastAnonymousBeat = 0; // when the server last confirmed the account
+let anonymousOwner: any = null; // the instance whose anonymous session the page events below check
+
+/*
+    A phone freezes a background tab's timers outright, and a laptop asleep runs none, so the
+    10-minute beat can miss the 30-minute window while the page stays open. When the page comes
+    back (visible again, back online, restored from the back-forward cache) the account is checked
+    at once, so a swept one is signed out right away instead of at the next beat, up to 10 minutes on.
+*/
+const ANONYMOUS_RECHECK_MS = 60 * 1000; // a return within a minute of the last confirmation needs no check
+let anonymousPageEvents = false;
+
+function onPageBack() {
+    if (anonymousOwner && (typeof document === 'undefined' || !document.hidden)) {
+        checkAnonymousSession.bind(anonymousOwner)(ANONYMOUS_RECHECK_MS).catch(() => null);
+    }
+}
+
+function watchPageReturn() {
+    if (anonymousPageEvents || typeof window === 'undefined' || typeof window.addEventListener !== 'function' || (window as any)._runningInNodeJS) {
+        return;
+    }
+    anonymousPageEvents = true;
+    window.addEventListener('visibilitychange', onPageBack);
+    window.addEventListener('online', onPageBack);
+    window.addEventListener('pageshow', onPageBack);
+}
 
 function stopAnonymousKeepAlive() {
     if (anonymousKeepAliveTimer) {
         clearInterval(anonymousKeepAliveTimer);
         anonymousKeepAliveTimer = null;
     }
+    anonymousOwner = null;
+    lastAnonymousBeat = 0;
+}
+
+/**
+ * Confirms that the current anonymous account still exists, with one keep-alive beat, unless the
+ * server confirmed it less than `maxAge` milliseconds ago. A swept account is signed out by the
+ * beat (`skapi.user` becomes null and the login listeners run with null). Resolves either way;
+ * does nothing for a regular account or no account.
+ */
+export async function checkAnonymousSession(maxAge: number = 0): Promise<void> {
+    if (!this.__user?.anonymous) {
+        return;
+    }
+    if (lastAnonymousBeat && Date.now() - lastAnonymousBeat < maxAge) {
+        return;
+    }
+    return anonymousKeepAlive.bind(this)();
 }
 
 async function anonymousKeepAlive(): Promise<void> {
@@ -922,6 +967,7 @@ async function anonymousKeepAlive(): Promise<void> {
 
     try {
         await request.bind(this)('anonymous-session', {}, { auth: true });
+        lastAnonymousBeat = Date.now();
     }
     catch (err: any) {
         if (err?.code === 'NOT_EXISTS') {
@@ -945,7 +991,11 @@ async function anonymousKeepAlive(): Promise<void> {
  * it signs the session out when the server answers NOT_EXISTS.
  */
 export function startAnonymousKeepAlive(beatNow: boolean = false): Promise<void> | void {
+    const confirmed = anonymousOwner === this ? lastAnonymousBeat : 0;
     stopAnonymousKeepAlive();
+    anonymousOwner = this;
+    lastAnonymousBeat = beatNow ? 0 : (confirmed || Date.now()); // a fresh login or a running session counts as confirmed
+    watchPageReturn();
 
     anonymousKeepAliveTimer = setInterval(() => {
         anonymousKeepAlive.bind(this)();

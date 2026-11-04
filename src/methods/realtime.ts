@@ -57,7 +57,7 @@ export async function requestIceServers(timeoutMs = 2500, sock?: WebSocket): Pro
         }
     });
 }
-import { getJwtToken } from './user';
+import { getJwtToken, checkAnonymousSession } from './user';
 
 // let __roomList: {
 //     [realTimeGroup: string]: {
@@ -84,6 +84,7 @@ let __keepAliveInterval = null;
 let closedByIntention = true;
 let reconnectAttempts = 0;
 let reconnectTimer = null;
+let handshakeRefused = false; // the last attempt's handshake failed: for a temporary account, perhaps because it was swept
 
 const RECONNECT_WAIT = 3000; // before the first attempt after an unexpected close; doubled each time it fails
 const RECONNECT_MAX_WAIT = 30000;
@@ -273,8 +274,28 @@ function scheduleReconnect(cb: RealtimeCallback) {
     const wait = Math.round(base * (1 + Math.random() * RECONNECT_JITTER));
     this.log('realtime reconnect', `Reconnecting to WebSocket server in ${wait} ms... attempt ${reconnectAttempts}`);
     cb({ type: 'reconnect', message: 'Reconnecting to WebSocket server...' + reconnectAttempts });
-    reconnectTimer = setTimeout(() => {
+    reconnectTimer = setTimeout(async () => {
         reconnectTimer = null;
+        if (closedByIntention) {
+            return;
+        }
+        // The server refuses the handshake of an account that no longer exists, and a temporary account is
+        // swept 30 minutes after its last keep-alive (a phone that froze the page). Before trying again, ask:
+        // at once after a refused handshake, otherwise when the account was last confirmed over a minute ago.
+        // A swept account is signed out by the check, and the attempts end below.
+        try {
+            await checkAnonymousSession.bind(this)(handshakeRefused ? 0 : 60 * 1000);
+        } catch (err) {
+            this.log('realtime reconnect', err);
+        }
+        if (closedByIntention) {
+            return;
+        }
+        if (!this.session) {
+            this.log('realtime reconnect', 'No session: not reconnecting.');
+            cb({ type: 'error', message: 'Skapi: Realtime connection closed. User login is required.' });
+            return;
+        }
         connectRealtime.bind(this)(cb, 0, 'reconnect').catch(err => {
             this.log('realtime reconnect', err);
             scheduleReconnect.bind(this)(cb);
@@ -310,11 +331,14 @@ export async function closeRealtime(): Promise<void> {
         throw new SkapiError('WebSocket is not supported in Node.js environment.', { code: 'NOT_SUPPORTED' });
     }
     closedByIntention = true;
-    let socket: WebSocket = this.__socket ? await this.__socket : this.__socket;
-    closeRTC.bind(this)({ close_all: true });
+    // a reconnect waiting for its turn must not start while this closes; one that failed leaves a rejected handle
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    let socket: WebSocket = this.__socket ? await Promise.resolve(this.__socket).catch(() => null) : this.__socket;
+    closeRTC.bind(this)({ close_all: true }).catch(err => this.log('closeRealtime', err));
 
     if (__current_socket_room) {
-        joinRealtime.bind(this)({ group: null });
+        joinRealtime.bind(this)({ group: null }).catch(err => this.log('closeRealtime', err));
     }
 
     // __roomList = {};
@@ -527,6 +551,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
 
             socket.onopen = () => {
                 opened = true;
+                handshakeRefused = false;
                 closedByIntention = false;
                 reconnectAttempts = 0;
                 clearTimeout(reconnectTimer);
@@ -888,6 +913,7 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                     cb({ type: 'error', message: 'Skapi: WebSocket connection failed.' });
                 }
                 else {
+                    handshakeRefused = !opened;
                     if (!opened) {
                         // a reconnect whose handshake failed: settle this attempt so the next one starts fresh
                         this.log('realtime onclose', 'WebSocket closed before it opened.');
