@@ -525,8 +525,8 @@ export default class Skapi {
 		__etc?: any,
 	) {
 		if (!service || typeof service !== 'string') {
-			this._alert('Service ID is required.');
-			throw new SkapiError('Service ID is required.', {
+			this._alert('Project ID is required.');
+			throw new SkapiError('Project ID is required.', {
 				code: 'INVALID_PARAMETER',
 			});
 		}
@@ -607,7 +607,7 @@ export default class Skapi {
 				owner = decoded.owner;
 				service = decoded.service;
 			} catch (err) {
-				throw new SkapiError('Service ID is invalid.', {
+				throw new SkapiError('Project ID is invalid.', {
 					code: 'INVALID_PARAMETER',
 				});
 			}
