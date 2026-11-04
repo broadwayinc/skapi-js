@@ -774,7 +774,7 @@ export default class Skapi {
 						: null;
 				} catch (err) {
 					throw new SkapiError(
-						'Service does not exist. Create your service from skapi.com',
+						'The project ID does not exist. Create your project from skapi.com',
 						{ code: 'NOT_EXISTS' },
 					);
 				}
@@ -800,7 +800,7 @@ export default class Skapi {
 						: null;
 				} catch (err) {
 					throw new SkapiError(
-						'Service does not exist. Create your service from skapi.com',
+						'The project ID does not exist. Create your project from skapi.com',
 						{ code: 'NOT_EXISTS' },
 					);
 				}
