@@ -1524,7 +1524,13 @@ async function getQuery(query, isDel = false) {
             }
         }
 
-        query = validator.Params(query || {}, buildStruct(query), ref_user_is_me || isAdmin ? [] : ['table'], { ignoreEmpty: true });
+        // A READ by reference needs no table: the backend lists the referencing records in every
+        // table and access group the signed-in user can read, in one request. Requiring a table
+        // here made apps walk every table one request at a time to find a record's children.
+        // Deletes keep requiring it (the backend rules for deletes are unchanged).
+        let reads_by_reference = !isDel && !!this.__user && !!(is_reference_fetch || (typeof query?.reference === 'string' && query.reference));
+
+        query = validator.Params(query || {}, buildStruct(query), ref_user_is_me || isAdmin || reads_by_reference ? [] : ['table'], { ignoreEmpty: true });
     }
     return {
         query,
