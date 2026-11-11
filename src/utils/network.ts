@@ -453,7 +453,11 @@ export async function request(
         // marker as stored. A request without it is from an older client that cannot
         // resolve markers, and the server inlines the payload for it instead, which
         // costs the response budget and the Lambda an S3 read per record.
-        resolves_offloaded_data: true
+        resolves_offloaded_data: true,
+        // The library version, on every request (since 2.2.30). The backend uses it to tell
+        // current clients from older builds: get-records from an SDK older than 2.2.30 is
+        // rate limited per signed-in session, see the version history.
+        skapi_version: (this as any).__version
     };
 
     headers['Content-Meta'] = JSON.stringify(meta);
