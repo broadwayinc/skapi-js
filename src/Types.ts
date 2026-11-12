@@ -157,7 +157,15 @@ export type GetRecordQuery = {
         subscription?: string;
     };
 
-    reference?: string | { record_id?: string; unique_id?: string; user_id?: string } // Referenced record ID or unique ID (string), or the object form. If user ID is given, it will fetch records that are uploaded by the user.
+    /**
+     * Referenced record ID or unique ID (string), or the object form: the records that reference it.
+     * If user ID is given, it will fetch records that are uploaded by the user.
+     * Without 'table' (signed-in users): every table. The user who uploaded the referenced record, and the users it
+     * was shared with (grantPrivateRecordAccess), read EVERY record that references it: every access group, private
+     * and subscription records. Anyone else: access groups 0 up to their own, no private records, and only the
+     * subscription records they uploaded.
+     */
+    reference?: string | { record_id?: string; unique_id?: string; user_id?: string }
 
     /** Index condition and range cannot be used simultaneously.*/
     index?: {
