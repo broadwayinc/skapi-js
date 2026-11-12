@@ -1450,15 +1450,27 @@ async function getQuery(query, isDel = false) {
         // The shorthand and the object form are deliberately DIFFERENT requests,
         // so the expansion is not a normalization: `table: 'name'` has always
         // meant group 0, while `table: {name}` sends no access_group at all and
-        // lets the backend decide, which for an authenticated query means "every
-        // group I can read". Collapsing the two (either by dropping the 0 or by
-        // adding one to the object form) would silently change what an existing
-        // app fetches, so only the string form gains a group.
+        // lets the backend decide. Only the string form gains a group.
         if (typeof query?.table === 'string') {
             query.table = {
                 name: query.table,
                 access_group: 0
             };
+        }
+
+        // A table always names its access group (2.2.32). `{ name }` alone meant group 0 for a
+        // user everywhere except a reference read, where it briefly meant "every group I can
+        // read" (2.2.29), so the same object asked two different things. A user now says which
+        // group: `table: 'name'` for public records, or `{ name, access_group }`. To read what
+        // references a record across every table and group, send `reference` without `table`.
+        // The project owner keeps `{ name }` = the whole table, every group (the dashboard).
+        if (!isAdmin && query?.table && typeof query.table === 'object'
+            && (query.table.access_group === undefined || query.table.access_group === null)) {
+            throw new SkapiError(
+                '"table.access_group" is required when "table" is an object. Use table: "<name>" for public records, '
+                + 'or { name, access_group }. To read what references a record in every table, send "reference" without "table".',
+                { code: 'INVALID_PARAMETER' }
+            );
         }
 
         if (query.index) {
