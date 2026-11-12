@@ -138,9 +138,9 @@ export type WebSocketMessage = {
 
 export type RealtimeCallback = (rt: WebSocketMessage) => void;
 
-export type DelRecordQuery = GetRecordQuery & {
-    unique_id?: string;
-    record_id?: string;
+export type DelRecordQuery = Omit<GetRecordQuery, 'unique_id' | 'record_id'> & {
+    unique_id?: string | string[]; // One unique ID, or up to 1000. Never empty ("" or []).
+    record_id?: string | string[]; // One record ID, or up to 1000. Never empty ("" or []). Overrides unique_id.
 };
 
 export type GetRecordQuery = {

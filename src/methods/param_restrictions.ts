@@ -180,7 +180,60 @@ export function validateNestIndexSegment(value: any, fieldName: string) {
     });
 }
 
-export function recordIdOrUniqueId(query) {
+/** The most ids one deleteRecords call takes (the backend refuses more). */
+const MAX_DELETE_IDS = 1000;
+
+function validateRecordId(v: any, fieldName = 'record_id') {
+    return validateStringByPolicy(v, fieldName, {
+        allowEmpty: false,
+        onlyAlphanumeric: true,
+    });
+}
+
+function validateUniqueId(v: any, fieldName = 'unique_id') {
+    // Only the shape is checked here: whether a record has this unique ID is the server's answer.
+    if (typeof v !== 'string') {
+        throw new SkapiError(`"${fieldName}" should be type: <string>.`, { code: 'INVALID_PARAMETER' });
+    }
+    if (!v) {
+        throw new SkapiError(`"${fieldName}" is required.`, { code: 'INVALID_PARAMETER' });
+    }
+    return v;
+}
+
+/** A delete takes one id or a list of them; a read takes one. */
+function idOrIdList(v: any, fieldName: string, isDel: boolean, one: (v: any, fieldName?: string) => string) {
+    if (!Array.isArray(v)) {
+        return one(v, fieldName);
+    }
+    if (!isDel) {
+        throw new SkapiError(`"${fieldName}" should be type: <string>.`, { code: 'INVALID_PARAMETER' });
+    }
+    if (!v.length) {
+        throw new SkapiError(`"${fieldName}" should not be an empty list.`, { code: 'INVALID_PARAMETER' });
+    }
+    if (v.length > MAX_DELETE_IDS) {
+        throw new SkapiError(`"${fieldName}" can hold at most ${MAX_DELETE_IDS} ids.`, { code: 'INVALID_PARAMETER' });
+    }
+    return v.map((x, i) => one(x, `${fieldName}[${i}]`));
+}
+
+/** Present in the query, even as "" or []: given on purpose, not left out. */
+function isGiven(query, key: string) {
+    return !!query && key in query && query[key] !== undefined && query[key] !== null;
+}
+
+export function recordIdOrUniqueId(query, isDel = false) {
+    if (isDel) {
+        // A delete must never read an empty id as "no id": the request would turn into a delete
+        // by query, and for the project owner one with no filter at all.
+        for (let key of ['record_id', 'unique_id']) {
+            if (isGiven(query, key) && (query[key] === '' || (Array.isArray(query[key]) && !query[key].length))) {
+                throw new SkapiError(`"${key}" is empty.`, { code: 'INVALID_PARAMETER' });
+            }
+        }
+    }
+
     if (!query.record_id && !query.unique_id) {
         return null;
     }
@@ -193,13 +246,10 @@ export function recordIdOrUniqueId(query) {
         outputObj.owner = query.owner;
     }
     if (query?.record_id) {
-        outputObj.record_id = validateStringByPolicy(query.record_id, 'record_id', {
-            allowEmpty: false,
-            onlyAlphanumeric: true,
-        });
+        outputObj.record_id = idOrIdList(query.record_id, 'record_id', isDel, validateRecordId);
     }
     else if (query?.unique_id) {
-        outputObj.unique_id = query.unique_id;
+        outputObj.unique_id = idOrIdList(query.unique_id, 'unique_id', isDel, validateUniqueId);
     }
 
     return outputObj;

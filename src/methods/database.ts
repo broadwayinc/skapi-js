@@ -1389,13 +1389,23 @@ async function getQuery(query, isDel = false) {
     let scope = cacheScope.bind(this)(query?.service, query?.owner);
 
     let is_reference_fetch = '';
-    let rec_or_uniq = recordIdOrUniqueId(query);
+    let rec_or_uniq = recordIdOrUniqueId(query, isDel);
 
     if (rec_or_uniq) {
         query = rec_or_uniq;
         is_reference_fetch = query.record_id || query.unique_id;
 
-        if (typeof is_reference_fetch === 'string') {
+        if (Array.isArray(is_reference_fetch)) {
+            // Only a delete takes a list of ids. Its cached unique ids go with the records, and
+            // there is no single record to hold a private access key for.
+            if (isDel && Array.isArray(query.unique_id)) {
+                for (let uid of query.unique_id) {
+                    deleteScopedUniqueId.bind(this)(scope, uid);
+                }
+            }
+            is_reference_fetch = '';
+        }
+        else if (typeof is_reference_fetch === 'string') {
             if (typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
                 query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
             }
