@@ -151,7 +151,7 @@ export type GetRecordQuery = {
     table?: string | {
         /** Max 256 characters, where / ! * # % each count as 3. Blocks control chars and sentinel 􏿿. */
         name: string;
-        /** Number range: 0 ~ 99. 'public' = 0, 'authorized' = 1, 'admin' = 99. '*' is shorthand for 'private'. Required in the object form (2.2.32), except for the project owner, for whom it is optional and its absence means every group. The string form table: '<name>' is group 0. */
+        /** Number range: 0 ~ 99. 'public' = 0, 'authorized' = 1, 'admin' = 99. '*' is shorthand for 'private'. Required in the object form (2.2.32): a table is always a name and an access group together. The string form table: '<name>' is group 0. 'index' and 'tag' always need the table; only 'record_id', 'unique_id' and 'reference' (a record ID, a unique ID, or your own user ID) work without it. */
         access_group?: number | 'private' | '*' | 'public' | 'authorized' | 'admin';
         /** User ID of subscription */
         subscription?: string;
