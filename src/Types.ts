@@ -147,12 +147,17 @@ export type GetRecordQuery = {
     unique_id?: string; // When unique_id is given, it will fetch the record with the given unique_id.
     record_id?: string; // When record_id is given, it will fetch the record with the given record_id. This overrides all other parameters.
 
-    /** Table name not required when "record_id" is given. A bare string is shorthand for { name: <string> }. */
+    /**
+     * One table in one access group: always a name AND an access group together.
+     * A bare string is shorthand for { name: <string>, access_group: 'public' }.
+     * Not needed with 'record_id', 'unique_id' or 'reference' (a record ID, a unique ID, or your own user ID);
+     * needed for everything else, 'index' and 'tag' included.
+     */
     table?: string | {
         /** Max 256 characters, where / ! * # % each count as 3. Blocks control chars and sentinel 􏿿. */
         name: string;
-        /** Number range: 0 ~ 99. 'public' = 0, 'authorized' = 1, 'admin' = 99. '*' is shorthand for 'private'. Required in the object form (2.2.32): a table is always a name and an access group together. The string form table: '<name>' is group 0. 'index' and 'tag' always need the table; only 'record_id', 'unique_id' and 'reference' (a record ID, a unique ID, or your own user ID) work without it. */
-        access_group?: number | 'private' | '*' | 'public' | 'authorized' | 'admin';
+        /** Required. Number range: 0 ~ 99. 'public' = 0, 'authorized' = 1, 'admin' = 99. '*' is shorthand for 'private'. */
+        access_group: number | 'private' | '*' | 'public' | 'authorized' | 'admin';
         /** User ID of subscription */
         subscription?: string;
     };
