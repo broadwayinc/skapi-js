@@ -1467,8 +1467,8 @@ async function getQuery(query, isDel = false) {
         if (!isAdmin && query?.table && typeof query.table === 'object'
             && (query.table.access_group === undefined || query.table.access_group === null)) {
             throw new SkapiError(
-                '"table.access_group" is required when "table" is an object. Use table: "<name>" for public records, '
-                + 'or { name, access_group }. To read what references a record in every table, send "reference" without "table".',
+                '"table.access_group" is required: a table is always { name, access_group }. '
+                + 'To read what references a record in every table, send "reference" without "table".',
                 { code: 'INVALID_PARAMETER' }
             );
         }

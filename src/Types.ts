@@ -149,11 +149,10 @@ export type GetRecordQuery = {
 
     /**
      * One table in one access group: always a name AND an access group together.
-     * A bare string is shorthand for { name: <string>, access_group: 'public' }.
      * Not needed with 'record_id', 'unique_id' or 'reference' (a record ID, a unique ID, or your own user ID);
      * needed for everything else, 'index' and 'tag' included.
      */
-    table?: string | {
+    table?: {
         /** Max 256 characters, where / ! * # % each count as 3. Blocks control chars and sentinel 􏿿. */
         name: string;
         /** Required. Number range: 0 ~ 99. 'public' = 0, 'authorized' = 1, 'admin' = 99. '*' is shorthand for 'private'. */
