@@ -1381,6 +1381,19 @@ async function requireLoginGate(this: any, method: string): Promise<void> {
 	);
 }
 
+// table: '<name>' in getRecords() / deleteRecords() is deprecated (2.2.35): it still reads and deletes the
+// public records of that table, and says so once per page load (or Node process).
+let warnedStringTable = false;
+function warnStringTable() {
+    if (warnedStringTable) return;
+    warnedStringTable = true;
+    console.warn(
+        'skapi-js: table: "<name>" in getRecords() and deleteRecords() is deprecated. '
+        + 'Write the access group with the name: table: { name: "<name>", access_group: "public" }. '
+        + 'See https://docs.skapi.com/deprecated/deprecated.html'
+    );
+}
+
 async function getQuery(query, isDel = false) {
     query = extractFormData(query, { ignoreEmpty: true }).data || {};
 
@@ -1452,6 +1465,7 @@ async function getQuery(query, isDel = false) {
         // meant group 0, while `table: {name}` sends no access_group at all and
         // lets the backend decide. Only the string form gains a group.
         if (typeof query?.table === 'string') {
+            warnStringTable();
             query.table = {
                 name: query.table,
                 access_group: 0
