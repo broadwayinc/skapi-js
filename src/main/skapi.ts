@@ -36,7 +36,7 @@ import {
 	UploadFilesParams,
 	UploadFilesResult,
 } from '../Types';
-import { CognitoUserPool } from 'amazon-cognito-identity-js';
+import { CognitoUserPool } from '../cognito';
 import SkapiError from './error';
 import validator from '../utils/validator';
 import {
@@ -121,7 +121,6 @@ import {
 	disableAccount,
 	resetPassword,
 	verifyEmail,
-	verifyPhoneNumber,
 	forgotPassword,
 	changePassword,
 	updateProfile,
@@ -138,6 +137,11 @@ import {
 	openIdLogin,
 	loginWithToken,
 	anonymousLogin,
+	verifyMFA,
+	setupMFA,
+	enableMFA,
+	disableMFA,
+	getMFAStatus,
 	startAnonymousKeepAlive,
 	verifyAnonymousSession,
 } from '../methods/user';
@@ -164,6 +168,7 @@ import {
 import {
 	blockAccount,
 	unblockAccount,
+	disableUserMFA,
 	deleteAccount,
 	inviteUser,
 	createAccount,
@@ -287,6 +292,9 @@ export default class Skapi {
 		};
 	} = {};
 	private __request_signup_confirmation: string | null = null;
+	// A sign-in waiting for its authenticator code (login() rejected with MFA_REQUIRED). Memory only:
+	// it holds the password closure, so it is never cached to storage. A reload means login() again.
+	private __pending_mfa: { cognitoUser: any; finish: () => Promise<UserProfile>; } | null = null;
 	private __private_access_key: {
 		[record_id: string]: string;
 	} = {};
@@ -1973,6 +1981,18 @@ export default class Skapi {
 	}
 
 	/**
+	 * Turns off a user's authenticator app MFA, for a user who lost their device. Admin only.
+	 * @param params Payload for the request.
+	 * @returns A promise that resolves to Promise<"SUCCESS: MFA has been disabled for the user.">.
+	 */
+	@formHandler()
+	disableUserMFA(params: {
+		user_id: string;
+	}): Promise<'SUCCESS: MFA has been disabled for the user.'> {
+		return disableUserMFA.bind(this)(params);
+	}
+
+	/**
 	 * Deletes a user account by user_id.
 	 * @param params Payload for the request.
 	 * @returns A promise that resolves to Promise<"SUCCESS: Account has been deleted.">.
@@ -3191,16 +3211,6 @@ export default class Skapi {
 		return verifyEmail.bind(this)(params, options);
 	}
 	/**
-	 * Verifies the user phone number with a confirmation code.
-	 * @param params Payload for the request.
-	 * @returns A promise that resolves to Promise<string>.
-	 */
-	@formHandler({ preventMultipleCalls: true })
-	verifyPhoneNumber(params?: Form<{ code: string }>, options?: { template?: { verification?: string } }): Promise<string> {
-		// 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'
-		return verifyPhoneNumber.bind(this)(params, options);
-	}
-	/**
 	 * Sends a password reset code to the user's e-mail. The e-mail comes from the service's
 	 * "forgot_password" template (the Password Reset Email on the Automated Emails page), or
 	 * from `options.template.forgot_password` for this call alone; a message_id that does not
@@ -3234,6 +3244,61 @@ export default class Skapi {
 		current_password: string;
 	}): Promise<'SUCCESS: Password has been changed.'> {
 		return changePassword.bind(this)(params);
+	}
+	/**
+	 * Finishes a sign-in that login() rejected with MFA_REQUIRED, using the 6 digit code from the
+	 * user's authenticator app. Call it on the same page within 3 minutes of login(); a wrong code
+	 * rejects with INVALID_CODE and can be retried.
+	 * @param params The code from the authenticator app.
+	 * @returns A promise that resolves to the signed-in user's profile.
+	 */
+	@formHandler({ preventMultipleCalls: true })
+	verifyMFA(params: {
+		/** 6 digit code from the authenticator app. */
+		code: string;
+	}): Promise<UserProfile> {
+		return verifyMFA.bind(this)(params);
+	}
+	/**
+	 * Starts authenticator app MFA setup for the signed-in user. Show `uri` as a QR code (or `secret`
+	 * for manual entry), then call enableMFA() with a code from the app.
+	 * @param options issuer: name shown in the app (default: the project name). account_name: account label (default: the user's e-mail or user id).
+	 * @returns A promise that resolves to the secret and the otpauth:// URI.
+	 */
+	setupMFA(options?: {
+		/** Name shown in the authenticator app. Default: the project name. */
+		issuer?: string;
+		/** Account label shown in the authenticator app. Default: the user's e-mail, username or user id. */
+		account_name?: string;
+	}): Promise<{ secret: string; uri: string; }> {
+		return setupMFA.bind(this)(options);
+	}
+	/**
+	 * Turns on authenticator app MFA for the signed-in user after setupMFA(), confirming a code from the app.
+	 * From then on login() rejects with MFA_REQUIRED until verifyMFA() is called.
+	 * @param params The code from the authenticator app.
+	 * @returns A promise that resolves to 'SUCCESS: MFA has been enabled.'.
+	 */
+	@formHandler({ preventMultipleCalls: true })
+	enableMFA(params: {
+		/** 6 digit code from the authenticator app. */
+		code: string;
+	}): Promise<'SUCCESS: MFA has been enabled.'> {
+		return enableMFA.bind(this)(params);
+	}
+	/**
+	 * Turns off authenticator app MFA for the signed-in user.
+	 * @returns A promise that resolves to 'SUCCESS: MFA has been disabled.'.
+	 */
+	disableMFA(): Promise<'SUCCESS: MFA has been disabled.'> {
+		return disableMFA.bind(this)();
+	}
+	/**
+	 * Tells whether the signed-in user has authenticator app MFA turned on.
+	 * @returns A promise that resolves to { enabled: boolean }.
+	 */
+	getMFAStatus(): Promise<{ enabled: boolean; }> {
+		return getMFAStatus.bind(this)();
 	}
 	/**
 	 * Updates profile attributes for the authenticated user.

@@ -70,6 +70,43 @@ export async function unblockAccount(form: Form<{
     return await request.bind(this)('block-account', params, { auth: true });
 }
 
+/**
+ * Turns off a user's authenticator app MFA, for a user who lost their device. The user signs in
+ * with their password alone afterwards and can set up MFA again with setupMFA() + enableMFA().
+ * Same rank rule as blockAccount: an admin cannot change an account at or above their own access group.
+ */
+export async function disableUserMFA(form: Form<{
+    user_id: string;
+    owner?: string;
+    service?: string;
+}>): Promise<'SUCCESS: MFA has been disabled for the user.'> {
+    let params: any = validator.Params(form, {
+        user_id: (v: string) => {
+            return validator.UserId(v, '"user_id"');
+        },
+    }, ['user_id']);
+
+    if (params?.service && params?.owner) {
+        params = { service: params?.service, owner: params?.owner, disable_mfa: params.user_id };
+    } else {
+        params = { disable_mfa: params.user_id };
+    }
+
+    let isAdmin = await checkAdmin.bind(this)();
+
+    if (!isAdmin) {
+        if (!this.__user) {
+            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
+        }
+
+        if (this.__user.access_group < 90) {
+            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
+        }
+    }
+
+    return await request.bind(this)('block-account', params, { auth: true });
+}
+
 export async function deleteAccount(form: Form<{
     user_id: string;
     owner?: string;

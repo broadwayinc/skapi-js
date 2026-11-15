@@ -8,7 +8,7 @@ import {
     CognitoIdToken,
     CognitoAccessToken,
     CognitoRefreshToken
-} from 'amazon-cognito-identity-js';
+} from '../cognito';
 import {
     Form,
     UserProfile,
@@ -492,13 +492,72 @@ export function authentication() {
                 Password: password
             });
 
+            // A new sign-in replaces any sign-in still waiting for an authenticator code.
+            this.__pending_mfa = null;
+
+            // Authenticator app (TOTP) MFA. When the account has it turned on, Cognito answers the
+            // password step with a SOFTWARE_TOKEN_MFA challenge instead of tokens. The sign-in is
+            // parked in memory (never in storage: it holds the password closure that the encryption
+            // keyring needs) and login() rejects with MFA_REQUIRED; verifyMFA() then sends the code
+            // and runs `finish`, the same success steps the password-only sign-in runs. Cognito keeps
+            // the challenge open for 3 minutes. SMS MFA is never offered by this SDK.
+            const mfaChallengeCallbacks = (target: CognitoUser, finish: () => Promise<UserProfile>) => {
+                const parkForCode = () => {
+                    this.__pending_mfa = { cognitoUser: target, finish };
+                    rej(new SkapiError('A code from the authenticator app is required to sign in. Call verifyMFA() with the code.', { code: 'MFA_REQUIRED' }));
+                };
+                const smsRefused = () => {
+                    rej(new SkapiError('Sign-in codes by SMS are not supported.', { code: 'INVALID_REQUEST' }));
+                };
+                return {
+                    totpRequired: parkForCode,
+                    mfaRequired: smsRefused,
+                    selectMFAType: () => {
+                        (target as any).sendMFASelectionAnswer('SOFTWARE_TOKEN_MFA', {
+                            totpRequired: parkForCode,
+                            mfaRequired: smsRefused,
+                            onFailure: (err: any) => rej(cognitoErrorParser(err).parsed)
+                        });
+                    },
+                    mfaSetup: () => {
+                        rej(new SkapiError('The account must set up an authenticator app before signing in.', { code: 'INVALID_REQUEST' }));
+                    }
+                };
+            };
+
             initUser.cognitoUser.authenticateUser(authenticationDetails, {
+                ...mfaChallengeCallbacks(initUser.cognitoUser, async () => {
+                    await getSession({ skipUserUpdateEventTrigger: true });
+                    this.__disabledAccount = null;
+                    if (encState.call(this)) {
+                        try {
+                            await ensureKeyring.bind(this)(password);
+                        } catch (err) {
+                            this.log('encryption:ensureKeyring:failed', err);
+                        }
+                    }
+                    this._runOnLoginListeners(this.user);
+                    this._runOnUserUpdateListeners(this.user);
+                    return this.user;
+                }),
                 newPasswordRequired: (userAttributes, requiredAttributes) => {
                     this.__disabledAccount = null;
                     this.__request_signup_confirmation = username;
                     if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER' || userAttributes['custom:signup_ticket'] === 'OIDPASS') {
                         // auto confirm - (setting password from admin created account)
                         initUser.cognitoUser.completeNewPasswordChallenge(password, {}, {
+                            ...mfaChallengeCallbacks(initUser.cognitoUser, async () => {
+                                cognitoUser = initUser.cognitoUser;
+                                await getSession();
+                                if (encState.call(this)) {
+                                    try {
+                                        await ensureKeyring.bind(this)(password);
+                                    } catch (err) {
+                                        this.log('encryption:ensureKeyring:failed', err);
+                                    }
+                                }
+                                return this.user;
+                            }),
                             onSuccess: _ => {
                                 cognitoUser = initUser.cognitoUser;
                                 getSession().then(async session => {
@@ -1071,6 +1130,7 @@ export async function _out(global: boolean = false) {
 
     stopAnonymousKeepAlive();
     this.__anonymousVerified = null;
+    this.__pending_mfa = null;
 
     if (cognitoUser) {
         if (global) {
@@ -1585,11 +1645,13 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>,
         throw new SkapiError('The user has to be logged in.', { code: 'INVALID_REQUEST' });
     }
 
-    refuseAnonymous.bind(this)('verify an e-mail or a phone number');
+    refuseAnonymous.bind(this)('verify an e-mail');
 
-    if (attribute === 'email' || attribute === 'phone_number') {
+    // E-mail only. Phone number verification was removed in 2.3.0: it sent a text message per
+    // code, which does not scale and costs money; accounts protect themselves with MFA instead.
+    if (attribute === 'email') {
         if (!this.__user.hasOwnProperty(attribute)) {
-            throw new SkapiError(`No ${attribute === 'email' ? 'e-mail' : 'phone number'} to verify`, { code: 'INVALID_REQUEST' });
+            throw new SkapiError('No e-mail to verify', { code: 'INVALID_REQUEST' });
         }
 
         if (this.__user?.[`${attribute}_verified`]) {
@@ -1604,9 +1666,7 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>,
         return;
     }
 
-    // Optional per-call template override for the verification e-mail (verifyEmail). A phone
-    // number is verified by SMS, whose text is the service's own setting (template_sms_verification),
-    // so the override has nothing to reach there.
+    // Optional per-call template override for the verification e-mail.
     let clientMetadata: { [k: string]: string } | undefined;
     const verificationMid = options?.template?.verification;
     if (verificationMid !== undefined) {
@@ -1656,11 +1716,6 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>,
             cognitoUser?.getAttributeVerificationCode(attribute, callback, clientMetadata);
         }
     });
-}
-
-export function verifyPhoneNumber(form?: Form<{ code: string; }>, options?: { template?: { verification?: string } }): Promise<string> {
-    // 'SUCCESS: Verification code has been sent.' | 'SUCCESS: "phone_number" is verified.'
-    return verifyAttribute.bind(this)('phone_number', form, options);
 }
 
 export function verifyEmail(form?: Form<{ code: string; }>, options?: { template?: { verification?: string } }): Promise<string> {
@@ -1823,6 +1878,178 @@ export async function changePassword(params: {
     });
 }
 
+// ---- Authenticator app (TOTP) MFA ------------------------------------------------------------
+//
+// Optional, per account: a user turns it on with setupMFA() + enableMFA(), after which login()
+// rejects with MFA_REQUIRED and verifyMFA() finishes the sign-in. SMS MFA is never used.
+// A project admin can turn it off for a user who lost their device (disableUserMFA in admin.ts).
+
+function mfaCode(form: Form<{ code: string; }>, fieldName = 'code'): string {
+    let params = validator.Params(form, { [fieldName]: 'string' }, [fieldName]);
+    let code = String(params[fieldName]).replace(/\s+/g, '');
+    if (!/^\d{6}$/.test(code)) {
+        throw new SkapiError(`"${fieldName}" should be the 6 digit code from the authenticator app.`, { code: 'INVALID_PARAMETER' });
+    }
+    return code;
+}
+
+function mfaCodeError(err: any, wrongCodeName: string): SkapiError {
+    let { parsed, code } = cognitoErrorParser(err);
+    if (code === wrongCodeName || code === 'CodeMismatchException') {
+        return new SkapiError('Incorrect authenticator code.', { code: 'INVALID_CODE', cause: err });
+    }
+    if (code === 'ExpiredCodeException') {
+        return new SkapiError('This authenticator code was already used. Wait for the next code.', { code: 'INVALID_CODE', cause: err });
+    }
+    if (code === 'TooManyRequestsException' || code === 'LimitExceededException' || code === 'TooManyFailedAttemptsException') {
+        return new SkapiError('Too many attempts. Please try again later.', { code: 'REQUEST_EXCEED', cause: err });
+    }
+    return parsed;
+}
+
+/** The signed-in Cognito user with a fresh session, for the account's own MFA settings. */
+async function mfaAccountUser(what: string): Promise<CognitoUser> {
+    await this.__connection;
+    if (!this.session || !cognitoUser) {
+        throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+    }
+    refuseAnonymous.bind(this)(what);
+    await getJwtToken.bind(this)(); // refreshes the tokens when they are close to expiry
+    if (!cognitoUser) {
+        throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });
+    }
+    return cognitoUser;
+}
+
+export async function verifyMFA(form: Form<{ code: string; }>): Promise<UserProfile> {
+    let code = mfaCode(form);
+    await this.__authConnection;
+
+    let pending = this.__pending_mfa;
+    if (!pending) {
+        throw new SkapiError('No sign-in is waiting for an authenticator code. Call login() first.', { code: 'INVALID_REQUEST' });
+    }
+
+    return new Promise((res, rej) => {
+        pending.cognitoUser.sendMFACode(code, {
+            onSuccess: () => {
+                if (this.__pending_mfa === pending) {
+                    this.__pending_mfa = null;
+                }
+                pending.finish().then(res).catch(rej);
+            },
+            onFailure: (err: any) => {
+                let error = mfaCodeError(err, 'CodeMismatchException');
+                if (error.code !== 'INVALID_CODE') {
+                    // An expired or refused sign-in cannot take another code: it starts over with login().
+                    if (this.__pending_mfa === pending) {
+                        this.__pending_mfa = null;
+                    }
+                    if (cognitoErrorParser(err).code === 'NotAuthorizedException') {
+                        rej(new SkapiError('The sign-in has expired. Call login() again.', { code: 'INVALID_REQUEST', cause: err }));
+                        return;
+                    }
+                }
+                rej(error);
+            }
+        }, 'SOFTWARE_TOKEN_MFA');
+    });
+}
+
+export async function setupMFA(options?: {
+    issuer?: string;
+    account_name?: string;
+}): Promise<{ secret: string; uri: string; }> {
+    let opt = validator.Params(options || {}, {
+        issuer: 'string',
+        account_name: 'string'
+    });
+
+    let user = await mfaAccountUser.bind(this)('set up MFA');
+
+    let secret: string = await new Promise((res, rej) => {
+        user.associateSoftwareToken({
+            associateSecretCode: (secretCode: string) => res(secretCode),
+            onFailure: (err: any) => rej(mfaCodeError(err, ''))
+        });
+    });
+
+    let issuer = (opt?.issuer || this.connection?.service_name || this.service || '').replace(/:/g, ' ').trim();
+    let accountName = (opt?.account_name || this.user?.email || this.user?.username || this.user?.user_id || '').replace(/:/g, ' ').trim();
+    let label = issuer ? `${encodeURIComponent(issuer)}:${encodeURIComponent(accountName)}` : encodeURIComponent(accountName);
+    let uri = `otpauth://totp/${label}?secret=${secret}${issuer ? `&issuer=${encodeURIComponent(issuer)}` : ''}&algorithm=SHA1&digits=6&period=30`;
+
+    return { secret, uri };
+}
+
+export async function enableMFA(form: Form<{ code: string; }>): Promise<'SUCCESS: MFA has been enabled.'> {
+    let code = mfaCode(form);
+    let user = await mfaAccountUser.bind(this)('turn on MFA');
+
+    await new Promise((res, rej) => {
+        user.verifySoftwareToken(code, undefined, {
+            onSuccess: (data: any) => res(data),
+            onFailure: (err: any) => {
+                let { code: cognitoCode } = cognitoErrorParser(err);
+                if (cognitoCode === 'SoftwareTokenMFANotFoundException' || (cognitoCode === 'InvalidParameterException' && /software token/i.test(err?.message || ''))) {
+                    rej(new SkapiError('Call setupMFA() first.', { code: 'INVALID_REQUEST', cause: err }));
+                    return;
+                }
+                rej(mfaCodeError(err, 'EnableSoftwareTokenMFAException'));
+            }
+        });
+    });
+
+    await new Promise((res, rej) => {
+        user.setUserMfaPreference(undefined, { Enabled: true, PreferredMfa: true }, (err: any) => {
+            if (err) {
+                rej(cognitoErrorParser(err).parsed);
+                return;
+            }
+            res(null);
+        });
+    });
+
+    return 'SUCCESS: MFA has been enabled.';
+}
+
+export async function disableMFA(): Promise<'SUCCESS: MFA has been disabled.'> {
+    let user = await mfaAccountUser.bind(this)('turn off MFA');
+
+    await new Promise((res, rej) => {
+        user.setUserMfaPreference(undefined, { Enabled: false, PreferredMfa: false }, (err: any) => {
+            if (err) {
+                rej(cognitoErrorParser(err).parsed);
+                return;
+            }
+            res(null);
+        });
+    });
+
+    return 'SUCCESS: MFA has been disabled.';
+}
+
+export async function getMFAStatus(): Promise<{ enabled: boolean; }> {
+    let user = await mfaAccountUser.bind(this)('use MFA');
+
+    // GetUser straight from the client: the library's getUserData() caches the answer in storage,
+    // and a cached "enabled: false" would hide a change made on another device.
+    let data: any = await new Promise((res, rej) => {
+        (user as any).client.request('GetUser', {
+            AccessToken: user.getSignInUserSession().getAccessToken().getJwtToken()
+        }, (err: any, result: any) => {
+            if (err) {
+                rej(cognitoErrorParser(err).parsed);
+                return;
+            }
+            res(result);
+        });
+    });
+
+    let list: string[] = Array.isArray(data?.UserMFASettingList) ? data.UserMFASettingList : [];
+    return { enabled: list.includes('SOFTWARE_TOKEN_MFA') };
+}
+
 export async function updateProfile(form: Form<UserAttributes>): Promise<UserProfile> {
     await this.__connection;
     if (!this.session) {
@@ -1881,8 +2108,9 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
     // was created with, always logs in.
 
     let collision = [
-        ['email_public', 'email_verified', "User's e-mail should be verified to set"],
-        ['phone_number_public', 'phone_number_verified', "User's phone number should be verified to set"]
+        ['email_public', 'email_verified', "User's e-mail should be verified to set"]
+        // phone_number_public needs no verification since 2.3.0, like address_public: phone
+        // numbers are no longer verified.
     ];
 
     if (this.__user) {

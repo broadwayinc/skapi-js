@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "2.2.36",
+  "version": "2.3.0-beta.0",
   "description": "Serverless Backend API for Web Developers.",
   "main": "dist/skapi.cjs",
   "browser": "dist/skapi.browser.mjs",
@@ -38,7 +38,6 @@
   },
   "homepage": "https://www.skapi.com",
   "dependencies": {
-    "amazon-cognito-identity-js": "^6.3.16",
     "cocochex": "^1.0.4",
     "qpass": "^1.2.1"
   },

@@ -463,7 +463,7 @@ export type UserAttributes = {
     email?: string;
     /**
      * User's phone number. Format: "+0012341234"<br>
-     * When phone number is changed, phone number verified state will be changed to false.
+     * Stored as given: phone numbers are not verified (phone verification was removed in 2.3.0).
      * Phone number is only visible to others when set to public.
      * Phone number should be verified to set to public.
      */
@@ -503,7 +503,7 @@ export type UserAttributes = {
 
     /** User's E-Mail is public when true. E-Mail should be verified. */
     email_public?: boolean;
-    /** User's phone number is public when true. Phone number should be verified. */
+    /** User's phone number is public when true. */
     phone_number_public?: boolean;
     /** User's address is public when true. */
     address_public?: boolean;
@@ -552,11 +552,14 @@ export type UserProfile = {
     log: number;
     /** Shows true when user has verified their E-Mail. */
     email_verified?: boolean;
-    /** Shows true when user has verified their phone number. */
+    /**
+     * @deprecated Phone verification was removed in 2.3.0, so nothing sets this any more. An
+     * account verified earlier keeps true until its phone number changes.
+     */
     phone_number_verified?: boolean;
     /** User's E-Mail is public when true. E-Mail should be verified. */
     email_public?: boolean;
-    /** User's phone number is public when true. Phone number should be verified. */
+    /** User's phone number is public when true. */
     phone_number_public?: boolean;
     /** User's address is public when true. */
     address_public?: boolean;
@@ -577,7 +580,7 @@ export type UserProfile = {
     email?: string;
     /**
      * User's phone number. Format: "+0012341234"<br>
-     * When phone number is changed, phone number verified state will be changed to false.
+     * Stored as given: phone numbers are not verified (phone verification was removed in 2.3.0).
      * Phone number is only visible to others when set to public.
      * Phone number should be verified to set to public.
      */
@@ -667,7 +670,7 @@ export type UserPublic = {
     email?: string;
     /**
      * User's phone number. Format: "+0012341234"<br>
-     * When phone number is changed, phone number verified state will be changed to false.
+     * Stored as given: phone numbers are not verified (phone verification was removed in 2.3.0).
      * Phone number is only visible to others when set to public.
      * Phone number should be verified to set to public.
      */

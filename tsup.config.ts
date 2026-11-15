@@ -6,7 +6,7 @@ const license = readFileSync(path.resolve(__dirname, 'LICENSE'), 'utf8').replace
 const packageJson = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'));
 const banner = `/**\n * @license\n${license}\n */`;
 const browserShim = path.resolve(__dirname, 'src/shims/empty-node.ts');
-const externalDependencies = ['amazon-cognito-identity-js', 'cocochex', 'qpass'];
+const externalDependencies = ['cocochex', 'qpass'];
 
 export default defineConfig([
     {
