@@ -16,8 +16,9 @@
  *
  * `process.getBuiltinModule` is neither. It is a plain runtime call, invisible to
  * every bundler, and it exists in Node 20.16+ / 22.3+. Older runtimes fall back to
- * `require` when there is a real one, and to null otherwise, in which case the
- * storage below degrades to holding nothing rather than throwing.
+ * `require` when there is a real one, and to null otherwise (Node 18 loading the
+ * ESM entry), in which case the localStorage below keeps its values in memory for
+ * the life of the process instead of in ./states/localStorage/.
  */
 export function loadNodeModule(name: string): any {
     const g: any = typeof globalThis !== 'undefined' ? (globalThis as any) : undefined;
@@ -217,6 +218,12 @@ if (win) {
 
         root.XMLHttpRequest = NodeXMLHttpRequest;
 
+        // Where localStorage lives when fs / path cannot be loaded (see
+        // loadNodeModule). Cognito writes its session through localStorage and
+        // reads it straight back, so holding nothing would break every signup and
+        // login; memory keeps them working until the process exits.
+        const memoryLocalStorage = new Map<string, string>();
+
         root.window = {
             _runningInNodeJS: true,
             alert: (message: string) => console.error('[Alert]', message),
@@ -236,7 +243,7 @@ if (win) {
                 getItem: (key: string) => {
                     const fs = fsMod();
                     const path = pathMod();
-                    if (!fs || !path) return null;
+                    if (!fs || !path) return memoryLocalStorage.has(key) ? memoryLocalStorage.get(key) : null;
                     // read file "{key}.skapi" in ./states/localStorage/ as string
                     try {
                         const filePath = path.resolve(process.cwd(), 'states', 'localStorage', `${key}.skapi`);
@@ -251,7 +258,7 @@ if (win) {
                 setItem: (key: string, value: string) => {
                     const fs = fsMod();
                     const path = pathMod();
-                    if (!fs || !path) return;
+                    if (!fs || !path) { memoryLocalStorage.set(key, String(value)); return; }
                     // write file "{key}.skapi" in ./states/localStorage/ with value as content
                     try {
                         const dirPath = path.resolve(process.cwd(), 'states', 'localStorage');
@@ -267,7 +274,7 @@ if (win) {
                 removeItem: (key: string) => {
                     const fs = fsMod();
                     const path = pathMod();
-                    if (!fs || !path) return;
+                    if (!fs || !path) { memoryLocalStorage.delete(key); return; }
                     try {
                         const filePath = path.resolve(process.cwd(), 'states', 'localStorage', `${key}.skapi`);
                         if (fs.existsSync(filePath)) {
