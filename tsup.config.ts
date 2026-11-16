@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { defineConfig } from 'tsup';
 
-const license = readFileSync(path.resolve(__dirname, 'LICENSE'), 'utf8').replace('[xxxx]', String(new Date().getFullYear()));
 const packageJson = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'));
-const banner = `/**\n * @license\n${license}\n */`;
+// One line instead of the whole LICENSE text (11 KB in every output file). The full
+// text ships as LICENSE in the package. "/*!" keeps the notice when an app re-bundles
+// the SDK, since bundlers and minifiers preserve those comments.
+const banner = `/*! skapi-js v${packageJson.version} | (c) ${new Date().getFullYear()} broadway Inc. | Apache-2.0 | https://www.apache.org/licenses/LICENSE-2.0 */`;
 const browserShim = path.resolve(__dirname, 'src/shims/empty-node.ts');
 const externalDependencies = ['cocochex', 'qpass'];
 
@@ -44,6 +46,11 @@ export default defineConfig([
         },
         define: {
             __SKAPI_VERSION__: JSON.stringify(packageJson.version)
+        },
+        esbuildOptions(options) {
+            // Maps point at the TS sources instead of embedding them: the embedded copy
+            // was about 1 MB per map, most of the npm package.
+            options.sourcesContent = false;
         }
     },
     {
@@ -75,6 +82,7 @@ export default defineConfig([
             global: 'globalThis'
         },
         esbuildOptions(options) {
+            options.sourcesContent = false;
             options.alias = {
                 ...(options.alias || {}),
                 fs: browserShim,

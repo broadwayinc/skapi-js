@@ -150,6 +150,20 @@ export function parseStoredData(r: any): any {
     return r;
 }
 
+/**
+ * Payload file urls, newest upload first. Every record file url carries its upload time
+ * right after "bin" (".../bin/<base62 ms>/<size>/<field>/<name>"), and a record's file
+ * list is a DynamoDB set, which keeps no order, so "the last one listed" is not "the
+ * latest one written".
+ */
+function newestPayloadsFirst(urls: string[]): string[] {
+    let uploaded = (u: string) => {
+        let sp = u.split('/').slice(3);
+        return sp[7] === 'bin' && sp[8] ? fromBase62(sp[8]) : 0;
+    };
+    return urls.slice().sort((a, b) => uploaded(b) - uploaded(a));
+}
+
 async function blobToText(blob: any): Promise<string> {
     if (typeof blob === 'string') {
         return blob;
@@ -352,7 +366,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
     // Url of the spilled-ciphertext file, when this record has one. Collected by
     // the same synchronous pre-scan as the offloaded __data__ file, because the
     // 'data' handler needs it before the async 'bin' handler has run.
-    let ctFileUrl: string | null = null;
+    let ctFileUrls: string[] = [];
     function access_group_set(v) {
         let access_group = v == '**' ? 'private' : parseInt(v);
         access_group = access_group == 0 ? 'public' : access_group == 1 ? 'authorized' : access_group == 99 ? 'admin' : access_group;
@@ -671,7 +685,11 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                 user_id: output.user_id,
                 record_id: output.record_id,
                 unique_id: output.unique_id,
-                ctUrl: ctFileUrl
+                // Every payload file the record holds, newest upload first. Older SDKs
+                // could leave several; the newest is the current one, and the others
+                // are tried only if it does not open.
+                ctUrl: newestPayloadsFirst(ctFileUrls)[0] || null,
+                ctUrls: newestPayloadsFirst(ctFileUrls)
             };
 
             // Open an encryption envelope, if this is one. Total: it never
@@ -852,7 +870,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
                     dataFileUrls.push(url);
                 }
                 if (sp.length >= 12 && isCiphertextFile(sp[10], sp[sp.length - 1])) {
-                    ctFileUrl = url;
+                    ctFileUrls.push(url);
                 }
             }
             catch { }
@@ -927,6 +945,85 @@ function normalizeTypedString(v: string) {
     }
 }
 
+/**
+ * A record file url the SDK handed out, in the form the record stores in its bin.
+ *
+ * The server stores bin urls fully decoded (the S3 notification runs unquote_plus on the
+ * key) and removes them by exact string, from both deleteFiles and postRecord's
+ * remove_bin. But a non-public file's `url` comes from getFile('endpoint'), which runs it
+ * through validator.Url (`new URL().href`): "my photo.jpg" goes out as "my%20photo.jpg",
+ * "한글.jpg" as "%ED%95%9C%EA%B8%80.jpg". Sent back like that it matched nothing and the
+ * file stayed. The url also carries "?t=<token>", which no stored url has.
+ *
+ * Not a blind decodeURIComponent: a raw name can itself hold "%" sequences ("50%25 off.pdf",
+ * "a%2Fb.pdf"), and decoding those renames the file in the request.
+ * 1. A url getFile handed out in this session maps back to the exact string it was given
+ *    (kept only for urls step 2 would change, so the map stays small).
+ * 2. Otherwise a url with a query (getFile's token) was encoded by validator.Url, so only
+ *    what that encoding produces is undone: uppercase %XX of the bytes the URL path
+ *    encoder escapes, and of valid UTF-8 sequences. Any other "%" is the name's own.
+ *    The one case this cannot tell apart is a name that literally holds such a sequence
+ *    ("a%20b.pdf"), whose url was not handed out in this session.
+ * 3. A url without a query is already the stored form (a public file's `url`, or a raw
+ *    url) and is sent as written.
+ */
+const handedOutRecordFileUrls = new Map<string, string>();
+
+function rememberHandedOutUrl(handedOut: string, requested: string) {
+    let base = handedOut.split('?')[0];
+    let raw = requested.split('?')[0];
+    // Also kept when the url went out unchanged but looks encoded ("a%20b.pdf" is its own
+    // stored form), so step 2 below does not decode a name that was never encoded.
+    if (base.startsWith('https://') && (base !== raw || undoUrlPathEncoding(base) !== base)) {
+        handedOutRecordFileUrls.set(base, raw);
+    }
+}
+
+// The ASCII bytes the WHATWG URL parser percent-encodes in a path: C0 controls except
+// tab/LF/CR (those are stripped, never encoded), space " < > ` { } DEL, and ^ (encoded by
+// some browsers).
+const URL_PATH_ENCODED_ASCII = new Set<number>([
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x0B, 0x0C, 0x0E, 0x0F,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+    0x20, 0x22, 0x3C, 0x3E, 0x5E, 0x60, 0x7B, 0x7D, 0x7F
+]);
+
+function undoUrlPathEncoding(url: string): string {
+    return url.replace(/(?:%[0-9A-F]{2})+/g, run => {
+        let tokens = run.match(/%[0-9A-F]{2}/g) as string[];
+        let out = '';
+        let i = 0;
+        while (i < tokens.length) {
+            let b = parseInt(tokens[i].slice(1), 16);
+            if (b < 0x80) {
+                out += URL_PATH_ENCODED_ASCII.has(b) ? String.fromCharCode(b) : tokens[i];
+                i++;
+                continue;
+            }
+            let len = b >= 0xF0 ? 4 : b >= 0xE0 ? 3 : b >= 0xC0 ? 2 : 1;
+            let seq = tokens.slice(i, i + len).join('');
+            try {
+                out += decodeURIComponent(seq);
+                i += len;
+            }
+            catch {
+                out += tokens[i];
+                i++;
+            }
+        }
+        return out;
+    });
+}
+
+function storedRecordFileUrl(url: string): string {
+    let base = url.split('?')[0];
+    let known = handedOutRecordFileUrls.get(base);
+    if (known !== undefined) {
+        return known;
+    }
+    return url.includes('?') ? undoUrlPathEncoding(base) : base;
+}
+
 export async function deleteFiles(params: {
     endpoints: string | string[], // file endpoints
 }): Promise<RecordData[]> {
@@ -939,6 +1036,11 @@ export async function deleteFiles(params: {
     if (!Array.isArray(endpoints)) {
         throw new SkapiError('"endpoints" should be type: array | string.', { code: 'INVALID_PARAMETER' });
     }
+
+    // The bin `url` of a non-public file carries "?t=<token>" and is percent-encoded
+    // (getFile 'endpoint'). The backend removes the stored, decoded bin entry by exact
+    // string and answers success when nothing matched, so send the stored form.
+    endpoints = endpoints.map(ep => typeof ep === 'string' ? storedRecordFileUrl(ep) : ep);
 
     let updatedRec = await request.bind(this)('del-files', {
         endpoints,
@@ -1036,6 +1138,7 @@ export async function getFile(
 
 
     if (config?.dataType === 'info') {
+        rememberHandedOutUrl(url, requestedUrl);
         // auth(publ)/service-id/owner-id/user-id/records/rec-id/**/file(bin)/sizetag/filename
         return {
             url,
@@ -1165,8 +1268,9 @@ export async function getFile(
 
         if (this.user.user_id !== target_key[3] && (access_group === '**' || user_access_group < access_group)) {
             let record_id = target_key[5];
-            if (this.__private_access_key[record_id] && typeof this.__private_access_key[record_id] === 'string') {
-                url += `&p=${encodeURIComponent(this.__private_access_key[record_id])}`;
+            let cachedKey = cachedPrivateKey.call(this, record_id);
+            if (cachedKey) {
+                url += `&p=${encodeURIComponent(cachedKey)}`;
             }
             else if (this.owner !== this.host) {
                 try {
@@ -1222,6 +1326,8 @@ export async function getFile(
     }
 
     if (config?.dataType === 'endpoint') {
+        // A url handed out here may be fed back to deleteFiles or remove_bin.
+        rememberHandedOutUrl(url, requestedUrl);
         if (config._update) {
             // updates the url in the record (when called from the record bin object)
             config._update.url = url;
@@ -1246,13 +1352,19 @@ export async function getFile(
             let b = await request.bind(this)(
                 url,
                 null,
-                { method: 'get', contentType: null, responseType: config?.dataType === 'text' ? 'text' : 'blob', fetchOptions: { progress: config?.progress } },
+                // Always a blob. A 'text' response would go through the request layer's
+                // JSON.parse, so a .json file (or a file holding "123") came back as an
+                // object or a number instead of the string 'text' promises.
+                { method: 'get', contentType: null, responseType: 'blob', fetchOptions: { progress: config?.progress } },
                 { ignoreService: true }
             );
             if (config?.dataType === 'base64') {
                 const reader = new FileReader();
                 reader.onloadend = () => res((reader.result as string));
                 reader.readAsDataURL(b);
+            }
+            else if (config?.dataType === 'text') {
+                res(await blobToText(b));
             }
             else {
                 res(b);
@@ -1313,6 +1425,60 @@ function deleteScopedUniqueId(scope: string, unique_id: string): void {
     if (this.__my_unique_ids[scope]) {
         delete this.__my_unique_ids[scope][unique_id];
     }
+}
+
+/**
+ * Drop every cached unique_id that maps to `record_id`, except `keep` (its current
+ * unique_id, when it has one). The cache only ever gained entries, so after a record's
+ * unique_id changed, or the record was deleted, the old unique_id still resolved to it:
+ * getRecords({ unique_id: old }) read it and postRecord({ record_id: old }) overwrote it.
+ * Dropping an entry is always safe: an id with no entry goes to the backend to resolve.
+ * Returns whether anything was dropped.
+ */
+function dropStaleUniqueIds(scope: string, record_id: string, keep?: string): boolean {
+    let bucket = this.__my_unique_ids[scope];
+    let dropped = false;
+    if (!bucket || !record_id) {
+        return dropped;
+    }
+    for (let uid of Object.keys(bucket)) {
+        if (bucket[uid] === record_id && uid !== keep) {
+            delete bucket[uid];
+            dropped = true;
+        }
+    }
+    return dropped;
+}
+
+/**
+ * Persist one scope of the unique_id cache to sessionStorage (the instance restores it on
+ * load, see skapi.ts).
+ *
+ * Debounced + guarded. Previously every postRecord re-stringified the entire, ever-growing
+ * map synchronously, so a bulk upload (e.g. 10k files, each writing a src:: unique_id) did
+ * O(n^2) JSON work and could throw QuotaExceededError mid-batch, failing the upload.
+ * Coalesce writes to at most one per idle tick and swallow storage errors so persistence
+ * never breaks an upload.
+ */
+function persistScopedUniqueIds(scope: string): void {
+    if (!isBrowserRuntime()) {
+        return;
+    }
+    if (this.__uniqueIdsPersistTimer !== null) {
+        clearTimeout(this.__uniqueIdsPersistTimer);
+    }
+    this.__uniqueIdsPersistTimer = setTimeout(() => {
+        this.__uniqueIdsPersistTimer = null;
+        try {
+            // Persist ONLY the scope just written, under a key that names both
+            // service and owner. Writing the whole map under a service-only key
+            // is what let one project's entries be restored into another.
+            window.sessionStorage.setItem(`${scope}:uniqueids`, JSON.stringify(this.__my_unique_ids[scope] || {}));
+        } catch (e) {
+            // sessionStorage full/unavailable: keep the in-memory map,
+            // just skip persistence for this session.
+        }
+    }, 500);
 }
 
 /**
@@ -1411,26 +1577,43 @@ async function getQuery(query, isDel = false) {
         if (Array.isArray(is_reference_fetch)) {
             // Only a delete takes a list of ids. Its cached unique ids go with the records, and
             // there is no single record to hold a private access key for.
-            if (isDel && Array.isArray(query.unique_id)) {
-                for (let uid of query.unique_id) {
-                    deleteScopedUniqueId.bind(this)(scope, uid);
+            if (isDel) {
+                let changed = false;
+                for (let id of query.unique_id || query.record_id) {
+                    let cachedRec = query.unique_id ? getScopedUniqueId.bind(this)(scope, id) : id;
+                    if (query.unique_id && cachedRec) {
+                        deleteScopedUniqueId.bind(this)(scope, id);
+                        changed = true;
+                    }
+                    if (dropStaleUniqueIds.bind(this)(scope, cachedRec)) {
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    persistScopedUniqueIds.bind(this)(scope);
                 }
             }
             is_reference_fetch = '';
         }
         else if (typeof is_reference_fetch === 'string') {
-            if (typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
-                query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+            let cachedKey = cachedPrivateKey.call(this, is_reference_fetch);
+            if (cachedKey) {
+                query.private_key = cachedKey;
             }
             let cached = getScopedUniqueId.bind(this)(scope, is_reference_fetch);
-            if (cached) {
-                if (isDel) {
+            if (isDel) {
+                // Every unique_id the deleted record was known by goes with it, not only
+                // the one named here.
+                if (cached) {
                     deleteScopedUniqueId.bind(this)(scope, is_reference_fetch);
                 }
-                else {
-                    query.record_id = cached;
-                    // delete query.unique_id;
+                if (dropStaleUniqueIds.bind(this)(scope, cached || query.record_id) || cached) {
+                    persistScopedUniqueIds.bind(this)(scope);
                 }
+            }
+            else if (cached) {
+                query.record_id = cached;
+                // delete query.unique_id;
             }
         }
     }
@@ -1448,8 +1631,9 @@ async function getQuery(query, isDel = false) {
 
                 is_reference_fetch = ref.record_id || ref.unique_id;
 
-                if (is_reference_fetch && typeof this.__private_access_key?.[is_reference_fetch] === 'string') {
-                    query.private_key = this.__private_access_key?.[is_reference_fetch] || undefined;
+                let cachedKey = is_reference_fetch ? cachedPrivateKey.call(this, is_reference_fetch) : undefined;
+                if (cachedKey) {
+                    query.private_key = cachedKey;
                 }
 
                 query.reference = is_reference_fetch;
@@ -1570,8 +1754,58 @@ async function getQuery(query, isDel = false) {
     }
     return {
         query,
-        is_reference_fetch
+        is_reference_fetch,
+        scope
     }
+}
+
+/**
+ * The private_key each reference read sent on its FIRST page, per instance, keyed by the
+ * rest of the request.
+ *
+ * The request layer pages by a hash of the whole request body (utils/network.ts), and
+ * private_key is part of that body. Page 1 of a read by reference usually goes out with no
+ * key, its response hands one back (reference_private_key) and it is cached, so the
+ * fetchMore call that followed attached it, hashed differently and started over at page 1.
+ * A fetchMore now sends whatever page 1 of the same request sent.
+ */
+const firstPagePrivateKeys: WeakMap<object, { [request: string]: string }> = new WeakMap();
+
+function stableStringify(v: any): string {
+    if (Array.isArray(v)) {
+        return '[' + v.map(stableStringify).join(',') + ']';
+    }
+    if (v && typeof v === 'object') {
+        return '{' + Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
+    }
+    return JSON.stringify(v) ?? 'null';
+}
+
+function keepPagePrivateKey(query: Record<string, any>, reference_id: string, fetchOptions?: FetchOptions): void {
+    let sent = firstPagePrivateKeys.get(this);
+    if (!sent) {
+        sent = {};
+        firstPagePrivateKeys.set(this, sent);
+    }
+
+    let rest = Object.assign({}, query);
+    delete rest.private_key;
+    let sig = stableStringify([rest, fetchOptions?.limit, fetchOptions?.ascending, fetchOptions?.startKey]);
+
+    // Only a key that came from the cache is swapped. A key the caller passed is theirs.
+    let fromCache = !query.private_key || query.private_key === this.__private_access_key?.[reference_id];
+
+    if (fetchOptions?.fetchMore && fromCache && Object.prototype.hasOwnProperty.call(sent, sig)) {
+        if (sent[sig]) {
+            query.private_key = sent[sig];
+        }
+        else {
+            delete query.private_key;
+        }
+        return;
+    }
+
+    sent[sig] = query.private_key || '';
 }
 
 export async function getRecords(query: GetRecordQuery & { private_key?: string; }, fetchOptions?: FetchOptions): Promise<DatabaseResponse<RecordData>> {
@@ -1585,6 +1819,10 @@ export async function getRecords(query: GetRecordQuery & { private_key?: string;
     // if (is_reference_fetch && typeof this.__private_access_key[is_reference_fetch] === 'string') {
     //     q.query.private_key = this.__private_access_key[is_reference_fetch] || undefined;
     // }
+
+    if (is_reference_fetch) {
+        keepPagePrivateKey.call(this, q.query, is_reference_fetch, fetchOptions);
+    }
 
     let result = await request.bind(this)(
         'get-records',
@@ -1756,9 +1994,9 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
                         return v;
                     }
                     is_reference_post = v;
-                    if (typeof this.__private_access_key?.[v] === 'string') {
-                        config.reference_private_key = this.__private_access_key[v] || undefined;
-                    }
+                    // Nothing is written onto the caller's config here: that wrote the
+                    // cached reference_private_key into the caller's own object, and the
+                    // validated config this returns never carried it anyway.
                     return validateStringByPolicy(v, 'reference.record_id', {
                         allowEmpty: false,
                         onlyAlphanumeric: true,
@@ -1791,11 +2029,11 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
             if (Array.isArray(v)) {
                 for (let i of v) {
                     if (typeof i === 'string') {
-                        // Strip the "?t=<token>" getFile appends, but do NOT decode: the stored bin
-                        // url holds the filename raw, so decoding produced a url that matches
-                        // nothing. The backend's DELETE on a string set ignores a non-matching
-                        // element, so removing a file named "a%2Fb.pdf" silently did nothing.
-                        arr.push(i.split('?')[0]);
+                        // The stored bin url, as deleteFiles sends it: no "?t=<token>", and
+                        // getFile's percent-encoding undone without touching a "%" that is
+                        // part of the name. The backend's DELETE on a string set ignores a
+                        // non-matching element, so a mismatch silently removed nothing.
+                        arr.push(storedRecordFileUrl(i));
                     }
                     else if (i.url && i.size && i.filename) {
                         let hostUrl = i.url.split('/').slice(0, 3).join('/');
@@ -1893,7 +2131,9 @@ export async function bulkPostRecords(params) {
         throw new SkapiError('"params" should be a non-empty array.', { code: 'INVALID_PARAMETER' });
     }
 
-    let reference_posts = [];
+    // The reference each element posted, by index, so a returned reference_private_key is
+    // cached for that element's own reference only.
+    let reference_posts: { [idx: number]: string } = {};
     let service = undefined;
     let owner = undefined;
     let progress = null;
@@ -1932,7 +2172,7 @@ export async function bulkPostRecords(params) {
             }
         }
         if (mangled.is_reference_post) {
-            reference_posts.push(mangled.is_reference_post);
+            reference_posts[idx] = mangled.is_reference_post;
         }
         if (typeof _config.progress === 'function' && progress === null) {
             progress = _config.progress;
@@ -2011,6 +2251,7 @@ export async function bulkPostRecords(params) {
     // Bulk posts all share one service/owner (enforced above), so one scope covers the
     // whole batch. Falls back to the instance's own pair when the caller named neither.
     let scope = cacheScope.bind(this)(service, owner);
+    let uniqueIdsChanged = false;
 
     for (let i = 0; i < recList.length; i++) {
         let rec = recList[i];
@@ -2032,15 +2273,24 @@ export async function bulkPostRecords(params) {
             record.error = rec.error;
         }
 
-        if (typeof rec?.reference_private_key === 'string') {
-            for (let ref of reference_posts) {
-                this.__private_access_key[ref] = rec.reference_private_key;
+        if (typeof rec?.reference_private_key === 'string' && reference_posts[i]) {
+            this.__private_access_key[reference_posts[i]] = rec.reference_private_key;
+        }
+
+        if (record?.record_id) {
+            if (dropStaleUniqueIds.bind(this)(scope, record.record_id, record.unique_id)) {
+                uniqueIdsChanged = true;
             }
         }
 
         if (record?.unique_id) {
             setScopedUniqueId.bind(this)(scope, record.unique_id, record.record_id);
         }
+    }
+
+    // A stale mapping dropped only in memory would come back from sessionStorage on reload.
+    if (uniqueIdsChanged) {
+        persistScopedUniqueIds.bind(this)(scope);
     }
 
     // if (Object.keys(this.__my_unique_ids).length) {
@@ -2141,12 +2391,12 @@ export async function postRecord(
         let ctForm = new FormData();
         ctForm.append(CT_FORM_KEY, new File([encRes.spill], 'payload.bin', { type: 'application/octet-stream' }));
         await uploadFiles.bind(this)(ctForm, { record_id: (config as any).record_id });
-
-        if (encRes.retireCt) {
-            let existing = (postData as any).remove_bin;
-            let stale = [encRes.retireCt];
-            (postData as any).remove_bin = Array.isArray(existing) ? existing.concat(stale) : stale;
-        }
+    }
+    // Old payload files: retired whether this write spilled again or now fits inline.
+    if (encRes.retireCt?.length && (config as any)?.record_id) {
+        let existing = (postData as any).remove_bin;
+        let stale = encRes.retireCt;
+        (postData as any).remove_bin = Array.isArray(existing) ? existing.concat(stale) : stale;
     }
 
     let rec = await request.bind(this)('post-record', postData, options);
@@ -2224,32 +2474,16 @@ export async function postRecord(
         record.data = encRes.plain;
         record.encrypted = { status: 'encrypted', recipients: Object.keys(encRes.send.k || {}) };
     }
+    let uniqueIdScope = cacheScope.bind(this)((_config as any)?.service, (_config as any)?.owner);
+    // The record's unique_id may have just changed or been removed: drop the old ones.
+    let uniqueIdsDropped = record.record_id
+        ? dropStaleUniqueIds.bind(this)(uniqueIdScope, record.record_id, record.unique_id)
+        : false;
     if (record.unique_id) {
-        let scope = cacheScope.bind(this)((_config as any)?.service, (_config as any)?.owner);
-        setScopedUniqueId.bind(this)(scope, record.unique_id, record.record_id);
-        if (isBrowserRuntime()) {
-            // Debounce + guard the persistence. Previously every postRecord
-            // re-stringified the entire, ever-growing map synchronously, so a
-            // bulk upload (e.g. 10k files, each writing a src:: unique_id) did
-            // O(n^2) JSON work and could throw QuotaExceededError mid-batch,
-            // failing the upload. Coalesce writes to at most one per idle tick
-            // and swallow storage errors so persistence never breaks an upload.
-            if (this.__uniqueIdsPersistTimer !== null) {
-                clearTimeout(this.__uniqueIdsPersistTimer);
-            }
-            this.__uniqueIdsPersistTimer = setTimeout(() => {
-                this.__uniqueIdsPersistTimer = null;
-                try {
-                    // Persist ONLY the scope just written, under a key that names both
-                    // service and owner. Writing the whole map under a service-only key
-                    // is what let one project's entries be restored into another.
-                    window.sessionStorage.setItem(`${scope}:uniqueids`, JSON.stringify(this.__my_unique_ids[scope] || {}));
-                } catch (e) {
-                    // sessionStorage full/unavailable: keep the in-memory map,
-                    // just skip persistence for this session.
-                }
-            }, 500);
-        }
+        setScopedUniqueId.bind(this)(uniqueIdScope, record.unique_id, record.record_id);
+    }
+    if (record.unique_id || uniqueIdsDropped) {
+        persistScopedUniqueIds.bind(this)(uniqueIdScope);
     }
 
     return record;
@@ -2566,6 +2800,19 @@ export async function deleteRecords(query: DelRecordQuery & { private_key?: stri
                 return rec;
             }
         }));
+
+        // A delete by query names no ids up front: the unique_ids cached for the records it
+        // deleted are dropped here, from the records it returns.
+        let uniqueIdsDropped = false;
+        for (let rec of result.list) {
+            let rid = rec?.record_id || rec?.rec;
+            if (typeof rid === 'string' && dropStaleUniqueIds.bind(this)(q.scope, rid)) {
+                uniqueIdsDropped = true;
+            }
+        }
+        if (uniqueIdsDropped) {
+            persistScopedUniqueIds.bind(this)(q.scope);
+        }
     }
 
     return result?.message || result;
@@ -2596,20 +2843,24 @@ export async function removePrivateRecordAccess(params: {
     record_id: string;
     user_id: string | string[];
 }) {
+    // Roll the data key BEFORE the ACL change. Dropping the wrap alone would
+    // leave the revoked user able to open any ciphertext they already hold, so
+    // the record is re-encrypted under a fresh key. This is forward-only: it
+    // cannot un-read what they already read. The roll goes first because it is
+    // the step that can fail (re-sealing attached files needs uploads, which
+    // Node cannot do): a failure then leaves access exactly as it was, instead of
+    // an error reported after the access was already gone. If the ACL change
+    // fails after a successful roll, the user keeps access but has no key.
+    if (encState.call(this)) {
+        let ids = typeof params.user_id === 'string' ? [params.user_id] : params.user_id;
+        await dropRecipientsAndRoll.bind(this)(params.record_id, Array.isArray(ids) && ids.length ? ids : null);
+    }
+
     let result = await recordAccess.bind(this)({
         record_id: params.record_id,
         user_id: params.user_id || null,
         execute: 'remove'
     });
-
-    // Roll the data key AFTER the ACL change. Dropping the wrap alone would
-    // leave the revoked user able to open any ciphertext they already hold, so
-    // the record is re-encrypted under a fresh key. This is forward-only: it
-    // cannot un-read what they already read.
-    if (encState.call(this)) {
-        let ids = typeof params.user_id === 'string' ? [params.user_id] : params.user_id;
-        await dropRecipientsAndRoll.bind(this)(params.record_id, Array.isArray(ids) && ids.length ? ids : null);
-    }
 
     return result;
 }
@@ -2666,6 +2917,35 @@ export async function listPrivateRecordAccess(p: {
     return list;
 }
 
+/**
+ * Seconds before a private access key expires at which it is no longer sent: a request that
+ * leaves with a key about to expire would reach the server or the CDN with an expired one.
+ */
+const PRIVATE_KEY_REFRESH_MARGIN = 60;
+
+/**
+ * The cached private access key for `record_id`, or undefined when there is none worth sending.
+ *
+ * The server mints "<exp>.<hash>", exp the unix second the key stops working (an hour after it
+ * was minted). A key that has expired or expires within PRIVATE_KEY_REFRESH_MARGIN is dropped
+ * from the cache, so the caller fetches a fresh one the usual way (requestPrivateRecordAccessKey,
+ * or the reference_private_key a read hands back). A legacy key (64 hex characters, no expiry,
+ * minted before keys expired) is dropped too: the server accepts it only until a follow-up
+ * deploy turns that off, and a fresh key costs one request.
+ */
+function cachedPrivateKey(record_id: string): string | undefined {
+    let key = this.__private_access_key?.[record_id];
+    if (typeof key !== 'string' || !key) {
+        return undefined;
+    }
+    let exp = /^(\d+)\./.exec(key);
+    if (exp && Number(exp[1]) - PRIVATE_KEY_REFRESH_MARGIN > Date.now() / 1000) {
+        return key;
+    }
+    delete this.__private_access_key[record_id];
+    return undefined;
+}
+
 export function requestPrivateRecordAccessKey(params: { record_id: string, reference_id?: string }): Promise<string> {
     let record_id: string | string[] = params.record_id;
     let reference_id = params.reference_id || undefined;
@@ -2681,8 +2961,9 @@ export function requestPrivateRecordAccessKey(params: { record_id: string, refer
         throw new SkapiError(`Reference ID should be type: <string>`, { code: 'INVALID_PARAMETER' });
     }
 
-    if (typeof this.__private_access_key[record_id] === 'string') {
-        return Promise.resolve(this.__private_access_key[record_id]);
+    let cachedKey = cachedPrivateKey.call(this, record_id);
+    if (cachedKey) {
+        return Promise.resolve(cachedKey);
     }
 
     if (pendingPrivateAccessKeyRequest[record_id]) {

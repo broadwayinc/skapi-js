@@ -5,6 +5,25 @@ import { Form, UserAttributes, UserVisibilityFlag, UserProfile, UserPublic, Data
 import SkapiError from '../main/error';
 import { parseUserAttributes } from '../utils/utils';
 
+/**
+ * The gate every method in this file starts with: the project owner (checkAdmin), or a
+ * signed-in user with access group 90 or higher. Same checks, same errors and same order
+ * as the eleven copies it replaced, so a change to who counts as an admin lands here once.
+ */
+async function assertAdmin(this: any): Promise<void> {
+    let isAdmin = await checkAdmin.bind(this)();
+
+    if (!isAdmin) {
+        if (!this.__user) {
+            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
+        }
+
+        if (this.__user.access_group < 90) {
+            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
+        }
+    }
+}
+
 export async function blockAccount(form: Form<{
     user_id: string;
     owner?: string;
@@ -23,17 +42,7 @@ export async function blockAccount(form: Form<{
         params = { block: params.user_id };
     }
 
-    let isAdmin = await checkAdmin.bind(this)();
-
-    if (!isAdmin) {
-        if (!this.__user) {
-            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (this.__user.access_group < 90) {
-            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
-        }
-    }
+    await assertAdmin.call(this);
 
     return await request.bind(this)('block-account', params, { auth: true });
 }
@@ -55,17 +64,7 @@ export async function unblockAccount(form: Form<{
         params = { unblock: params.user_id };
     }
 
-    let isAdmin = await checkAdmin.bind(this)();
-
-    if (!isAdmin) {
-        if (!this.__user) {
-            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (this.__user.access_group < 90) {
-            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
-        }
-    }
+    await assertAdmin.call(this);
 
     return await request.bind(this)('block-account', params, { auth: true });
 }
@@ -92,17 +91,7 @@ export async function disableUserMFA(form: Form<{
         params = { disable_mfa: params.user_id };
     }
 
-    let isAdmin = await checkAdmin.bind(this)();
-
-    if (!isAdmin) {
-        if (!this.__user) {
-            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (this.__user.access_group < 90) {
-            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
-        }
-    }
+    await assertAdmin.call(this);
 
     return await request.bind(this)('block-account', params, { auth: true });
 }
@@ -124,17 +113,7 @@ export async function deleteAccount(form: Form<{
         params = { delete: params.user_id };
     }
 
-    let isAdmin = await checkAdmin.bind(this)();
-
-    if (!isAdmin) {
-        if (!this.__user) {
-            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (this.__user.access_group < 90) {
-            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
-        }
-    }
+    await assertAdmin.call(this);
 
     return await request.bind(this)('remove-account', params, { auth: true });
 }
@@ -265,17 +244,7 @@ export async function inviteUser(
     params.email_subscription = options?.email_subscription || false;
     params.template = options?.template || {};
 
-    let isAdmin = await checkAdmin.bind(this)();
-
-    if (!isAdmin) {
-        if (!this.__user) {
-            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (this.__user.access_group < 90) {
-            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
-        }
-    }
+    await assertAdmin.call(this);
 
     return await request.bind(this)('admin-signup', params, { auth: true });
 }
@@ -343,17 +312,7 @@ export async function createAccount(
 
     let params = validator.Params(form, paramRestrictions, required);
 
-    let isAdmin = await checkAdmin.bind(this)();
-
-    if (!isAdmin) {
-        if (!this.__user) {
-            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (this.__user.access_group < 90) {
-            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
-        }
-    }
+    await assertAdmin.call(this);
 
     return await request.bind(this)('admin-signup', params, { auth: true });
 }
@@ -386,17 +345,7 @@ export async function grantAccess(params: Form<{
         }
     }, ['user_id', 'access_group']);
 
-    let isAdmin = await checkAdmin.bind(this)();
-
-    if (!isAdmin) {
-        if (!this.__user) {
-            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (this.__user.access_group < 90) {
-            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
-        }
-    }
+    await assertAdmin.call(this);
 
     return await request.bind(this)('grant-access', params, { auth: true })
 }
@@ -410,17 +359,7 @@ export async function getInvitations(params?: Form<{
         email: 'string',
     });
 
-    let isAdmin = await checkAdmin.bind(this)();
-
-    if (!isAdmin) {
-        if (!this.__user) {
-            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (this.__user.access_group < 90) {
-            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
-        }
-    }
+    await assertAdmin.call(this);
 
     let resp = await request.bind(this)('invitation-list', Object.assign({ mode: 'search' }, params), { fetchOptions, auth: true });
     resp.list = resp.list.map((v: any) => parseUserAttributes(v.user));
@@ -436,17 +375,7 @@ export async function cancelInvitation(params: Form<{
         email: v => validator.Email(v),
     }, ['email']);
 
-    let isAdmin = await checkAdmin.bind(this)();
-
-    if (!isAdmin) {
-        if (!this.__user) {
-            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (this.__user.access_group < 90) {
-            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
-        }
-    }
+    await assertAdmin.call(this);
 
     return await request.bind(this)('invitation-list', Object.assign({ mode: 'cancel' }, params), { auth: true });
 }
@@ -460,17 +389,7 @@ export async function resendInvitation(params: Form<{
         email: v => validator.Email(v),
     }, ['email']);
 
-    let isAdmin = await checkAdmin.bind(this)();
-
-    if (!isAdmin) {
-        if (!this.__user) {
-            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (this.__user.access_group < 90) {
-            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
-        }
-    }
+    await assertAdmin.call(this);
 
     return await request.bind(this)('invitation-list', Object.assign({ mode: 'resend' }, params), { auth: true });
 }
@@ -563,17 +482,7 @@ export async function updateUserAttributes(
         throw new SkapiError('At least one attribute to update is required.', { code: 'INVALID_PARAMETER' });
     }
 
-    let isAdmin = await checkAdmin.bind(this)();
-
-    if (!isAdmin) {
-        if (!this.__user) {
-            throw new SkapiError('User needs to login.', { code: 'INVALID_REQUEST' });
-        }
-
-        if (this.__user.access_group < 90) {
-            throw new SkapiError('Invalid access.', { code: 'INVALID_REQUEST' });
-        }
-    }
+    await assertAdmin.call(this);
 
     // No preferred_username is sent with a new e-mail. The e-mail is written unverified, and a
     // login alias for an address nobody has verified would let the account log in with an

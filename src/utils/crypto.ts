@@ -516,7 +516,7 @@ function checkBits(raw: Uint8Array): number {
  */
 export function encodeRecoveryCode(raw: Uint8Array): string {
     if (raw.length !== RECOVERY_BYTES) {
-        throw new SkapiError(`A recovery code needs exactly ${RECOVERY_BYTES} bytes.`, { code: 'INVALID_PARAMETER' });
+        throw new SkapiError(`An encryption recovery code needs exactly ${RECOVERY_BYTES} bytes.`, { code: 'INVALID_PARAMETER' });
     }
 
     let out = '';
@@ -546,7 +546,7 @@ export function encodeRecoveryCode(raw: Uint8Array): string {
  */
 export function decodeRecoveryCode(code: string): Uint8Array {
     if (typeof code !== 'string') {
-        throw new SkapiError('Recovery code should be a string.', { code: 'INVALID_PARAMETER' });
+        throw new SkapiError('Encryption recovery code should be a string.', { code: 'INVALID_PARAMETER' });
     }
 
     let cleaned = code
@@ -557,7 +557,7 @@ export function decodeRecoveryCode(code: string): Uint8Array {
 
     if (cleaned.length !== RECOVERY_TOTAL_CHARS) {
         throw new SkapiError(
-            `That does not look like a recovery code: expected ${RECOVERY_TOTAL_CHARS} characters, got ${cleaned.length}.`,
+            `That does not look like an encryption recovery code: expected ${RECOVERY_TOTAL_CHARS} characters, got ${cleaned.length}.`,
             { code: 'ENCRYPTION_BAD_RECOVERY_CODE' }
         );
     }
@@ -572,7 +572,7 @@ export function decodeRecoveryCode(code: string): Uint8Array {
         let v = B32.indexOf(data[i]);
         if (v < 0) {
             throw new SkapiError(
-                `That does not look like a recovery code: "${data[i]}" is not a valid character.`,
+                `That does not look like an encryption recovery code: "${data[i]}" is not a valid character.`,
                 { code: 'ENCRYPTION_BAD_RECOVERY_CODE' }
             );
         }
@@ -588,7 +588,7 @@ export function decodeRecoveryCode(code: string): Uint8Array {
     let chk = checkBits(raw);
     if (check !== B32[(chk >> 5) & 31] + B32[chk & 31]) {
         throw new SkapiError(
-            'That recovery code has a typo in it: the check characters do not match.',
+            'That encryption recovery code has a typo in it: the check characters do not match.',
             { code: 'ENCRYPTION_BAD_RECOVERY_CODE' }
         );
     }

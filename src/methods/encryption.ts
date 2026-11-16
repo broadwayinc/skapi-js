@@ -25,6 +25,10 @@
 
 import SkapiError from '../main/error';
 import { encodeUtf8, decodeUtf8 } from '../utils/utils';
+// Only for readStoredEnvelope, and only called at run time, never while the modules load.
+import { request } from '../utils/network';
+import { normalizeRecord } from './database';
+import { recordIdOrUniqueId } from './param_restrictions';
 import {
     ENC_V,
     PBKDF2_ITERATIONS,
@@ -49,6 +53,7 @@ import {
     unwrapEcdhEs,
     wrapEcdhEs,
     zeroize,
+    bytesEqual,
     encryptFileBytes,
     decryptFileBytes,
     isEncryptedFile,
@@ -82,8 +87,6 @@ export type EncryptionConfig = {
     trustPolicy: 'tofu' | 'strict';
     /** Persist the master key to IndexedDB so a page reload stays unlocked. */
     persistDevice: boolean;
-    /** Refuse to enroll a password shorter than this. 0 disables the check. */
-    minPasswordLength: number;
     /**
      * What `record.data` becomes when this session cannot decrypt it.
      * 'null' (default) keeps `if (record.data)` working as a data test.
@@ -160,14 +163,6 @@ type EncState = {
      */
     passthrough: Map<string, Envelope>;
     /**
-     * While true, the read hook returns the STORED value untouched.
-     *
-     * Grant and revoke need the envelope, not the payload. Letting the normal
-     * read run would decrypt it, and on a spilled record that means fetching
-     * the whole ciphertext file: precisely the work the split exists to avoid.
-     */
-    rawRead: boolean;
-    /**
      * Resolves when the device-store unlock attempt has finished. Read and
      * write hooks wait on it so an app call issued during page bootstrap does
      * not see a spuriously locked session. NEVER awaited while `unlocking` is
@@ -177,14 +172,37 @@ type EncState = {
     ready: Promise<void> | null;
     unlocking: boolean;
     /**
-     * A recovery code that has just been minted and NOT yet handed to the app.
-     * One-shot: takeRecoveryCode() returns it and clears it. Held only in
+     * An encryption recovery code that has just been minted and NOT yet handed
+     * to the app. One-shot: the next getConnectionInfo() returns it in
+     * `encryption_recovery.code` and clears it. Held only in
      * memory, never written anywhere, and never recoverable afterwards -- if it
      * could be fetched again later, this SDK would be holding the key.
+     * Kept through lockEncryption() (the code is still shown once), dropped on
+     * logout, and handed only to the user it was minted for.
      */
     pendingRecoveryCode: string;
+    pendingRecoveryUser: string;
+    /**
+     * Bumped by every clearEncryptionState() that is a logout (not a lock), so a
+     * provisioning interrupted by a lock can still park its recovery code and
+     * one interrupted by a logout cannot.
+     */
+    logouts: number;
     peerPub: Map<string, { pubRaw: Uint8Array; fpr: string }>;
     peerInflight: Map<string, Promise<any>>;
+    /**
+     * Bumped by every clearEncryptionState(). An unlock captures it when it
+     * starts and commits its keys only if it is unchanged, so a lock or logout
+     * issued while an unlock is still deriving keys is not undone when that
+     * unlock finishes.
+     */
+    gen: number;
+    /**
+     * record_id -> the data key the next roll of that record must use. A revoke
+     * mints it BEFORE the roll write, so the record's sealed attachments can be
+     * re-sealed under it and uploaded first.
+     */
+    rollKey: Map<string, { bytes: Uint8Array; key: CryptoKey }>;
 };
 
 export type RecordEncryptionInfo = {
@@ -222,7 +240,6 @@ export function parseEncryptionOptions(raw: any): EncryptionConfig | null {
         iterations,
         trustPolicy: trustPolicy as 'tofu' | 'strict',
         persistDevice: raw.persistDevice === false ? false : true,
-        minPasswordLength: typeof raw.minPasswordLength === 'number' ? raw.minPasswordLength : 0,
         withheld: raw.withheld === 'sentinel' ? 'sentinel' : 'null',
         recovery: raw.recovery === 'none' ? 'none' : 'code',
         table: typeof raw.table === 'string' && raw.table ? raw.table : KEYRING_TABLE
@@ -254,17 +271,26 @@ export function initEncryption(this: any, cfg: EncryptionConfig | null): void {
         dek: new Map(),
         roll: new Set(),
         passthrough: new Map(),
-        rawRead: false,
         ready: null,
         unlocking: false,
         pendingRecoveryCode: '',
+        pendingRecoveryUser: '',
+        logouts: 0,
         peerPub: new Map(),
-        peerInflight: new Map()
+        peerInflight: new Map(),
+        gen: 0,
+        rollKey: new Map()
     });
 }
 
-/** Wipe every key and cached DEK. Called on logout and on lockEncryption(). */
-export function clearEncryptionState(this: any): void {
+/**
+ * Wipe every key and cached DEK. Called on logout and on lockEncryption().
+ * `keepDevice` is lockEncryption()'s: a plain lock only drops the keys from memory and
+ * leaves the device entry, so the next page load unlocks from it as documented;
+ * lockEncryption({ forgetDevice: true }) removes the entry itself before calling this.
+ * Logout never passes it.
+ */
+export function clearEncryptionState(this: any, opt?: { keepDevice?: boolean }): void {
     let s = encState.call(this);
     if (!s) {
         return;
@@ -274,13 +300,29 @@ export function clearEncryptionState(this: any): void {
     // next person to use the browser could reach the previous user's keys
     // simply by logging in as them without their password, which is exactly the
     // property logging out is supposed to remove.
-    if (s.user_id) {
+    // Not awaited, so deleteDevice names the entry before its first await: a
+    // plain logout sets the user to null right after this returns.
+    // `this.user` as well as `s.user_id`: an unlock still in flight at page load
+    // has not set `s.user_id` yet, and its entry must go too.
+    if ((s.user_id || this.user?.user_id) && !opt?.keepDevice) {
         deleteDevice.call(this, s).catch(() => { });
     }
 
+    s.gen++;
+    for (let [, k] of s.rollKey) {
+        zeroize(k.bytes);
+    }
+    s.rollKey.clear();
     s.ready = null;
     s.unlocking = false;
-    s.pendingRecoveryCode = '';
+    // A lock keeps an encryption recovery code the app has not collected yet: the
+    // code cannot be shown ever again, and losing it to a lock left the user
+    // without a recovery code they never knew existed. A logout drops it.
+    if (!opt?.keepDevice) {
+        s.logouts++;
+        s.pendingRecoveryCode = '';
+        s.pendingRecoveryUser = '';
+    }
     for (let [, entry] of s.dek) {
         zeroize(entry.bytes);
     }
@@ -470,7 +512,8 @@ async function resolveWriteGroup(
     this: any,
     s: EncState,
     rawConfig: any,
-    resolvedId: string
+    resolvedId: string,
+    hasData: boolean
 ): Promise<{ group: 'private' | number; table: string; record: any }> {
     let table = rawConfig?.table;
     let tableName = typeof table === 'string' ? table : table?.name;
@@ -491,8 +534,16 @@ async function resolveWriteGroup(
     }
 
     // Update with no stated group: resolve the record's real one.
+    //
+    // The cached data key says only what the group was when this session last saw
+    // the record; another device may have made it non-private since, and sealing a
+    // payload into a non-private record strands it (the read path never opens it
+    // there). So the cache is trusted only when no payload is written, where both
+    // answers write nothing. A write with a payload reads the record, which costs
+    // nothing extra: maybeEncrypt reads it on every private update anyway and
+    // reuses this read.
     let cached = s.dek.get(resolvedId);
-    if (cached) {
+    if (cached && !hasData) {
         return { group: cached.access_group, table: tableName, record: null };
     }
 
@@ -584,7 +635,7 @@ export async function maybeEncrypt(
     value: any,
     rawConfig: any,
     hasData: boolean
-): Promise<{ send: any; plain: any; encrypted: boolean; omit: boolean; dek?: DekEntry; files?: 'decrypt' | 'encrypt'; spill?: Uint8Array; retireCt?: string }> {
+): Promise<{ send: any; plain: any; encrypted: boolean; omit: boolean; dek?: DekEntry; files?: 'decrypt' | 'encrypt'; spill?: Uint8Array; retireCt?: string[] }> {
     let s = encState.call(this);
     if (!s) {
         return { send: value, plain: value, encrypted: false, omit: false };
@@ -607,7 +658,7 @@ export async function maybeEncrypt(
         return { send: env, plain: value, encrypted: true, omit: false };
     }
 
-    let { group, table, record } = await resolveWriteGroup.call(this, s, rawConfig, resolvedId);
+    let { group, table, record } = await resolveWriteGroup.call(this, s, rawConfig, resolvedId, hasData);
 
     // Not private: write in the clear. This is the declassification path.
     if (group !== 'private') {
@@ -765,12 +816,22 @@ export async function maybeEncrypt(
     // A pending roll wins over everything: the whole point of a revoke is that
     // the next write must NOT reuse the key the revoked user holds.
     let rolling = false;
+    // The key a revoke minted ahead of the roll, already used to re-seal the
+    // record's attachments (see dropRecipientsAndRoll).
+    let rollKey: { bytes: Uint8Array; key: CryptoKey } | undefined;
+    // The url of the payload file being replaced, retired on this write.
+    let priorCtRef = '';
+    let priorCtStale: string[] = [];
     if (rawId && s.roll.has(rawId)) {
         rolling = true;
         s.roll.delete(rawId);
+        rollKey = s.rollKey.get(rawId);
+        s.rollKey.delete(rawId);
         let stale = s.dek.get(rawId);
         s.dek.delete(rawId);
         if (stale) {
+            priorCtRef = (stale as any).ctRef || '';
+            priorCtStale = (stale as any).ctStale || [];
             zeroize(stale.bytes);
         }
     }
@@ -778,15 +839,14 @@ export async function maybeEncrypt(
     // Existing PLAINTEXT attachments to seal once this write lands. Same
     // reasoning as the declassify side: `record` is only in hand when the table
     // was omitted, so a stated group needs a look.
-    // Gated on the DEK cache, and that gate is load-bearing. A cached key means
-    // this record is ALREADY private and encrypted, so it has no plaintext
-    // attachments to seal and no read is needed. Reading anyway re-runs
-    // maybeDecrypt, which refreshes the cached recipient map from the SERVER --
-    // and writeRecipients has, at that moment, just added a wrap to that map
-    // and not yet written it. The refresh silently reverted it, so every grant
-    // through this path lost its new recipient.
+    // NOT skipped when this session has the data key cached. Another device may
+    // have rolled the key since (a revoke) or changed the recipients, and
+    // writing from the cache then sealed the payload under the old key with the
+    // old recipient map: a revoked user could read the new data, or newer grants
+    // were dropped. The read refreshes the cached entry from the stored record.
+    // (A grant's own write never gets here: it goes through the passthrough.)
     let priorForFiles = record;
-    if (rawId && !priorForFiles && !s.dek.has(rawId)) {
+    if (rawId && !priorForFiles) {
         priorForFiles = await readOwnRecord.call(this, rawId).catch(() => null);
     }
     if (priorForFiles) {
@@ -809,23 +869,25 @@ export async function maybeEncrypt(
     // unless this session already holds it.
     let entry: DekEntry | null = null;
     if (rawId && !rolling) {
-        entry = s.dek.get(rawId) || null;
-        if (!entry) {
-            let current = priorForFiles || record || await readOwnRecord.call(this, rawId);
-            if (current) {
-                resolvedId = current.record_id || rawId;
-                entry = s.dek.get(resolvedId) || null;
-                if (!unique_id && current.unique_id) {
-                    unique_id = current.unique_id;
-                }
-                if (!entry && current.encrypted?.status === 'failed') {
-                    throw new SkapiError(
-                        `Cannot update encrypted record "${rawId}": its current contents could not be decrypted (${current.encrypted.reason}), ` +
-                        `so its existing key wraps cannot be preserved. Updating anyway would revoke everyone it is shared with.`,
-                        { code: 'ENCRYPTION_LOCKED' }
-                    );
-                }
+        let current = priorForFiles || record || await readOwnRecord.call(this, rawId);
+        if (current) {
+            resolvedId = current.record_id || rawId;
+            if (!unique_id && current.unique_id) {
+                unique_id = current.unique_id;
             }
+            if (current.encrypted?.status === 'failed') {
+                throw new SkapiError(
+                    `Cannot update encrypted record "${rawId}": its current contents could not be decrypted (${current.encrypted.reason}), ` +
+                    `so its existing key wraps cannot be preserved. Updating anyway would revoke everyone it is shared with.`,
+                    { code: 'ENCRYPTION_LOCKED' }
+                );
+            }
+            // Only a key the read just confirmed. A record stored in the clear
+            // has none, whatever the cache still holds.
+            entry = current.encrypted ? (s.dek.get(resolvedId) || null) : null;
+        }
+        else {
+            entry = s.dek.get(rawId) || null;
         }
     }
 
@@ -857,7 +919,7 @@ export async function maybeEncrypt(
         recipients = Object.assign({}, entry.recipients);
     }
     else {
-        let gen = await generateAesGcm();
+        let gen = rollKey || await generateAesGcm();
         dekBytes = gen.bytes;
         dekKey = gen.key;
         recipients = {};
@@ -904,16 +966,25 @@ export async function maybeEncrypt(
     // upload into. A large create still works, via the server's own offload of
     // the whole envelope, and splits on its first update.
     let spill: Uint8Array | undefined;
-    let retireCt: string | undefined;
+    let retireCt: string[] | undefined;
     let ctB64 = envelope.ct;
 
     if (resolvedId && ctB64.length > CT_SPILL_THRESHOLD) {
         spill = b64uToBytes(ctB64);
         envelope.ct = '';
         envelope.ct_ref = CT_FILE_SUFFIX;
-        // The previous spill file, if any, is retired on this same write.
-        if (entry && (entry as any).ctRef) {
-            retireCt = (entry as any).ctRef;
+    }
+    if (resolvedId) {
+        // The previous payload file(s) are retired on this same write, whether the
+        // new data spills again or now fits inline (a record that shrank would
+        // otherwise keep its old payload file forever). Their real urls
+        // (maybeDecrypt caches them), never the envelope's ct_ref, which is only
+        // the constant suffix and which the server refuses.
+        let prior = rolling ? priorCtRef : ((entry as any)?.ctRef || '');
+        let older: string[] = rolling ? priorCtStale : ((entry as any)?.ctStale || []);
+        let retire = (prior ? [prior] : []).concat(older);
+        if (retire.length) {
+            retireCt = retire;
         }
     }
 
@@ -1030,7 +1101,7 @@ async function wrapFor(
 export async function maybeDecrypt(
     this: any,
     raw: any,
-    ctx: { access_group: any; table_name: string; user_id: string; record_id: string; unique_id: string; ctUrl?: string | null }
+    ctx: { access_group: any; table_name: string; user_id: string; record_id: string; unique_id: string; ctUrl?: string | null; ctUrls?: string[] }
 ): Promise<{ value: any; flag?: RecordEncryptionInfo }> {
     if (!isEnvelope(raw)) {
         return { value: raw };
@@ -1050,10 +1121,6 @@ export async function maybeDecrypt(
         return { value: null, flag: { status: 'failed', reason: 'ENCRYPTION_DISABLED' } };
     }
 
-    // A deliberate raw read, for a caller that wants the envelope itself.
-    if (s.rawRead) {
-        return { value: raw };
-    }
     if (isEncTable(s, ctx.table_name)) {
         return { value: raw };
     }
@@ -1134,34 +1201,59 @@ export async function maybeDecrypt(
     // The ciphertext is either inline or in a file of its own. The fetch is a
     // network read, so it happens only here, at the point the payload is
     // actually wanted; grant and revoke never reach it.
-    let ctBytes: Uint8Array;
-    try {
-        if (raw.ct_ref) {
-            if (!ctx.ctUrl) {
-                zeroize(dekBytes);
-                return { value: withheldValue(s.cfg, 'DATA_UNAVAILABLE'), flag: { status: 'failed', reason: 'DATA_UNAVAILABLE' } };
-            }
-            let blob: any = await getFile.call(this, ctx.ctUrl);
-            ctBytes = new Uint8Array(await blob.arrayBuffer());
-        }
-        else {
-            ctBytes = b64uToBytes(raw.ct);
-        }
-    }
-    catch (err) {
-        zeroize(dekBytes);
-        return { value: withheldValue(s.cfg, 'DATA_UNAVAILABLE'), flag: { status: 'failed', reason: 'DATA_UNAVAILABLE' } };
-    }
-
     let plaintext: Uint8Array;
     let dekKey: CryptoKey;
     try {
         dekKey = await importAesGcm(dekBytes);
-        plaintext = await openGcm(dekKey, b64uToBytes(raw.iv), ctBytes, aad);
     }
     catch (err) {
         zeroize(dekBytes);
         return { value: withheldValue(s.cfg, 'CORRUPT'), flag: { status: 'failed', reason: 'CORRUPT' } };
+    }
+
+    // The payload file that actually opened, and the others the record still holds.
+    let ctUsed = '';
+    let ctStale: string[] = [];
+    if (raw.ct_ref) {
+        // Newest first (see database.ts newestPayloadsFirst). Older SDKs could leave
+        // several payload files on one record, so the first that passes the GCM tag
+        // check is the current one; the rest are retired on the next update.
+        let candidates = (ctx.ctUrls && ctx.ctUrls.length) ? ctx.ctUrls : (ctx.ctUrl ? [ctx.ctUrl] : []);
+        let fetched = false;
+        for (let url of candidates) {
+            let ctBytes: Uint8Array;
+            try {
+                let blob: any = await getFile.call(this, url);
+                ctBytes = new Uint8Array(await blob.arrayBuffer());
+                fetched = true;
+            }
+            catch (err) {
+                continue;
+            }
+            try {
+                plaintext = await openGcm(dekKey, b64uToBytes(raw.iv), ctBytes, aad);
+                ctUsed = url;
+                break;
+            }
+            catch (err) {
+                continue;
+            }
+        }
+        if (!ctUsed) {
+            zeroize(dekBytes);
+            let reason = fetched ? 'CORRUPT' : 'DATA_UNAVAILABLE';
+            return { value: withheldValue(s.cfg, reason), flag: { status: 'failed', reason } };
+        }
+        ctStale = candidates.filter(u => u !== ctUsed);
+    }
+    else {
+        try {
+            plaintext = await openGcm(dekKey, b64uToBytes(raw.iv), b64uToBytes(raw.ct), aad);
+        }
+        catch (err) {
+            zeroize(dekBytes);
+            return { value: withheldValue(s.cfg, 'CORRUPT'), flag: { status: 'failed', reason: 'CORRUPT' } };
+        }
     }
 
     let out: any;
@@ -1208,7 +1300,8 @@ export async function maybeDecrypt(
             prev.uid = raw.uid;
             prev.own = raw.own;
             prev.access_group = 'private';
-            (prev as any).ctRef = raw.ct_ref || '';
+            (prev as any).ctRef = ctUsed;
+            (prev as any).ctStale = ctStale;
         }
         else {
             s.dek.set(ctx.record_id, {
@@ -1220,7 +1313,10 @@ export async function maybeDecrypt(
                 rid: ctx.record_id,
                 own: raw.own,
                 access_group: 'private',
-                ctRef: raw.ct_ref || ''
+                // The payload file's real url, which is what remove_bin takes, and any
+                // older payload files to retire on the next update.
+                ctRef: ctUsed,
+                ctStale
             } as any);
         }
     }
@@ -1362,9 +1458,10 @@ async function mintPasswordWrap(s: EncState, scope: string, user_id: string, pas
     };
 }
 
-async function provisionKeyring(this: any, s: EncState, password: string): Promise<void> {
+async function provisionKeyring(this: any, s: EncState, password: string, gen: number): Promise<void> {
     let user_id = this.user.user_id;
     let scope = s.scope;
+    let logouts = s.logouts;
 
     let salt = getRandom(16);
     let saltB64 = b64uFromBytes(salt);
@@ -1396,6 +1493,11 @@ async function provisionKeyring(this: any, s: EncState, password: string): Promi
 
     let fpr = await fingerprint(ident.pubRaw);
     let now = Date.now();
+
+    // Locked or logged out while the keys were being derived: write nothing.
+    if (s.gen !== gen) {
+        return;
+    }
 
     let wraps: any[] = [{
         id: b64uFromBytes(getRandom(6)),
@@ -1429,7 +1531,7 @@ async function provisionKeyring(this: any, s: EncState, password: string): Promi
     // no published key: nobody could ever share a record with them. Written
     // this way round, a failure leaves no private keyring, so the next login
     // simply provisions again.
-    await this.postRecord({
+    let pubRec = await this.postRecord({
         v: 1,
         alg: 'ECDH-P-256',
         user_id,
@@ -1450,9 +1552,36 @@ async function provisionKeyring(this: any, s: EncState, password: string): Promi
     // the OLDEST, so re-read here and adopt the winner: encrypting under a
     // keyring that later loses the tie-break would make those records
     // permanently unreadable.
+    //
+    // The loser also removes its own public row and keyring. Left in place,
+    // its public row was the NEWEST one in the directory, which is the one
+    // getPeerPublicKeys picks, so every peer wrapped data keys for a key that
+    // nobody holds. Best effort: a failure leaves things as they were before.
     let settled = await readKeyring.call(this, s);
     if (settled && settled.record_id !== rec.record_id) {
-        await unlockKeyring.call(this, s, settled, password);
+        try {
+            await unlockKeyring.call(this, s, settled, password, gen);
+        }
+        finally {
+            let mine = [pubRec?.record_id, rec?.record_id].filter(Boolean);
+            if (mine.length) {
+                await this.deleteRecords({ record_id: mine }).catch(() => { });
+            }
+        }
+        return;
+    }
+
+    // Parked for the app to collect ONCE. Set only after the keyring write
+    // succeeded, so a code is never shown for a wrap that was never stored. Parked
+    // even when a lockEncryption() came in while the keyring was being written:
+    // the stored keyring holds this code's wrap, and nothing could show the code
+    // afterwards. Not after a logout.
+    if (recovery && s.logouts === logouts) {
+        s.pendingRecoveryCode = recovery.code;
+        s.pendingRecoveryUser = user_id;
+    }
+
+    if (s.gen !== gen) {
         return;
     }
 
@@ -1461,11 +1590,6 @@ async function provisionKeyring(this: any, s: EncState, password: string): Promi
     s.pubRaw = ident.pubRaw;
     s.fpr = fpr;
     s.keyringRecordId = rec.record_id;
-    // Parked for the app to collect ONCE. Set only after the keyring write
-    // succeeded, so a code is never shown for a wrap that was never stored.
-    if (recovery) {
-        s.pendingRecoveryCode = recovery.code;
-    }
     s.user_id = user_id;
     s.pins = {};
     s.status = 'unlocked';
@@ -1473,7 +1597,7 @@ async function provisionKeyring(this: any, s: EncState, password: string): Promi
 }
 
 /** Open an existing keyring with the user's password. */
-async function unlockKeyring(this: any, s: EncState, keyring: any, password: string): Promise<void> {
+async function unlockKeyring(this: any, s: EncState, keyring: any, password: string, gen: number): Promise<void> {
     let user_id = this.user.user_id;
     let scope = s.scope;
     let data = keyring.data;
@@ -1515,11 +1639,16 @@ async function unlockKeyring(this: any, s: EncState, keyring: any, password: str
     let mk = await importAesGcm(mkBytes);
     zeroize(mkBytes);
 
-    await adoptKeyring.call(this, s, keyring, mk);
+    await adoptKeyring.call(this, s, keyring, mk, gen);
 }
 
 /** Load the identity key and pins out of a keyring record given an open MK. */
-async function adoptKeyring(this: any, s: EncState, keyring: any, mk: CryptoKey): Promise<void> {
+async function adoptKeyring(this: any, s: EncState, keyring: any, mk: CryptoKey, gen: number): Promise<void> {
+    // `gen` is the clearEncryptionState() count when this unlock started. A lock
+    // or logout since then wins: nothing is committed.
+    if (s.gen !== gen) {
+        return;
+    }
     let user_id = this.user.user_id;
     let data = keyring.data;
 
@@ -1541,6 +1670,10 @@ async function adoptKeyring(this: any, s: EncState, keyring: any, mk: CryptoKey)
         }
     }
 
+    if (s.gen !== gen) {
+        return;
+    }
+
     s.mk = mk;
     s.ikPriv = ikPriv;
     s.pubRaw = b64uToBytes(data.pub);
@@ -1550,6 +1683,92 @@ async function adoptKeyring(this: any, s: EncState, keyring: any, mk: CryptoKey)
     s.pins = pins;
     s.status = 'unlocked';
     s.reason = '';
+
+    // Not awaited: it must not slow the unlock down, and it never fails it.
+    repairPublicKey.call(this, s, gen).catch(() => { });
+}
+
+/**
+ * Put this keyring's public key back on top of the directory, when a stray row
+ * is there instead.
+ *
+ * Two devices logging in for the first time at once used to leave the losing
+ * keyring's public row behind. It is the NEWEST row, the one getPeerPublicKeys
+ * serves, so peers wrapped data keys to a key nobody holds and the user could not
+ * open anything shared with them. On unlock, when the newest row does not carry
+ * this keyring's key, the right key is published again and the rows that do not
+ * match it are removed. Best effort, and only for a key this session can prove it
+ * holds the private half of: the keyring's `pub` is stored in the clear.
+ */
+async function repairPublicKey(this: any, s: EncState, gen: number): Promise<void> {
+    let user_id = s.user_id;
+    let pubRaw = s.pubRaw;
+    let ikPriv = s.ikPriv;
+    if (!user_id || !pubRaw || !ikPriv) {
+        return;
+    }
+    let res = await this.getRecords({
+        table: { name: s.cfg.table, access_group: 'authorized' },
+        index: { name: '$user_id', value: user_id, condition: '=' }
+    }, { limit: 10 });
+    let list = (res?.list || []).filter((r: any) => r.user_id === user_id && r.data?.pub);
+    if (!list.length) {
+        return;
+    }
+    list.sort((a: any, b: any) => b.uploaded - a.uploaded);
+    let mine = await fingerprint(pubRaw);
+    let fprOf = async (r: any) => {
+        try {
+            return await fingerprint(b64uToBytes(r.data.pub));
+        }
+        catch (err) {
+            return '';
+        }
+    };
+    if (await fprOf(list[0]) === mine) {
+        return;
+    }
+
+    // The key about to be published must open what is sealed to it with this
+    // session's private key.
+    let probe = getRandom(32);
+    let label = encodeUtf8(`${ENC_V}|pubcheck|${user_id}`);
+    let sealed = await wrapEcdhEs(pubRaw, probe, label, label);
+    let opened = await unwrapEcdhEs(ikPriv, sealed.epk, sealed.iv, sealed.ct, label, label).catch(() => null);
+    let holds = !!opened && bytesEqual(opened, probe);
+    zeroize(probe);
+    if (opened) {
+        zeroize(opened);
+    }
+    if (!holds) {
+        return;
+    }
+
+    let stray: string[] = [];
+    for (let r of list) {
+        if (await fprOf(r) !== mine) {
+            stray.push(r.record_id);
+        }
+    }
+
+    // A lock, logout or another user's login since the unlock: leave it.
+    if (s.gen !== gen || this.user?.user_id !== user_id) {
+        return;
+    }
+    await this.postRecord({
+        v: 1,
+        alg: 'ECDH-P-256',
+        user_id,
+        pub: b64uFromBytes(pubRaw),
+        fpr: mine,
+        created: Date.now()
+    }, {
+        table: { name: s.cfg.table, access_group: 'authorized' },
+        index: { name: 'pubkey', value: user_id }
+    });
+    if (stray.length && s.gen === gen && this.user?.user_id === user_id) {
+        await this.deleteRecords({ record_id: stray });
+    }
 }
 
 /**
@@ -1557,7 +1776,14 @@ async function adoptKeyring(this: any, s: EncState, keyring: any, mk: CryptoKey)
  * Must never reject a login: a failure here leaves the session locked, and the
  * app can retry with unlockEncryption().
  */
-export async function ensureKeyring(this: any, password: string): Promise<void> {
+/**
+ * Open the user's keyring with their password, or create it when they have none.
+ * Creating is for LOGIN only (the default), where the password has just been proven
+ * by Cognito. unlockEncryption() passes `create: false`: a session restored from
+ * tokens has proven no password, so creating a keyring there would seal the user's
+ * data under whatever was typed, and their real password could never open it.
+ */
+export async function ensureKeyring(this: any, password: string, opt?: { create?: boolean }): Promise<void> {
     let s = encState.call(this);
     if (!s || !this.user?.user_id) {
         return;
@@ -1579,23 +1805,27 @@ export async function ensureKeyring(this: any, password: string): Promise<void> 
         return;
     }
 
-    if (s.cfg.minPasswordLength && password.length < s.cfg.minPasswordLength) {
-        s.status = 'locked';
-        s.reason = 'WEAK_PASSWORD';
-        return;
-    }
-
     s.scope = scopeOf.call(this);
+    let gen = s.gen;
 
     let keyring = await readKeyring.call(this, s);
+    if (s.gen !== gen) {
+        return;
+    }
     if (keyring) {
-        await unlockKeyring.call(this, s, keyring, password);
+        await unlockKeyring.call(this, s, keyring, password, gen);
+    }
+    else if (opt?.create === false) {
+        throw new SkapiError(
+            'Encryption has not been set up for this account yet. It is set up at the first login with the password: log in with the password to start using it.',
+            { code: 'NOT_EXISTS' }
+        );
     }
     else {
-        await provisionKeyring.call(this, s, password);
+        await provisionKeyring.call(this, s, password, gen);
     }
 
-    if (s.cfg.persistDevice) {
+    if (s.cfg.persistDevice && s.gen === gen) {
         await saveDevice.call(this, s).catch(() => { });
     }
 }
@@ -1614,7 +1844,8 @@ export async function unlockEncryption(this: any, params: { password: string }):
         throw new SkapiError('"password" is required.', { code: 'INVALID_PARAMETER' });
     }
 
-    await ensureKeyring.call(this, params.password);
+    // Opens an existing keyring only; never creates one (see ensureKeyring).
+    await ensureKeyring.call(this, params.password, { create: false });
     if (s.status !== 'unlocked') {
         throw new SkapiError(`Encryption could not be unlocked: ${s.reason}`, { code: 'ENCRYPTION_LOCKED' });
     }
@@ -1635,7 +1866,9 @@ export async function lockEncryption(this: any, params?: { forgetDevice?: boolea
     if (params?.forgetDevice) {
         await deleteDevice.call(this, s).catch(() => { });
     }
-    clearEncryptionState.call(this);
+    // The device entry was already removed above when asked; otherwise it stays, so a
+    // reload unlocks again without the password (the documented difference).
+    clearEncryptionState.call(this, { keepDevice: true });
     // Cached responses can hold already-decrypted plaintext.
     this.__cached_requests = {};
     return { status: s.status };
@@ -1775,18 +2008,26 @@ function openIdb(): Promise<any> {
     });
 }
 
+/**
+ * The device entry's name. Every caller computes it BEFORE its first await: a
+ * plain logout sets the user to null synchronously after clearEncryptionState()
+ * returns, so reading it after `await openIdb()` named `scope#undefined` and the
+ * real entry, holding the master key, survived the logout.
+ */
 function deviceKey(this: any, s: EncState): string {
-    return `${s.scope}#${this.user?.user_id}`;
+    return `${s.scope || scopeOf.call(this)}#${this.user?.user_id || s.user_id}`;
 }
 
 async function saveDevice(this: any, s: EncState): Promise<void> {
     if (!idbAvailable() || !s.mk) {
         return;
     }
+    let key = deviceKey.call(this, s);
+    let value = { mk: s.mk, keyringRecordId: s.keyringRecordId, saved: Date.now() };
     let db = await openIdb();
     await new Promise<void>((res, rej) => {
         let tx = db.transaction(IDB_STORE, 'readwrite');
-        tx.objectStore(IDB_STORE).put({ mk: s.mk, keyringRecordId: s.keyringRecordId, saved: Date.now() }, deviceKey.call(this, s));
+        tx.objectStore(IDB_STORE).put(value, key);
         tx.oncomplete = () => res();
         tx.onerror = () => rej(tx.error);
     });
@@ -1797,10 +2038,11 @@ async function loadDevice(this: any, s: EncState): Promise<{ mk: CryptoKey; keyr
     if (!idbAvailable()) {
         return null;
     }
+    let key = deviceKey.call(this, s);
     let db = await openIdb();
     let out = await new Promise<any>((res, rej) => {
         let tx = db.transaction(IDB_STORE, 'readonly');
-        let req = tx.objectStore(IDB_STORE).get(deviceKey.call(this, s));
+        let req = tx.objectStore(IDB_STORE).get(key);
         req.onsuccess = () => res(req.result || null);
         req.onerror = () => rej(req.error);
     });
@@ -1812,10 +2054,11 @@ async function deleteDevice(this: any, s: EncState): Promise<void> {
     if (!idbAvailable()) {
         return;
     }
+    let key = deviceKey.call(this, s);
     let db = await openIdb();
     await new Promise<void>((res, rej) => {
         let tx = db.transaction(IDB_STORE, 'readwrite');
-        tx.objectStore(IDB_STORE).delete(deviceKey.call(this, s));
+        tx.objectStore(IDB_STORE).delete(key);
         tx.oncomplete = () => res();
         tx.onerror = () => rej(tx.error);
     });
@@ -1845,6 +2088,7 @@ async function unlockFromDevice(this: any): Promise<boolean> {
     }
 
     s.scope = scopeOf.call(this);
+    let gen = s.gen;
 
     try {
         let stored = await loadDevice.call(this, s);
@@ -1856,7 +2100,7 @@ async function unlockFromDevice(this: any): Promise<boolean> {
             await deleteDevice.call(this, s).catch(() => { });
             return false;
         }
-        await adoptKeyring.call(this, s, keyring, stored.mk);
+        await adoptKeyring.call(this, s, keyring, stored.mk, gen);
         return true;
     }
     catch (err) {
@@ -2041,18 +2285,50 @@ export async function addRecipients(this: any, record_id: string, userIds: strin
     // encrypted (written before the flag was enabled, or in a non-private
     // group) must still be grantable exactly as before, and loadForRewrap is
     // what tells the two apart.
-    let loaded = await loadForRewrap.call(this, s, record_id);
-    if (!loaded) {
-        return; // plaintext record, nothing to wrap
-    }
-    let { entry, scope } = loaded;
-
+    //
+    // A cached data key is checked against the stored envelope before it is
+    // used. Another device may have rolled the key (a revoke) since this
+    // session cached it, and writing wraps of the old key over a payload sealed
+    // under the new one made the record unreadable for everyone and handed the
+    // revoked user a key again. On a mismatch the record is read again; if it
+    // still does not match, the grant is refused.
+    let entry: DekEntry;
+    let scope: string;
+    let raw: Envelope | null;
     let me = this.user.user_id;
-    if (entry.own !== me) {
-        throw new SkapiError(
-            'Only the record owner can share an encrypted record, because adding a key wrap means writing the record.',
-            { code: 'ENCRYPTION_GRANT_REQUIRES_OWNER' }
-        );
+    for (let attempt = 0; ; attempt++) {
+        let loaded = await loadForRewrap.call(this, s, record_id);
+        if (!loaded) {
+            return; // plaintext record, nothing to wrap
+        }
+        ({ entry, scope } = loaded);
+
+        if (entry.own !== me) {
+            throw new SkapiError(
+                'Only the record owner can share an encrypted record, because adding a key wrap means writing the record.',
+                { code: 'ENCRYPTION_GRANT_REQUIRES_OWNER' }
+            );
+        }
+
+        raw = await readStoredEnvelope.call(this, record_id);
+        if (!raw) {
+            throw new SkapiError(
+                `Cannot change sharing on record "${record_id}": its stored envelope could not be read.`,
+                { code: 'ENCRYPTION_DATA_UNAVAILABLE' }
+            );
+        }
+        if (await syncWithStored.call(this, s, entry, raw, scope)) {
+            break;
+        }
+        if (attempt) {
+            throw new SkapiError(
+                `Cannot change sharing on record "${record_id}": it was changed by another session while this one was reading it. Try again.`,
+                { code: 'ENCRYPTION_DATA_UNAVAILABLE' }
+            );
+        }
+        if (s.dek.get(record_id) === entry) {
+            s.dek.delete(record_id);
+        }
     }
 
     let peers = await getPeerPublicKeys.call(this, userIds);
@@ -2076,7 +2352,44 @@ export async function addRecipients(this: any, record_id: string, userIds: strin
         recipients[id] = await wrapFor.call(this, entry.bytes, peers[id]!, scope, anchor, entry.own, id, aad);
     }
 
-    await writeRecipients.call(this, s, record_id, entry, recipients);
+    await writeRecipients.call(this, s, record_id, entry, recipients, raw);
+}
+
+/**
+ * Check a cached data key against the record's STORED envelope, and on a match
+ * take the stored recipient map and anchor.
+ *
+ * The owner's own wrap opens with the master key, so this needs no payload and
+ * no key id in the envelope: the stored wrap either opens to the cached bytes
+ * or the cache is stale. Recipients and anchor are taken from the store because
+ * another device can grant (same key, more wraps) or re-anchor (same key, new
+ * wraps) without rolling.
+ */
+async function syncWithStored(this: any, s: EncState, entry: DekEntry, raw: Envelope, scope: string): Promise<boolean> {
+    let me = this.user?.user_id;
+    let w: any = me ? raw.k?.[me] : null;
+    if (!w || w.t !== 'mk' || !s.mk || raw.own !== me) {
+        return false;
+    }
+    let bytes: Uint8Array;
+    try {
+        bytes = await openGcm(s.mk, b64uToBytes(w.iv), b64uToBytes(w.ct), recipientAad(payloadAad(scope, raw.own, raw.anch, anchorOf(raw)), me, 'mk'));
+    }
+    catch (err) {
+        return false;
+    }
+    let same = bytesEqual(bytes, entry.bytes);
+    zeroize(bytes);
+    if (!same) {
+        return false;
+    }
+    entry.recipients = raw.k;
+    entry.anch = raw.anch;
+    entry.uid = raw.uid;
+    if (raw.rid) {
+        entry.rid = raw.rid;
+    }
+    return true;
 }
 
 /**
@@ -2108,13 +2421,6 @@ export async function dropRecipientsAndRoll(this: any, record_id: string, userId
         );
     }
 
-    let keep = Object.keys(entry.recipients).filter(id => {
-        if (id === me) {
-            return true;
-        }
-        return userIds ? !userIds.includes(id) : false;
-    }).filter(id => id !== me);
-
     // Read the plaintext FIRST, while the current key is still usable.
     let rec = await readOwnRecord.call(this, record_id);
     if (!rec) {
@@ -2123,6 +2429,17 @@ export async function dropRecipientsAndRoll(this: any, record_id: string, userId
     // NOT `rec.data === null`: null is a legitimate stored value now, so the
     // flag is the only sound test for "could not be read".
     assertReadable(rec, record_id);
+    let rid = rec.record_id || record_id;
+
+    // Who keeps access, from the record just read rather than the cache: a
+    // cached map misses grants made on another device since.
+    let current = s.dek.get(rid) || entry;
+    let keep = Object.keys(current.recipients).filter(id => {
+        if (id === me) {
+            return true;
+        }
+        return userIds ? !userIds.includes(id) : false;
+    }).filter(id => id !== me);
 
     // Resolve the keepers' public keys BEFORE the roll lands. Rolling first and
     // re-wrapping afterwards meant that one bad peer key (changed fingerprint,
@@ -2142,17 +2459,128 @@ export async function dropRecipientsAndRoll(this: any, record_id: string, userId
         }
     }
 
-    s.roll.add(rec.record_id || record_id);
+    // The new data key, minted now so the record's sealed attachments can be
+    // re-sealed under it BEFORE the roll. A file container names the key it
+    // was sealed under, so a roll that left them alone made every attachment
+    // unreadable for everyone, the owner included. Each one is opened with the
+    // current key, sealed again with the new one and uploaded; the roll write
+    // then retires the old objects. Interrupted before the roll, the record
+    // still reads exactly as before; nothing is lost either way.
+    //
+    // Until the roll lands the new copies are sealed under a key the record does
+    // not hold, so a failure on the way removes the ones already stored. Left
+    // attached they could never be opened, every later revoke skipped them as
+    // stale, and they stayed on the record for good.
+    let next = await generateAesGcm();
+    let retire: string[] = [];
+    let copies: string[] = [];
+    try {
+        let form = new FormData();
+        let files: File[] = [];
+        for (let t of encryptedAttachments(rec)) {
+            let f = (rec.bin[t.formKey] || []).find((x: any) => x.url === t.url);
+            let blob: any;
+            try {
+                blob = await f.getFile('blob');
+            }
+            catch (err: any) {
+                // Already sealed under a key that is gone (an earlier roll):
+                // nobody can open it, and it must not block this revoke.
+                if (err?.code === 'ENCRYPTION_FILE_STALE_KEY') {
+                    continue;
+                }
+                throw new SkapiError(
+                    `Cannot revoke on record "${record_id}": its encrypted file "${t.filename}" could not be read, ` +
+                    `so rolling the key would lock it.`,
+                    { code: 'ENCRYPTION_DATA_UNAVAILABLE', cause: err }
+                );
+            }
+            let file = new File([blob], t.filename, { type: blob.type || 'application/octet-stream' });
+            let sealed = await sealAttachment.call(this, next.bytes, rid, me, t.formKey, file);
+            PRESEALED.set(sealed.file, sealed.key);
+            form.append(t.formKey, sealed.file);
+            files.push(sealed.file);
+            retire.push(t.url);
+        }
+        if (retire.length) {
+            // Not throwOnFileError: that rejects without saying which copies were
+            // already stored. The first file error is thrown below instead, as
+            // throwOnFileError would have.
+            let res: any = await this.uploadFiles(form, { record_id: rid });
+            copies = files
+                .map((f, i) => ((res?.completed || []).includes(f) ? res.bin_endpoints?.[i] : ''))
+                .filter((u: string) => !!u);
+            if (res?.failed?.length) {
+                if (copies.length) {
+                    await removeLandedCopies.call(this, rid, copies).catch((e: any) => this.log('encryption:revoke:cleanup', e));
+                }
+                throw res.errors?.[0]?.error || new SkapiError(
+                    `Cannot revoke on record "${record_id}": its encrypted files could not be re-sealed.`,
+                    { code: 'ERROR' }
+                );
+            }
+        }
+    }
+    catch (err) {
+        zeroize(next.bytes);
+        throw err;
+    }
+
+    s.roll.add(rid);
+    s.rollKey.set(rid, next);
 
     // State the table explicitly so the write path does not read the record
     // back just to learn its access group.
-    await this.postRecord(rec.data, {
-        record_id: rec.record_id || record_id,
+    let config: any = {
+        record_id: rid,
         table: { name: rec.table.name, access_group: 'private' }
-    });
+    };
+    if (retire.length) {
+        config.remove_bin = retire;
+    }
+    try {
+        await this.postRecord(rec.data, config);
+    }
+    catch (err) {
+        if (copies.length) {
+            await dropUnrolledCopies.call(this, s, rid, next.bytes, copies).catch((e: any) => this.log('encryption:revoke:cleanup', e));
+        }
+        throw err;
+    }
+    finally {
+        s.rollKey.delete(rid);
+    }
 
     if (keep.length) {
-        await addRecipients.call(this, rec.record_id || record_id, keep);
+        await addRecipients.call(this, rid, keep);
+    }
+}
+
+/**
+ * After a failed roll write: remove the re-sealed attachment copies, unless the
+ * write landed after all (only its answer was lost), in which case they are the
+ * record's files now. Which one it was is read off the stored envelope: the
+ * owner's wrap opens either to the new key or to the old one. When that cannot be
+ * told (the read fails, the session is locked), the copies are left alone.
+ */
+async function dropUnrolledCopies(this: any, s: EncState, record_id: string, nextBytes: Uint8Array, copies: string[]): Promise<void> {
+    let raw = await readStoredEnvelope.call(this, record_id);
+    let me = this.user?.user_id;
+    let w: any = raw && me ? raw.k?.[me] : null;
+    if (!raw || !w || w.t !== 'mk' || !s.mk || raw.own !== me) {
+        return;
+    }
+    let stored: Uint8Array;
+    try {
+        stored = await openGcm(s.mk, b64uToBytes(w.iv), b64uToBytes(w.ct), recipientAad(payloadAad(scopeOf.call(this), raw.own, raw.anch, anchorOf(raw)), me, 'mk'));
+    }
+    catch (err) {
+        return;
+    }
+    let rolled = bytesEqual(stored, nextBytes);
+    zeroize(stored);
+    if (!rolled) {
+        await removeLandedCopies.call(this, record_id, copies);
     }
 }
 
@@ -2184,8 +2612,8 @@ function assertReadable(rec: any, record_id: string): void {
  * about 230 bytes of key wrap. Instead the stored envelope is read, its `k`
  * replaced, and the result written verbatim through the passthrough.
  */
-async function writeRecipients(this: any, s: EncState, record_id: string, entry: DekEntry, recipients: Record<string, Wrap>): Promise<void> {
-    let raw = await readStoredEnvelope.call(this, record_id);
+async function writeRecipients(this: any, s: EncState, record_id: string, entry: DekEntry, recipients: Record<string, Wrap>, stored?: Envelope | null): Promise<void> {
+    let raw = stored || await readStoredEnvelope.call(this, record_id);
     if (!raw) {
         throw new SkapiError(
             `Cannot change sharing on record "${record_id}": its stored envelope could not be read.`,
@@ -2208,8 +2636,17 @@ async function writeRecipients(this: any, s: EncState, record_id: string, entry:
  * Read a record's envelope as STORED, without decrypting anything.
  *
  * getRecords would decrypt it, which for a spilled record means fetching the
- * ciphertext file: exactly the work a sharing change is supposed to avoid. The
- * decrypt hook is skipped instead.
+ * ciphertext file: exactly the work a sharing change is supposed to avoid. So
+ * this makes the same request getRecords({ record_id }) makes and normalizes the
+ * answer with decryption skipped for THIS read only.
+ *
+ * It used to switch decryption off for the whole instance around a
+ * getRecords call instead. Any other getRecords the app had in flight during that
+ * request then handed the app raw envelopes as `data`.
+ *
+ * Only reached for a record the signed-in user owns (grant and revoke check that
+ * first), so getRecords' private-access-key and unique_id cache handling has
+ * nothing to add here.
  */
 async function readStoredEnvelope(this: any, record_id: string): Promise<Envelope | null> {
     let s = encState.call(this);
@@ -2217,20 +2654,21 @@ async function readStoredEnvelope(this: any, record_id: string): Promise<Envelop
         return null;
     }
 
-    s.rawRead = true;
-    let rec: any;
-    try {
-        let res = await this.getRecords({ record_id }, { limit: 1 });
-        rec = res?.list?.[0];
-    }
-    finally {
-        s.rawRead = false;
-    }
-
-    if (!rec) {
+    await this.__connection;
+    // The same record_id check getRecords applies, so a bad id fails the same way.
+    let res = await request.call(this, 'get-records', recordIdOrUniqueId({ record_id }), {
+        fetchOptions: { limit: 1 },
+        auth: !!this.__user,
+        method: this.__user ? 'post' : 'get'
+    });
+    let raw = res?.list?.[0];
+    if (!raw) {
         return null;
     }
-    return isEnvelope(rec.data) ? rec.data as Envelope : null;
+    // _skipDecrypt: the stored envelope comes back as `data`. _skipBinResolve: only
+    // `data` is used, so no signed url is minted for each private file.
+    let rec: any = await normalizeRecord.call(this, raw, undefined, false, true, true);
+    return isEnvelope(rec?.data) ? rec.data as Envelope : null;
 }
 
 /** Pin a peer's key fingerprint after verifying it out of band. */
@@ -2273,26 +2711,52 @@ async function persistPins(this: any, s: EncState): Promise<void> {
  * ------------------------------------------------------------------ */
 
 /**
- * Collect a freshly minted recovery code, ONCE.
+ * The `encryption_recovery` entry of getConnectionInfo(), or undefined when encryption
+ * is off or nobody is signed in.
  *
- * Call this immediately after a login or signup that may have enrolled the
- * user. It returns the code and forgets it. There is deliberately no way to
- * fetch it again later: if this SDK could hand it back on demand, it would be
- * holding the key, and the provider could too. Show it, make the user confirm
- * they saved it, and move on.
+ * The encryption recovery code is issued once, in the browser, when encryption is
+ * first set up for a user (their first password login with encryption on). It is
+ * never stored anywhere readable, so it can only be shown at that moment: the FIRST
+ * call after it was issued returns it and forgets it. Every later call says it can
+ * no longer be shown and how to issue a new one. If this SDK could hand it back on
+ * demand, it would be holding the key, and the provider could too.
  */
-export function takeRecoveryCode(this: any): string | null {
+export async function encryptionRecoveryInfo(this: any): Promise<{ code: string | null; message: string } | undefined> {
     let s = encState.call(this);
-    if (!s || !s.pendingRecoveryCode) {
-        return null;
+    if (!s || !this.user?.user_id) {
+        return undefined;
     }
-    let code = s.pendingRecoveryCode;
-    s.pendingRecoveryCode = '';
-    return code;
+    // The page-load unlock may still be running: answer for its outcome, not for
+    // the moment before it.
+    if (s.unlocking && s.ready) {
+        await s.ready;
+    }
+    if (s.cfg.recovery !== 'code') {
+        return { code: null, message: 'Encryption recovery codes are turned off ("encryption.recovery" is "none").' };
+    }
+    if (s.pendingRecoveryCode && s.pendingRecoveryUser === this.user.user_id) {
+        let code = s.pendingRecoveryCode;
+        s.pendingRecoveryCode = '';
+        s.pendingRecoveryUser = '';
+        return {
+            code,
+            message: 'This is your encryption recovery code. Save it now: it is shown only this once. If you forget your password, it is the only way to read your encrypted private data again.'
+        };
+    }
+    if (s.status !== 'unlocked') {
+        return {
+            code: null,
+            message: 'Encryption is locked. Unlock it with unlockEncryption() or unlockEncryptionWithRecoveryCode(), then call regenerateEncryptionRecoveryCode() to get a new encryption recovery code.'
+        };
+    }
+    return {
+        code: null,
+        message: 'Your encryption recovery code was shown once and cannot be shown again. Call regenerateEncryptionRecoveryCode() to get a new one.'
+    };
 }
 
 /**
- * Unlock with a recovery code, and repair the keyring for the current password.
+ * Unlock with an encryption recovery code, and repair the keyring for the current password.
  *
  * This is the answer to a forgotten password. The sequencing matters and is not
  * obvious: forgotPassword/resetPassword are UNAUTHENTICATED (they build a
@@ -2301,7 +2765,7 @@ export function takeRecoveryCode(this: any): string | null {
  * next login:
  *
  *   reset password  ->  log in with the new password  ->  status is 'locked'
- *   ->  unlockWithRecoveryCode({ code, password: theNewPassword })
+ *   ->  unlockEncryptionWithRecoveryCode({ code, password: theNewPassword })
  *
  * Passing `password` is what makes it self-healing: the master key is re-wrapped
  * under the new password so every later login works normally. Omit it and the
@@ -2310,10 +2774,10 @@ export function takeRecoveryCode(this: any): string | null {
  * A used code is retired and a replacement is returned, because a code that has
  * been typed into a device has been in a clipboard and possibly a screenshot.
  */
-export async function unlockWithRecoveryCode(
+export async function unlockEncryptionWithRecoveryCode(
     this: any,
     params: { code: string; password?: string }
-): Promise<{ status: string; repaired: boolean; recoveryCode: string | null }> {
+): Promise<{ status: string; repaired: boolean; encryptionRecoveryCode: string | null }> {
     await this.__connection;
 
     let s = encState.call(this);
@@ -2321,7 +2785,7 @@ export async function unlockWithRecoveryCode(
         throw new SkapiError('Encryption is not enabled for this instance.', { code: 'INVALID_REQUEST' });
     }
     if (!this.user?.user_id) {
-        throw new SkapiError('User login is required. Reset the password and log in first, then use the recovery code.', { code: 'INVALID_REQUEST' });
+        throw new SkapiError('User login is required. Reset the password and log in first, then use the encryption recovery code.', { code: 'INVALID_REQUEST' });
     }
     if (!params?.code || typeof params.code !== 'string') {
         throw new SkapiError('"code" is required.', { code: 'INVALID_PARAMETER' });
@@ -2329,6 +2793,7 @@ export async function unlockWithRecoveryCode(
 
     s.scope = scopeOf.call(this);
     let user_id = this.user.user_id;
+    let gen = s.gen;
 
     let keyring = await readKeyring.call(this, s);
     if (!keyring) {
@@ -2338,13 +2803,13 @@ export async function unlockWithRecoveryCode(
     let mkBytes = await openWithRecoveryCode(s.scope, user_id, keyring.data?.wraps || [], params.code);
     if (!mkBytes) {
         throw new SkapiError(
-            'That recovery code did not open the keyring. Check it against the copy you saved when encryption was set up.',
+            'That encryption recovery code did not open the keyring. Check it against the copy you saved when encryption was set up.',
             { code: 'ENCRYPTION_BAD_RECOVERY_CODE' }
         );
     }
 
     let mk = await importAesGcm(mkBytes);
-    await adoptKeyring.call(this, s, keyring, mk);
+    await adoptKeyring.call(this, s, keyring, mk, gen);
 
     // Rewrite the wraps: a new password wrap if we were given the password
     // (replacing the stale ones outright, since nobody can open them any more),
@@ -2377,18 +2842,18 @@ export async function unlockWithRecoveryCode(
         await saveDevice.call(this, s).catch(() => { });
     }
 
-    return { status: s.status, repaired, recoveryCode: nextCode };
+    return { status: s.status, repaired, encryptionRecoveryCode: nextCode };
 }
 
 /**
- * Retire the current recovery code and issue a new one.
+ * Retire the current encryption recovery code and issue a new one.
  *
  * Requires an UNLOCKED session, which is the whole access-control story: the
  * only way to mint a code is to already be able to decrypt. There is therefore
  * no path here that helps someone who is locked out, and no path that lets the
  * provider mint one.
  */
-export async function regenerateRecoveryCode(this: any): Promise<{ recoveryCode: string }> {
+export async function regenerateEncryptionRecoveryCode(this: any): Promise<{ encryptionRecoveryCode: string }> {
     await this.__connection;
 
     let s = encState.call(this);
@@ -2397,12 +2862,12 @@ export async function regenerateRecoveryCode(this: any): Promise<{ recoveryCode:
     }
     if (s.status !== 'unlocked' || !s.mk) {
         throw new SkapiError(
-            'Encryption must be unlocked to issue a recovery code. Only someone who can already decrypt can create one.',
+            'Encryption must be unlocked to issue an encryption recovery code. Only someone who can already decrypt can create one.',
             { code: 'ENCRYPTION_LOCKED' }
         );
     }
     if (s.cfg.recovery !== 'code') {
-        throw new SkapiError('Recovery codes are disabled for this instance ("recovery" is "none").', { code: 'INVALID_REQUEST' });
+        throw new SkapiError('Encryption recovery codes are turned off for this instance ("encryption.recovery" is "none").', { code: 'INVALID_REQUEST' });
     }
 
     let res = await this.getRecords({ record_id: s.keyringRecordId }, { limit: 1 });
@@ -2420,8 +2885,8 @@ export async function regenerateRecoveryCode(this: any): Promise<{ recoveryCode:
     let self = keyring.data?.self;
     if (!self || !self.ct) {
         throw new SkapiError(
-            'This keyring predates recovery-code rotation and cannot issue a new code. ' +
-            'Use unlockWithRecoveryCode() with the existing code, which issues a replacement.',
+            'This keyring predates encryption recovery code rotation and cannot issue a new code. ' +
+            'Use unlockEncryptionWithRecoveryCode() with the existing code, which issues a replacement.',
             { code: 'ENCRYPTION_KEYRING_CORRUPT' }
         );
     }
@@ -2436,7 +2901,7 @@ export async function regenerateRecoveryCode(this: any): Promise<{ recoveryCode:
         { record_id: s.keyringRecordId }
     );
 
-    return { recoveryCode: minted.code };
+    return { encryptionRecoveryCode: minted.code };
 }
 
 /* ------------------------------------------------------------------ *
@@ -2547,6 +3012,13 @@ export async function maybeEncryptFile(
         return { key: formKey, file, encrypted: false };
     }
 
+    // Already sealed by a revoke, under the key its roll is about to install.
+    let pre = PRESEALED.get(file);
+    if (pre) {
+        PRESEALED.delete(file);
+        return { key: pre, file, encrypted: true };
+    }
+
     let entry = s.dek.get(recordId);
     if (!entry) {
         // The record is not encrypted (or this session cannot read it, in which
@@ -2565,9 +3037,29 @@ export async function maybeEncryptFile(
         return { key: formKey, file, encrypted: false };
     }
 
+    let sealed = await sealAttachment.call(this, entry.bytes, recordId, entry.own, formKey, file);
+    return { key: sealed.key, file: sealed.file, encrypted: true };
+}
+
+/**
+ * Files sealed ahead of a key roll, by the form key they upload under. Kept by
+ * File object so uploadFiles passes them through instead of sealing them again
+ * under the key that is about to be retired.
+ */
+const PRESEALED = new WeakMap<File, string>();
+
+/** Seal one attachment under the given data key. */
+async function sealAttachment(
+    this: any,
+    dekBytes: Uint8Array,
+    recordId: string,
+    recordOwner: string,
+    formKey: string,
+    file: File
+): Promise<{ key: string; file: File }> {
     let plain = new Uint8Array(await file.arrayBuffer());
     let meta = { n: file.name, t: file.type || '', lm: file.lastModified || 0 };
-    let sealed = await encryptFileBytes(entry.bytes, plain, fileCtx.call(this, recordId, entry.own), meta);
+    let sealed = await encryptFileBytes(dekBytes, plain, fileCtx.call(this, recordId, recordOwner), meta);
     zeroize(plain);
 
     return {
@@ -2575,8 +3067,7 @@ export async function maybeEncryptFile(
         // Deliberately octet-stream: the real content type is authenticated
         // inside the container. Leaving "application/pdf" on ciphertext invites
         // a browser or a CDN to try to interpret it.
-        file: new File([sealed], file.name, { type: 'application/octet-stream' }),
-        encrypted: true
+        file: new File([sealed], file.name, { type: 'application/octet-stream' })
     };
 }
 
@@ -2712,6 +3203,7 @@ export async function convertRecordFiles(
     // through the instance here.
     let retire: string[] = [];
     let form = new FormData();
+    let files: File[] = [];
     let any = false;
 
     for (let t of targets) {
@@ -2727,8 +3219,12 @@ export async function convertRecordFiles(
             continue;
         }
 
-        form.append(t.formKey, new File([blob], t.filename, { type: (blob as Blob).type || 'application/octet-stream' }));
-        retire.push(t.url);
+        let file = new File([blob], t.filename, { type: (blob as Blob).type || 'application/octet-stream' });
+        form.append(t.formKey, file);
+        files.push(file);
+        // The stored file's raw address: the bin entry's `path`, not its display url,
+        // which is percent-encoded (a name with a space would never match).
+        retire.push(entry.path ? t.url.split('/').slice(0, 3).join('/') + '/' + entry.path : t.url);
         any = true;
     }
 
@@ -2736,19 +3232,75 @@ export async function convertRecordFiles(
         return [];
     }
 
-    // Every file is decrypted and in memory at this point, so the data key has
-    // finally done its last job and can go. It MUST go before the upload, or
-    // the upload path would see a cached key and seal the plaintext right back
-    // up again.
+    // Every file is decrypted and in memory at this point. The data key MUST be out
+    // of the cache during the upload, or the upload path would seal the plaintext
+    // right back up again. It is only destroyed once every copy has landed: if any
+    // upload fails, the record stays private and still needs it.
+    let heldDek: DekEntry | undefined;
     if (direction === 'decrypt') {
-        let stale = s.dek.get(record_id);
-        if (stale) {
-            zeroize(stale.bytes);
+        heldDek = s.dek.get(record_id);
+        if (heldDek) {
             s.dek.delete(record_id);
         }
     }
 
-    await this.uploadFiles(form, { record_id, progress });
+    // All or nothing. uploadFiles does not throw for a failed file, it lists it, so
+    // the old copies used to be retired even when their replacement never arrived,
+    // and the file was gone. Now a single failure undoes the conversion: the copies
+    // that did upload are removed again, the key goes back, and the caller's write
+    // is refused, so the record and its original files stay exactly as they were.
+    let res: any;
+    try {
+        res = await this.uploadFiles(form, { record_id, progress });
+    }
+    catch (err) {
+        if (heldDek) s.dek.set(record_id, heldDek);
+        throw err;
+    }
+    if (res?.failed?.length) {
+        if (heldDek) s.dek.set(record_id, heldDek);
+        let landed = files
+            .map((f, i) => ((res.completed || []).includes(f) ? res.bin_endpoints?.[i] : ''))
+            .filter((u: string) => !!u);
+        if (landed.length) {
+            await removeLandedCopies.call(this, record_id, landed).catch((e: any) => this.log('encryption:convert:cleanup', e));
+        }
+        let first = res.errors?.[0]?.error;
+        throw new SkapiError(
+            `The record's attached files could not all be converted, so the record was not changed${first?.message ? ': ' + first.message : '.'}`,
+            { code: first?.code || 'ERROR' }
+        );
+    }
 
+    if (heldDek) {
+        zeroize(heldDek.bytes);
+    }
     return retire;
+}
+
+/**
+ * Remove copies a failed conversion had already uploaded. A record file joins the
+ * record's file list a moment AFTER its upload (the storage notification adds it), and
+ * removing an address the list does not hold yet is a no-op on the server, so wait
+ * for them to appear first, then remove them in one write.
+ */
+async function removeLandedCopies(this: any, record_id: string, urls: string[]): Promise<void> {
+    let bare = (u: string) => {
+        try { return decodeURI(u.split('?')[0]); } catch { return u.split('?')[0]; }
+    };
+    let want = urls.map(bare);
+    for (let attempt = 0; attempt < 8; attempt++) {
+        let rec = await readOwnRecord.call(this, record_id);
+        let have = new Set<string>();
+        for (let k in (rec?.bin || {})) {
+            for (let f of rec.bin[k] || []) {
+                if (f?.url) have.add(bare(f.url));
+            }
+        }
+        if (want.every(u => have.has(u))) {
+            break;
+        }
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+    }
+    await this.postRecord(undefined, { record_id, remove_bin: urls });
 }

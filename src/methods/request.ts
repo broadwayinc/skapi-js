@@ -15,7 +15,6 @@ import { extractFormData, generateRandom } from '../utils/utils';
 import { closeRealtime, connectRealtime, joinRealtime, currentSocketRoom } from './realtime';
 import Qpass from "qpass";
 
-const hasFormData = typeof FormData !== 'undefined';
 const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
 const hasSubmitEvent = typeof SubmitEvent !== 'undefined';
 
@@ -23,8 +22,17 @@ let queuePromiseList: {
 	[polling_name: string]: Qpass
 } = {};
 
+/**
+ * The client-queue job of each poll still WAITING for its turn, keyed by the full
+ * request id. The queue is kept beside the job id because Qpass numbers jobs per
+ * instance: the same id names an unrelated job in every other queue, so a removal
+ * must go to the queue the job was actually added to. `stop` is that poll's own
+ * queued stopper, which removes the job from that queue AND settles the poll, so a
+ * cancel never leaves its promise pending. Dropped once the job starts, since a
+ * started job is no longer in its queue to remove.
+ */
 let queueJobId: {
-	[full_id: string]: string;
+	[full_id: string]: { queue: string; jobId: string; stop: () => void };
 } = {};
 
 /**
@@ -39,6 +47,8 @@ let activePolls: {
 		stop: (() => void) | null;
 		aborted: boolean;
 		queue?: string;
+		/** True while the poll is still WAITING for its turn in a client queue. */
+		queued?: boolean;
 	};
 } = {};
 
@@ -688,6 +698,36 @@ function startRealtimeRelay(this: any, group: string, sink: StreamSink): { stop:
 }
 
 /**
+ * Socket delivery for one reader of a streamed request: the transport logger, plus a sink
+ * and a realtime relay ONLY when the reader has somewhere to put the text (onStream) and
+ * the request has a room to listen to. Without both, the sink is null and the read runs on
+ * the poll alone, exactly as before streaming existed. The sink takes over `cursor`, so the
+ * poll and the socket share one idea of what has been rendered. `end` tears all of it down
+ * and is safe to call more than once.
+ */
+function startLiveDelivery(
+	this: any,
+	logId: string,
+	cursor: StreamCursor,
+	onStream: ((chunk: string, seq: number, via?: 'socket' | 'poll') => void) | undefined,
+	realtimeGroup: string | undefined,
+): { sink: StreamSink | null; end: () => void } {
+	let tlog = streamTransportLogger.call(this, logId);
+	let sink: StreamSink = onStream && realtimeGroup
+		? createStreamSink(cursor, onStream, tlog.onTransport)
+		: null;
+	let relay: { stop: () => void } = sink ? startRealtimeRelay.call(this, realtimeGroup, sink) : null;
+	return {
+		sink,
+		end: () => {
+			tlog.done(sink);
+			if (relay) relay.stop();
+			if (sink) sink.close();
+		},
+	};
+}
+
+/**
  * True while the request is still being worked on. Every other status ("resolved",
  * "failed", "cancelled") is terminal: nothing further is written to the row or to
  * that request's chunks.
@@ -718,6 +758,39 @@ function isPollEnvelope(result: any): boolean {
 		'in_queue' in result
 	);
 }
+
+/**
+ * Builds the key a forwarded request is stored under: "[METHOD]<url>#<service>:" followed
+ * by the request's short id. The method is uppercased and the url lowercased here and
+ * nowhere else, so every reader composes exactly the key the dispatch wrote. `id` has no
+ * default on purpose: pass '' for the prefix history lists by.
+ */
+function requestKey(method: string, url: string, service: string, id: string): string {
+	return `[${method.toUpperCase()}]${url.toLowerCase()}#${service}:${id}`;
+}
+
+/**
+ * A validator.Params check for an optional flag ("stream", "realtime"). Normalised to a
+ * real boolean because the server types these keys as booleans: a null passed through
+ * would be rejected at the door rather than read as the default it obviously means.
+ */
+function booleanFlag(name: string) {
+	return (v: any) => {
+		if (v !== undefined && v !== null && typeof v !== 'boolean') {
+			throw new SkapiError(`"${name}" should be type: <boolean>.`, {
+				code: 'INVALID_PARAMETER',
+			});
+		}
+		return !!v;
+	};
+}
+
+/** The forwardRequest() options handed on to the dispatch as they are, when given. */
+const FORWARDED_OPTIONS = [
+	'secretName', 'headers', 'data', 'params', 'skapiHeaders',
+	'service', 'owner', 'queue', 'expires', 'stream', 'realtime', 'poll',
+	'onStream', 'onResponse', 'onError',
+] as const;
 
 /**
  * Composes the id csr-poll and csr-finalize address a single request by:
@@ -761,7 +834,7 @@ function composeRequestId(
 
 	// Same casing rules as the dispatch path: the row id was built from an uppercased
 	// method and a lowercased url, so anything else composes a key that misses.
-	return `[${method.toUpperCase()}]${url.toLowerCase()}#${service}:${requestId}`;
+	return requestKey(method, url, service, requestId);
 }
 
 function pollClientSecretResponse(
@@ -830,7 +903,7 @@ function pollClientSecretResponse(
 	// One registry entry per poll invocation. `stop` is filled in as soon as there is
 	// something to stop; a stop that arrives while the job is still WAITING in the Qpass
 	// queue sets `aborted` instead, which the job checks when it eventually starts.
-	let entry: { stop: (() => void) | null; aborted: boolean; queue?: string } = {
+	let entry: { stop: (() => void) | null; aborted: boolean; queue?: string; queued?: boolean } = {
 		stop: null,
 		aborted: false,
 		queue,
@@ -847,6 +920,8 @@ function pollClientSecretResponse(
 
 	let prom = () => new Promise<any>((resolve, reject) => {
 		let settled = false;
+		// Its turn has come: from here a stop goes through the poll's own stopper below.
+		entry.queued = false;
 		if (entry.aborted) {
 			// Stopped before this job ever got a turn.
 			release();
@@ -864,16 +939,7 @@ function pollClientSecretResponse(
 		// faster, and opening a websocket to throw its messages away would cost the
 		// application a connection it never asked for. The sink owns the cursor above
 		// from here on, so the two transports share one idea of what has been rendered.
-		let tlog = streamTransportLogger.call(this, id);
-		let sink: StreamSink = onStream && realtimeGroup
-			? createStreamSink(cursor, onStream, tlog.onTransport)
-			: null;
-		let relay: { stop: () => void } = sink ? startRealtimeRelay.call(this, realtimeGroup, sink) : null;
-		let endRealtime = () => {
-			tlog.done(sink);
-			if (relay) relay.stop();
-			if (sink) sink.close();
-		};
+		let { sink, end: endRealtime } = startLiveDelivery.call(this, id, cursor, onStream, realtimeGroup);
 		liveTeardown = endRealtime;
 		// When the last poll actually went out, so a warm socket can throttle the poll
 		// to a heartbeat without touching the interval that drives it.
@@ -919,15 +985,26 @@ function pollClientSecretResponse(
 					// The poll may have been stopped while this request was in flight.
 					if (settled) return;
 
-					let moved = sink
-						? sink.fromPoll(result)
-						: (onStream ? deliverStreamChunks(result, cursor, onStream) : false);
+					// Chunks and `more` belong to skapi's status envelope. A resolved read is
+					// the destination's own body, and a `chunks` or `more` key in THAT is
+					// the destination's data, not text to stream or a cue to read again.
+					let envelope = isPollEnvelope(result);
+					let more = envelope && !!result.more;
+					let moved = !envelope
+						? false
+						: sink
+							? sink.fromPoll(result)
+							: (onStream ? deliverStreamChunks(result, cursor, onStream) : false);
 					// History has been rendered and the cursor says where it ended, so
 					// everything the socket buffered while it was in flight can be
 					// released now (duplicates dropped, the rest in seq order). Idempotent:
 					// only the first read of a turn is its history.
 					if (sink) sink.open();
-					let running = isRunningStatus(result);
+					// Only skapi's status envelope says the request is still going. A resolved
+					// read hands back the destination's own body verbatim, and that body can
+					// carry a "status" of its own ("pending" on an async-job api), which must
+					// not keep this poll asking forever.
+					let running = envelope && isRunningStatus(result);
 					// The execution start rides on the STATUS envelope, which only a
 					// non-terminal tick returns: a resolved read hands back the caller's own
 					// response body, and that body is theirs, not somewhere to attach our
@@ -939,7 +1016,7 @@ function pollClientSecretResponse(
 						lastExecuted = result.executed;
 					}
 
-					if (result?.more && moved) {
+					if (more && moved) {
 						// A CAP stopped that read, not the end of the data: the rest is
 						// already written and waiting, so go straight back round rather than
 						// spending a whole interval per capped page.
@@ -969,36 +1046,51 @@ function pollClientSecretResponse(
 					// degraded answer. Backing off to the interval is the entire point of
 					// telling the two apart: re-asking now would hammer a table that is
 					// already failing.
-					stalled = result?.more ? stalled + 1 : 0;
+					stalled = more ? stalled + 1 : 0;
 
-					if (result?.more && stalled < STREAM_DEGRADED_RETRIES) {
+					if (more && stalled < STREAM_DEGRADED_RETRIES) {
 						// Terminal, but the last chunk read failed. The row cannot change
 						// again, so the only thing left to wait for is the chunk table
 						// recovering: give it a few ticks before settling without the tail.
 						return;
 					}
 
+					// Torn down and settled BEFORE the callback runs: a callback that throws
+					// must not strand the poll (pending promise, a live interval and the
+					// queue's only slot held for good), the same rule onStream follows.
+					// Called in this same turn, so it still runs before anything awaiting
+					// the promise does.
 					settled = true;
-					if (onResponse)
-						// Second argument, so every existing one-parameter callback is
-						// unaffected: `meta` carries what belongs to the REQUEST rather than
-						// to the response, starting with when it began executing.
-						onResponse(result, lastExecuted !== undefined ? { executed: lastExecuted } : undefined);
 					clearInterval(interval);
 					endRealtime();
 					release();
 					resolve(result);
+					if (onResponse) {
+						try {
+							// Second argument, so every existing one-parameter callback is
+							// unaffected: `meta` carries what belongs to the REQUEST rather than
+							// to the response, starting with when it began executing.
+							onResponse(result, lastExecuted !== undefined ? { executed: lastExecuted } : undefined);
+						} catch (err) {
+							console.error(err);
+						}
+					}
 					return;
 				}
 			} catch (e) {
 				if (settled) return;
 				settled = true;
-				if (onError)
-					onError(e);
 				clearInterval(interval);
 				endRealtime();
 				release();
 				reject(e);
+				if (onError) {
+					try {
+						onError(e);
+					} catch (err) {
+						console.error(err);
+					}
+				}
 			} finally {
 				ticking = false;
 			}
@@ -1027,13 +1119,15 @@ function pollClientSecretResponse(
 
 	// Exposed on the returned promise so a caller holding it can stop this exact poll
 	// without having to reconstruct the full request id.
+	// This poll's OWN entry, never a registry lookup by id: a second reader of the same
+	// request (another poll(), a forwardRequestStream re-attach) replaces the registry
+	// slot, and a lookup would stop that reader instead of this one. Both stoppers
+	// ignore a poll that already settled.
 	let publicStop = () => {
-		let e = activePolls[id];
-		if (!e) return; // already settled
-		if (e.stop) e.stop();
+		if (entry.stop) entry.stop();
 		else {
-			e.aborted = true;
-			delete activePolls[id];
+			entry.aborted = true;
+			release();
 		}
 	};
 
@@ -1041,6 +1135,7 @@ function pollClientSecretResponse(
 		let outer = new Promise<any>((resolve, reject) => {
 			let outerSettled = false;
 			let jobId = queuePromiseList[queue].add([async () => {
+				if (queueJobId[id]?.jobId === jobId && queueJobId[id].queue === queue) delete queueJobId[id];
 				try {
 					let result = await prom();
 					if (!outerSettled) {
@@ -1056,7 +1151,10 @@ function pollClientSecretResponse(
 					throw e;
 				}
 			}])[0];
-			queueJobId[id] = jobId;
+			queueJobId[id] = { queue, jobId, stop: () => { if (entry.stop) entry.stop(); } };
+			// Qpass starts a job on a later microtask at the earliest, so this is set
+			// before prom() can clear it.
+			entry.queued = true;
 			// Stopping a job that has not started yet must ALSO drop it from the queue,
 			// or its batchSize-1 slot stays occupied and everything behind it stalls —
 			// and must settle this outer promise, or the caller awaits forever.
@@ -1068,10 +1166,12 @@ function pollClientSecretResponse(
 				if (liveTeardown) liveTeardown();
 				try {
 					if (queuePromiseList[queue]) {
-						queuePromiseList[queue].remove(queueJobId[id]);
+						// This job's own id: queueJobId[id] belongs to whichever poll of
+						// the request was queued last.
+						queuePromiseList[queue].remove(jobId);
 					}
 				} catch (e) { /* already started or already removed */ }
-				delete queueJobId[id];
+				if (queueJobId[id]?.jobId === jobId && queueJobId[id].queue === queue) delete queueJobId[id];
 				release();
 				outerSettled = true;
 				resolve(stoppedResult(id));
@@ -1111,9 +1211,7 @@ export function stopClientSecretPolling(
 	if (params?.id) {
 		if (params.url && params.method) {
 			let service = params.service || this.service;
-			ids.push(
-				`[${params.method.toUpperCase()}]${params.url.toLowerCase()}#${service}:${params.id}`,
-			);
+			ids.push(requestKey(params.method, params.url, service, params.id));
 		}
 		// Also accept an already-full id, so callers holding the registry key work.
 		ids.push(params.id);
@@ -1496,6 +1594,20 @@ async function dispatchForwardRequest(
 		}
 	};
 
+	// The check for "headers", "data" and "params": an optional object that may carry the
+	// client secret placeholder. `extra` runs after the type check and before the
+	// placeholder check ("headers" refuses reserved header names there).
+	let placeholderObject = (name: string, extra?: (v: any) => void) => (v: any) => {
+		if (v && typeof v !== 'object') {
+			throw new SkapiError(`"${name}" should be type: <object>.`, {
+				code: 'INVALID_PARAMETER',
+			});
+		}
+		if (extra) extra(v);
+		checkClientSecretPlaceholder(v);
+		return v;
+	};
+
 	params = validator.Params(
 		params,
 		{
@@ -1540,58 +1652,14 @@ async function dispatchForwardRequest(
 				}
 				return lo;
 			},
-			stream: (v: any) => {
-				if (v !== undefined && v !== null && typeof v !== 'boolean') {
-					throw new SkapiError('"stream" should be type: <boolean>.', {
-						code: 'INVALID_PARAMETER',
-					});
-				}
-				// Normalised to a real boolean because the server types this key as one:
-				// a null passed through would be rejected at the door rather than read as
-				// the default it obviously means.
-				return !!v;
-			},
-			realtime: (v: any) => {
-				if (v !== undefined && v !== null && typeof v !== 'boolean') {
-					throw new SkapiError('"realtime" should be type: <boolean>.', {
-						code: 'INVALID_PARAMETER',
-					});
-				}
-				// Same normalisation, and for the same reason, as "stream" above.
-				return !!v;
-			},
-			headers: (v: any) => {
-				if (v && typeof v !== 'object') {
-					throw new SkapiError(
-						'"headers" should be type: <object>.',
-						{ code: 'INVALID_PARAMETER' },
-					);
-				}
-				refuseReservedHeaders(v);
-				checkClientSecretPlaceholder(v);
-				return v;
-			},
+			stream: booleanFlag('stream'),
+			realtime: booleanFlag('realtime'),
+			headers: placeholderObject('headers', refuseReservedHeaders),
 			/** Which of "x-skapi-user" and "x-skapi-service" the destination is told.
 			 *  The values are written server side from the verified identity. */
 			skapiHeaders: (v: any) => normalizeSkapiHeaders(v),
-			data: (v: any) => {
-				if (v && typeof v !== 'object') {
-					throw new SkapiError('"data" should be type: <object>.', {
-						code: 'INVALID_PARAMETER',
-					});
-				}
-				checkClientSecretPlaceholder(v);
-				return v;
-			},
-			params: (v: any) => {
-				if (v && typeof v !== 'object') {
-					throw new SkapiError('"params" should be type: <object>.', {
-						code: 'INVALID_PARAMETER',
-					});
-				}
-				checkClientSecretPlaceholder(v);
-				return v;
-			},
+			data: placeholderObject('data'),
+			params: placeholderObject('params'),
 			/** A raw body, base64 encoded, relayed to the destination byte for byte with
 			 *  "body_content_type" as its content type. Built by forwardRequest from
 			 *  "multipart: true"; never a key a caller types. */
@@ -1642,11 +1710,13 @@ async function dispatchForwardRequest(
 				},
 			})
 			.then((res) => {
-				if (res.status === 'running' || res.status === 'pending') {
-					let url = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}`;
+				// Skapi's own status envelope, not a direct answer that happens to carry a
+				// "status" of its own: only the envelope has a row to poll.
+				let queued = isPollEnvelope(res) && isRunningStatus(res);
+				if (queued) {
 					let serviceId = params.service || this.service;
 					let ownerId = params.owner || this.owner;
-					let fullId = `${url}#${serviceId}:${res.id}`;
+					let fullId = requestKey(params.method, params.url, serviceId, res.id);
 					// An abort stops THIS CLIENT's poll of the request, which is what the
 					// signal has always meant here: the request is already on the server
 					// and may already be running at the destination, so it is deliberately
@@ -1690,7 +1760,12 @@ async function dispatchForwardRequest(
 						}),
 					});
 				}
-				if (onResponse) return onResponse(res);
+				// With poll > 0 a queued reply is NOT the answer: the poll started below
+				// hands the final result to onResponse once the request settles. Calling
+				// onResponse here gave it the "pending" status instead, and returned the
+				// callback's value (usually undefined) where the poll handle was needed,
+				// so the poll never started (a TypeError since 1.6.0).
+				if (onResponse && !(queued && latency > 0)) return onResponse(res);
 				return res;
 			})
 			.catch(err => {
@@ -1714,7 +1789,10 @@ async function dispatchForwardRequest(
 				try {
 					let result = await req_prom();
 
-					if (latency > 0) {
+					// Only a queued reply carries poll(). A direct answer, or a failure
+					// onError already handled (result is then whatever it returned), has
+					// nothing to poll and settles as it is.
+					if (latency > 0 && result && typeof result.poll === 'function') {
 						let polling = result.poll({latency});
 						// Straight onto the poll's own handle as well as onto the id above:
 						// an abort that lands between the dispatch and the first tick would
@@ -2034,27 +2112,16 @@ export async function forwardRequest(
 	let mergeInto = lo === 'get' || lo === 'delete' || lo === 'head' ? 'params' : 'data';
 
 	let params: any = { url: options.url, method };
-	if (options.secretName !== undefined) params.secretName = options.secretName;
-	if (options.headers !== undefined) params.headers = options.headers;
-	if (options.data !== undefined) params.data = options.data;
-	if (options.params !== undefined) params.params = options.params;
-	if (options.skapiHeaders !== undefined) params.skapiHeaders = options.skapiHeaders;
-	// Carried through because validator.Params keeps these two on EVERY method, so the
-	// deprecated clientSecretRequest always forwarded them and the request ran against
-	// the project they name. Leaving them off this list silently re-aimed an admin
-	// dashboard's request at its OWN service: a user's AI key, file or client secret
-	// looked up in the host project instead, which fails or, worse, answers from the
-	// wrong project.
-	if (options.service !== undefined) params.service = options.service;
-	if (options.owner !== undefined) params.owner = options.owner;
-	if (options.queue !== undefined) params.queue = options.queue;
-	if (options.expires !== undefined) params.expires = options.expires;
-	if (options.stream !== undefined) params.stream = options.stream;
-	if (options.realtime !== undefined) params.realtime = options.realtime;
-	if (options.poll !== undefined) params.poll = options.poll;
-	if (options.onStream !== undefined) params.onStream = options.onStream;
-	if (options.onResponse !== undefined) params.onResponse = options.onResponse;
-	if (options.onError !== undefined) params.onError = options.onError;
+	// Copied only when given, in this order (the order the keys land in params).
+	// "service" and "owner" are on the list because validator.Params keeps these two on
+	// EVERY method, so the deprecated clientSecretRequest always forwarded them and the
+	// request ran against the project they name. Leaving them off this list silently
+	// re-aimed an admin dashboard's request at its OWN service: a user's AI key, file or
+	// client secret looked up in the host project instead, which fails or, worse, answers
+	// from the wrong project.
+	for (let key of FORWARDED_OPTIONS) {
+		if (options[key] !== undefined) params[key] = options[key];
+	}
 
 	if (options.multipart) {
 		// Refused before the body is even built: there is no sane merge of a raw body
@@ -2220,7 +2287,7 @@ export async function clientSecretRequestHistory(
 	);
 
 	let auth = !!this.__user;
-	let id = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}#${service}:`;
+	let id = requestKey(params.method, params.url, service, '');
 
 	let his_req: any = { id, queue: params?.queue, status: params?.status, service, owner };
 	if (params?.compact) his_req.compact = true;
@@ -2355,13 +2422,23 @@ export async function cancelClientSecretRequest(params: {
 	let service = params?.service || this.service;
 	let owner = params?.owner || this.owner;
 	let auth = !!this.__user;
-	let base_id = `[${params.method.toUpperCase()}]${params.url.toLowerCase()}#${service}`;
 	let id = params.id
-	let fullId = `${base_id}:${id}`;
+	let fullId = requestKey(params.method, params.url, service, id);
 	let queue = params?.queue;
 
-	if (queue && queuePromiseList?.[queue]) {
-		queuePromiseList[queue].remove(queueJobId[fullId]);
+	let waiting = activePolls[fullId];
+	if (queue && waiting?.queued && waiting.stop) {
+		// A poll still WAITING in the client queue is settled through its own stopper,
+		// which drops it from the queue AND resolves it as stopped. Removing the job
+		// alone left that poll's promise pending forever and its entry registered.
+		waiting.stop();
+	}
+	else if (queue && queueJobId[fullId]) {
+		// A poll of this request still waiting in a client queue whose registry slot a
+		// later reader took over. Removed from the queue it was ADDED to, which is not
+		// necessarily the one named here (a poll started off a history item is queued
+		// under the server's queue id), and settled as stopped like the branch above.
+		queueJobId[fullId].stop();
 		delete queueJobId[fullId];
 	}
 
@@ -2530,6 +2607,22 @@ export function clientSecretRequestStream(
 	let prom = new Promise<any>(async (resolve, reject) => {
 		ctrl.resolve = resolve;
 
+		// Resolved BEFORE the callback runs, and the callback's own throw is logged
+		// rather than caught below: a throwing onResponse is the caller's bug, not a
+		// failed read, so it must neither fire onError nor reject a read that succeeded.
+		// Same rule as the poll's settle. Called in this same turn, so it still runs
+		// before anything awaiting the promise does.
+		let settle = (result: any) => {
+			resolve(result);
+			if (onResponse) {
+				try {
+					onResponse(result);
+				} catch (err) {
+					console.error(err);
+				}
+			}
+		};
+
 		try {
 			await this.__connection;
 
@@ -2555,18 +2648,7 @@ export function clientSecretRequestStream(
 			// somewhere to put what arrives. The loop below is already the "history
 			// fetch" of the read contract - it starts its first read immediately, while
 			// the socket is still being opened - so nothing here has to be sequenced.
-			let tlog = streamTransportLogger.call(this, ctrl.fullId);
-			let sink: StreamSink = onStream && options?.realtimeGroup
-				? createStreamSink(cursor, onStream, tlog.onTransport)
-				: null;
-			let relay: { stop: () => void } = sink
-				? startRealtimeRelay.call(this, options.realtimeGroup, sink)
-				: null;
-			let endRealtime = () => {
-				tlog.done(sink);
-				if (relay) relay.stop();
-				if (sink) sink.close();
-			};
+			let { sink, end: endRealtime } = startLiveDelivery.call(this, ctrl.fullId, cursor, onStream, options?.realtimeGroup);
 			liveTeardown = endRealtime;
 
 			for (; ;) {
@@ -2586,8 +2668,7 @@ export function clientSecretRequestStream(
 					// which is why nothing is rendered before this branch is ruled out.
 					endRealtime();
 					release();
-					if (onResponse) onResponse(result);
-					resolve(result);
+					settle(result);
 					return;
 				}
 
@@ -2613,8 +2694,7 @@ export function clientSecretRequestStream(
 					// Terminal and drained (or drained as far as a failing read allows).
 					endRealtime();
 					release();
-					if (onResponse) onResponse(result);
-					resolve(result);
+					settle(result);
 					return;
 				}
 
@@ -2631,8 +2711,16 @@ export function clientSecretRequestStream(
 			if (ctrl.stopped) return;
 			if (liveTeardown) liveTeardown();
 			release();
-			if (onError) onError(err);
+			// Rejected first for the same reason: a throwing onError must not leave the
+			// read pending forever.
 			reject(err);
+			if (onError) {
+				try {
+					onError(err);
+				} catch (e) {
+					console.error(e);
+				}
+			}
 		}
 	});
 
@@ -2762,62 +2850,6 @@ export async function sendInquiry(
 	await request.bind(this)('send-inquiry', data);
 
 	return 'SUCCESS: Inquiry has been sent.';
-}
-
-export async function secureRequest<
-	RequestParams = {
-		/** Request url */
-		url: string;
-		/** Request data */
-		data?: any;
-		/** requests are sync when true */
-		sync?: boolean;
-	},
-	Response = { response: any; statusCode: number; url: string },
->(
-	params: RequestParams[] | Form<RequestParams>,
-	url?: string,
-): Promise<Response | Response[]> {
-	await this.__connection;
-
-	if (
-		(hasFormData && params instanceof FormData) ||
-		(hasHTMLFormElement && params instanceof HTMLFormElement) ||
-		(hasSubmitEvent && params instanceof SubmitEvent)
-	) {
-		if (!url) {
-			throw new SkapiError(
-				'Url string as a second argument is required when form is passed.',
-				{ code: 'INVALID_PARAMETER' },
-			);
-		}
-
-		let formData = extractFormData(params);
-
-		params = {
-			url,
-			data: formData.data,
-			sync: true,
-		} as Form<RequestParams>;
-	}
-
-	let paramsStruct = {
-		url: (v: string) => {
-			return validator.Url(v);
-		},
-		data: (v) => v,
-		sync: ['boolean', () => true],
-	};
-
-	if (Array.isArray(params)) {
-		for (let r of params) {
-			r = validator.Params(r, paramsStruct);
-		}
-	} else {
-		params = validator.Params(params, paramsStruct);
-	}
-
-	return request.bind(this)('post-secure', params, { auth: true });
 }
 
 export async function mock(

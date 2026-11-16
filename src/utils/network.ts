@@ -158,7 +158,6 @@ async function getEndpoint(dest: string, auth: boolean, stableGateway?: boolean)
         case 'block-account':
         case 'admin-edit-profile':
         case 'remove-account':
-        case 'post-secure':
         case 'recover-account':
         case 'mock':
         case 'grant-access':
@@ -457,7 +456,11 @@ export async function request(
         // The library version, on every request (since 2.2.30). The backend uses it to tell
         // current clients from older builds: get-records from an SDK older than 2.2.30 is
         // rate limited per signed-in session, see the version history.
-        skapi_version: (this as any).__version
+        skapi_version: (this as any).__version,
+        // This SDK renews a private access key before it expires (database.ts), so the
+        // server may hand it 1-hour keys. Without the flag it hands out the old
+        // non-expiring key, which is what older SDKs need: they never renew one.
+        expiring_private_keys: true
     };
 
     headers['Content-Meta'] = JSON.stringify(meta);

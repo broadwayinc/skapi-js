@@ -66,7 +66,6 @@ import {
 } from '../methods/realtime';
 import { closeRTC, connectRTC } from '../methods/webrtc';
 import {
-	secureRequest,
 	forwardRequest,
 	mock,
 	clientSecretRequest,
@@ -195,9 +194,9 @@ import {
 	lockEncryption,
 	startDeviceUnlock,
 	pinPeerKey,
-	takeRecoveryCode,
-	unlockWithRecoveryCode,
-	regenerateRecoveryCode,
+	encryptionRecoveryInfo,
+	unlockEncryptionWithRecoveryCode,
+	regenerateEncryptionRecoveryCode,
 	EncryptionConfig,
 } from '../methods/encryption';
 
@@ -224,7 +223,6 @@ type Options = {
 		iterations?: number;
 		trustPolicy?: 'tofu' | 'strict';
 		persistDevice?: boolean;
-		minPasswordLength?: number;
 		recovery?: 'code' | 'none';
 		table?: string;
 	};
@@ -344,7 +342,14 @@ export default class Skapi {
 	private _runOnUserUpdateListeners(user: UserProfile | null) {
 		for (let listener of this._userProfileListeners) {
 			if (typeof listener === 'function') {
-				listener(user);
+				// An app listener that throws must not stop the other listeners or the
+				// SDK flow that fired it (login, logout, a token refresh).
+				try {
+					listener(user);
+				}
+				catch (err) {
+					console.error(err);
+				}
 			}
 		}
 	}
@@ -352,7 +357,14 @@ export default class Skapi {
 	private _runOnLoginListeners(user: UserProfile | null) {
 		for (let listener of this._onLoginListeners) {
 			if (typeof listener === 'function') {
-				listener(user);
+				// An app listener that throws must not stop the other listeners or the
+				// SDK flow that fired it (login, logout, a token refresh).
+				try {
+					listener(user);
+				}
+				catch (err) {
+					console.error(err);
+				}
 			}
 		}
 	}
@@ -1055,6 +1067,9 @@ export default class Skapi {
 
 	/**
 	 * Returns current connection metadata such as service name, client IP, user agent, locale, and SDK version.
+	 * With the `encryption` option and a signed-in user it also returns `encryption_recovery`: the user's
+	 * encryption recovery code on the first call after it was issued (the first login with encryption on),
+	 * then only a message saying how to get a new one.
 	 * @param params Request parameters. When `refresh` is true, the cached connection metadata is re-fetched before returning; otherwise the cached connection is returned.
 	 * @returns A promise that resolves to Promise<ConnectionInfo>.
 	 */
@@ -1075,7 +1090,7 @@ export default class Skapi {
 			typeof window.navigator?.userAgent === 'string'
 				? window.navigator.userAgent
 				: `skapi-node/${(globalThis as any)?.process?.versions?.node || 'unknown'}`);
-		return {
+		let info: ConnectionInfo = {
 			project_id: this.project_id,
 			user_ip: conn.ip,
 			user_agent: ua,
@@ -1086,6 +1101,13 @@ export default class Skapi {
 			ai_agent: conn?.ai_agent || "",
 			conf: conn?.opt
 		};
+		// Only with the encryption option and a signed-in user. Holds the encryption
+		// recovery code on the first call after it was issued, then only the message.
+		let encryptionRecovery = await encryptionRecoveryInfo.bind(this)();
+		if (encryptionRecovery) {
+			info.encryption_recovery = encryptionRecovery;
+		}
+		return info;
 	}
 
 	private async _updateConnection(params?: { refresh: Boolean }): Promise<Connection> {
@@ -1463,7 +1485,7 @@ export default class Skapi {
 		headers?: { [key: string]: string };
 		data?: { [key: string]: any };
 		params?: { [key: string]: string };
-		poll?: number; // Polling interval in milliseconds. When > 0 the promise resolves immediately with the initial status object and the final result is delivered via onResponse/onError. When omitted or 0, the status object is returned with a poll() method to start polling manually.
+		poll?: number; // Polling interval in milliseconds. When > 0, polling starts automatically: onResponse is called once with the final result (errors go to onError), and the promise resolves with that final result. When omitted or 0, the status object is returned with a poll() method to start polling manually.
 		queue?: string; // Optional queue name. Requests sharing the same queue are processed sequentially.
 		expires?: number; // Optional expiration time in seconds for the request record.
 		onResponse?: (res: any) => void; // Called with the final API response once polling resolves, or immediately for non-queued responses.
@@ -2258,29 +2280,6 @@ export default class Skapi {
 		return getFile.bind(this)(url, config);
 	}
 	/**
-	 * Executes authenticated secure API requests in single or batch mode.
-	 * @param params Request parameters.
-	 * @param url Target URL.
-	 * @returns A promise that resolves to Promise<Response | Response[]>.
-	 */
-	@formHandler()
-	secureRequest<
-		Params = {
-			/** Request url */
-			url: string;
-			/** Request data */
-			data?: any;
-			/** requests are sync when true */
-			sync?: boolean;
-		},
-		Response = { response: any; statusCode: number; url: string },
-	>(
-		params: Params[] | Form<Params>,
-		url?: string,
-	): Promise<Response | Response[]> {
-		return secureRequest.bind(this)(params, url);
-	}
-	/**
 	 * Relays a request to a destination of your choosing from the server side,
 	 * optionally with one of your stored client secrets substituted in where you
 	 * put "$CLIENT_SECRET", so the secret never reaches the browser.
@@ -2894,7 +2893,9 @@ export default class Skapi {
 	 * Normally unnecessary: logging in unlocks automatically, and a page reload
 	 * unlocks from the device store. This is for a session restored from a token
 	 * on a device that has never been unlocked, and for Node, which has no
-	 * IndexedDB and is therefore always locked after a token restore.
+	 * IndexedDB and is therefore always locked after a token restore. It only opens
+	 * encryption that is already set up (at the first login with the password); for
+	 * an account that has never done that it rejects with NOT_EXISTS.
 	 * @param params Request parameters.
 	 * @returns A promise that resolves to Promise<{ status: string }>.
 	 */
@@ -2913,42 +2914,34 @@ export default class Skapi {
 		return lockEncryption.bind(this)(params);
 	}
 	/**
-	 * Collects a freshly minted recovery code, ONCE.
-	 *
-	 * Call it right after a login or signup that may have enrolled the user; it
-	 * returns the code and forgets it. There is no way to fetch it again later,
-	 * and that is the point: if the SDK could hand it back on demand it would be
-	 * holding the key, and so could the service provider. Show it, make the user
-	 * confirm they saved it, and never send it anywhere.
-	 * @returns The code, or null if nothing was enrolled.
-	 */
-	takeRecoveryCode(): string | null {
-		return takeRecoveryCode.bind(this)();
-	}
-	/**
-	 * Unlocks with a recovery code after a forgotten-password reset, and repairs
-	 * the keyring for the new password.
+	 * Unlocks encryption with the user's encryption recovery code after a
+	 * forgotten-password reset, and re-seals their data under the new password.
 	 *
 	 * The order is: reset the password, log in with the new one (encryption will
-	 * report 'locked'), then call this with the code and that new password. A
-	 * used code is retired and a replacement is returned.
-	 * @param params Request parameters.
-	 * @returns A promise that resolves to Promise<{ status, repaired, recoveryCode }>.
+	 * report 'locked'), then call this with the saved encryption recovery code and
+	 * that new password. Needed once: every later login with the new password
+	 * unlocks normally. The used code stops working and a new one is returned in
+	 * `encryptionRecoveryCode`: show it to the user to save.
+	 * @param params `code`: the saved encryption recovery code. `password`: the new password.
+	 * @returns A promise that resolves to Promise<{ status, repaired, encryptionRecoveryCode }>.
 	 */
 	@formHandler()
-	unlockWithRecoveryCode(params: {
+	unlockEncryptionWithRecoveryCode(params: {
 		code: string;
 		password?: string;
-	}): Promise<{ status: string; repaired: boolean; recoveryCode: string | null }> {
-		return unlockWithRecoveryCode.bind(this)(params);
+	}): Promise<{ status: string; repaired: boolean; encryptionRecoveryCode: string | null }> {
+		return unlockEncryptionWithRecoveryCode.bind(this)(params);
 	}
 	/**
-	 * Retires the current recovery code and issues a new one. Requires an
-	 * unlocked session: only someone who can already decrypt can mint a code.
-	 * @returns A promise that resolves to Promise<{ recoveryCode: string }>.
+	 * Issues a new encryption recovery code and retires the old one. Use it when the
+	 * user missed or lost the code shown once at setup (see
+	 * getConnectionInfo().encryption_recovery). Requires an unlocked session: only
+	 * someone who can already decrypt can create a code, so it cannot help after
+	 * the password is lost.
+	 * @returns A promise that resolves to Promise<{ encryptionRecoveryCode: string }>.
 	 */
-	regenerateRecoveryCode(): Promise<{ recoveryCode: string }> {
-		return regenerateRecoveryCode.bind(this)();
+	regenerateEncryptionRecoveryCode(): Promise<{ encryptionRecoveryCode: string }> {
+		return regenerateEncryptionRecoveryCode.bind(this)();
 	}
 	/**
 	 * Pins another user's public key fingerprint after verifying it out of band.
@@ -3004,6 +2997,8 @@ export default class Skapi {
 	}
 	/**
 	 * Requests a temporary access key for reading a private record.
+	 * The key is valid for 1 hour. A cached key is returned until it is within a minute of
+	 * expiring, then a fresh one is requested.
 	 * @param params Request parameters.
 	 * @returns A promise that resolves to Promise<string>.
 	 */

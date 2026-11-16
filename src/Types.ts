@@ -248,7 +248,6 @@ export type PostRecordConfig = {
     tags?: string[] | null; // null removes all tags. each tag 1..256 characters, where / ! * # % each count as 3. Blocks control chars and sentinel 􏿿.
     remove_bin?: BinaryFile[] | string[] | null; // Removes bin data from the record. When null, it will remove all bin data.
     progress?: ProgressCallback; // Callback for database request progress. Useful when building progress bar.
-    reference_private_key?: string; // When referencing a record that has private access, you can provide the private key of the referenced record to pass the access check. This is only required when the referenced record has private access and the user does not have access to the record through subscription or granted access.
 }
 
 export type BinaryFile = {
@@ -291,10 +290,9 @@ export type EncryptionOptions = boolean | {
     trustPolicy?: 'tofu' | 'strict';
     /** Keep the master key in IndexedDB so a page reload stays unlocked. Default true. */
     persistDevice?: boolean;
-    /** Refuse to enroll a password shorter than this. Default 0 (no check). */
-    minPasswordLength?: number;
     /**
-     * Issue a one-time recovery code at enrollment. Default 'code'.
+     * Issue an encryption recovery code when encryption is first set up for a
+     * user (shown once, in getConnectionInfo().encryption_recovery). Default 'code'.
      * 'none' opts out and accepts that a forgotten password means the user's
      * encrypted records are permanently unreadable.
      */
@@ -548,7 +546,7 @@ export type UserProfile = {
      * 30 minutes after the visitor's last keep-alive. Absent on every other account.
      */
     anonymous?: boolean;
-    /** Last login timestamp(Seconds). */
+    /** Last login timestamp(13 digit milliseconds). */
     log: number;
     /** Shows true when user has verified their E-Mail. */
     email_verified?: boolean;
@@ -649,7 +647,7 @@ export type UserPublic = {
     anonymous?: boolean;
     /** Account created timestamp(13 digit milliseconds). */
     timestamp: number;
-    /** Last login timestamp(Seconds). */
+    /** Last login timestamp(13 digit milliseconds). */
     log: number;
     /** Number of the user's subscribers. */
     subscribers: number;
@@ -851,14 +849,26 @@ export type ConnectionInfo = {
     service_description: string;
     version: string;
     ai_agent: string;
+    /**
+     * Present only when the instance was created with the `encryption` option and a user is
+     * signed in. `code` is the user's encryption recovery code on the FIRST call after it was
+     * issued (their first password login with encryption on), and null on every call after
+     * that: it is never stored, so it can be shown only once. `message` says what to do.
+     * Without a saved code, a forgotten-password reset loses the user's encrypted private data.
+     */
+    encryption_recovery?: {
+        code: string | null;
+        message: string;
+    };
     conf: {
         freeze_database: boolean;
         prevent_signup: boolean;
         prevent_inquiry: boolean;
         prevent_anonymous: boolean;
         /**
-         * BunnyQuery: whether the embeddable chat requires an account before a
-         * visitor can use it. Unrelated to `prevent_anonymous`, which governs
+         * When true, the SDK refuses database READS from a signed-out visitor
+         * (getRecords, getTables, getTags, getIndexes, getUniqueId) with code
+         * 'REQUIRE_LOGIN'. Unrelated to `prevent_anonymous`, which governs
          * anonymous record WRITES. Defaults to true.
          */
         require_login?: boolean;

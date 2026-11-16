@@ -542,7 +542,8 @@ function parseUserAttributes(attr: { [key: string]: any }) {
         'access_group'
     ]) {
         if (k.includes('_public')) {
-            if (user.hasOwnProperty(k.split('_')[0])) user[k] = user.hasOwnProperty(k) ? !!Number(user[k]) : false;
+            // the attribute the flag belongs to: 'phone_number' for 'phone_number_public'
+            if (user.hasOwnProperty(k.slice(0, -'_public'.length))) user[k] = user.hasOwnProperty(k) ? !!Number(user[k]) : false;
             else delete user[k];
         }
         else user[k] = user.hasOwnProperty(k) ? Number(user[k]) : 0;

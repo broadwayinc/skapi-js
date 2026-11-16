@@ -299,6 +299,16 @@ export async function updateTicket(
 // costs at most one extra refresh per token: the replacement is good for a day.
 const TOKEN_REFRESH_SKEW_SECONDS = 60 * 60;
 
+// The refresh getJwtToken() is waiting for, per instance. An app that fires several requests at
+// once reaches the skew with all of them: without this each one refreshed the tokens on its own
+// and each refresh ran the onUserUpdate listeners.
+const tokenRefreshInFlight = new WeakMap<object, Promise<any>>();
+
+// Counts the sign-outs of each instance: _out() adds one when it erases the session. A session
+// read or refresh that started before a sign-out compares it before adopting its tokens, so a
+// refresh still running when the user logged out cannot sign them back in.
+const sessionEpoch = new WeakMap<object, number>();
+
 export async function getJwtToken() {
     await this.__connection;
     // if (this.bearerToken) {
@@ -312,7 +322,13 @@ export async function getJwtToken() {
         if (idTokenExp < currentTime + TOKEN_REFRESH_SKEW_SECONDS) {
             this.log('request:requesting new token', null);
             try {
-                await authentication.bind(this)().getSession({ refreshToken: true });
+                let refreshing = tokenRefreshInFlight.get(this);
+                if (!refreshing) {
+                    refreshing = authentication.bind(this)().getSession({ refreshToken: true })
+                        .finally(() => tokenRefreshInFlight.delete(this));
+                    tokenRefreshInFlight.set(this, refreshing);
+                }
+                await refreshing;
                 this.log('request:received new tokens', {
                     exp: this.session?.idToken?.payload?.exp,
                     currentTime,
@@ -348,10 +364,16 @@ export async function getJwtToken() {
     }
 }
 
-function refreshSession(session, cognitoUser) {
+function refreshSession(session, cognitoUser, signedOutMeanwhile: () => boolean) {
     return new Promise((res, rej) => {
         cognitoUser.refreshSession(session.getRefreshToken(), (refreshErr, refreshedSession) => {
             this.log('getSession:refreshSessionCallback', { refreshErr, refreshedSession });
+
+            if (signedOutMeanwhile()) {
+                // Neither adopted nor signed out again: the user already is.
+                rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
+                return;
+            }
 
             if (refreshErr) {
                 if (refreshErr?.code === 'NetworkError') {
@@ -379,9 +401,10 @@ function refreshSession(session, cognitoUser) {
 export function authentication() {
     if (!this.userPool) throw new SkapiError('User pool is missing', { code: 'INVALID_REQUEST' });
 
-    const getUserProfile = (): UserProfile => {
-        // get users updated attribute
-        let attr = cognitoUser.getSignInUserSession().getIdToken().payload || null;
+    const getUserProfile = (s: CognitoUserSession): UserProfile => {
+        // get users updated attribute. From the session being adopted, which is the one the
+        // Cognito user holds: logout() can clear the module's cognitoUser while a refresh runs.
+        let attr = s.getIdToken().payload || null;
 
         // parse attribute structure: [ { Name, Value }, ... ]
         let user = parseUserAttributes(attr);
@@ -400,15 +423,37 @@ export function authentication() {
             }
 
             // if (!this.bearerToken) {
-            cognitoUser = this.userPool.getCurrentUser();
+            // Kept in a local as well: logout() sets the module's cognitoUser to null, and the
+            // callbacks below may run after it did.
+            const currentUser = cognitoUser = this.userPool.getCurrentUser();
             // }
-            if (!cognitoUser) {
+            if (!currentUser) {
                 this.log('getSession:cognitoUser', cognitoUser);
                 // no user session. wasn't logged in.
                 _out.bind(this)();
                 rej(null);
                 return;
             }
+
+            const epoch = sessionEpoch.get(this) || 0;
+            // True when the user signed out while this call waited on Cognito. A refresh has then
+            // written its tokens back to storage: they are removed again, and the sign-in that
+            // holds the storage now (one made after the sign-out) gets its own tokens back.
+            const signedOutMeanwhile = () => {
+                if ((sessionEpoch.get(this) || 0) === epoch) {
+                    return false;
+                }
+                this.log('getSession', 'signed out while the session was read: not adopted');
+                currentUser.signOut();
+                if (cognitoUser?.getSignInUserSession()) {
+                    cognitoUser.cacheTokens();
+                }
+                return true;
+            };
+
+            // Cognito refreshes a stored session that has expired before it answers. Its tokens
+            // then differ from the stored ones, and refreshToken has nothing left to ask for.
+            const storedIdToken = currentUser.storage.getItem(`${currentUser.keyPrefix}.${currentUser.username}.idToken`);
 
             let respond = (s: any) => {
                 let sessionAttribute = s.getIdToken().payload;
@@ -421,23 +466,43 @@ export function authentication() {
                 }
 
                 this.session = s;
-                getUserProfile();
+                // The token the readers that prefer bearerToken (realtime, getFile, token
+                // headers) send: always the session adopted here, never the one it replaced.
+                this.bearerToken = s.getIdToken().getJwtToken();
+                getUserProfile(s);
                 if (!skipUserUpdateEventTrigger) {
                     this._runOnUserUpdateListeners(this.user);
                 }
                 return this.session;
             }
 
-            cognitoUser.getSession((err: any, session: CognitoUserSession) => {
+            currentUser.getSession((err: any, session: CognitoUserSession) => {
                 this.log('getSession:getSessionCallback', { err, session });
+                if (signedOutMeanwhile()) {
+                    rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
+                    return;
+                }
                 if (!session) {
+                    if (err?.code === 'NetworkError') {
+                        // The stored tokens had expired and the refresh Cognito ran for them got no
+                        // answer: the same rule as refreshSession(), the session is kept. On a page
+                        // load nothing was signed in yet, so the listeners still hear the state the
+                        // page starts with, as they would from _out().
+                        this.log('getSession:getSessionCallback', 'network error: session kept');
+                        if (!this.__user) {
+                            this._runOnUserUpdateListeners(null);
+                            this._runOnLoginListeners(null);
+                        }
+                        rej(new SkapiError('Network error', { code: 'NETWORK_ERROR' }));
+                        return;
+                    }
                     _out.bind(this)();
                     rej(new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
                     return;
                 }
 
                 if (err) {
-                    refreshSession.bind(this)(session, cognitoUser).then(r => res(respond(r))).catch(rej);
+                    refreshSession.bind(this)(session, currentUser, signedOutMeanwhile).then(r => res(respond(r))).catch(rej);
                     return;
                 }
 
@@ -450,12 +515,14 @@ export function authentication() {
                 this.log('getSession:isExpired', isExpired);
                 // if(this.bearerToken) {
                 this.log('getSession:existingBearerToken', this.bearerToken);
-                this.bearerToken = idToken.getJwtToken();
+                // bearerToken is set by respond(), from the session actually adopted: set here it
+                // kept the token of a session about to be refreshed.
                 // }
                 // try refresh when invalid token
                 // when on updateProfile, it will always refreshToken
-                if (isExpired || refreshToken || !session.isValid()) {
-                    refreshSession.bind(this)(session, cognitoUser).then(r => res(respond(r))).catch(rej);
+                const refreshedByCognito = idToken.getJwtToken() !== storedIdToken;
+                if (isExpired || (refreshToken && !refreshedByCognito) || !session.isValid()) {
+                    refreshSession.bind(this)(session, currentUser, signedOutMeanwhile).then(r => res(respond(r))).catch(rej);
                 }
                 else {
                     try {
@@ -494,6 +561,22 @@ export function authentication() {
             // login listener after a good sign-in must not turn into a login failure.
             const sessionFailed = (err: any) => {
                 rej(err || new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
+            };
+
+            // The app's onLogin and onUserUpdate listeners, told of a sign-in that has succeeded.
+            // An error one of them throws is the app's own: it is reported on the console, and
+            // login() and verifyMFA() still settle with the user instead of hanging or failing.
+            const runSignInListeners = () => {
+                try {
+                    this._runOnLoginListeners(this.user);
+                } catch (err) {
+                    console.error(err);
+                }
+                try {
+                    this._runOnUserUpdateListeners(this.user);
+                } catch (err) {
+                    console.error(err);
+                }
             };
 
             let initUser = createCognitoUser(email, raw);
@@ -547,8 +630,7 @@ export function authentication() {
                             this.log('encryption:ensureKeyring:failed', err);
                         }
                     }
-                    this._runOnLoginListeners(this.user);
-                    this._runOnUserUpdateListeners(this.user);
+                    runSignInListeners();
                     return this.user;
                 }),
                 newPasswordRequired: (userAttributes, requiredAttributes) => {
@@ -557,9 +639,13 @@ export function authentication() {
                     if (userAttributes['custom:signup_ticket'] === 'PASS' || userAttributes['custom:signup_ticket'] === 'MEMBER' || userAttributes['custom:signup_ticket'] === 'OIDPASS') {
                         // auto confirm - (setting password from admin created account)
                         initUser.cognitoUser.completeNewPasswordChallenge(password, {}, {
+                            // Both successes below run the same steps as the password-only
+                            // sign-in: the account is signed in now, so it no longer waits for a
+                            // signup confirmation, and the login listeners hear of it.
                             ...mfaChallengeCallbacks(initUser.cognitoUser, async () => {
                                 cognitoUser = initUser.cognitoUser;
-                                await getSession();
+                                await getSession({ skipUserUpdateEventTrigger: true });
+                                this.__request_signup_confirmation = null;
                                 if (encState.call(this)) {
                                     try {
                                         await ensureKeyring.bind(this)(password);
@@ -567,11 +653,13 @@ export function authentication() {
                                         this.log('encryption:ensureKeyring:failed', err);
                                     }
                                 }
+                                runSignInListeners();
                                 return this.user;
                             }),
                             onSuccess: _ => {
                                 cognitoUser = initUser.cognitoUser;
-                                getSession().then(async session => {
+                                getSession({ skipUserUpdateEventTrigger: true }).then(async session => {
+                                    this.__request_signup_confirmation = null;
                                     if (encState.call(this)) {
                                         try {
                                             await ensureKeyring.bind(this)(password);
@@ -579,6 +667,7 @@ export function authentication() {
                                             this.log('encryption:ensureKeyring:failed', err);
                                         }
                                     }
+                                    runSignInListeners();
                                     res(this.user);
                                 }, sessionFailed);
                             },
@@ -605,8 +694,7 @@ export function authentication() {
                             this.log('encryption:ensureKeyring:failed', err);
                         }
                     }
-                    this._runOnLoginListeners(this.user);
-                    this._runOnUserUpdateListeners(this.user);
+                    runSignInListeners();
                     res(this.user);
                 }, sessionFailed),
                 onFailure: (err: any) => {
@@ -892,7 +980,9 @@ export async function loginWithToken(params: {
         throw new SkapiError('Token has expired.', { code: 'INVALID_REQUEST' });
     }
 
-    // this.bearerToken = params.idToken;
+    // The readers that prefer bearerToken (realtime, getFile, token headers) send this token,
+    // not one left by an earlier sign-in. A refresh later replaces it with the adopted session's.
+    this.bearerToken = params.idToken;
     // Parse user attributes from the token payload
     this.__user = parseUserAttributes(idTokenPayload);
 
@@ -1138,6 +1228,7 @@ export async function anonymousLogin(): Promise<UserProfile> {
 
 export async function _out(global: boolean = false) {
     let toReturn = null;
+    let globalSignOutError = null;
 
     stopAnonymousKeepAlive();
     this.__anonymousVerified = null;
@@ -1145,18 +1236,24 @@ export async function _out(global: boolean = false) {
 
     if (cognitoUser) {
         if (global) {
-            toReturn = new Promise((res, rej) => {
-                cognitoUser.globalSignOut({
-                    onSuccess: (result: any) => {
-                        this.log('globalSignOut:success', result);
-                        res(result);
-                    },
-                    onFailure: (err: any) => {
-                        this.log('globalSignOut:error', err);
-                        rej(err);
-                    }
+            toReturn = (async () => {
+                // GlobalSignOut sends the access token as it is, so a session left idle past its
+                // expiry was refused with "User is not authenticated". The tokens are refreshed
+                // first, as for every other call made with them.
+                await getJwtToken.bind(this)();
+                return new Promise((res, rej) => {
+                    cognitoUser.globalSignOut({
+                        onSuccess: (result: any) => {
+                            this.log('globalSignOut:success', result);
+                            res(result);
+                        },
+                        onFailure: (err: any) => {
+                            this.log('globalSignOut:error', err);
+                            rej(err);
+                        }
+                    });
                 });
-            });
+            })();
         }
         else {
             cognitoUser.signOut();
@@ -1169,19 +1266,44 @@ export async function _out(global: boolean = false) {
         'session': null,
         '__startKeyHistory': {},
         '__cached_requests': {},
-        '__user': null
+        '__user': null,
+        'bearerToken': ''
     };
 
     if (toReturn) {
-        toReturn = await toReturn;
+        try {
+            toReturn = await toReturn;
+        }
+        catch (err) {
+            if (!this.session) {
+                // The refresh was refused and has already signed out (listeners included).
+                throw err;
+            }
+            // The other devices could not be signed out (no network, a refused call). This one
+            // still is, as logout() asked, and the caller gets the error after: half of it done
+            // (keys and keep-alive gone, session and tokens kept) helped nobody.
+            globalSignOutError = err;
+            toReturn = null;
+            cognitoUser?.signOut();
+        }
     }
 
     for (let k in to_be_erased) {
         this[k] = to_be_erased[k];
     }
+    // A refresh still running from before this point is not adopted (see sessionEpoch).
+    sessionEpoch.set(this, (sessionEpoch.get(this) || 0) + 1);
+
+    // The Cognito user goes with its session: calls that check it (verifyEmail()) refuse
+    // instead of reaching a user that is signed out.
+    cognitoUser = null;
 
     this._runOnUserUpdateListeners(null);
     this._runOnLoginListeners(null);
+
+    if (globalSignOutError) {
+        throw globalSignOutError;
+    }
 
     return toReturn;
 }
@@ -1687,6 +1809,9 @@ async function verifyAttribute(attribute: string, form: Form<{ code: string; }>,
         clientMetadata = { template_verification: verificationMid };
     }
 
+    // Cognito takes the access token as it is: refresh it first, as changePassword() does.
+    await getJwtToken.bind(this)();
+
     return new Promise((res, rej) => {
         let callback: any = {
             onSuccess: (result: any) => {
@@ -1846,6 +1971,10 @@ export async function changePassword(params: {
 
     validator.Password(p.current_password);
     validator.Password(p.new_password);
+
+    // Cognito takes the access token as it is: refresh it first when it is close to expiry, or a
+    // session left idle past it fails with "User is not authenticated" (as mfaAccountUser() does).
+    await getJwtToken.bind(this)();
 
     // Re-wrap the encryption master key for the new password BEFORE Cognito
     // changes it. Order is load-bearing: the keyring must never be left holding
@@ -2184,6 +2313,9 @@ export async function updateProfile(form: Form<UserAttributes>): Promise<UserPro
                 Value: params[key]
             }));
         }
+
+        // Cognito takes the access token as it is: refresh it first, as changePassword() does.
+        await getJwtToken.bind(this)();
 
         await new Promise((res, rej) => {
             cognitoUser?.updateAttributes(

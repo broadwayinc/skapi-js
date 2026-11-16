@@ -71,7 +71,9 @@ export async function getSubscriptions(
     params = extractFormData(params, { ignoreEmpty: true }).data as any;
     params = validator.Params(params, {
         subscriber: (v: string) => validator.UserId(v, 'User ID in "subscriber"'),
-        subscription: cannotBeSelfId.bind(this),
+        // Any user, yourself included: { subscription: <your own id> } lists your own subscribers.
+        // (Until 2.3.1 this reused subscribe()'s "not yourself" check and refused your own id.)
+        subscription: (v: string) => validator.UserId(v, 'User ID in "subscription"'),
         blocked: 'boolean'
     });
 
