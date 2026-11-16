@@ -593,7 +593,7 @@ function startRealtimeRelay(this: any, group: string, sink: StreamSink): { stop:
 			// would never know: the leave succeeds, the app simply stops receiving its
 			// own messages. Compare the live room against the one we joined, and if it
 			// has moved on, ours was already replaced and there is nothing to undo.
-			if (joined && live && currentSocketRoom() === room) {
+			if (joined && live && currentSocketRoom() === group) {
 				await joinRealtime.bind(this)({ group: null });
 			}
 		} catch (e) {

@@ -1,4 +1,4 @@
-import { SkapiError } from "../Main";
+import SkapiError from "../main/error";
 import { RTCResolved, RTCEvent, RTCConnectorParams, RTCReceiverParams, WebSocketMessage, RTCConnector, RTCEncodingOption, RTCChannelOption, RTCShareOptions, RTCMediaSource, RTCFileInfo, RTCSendFileOptions } from "../Types";
 import { extractFormData } from "../utils/utils";
 import validator from "../utils/validator";

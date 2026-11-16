@@ -1,5 +1,5 @@
 import validator from '../utils/validator';
-import { SkapiError } from '../Main';
+import SkapiError from '../main/error';
 
 // 256 to match the platform (validate_table_name -> validate_key_segment, max_len=256). This was
 // 128, an SDK-only cap half the platform's, so a legal table name was refused before it left the

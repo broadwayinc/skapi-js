@@ -434,20 +434,13 @@ function extractFormData(
             for (let pair of form.entries()) {
                 let name = pair[0];
                 let v = pair[1];
+                // A FormData entry is only ever a string or a File: append() wraps a
+                // Blob in a File named "blob". So a JSON Blob is uploaded as a file like
+                // any other, and that is the behaviour callers rely on. Do not add a
+                // Blob branch that parses it: it could never run, and if it did it
+                // would turn an upload into record data.
                 if ((v instanceof File) || ((v as any) instanceof FileList)) {
                     handleFile(files, name, v);
-                }
-                else if ((v as any) instanceof Blob) {
-                    let j = v as any;
-                    if (j.type === 'application/json') {
-                        try {
-                            let json = JSON.parse(j.text());
-                            appendData(data, name, json);
-                        }
-                        catch (err) {
-                            appendData(data, name, j);
-                        }
-                    }
                 }
                 else {
                     appendData(data, name, v);

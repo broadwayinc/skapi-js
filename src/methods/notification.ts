@@ -1,4 +1,4 @@
-import { SkapiError } from "../Main";
+import SkapiError from "../main/error";
 import { request } from "../utils/network";
 import { extractFormData } from "../utils/utils";
 

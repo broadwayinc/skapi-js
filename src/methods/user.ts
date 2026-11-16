@@ -485,6 +485,17 @@ export function authentication() {
             this.__request_signup_confirmation = null;
             this.__disabledAccount = null;
 
+            // Cognito accepted the password, but reading the session back failed (nothing
+            // stored, a token for another project, a failed refresh). Without this the
+            // login promise never settled. getSession() has already signed out where it
+            // had to; it rejects with null when there is no stored user, so that case is
+            // given the same error getSession() uses for a missing session. Attached as
+            // the second argument of then() on purpose: an error thrown by the app's own
+            // login listener after a good sign-in must not turn into a login failure.
+            const sessionFailed = (err: any) => {
+                rej(err || new SkapiError('Current session does not exist.', { code: 'INVALID_REQUEST' }));
+            };
+
             let initUser = createCognitoUser(email, raw);
             let username = initUser.cognitoUsername;
             let authenticationDetails = new AuthenticationDetails({
@@ -569,7 +580,7 @@ export function authentication() {
                                         }
                                     }
                                     res(this.user);
-                                });
+                                }, sessionFailed);
                             },
                             onFailure: (err: any) => {
                                 rej(new SkapiError(err.message || 'Failed to authenticate user.', { code: err.code }));
@@ -597,7 +608,7 @@ export function authentication() {
                     this._runOnLoginListeners(this.user);
                     this._runOnUserUpdateListeners(this.user);
                     res(this.user);
-                }),
+                }, sessionFailed),
                 onFailure: (err: any) => {
                     let error = [];
                     let { parsed, code } = cognitoErrorParser(err);
