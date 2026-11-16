@@ -546,7 +546,7 @@ export type UserProfile = {
      * 30 minutes after the visitor's last keep-alive. Absent on every other account.
      */
     anonymous?: boolean;
-    /** Last login timestamp(13 digit milliseconds). */
+    /** Last login timestamp(Seconds). */
     log: number;
     /** Shows true when user has verified their E-Mail. */
     email_verified?: boolean;
