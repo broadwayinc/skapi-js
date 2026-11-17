@@ -129,54 +129,21 @@ The response data will be displayed in an alert box.
 
 ## AI-Driven Development
 
-Skapi works seamlessly with AI-powered coding assistants.
-
-To help your assistant understand how to integrate the Skapi API into your project, download and use the base prompt described below.
-
-### For Chat-Based Platforms (e.g., ChatGPT, Lovable)
-
-#### 1. Download the base prompt
-
-<a href="https://docs.skapi.com/SKAPI.md" download="SKAPI.md">⬇️ SKAPI.md (Click to Download)</a>
-
-#### 2. Go to your AI website and send a prompt
-
-In your AI chat website or app (for example, ChatGPT at chat.openai.com or Lovable), start a new chat, attach the SKAPI.md file, and paste the following as your first LLM prompt:
+Skapi is ready for AI paired development through the Skapi MCP server:
 
 ```
-Use the file "SKAPI.md" as a system prompt.
-My Skapi project ID is: "xxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxx".
-Build me a [describe what you want].
+https://mcp.broadwayinc.computer
 ```
 
-Replace the placeholder project ID with your actual project ID, and customize the last line with what you want to build.
+Add this address as a remote MCP server (often called a custom connector) in any AI app that supports MCP, such as chat apps, coding agents in the terminal and code editors, then sign in with your Skapi account.
 
-### For AI Code Generators (e.g., Claude Code, OpenAI Codex, Gemini CLI)
-
-#### 1. Download the base prompt
-
-<a href="https://docs.skapi.com/SKAPI.md" download="SKAPI.md">⬇️ SKAPI.md (Click to Download)</a>
-
-#### 2. Rename and add it to your project
-
-Rename the downloaded SKAPI.md file to a filename your tool recognizes, then add it to your project folder.
-
-Examples:
-
-- AGENT.md for OpenAI Codex
-- CLAUDE.md for Anthropic Claude
-- GEMINI.md for Gemini CLI
-
-#### 3. Start writing prompts
-
-When you invoke your code generator, include a prompt like:
+Once connected, your AI assistant works on your Skapi projects with your account's permissions. It can create a project, read and change records, manage users, upload your website files, and read the Skapi documentation while it writes code with this library. You ask in plain words, for example:
 
 ```
-My Skapi project ID is: "xxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxx".
-Build me a [describe what you want].
+Build me a [describe what you want] with Skapi.
 ```
 
-Replace the placeholder project ID with your actual project ID before you run the command.
+Setup steps for each app are on the [Skapi MCP page](https://mcp.broadwayinc.computer).
 
 
 #### For more information, check out our [documentation](https://docs.skapi.com).
