@@ -1043,14 +1043,20 @@ export async function loginWithToken(params: {
 
 export async function checkAdmin() {
     await this.__connection;
-    if (this.__user?.service === this.service) {
-        // logged in
-        return this.__user?.owner === this.host;
-    } else {
-        // not logged
-        await logout.bind(this)();
+    if (!this.__user) {
+        // Signed out: nothing to sign out. Calling logout() here (as it did until 2026-11-18) ran on every
+        // signed-out getRecords, getNewsletters and admin call: it erased the paging history and
+        // cache (fetchMore always went back to page 1), fired onLogin(null) / onUserUpdate(null)
+        // each time, and signed out the module's Cognito user, which can be a login in progress.
+        return false;
     }
 
+    if (this.__user.service === this.service) {
+        return this.__user.owner === this.host;
+    }
+
+    // A user of another project (getSession and loginWithToken already refuse one): signed out.
+    await logout.bind(this)();
     return false;
 }
 
