@@ -769,8 +769,9 @@ export type UploadFilesParams = {
     /** Callback for upload progress. Useful when building a progress bar. */
     progress?: ProgressCallback;
     /**
-     * Milliseconds one file's upload may take. A file that takes longer is aborted and counted as failed with
-     * the code 'TIMEOUT'; the next file is then uploaded. Every file gets the full time. Omitted or 0: no limit.
+     * Milliseconds one file's upload may go with NOTHING moving (no bytes sent, no answer) before it is aborted
+     * and counted as failed with the code 'TIMEOUT'; the next file is then uploaded. A slow upload that keeps
+     * moving is never cut off, however long it takes. Default 60000 (60 seconds). 0: no limit.
      */
     timeout?: number;
     /**

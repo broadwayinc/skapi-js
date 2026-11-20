@@ -896,7 +896,10 @@ function pollClientSecretResponse(
 	if (queue && !queuePromiseList?.[queue]) {
 		queuePromiseList[queue] = new Qpass({
 			breakWhenError: false,
-			batchSize: 1
+			batchSize: 1,
+			// One job at a time, so rolling and cycle mode behave the same here; set for
+			// one rule across skapi-js (see network.ts).
+			rolling: true
 		});
 	}
 
@@ -1780,7 +1783,8 @@ async function dispatchForwardRequest(
 		if (!queuePromiseList?.[base_queue]) {
 			queuePromiseList[base_queue] = new Qpass({
 				breakWhenError: false,
-				batchSize: 1
+				batchSize: 1,
+				rolling: true
 			});
 		}
 

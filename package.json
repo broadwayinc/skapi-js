@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "2.4.3",
+  "version": "2.4.4",
   "description": "Serverless Backend API for Web Developers.",
   "main": "dist/skapi.cjs",
   "browser": "dist/skapi.browser.mjs",
@@ -39,7 +39,7 @@
   "homepage": "https://www.skapi.com",
   "dependencies": {
     "cocochex": "^1.0.4",
-    "qpass": "^1.2.1"
+    "qpass": "^1.3.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

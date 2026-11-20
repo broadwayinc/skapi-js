@@ -8,7 +8,18 @@ import { MD5, generateRandom, extractFormData, isBrowserRuntime } from './utils'
 import { getJwtToken } from '../methods/user';
 import Qpass from "qpass";
 
-let requestQueue = null;
+let requestQueue: Qpass | null = null;
+
+// A request that has gone this long with nothing moving (no upload or download progress,
+// no state change) is treated as a dead connection and fails with code TIMEOUT. Every
+// endpoint request() calls answers within about 30 seconds (API Gateway's own limit), and a
+// download keeps the timer reset while bytes arrive, so only a connection that died trips it.
+// Without it the XMLHttpRequest waited forever and held a queue slot with it (2026-11-19).
+const REQUEST_IDLE_TIMEOUT_MS = 60 * 1000;
+// uploadFiles: default for how long one file may go with nothing moving (UploadFilesParams.timeout).
+const UPLOAD_IDLE_TIMEOUT_MS = 60 * 1000;
+// After the body is fully handed off, the answer may take this many times longer (see fetchProgress).
+const UPLOAD_SENT_WAIT_FACTOR = 5;
 const hasSubmitEvent = typeof SubmitEvent !== 'undefined';
 const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
 const isBrowser = isBrowserRuntime();
@@ -536,18 +547,20 @@ export async function request(
     opt.method = method;
 
     if (requestQueue === null) {
-        let config = {
+        // ROLLING (qpass 1.3.0, 2026-11-20): a waiting request starts as soon as any running
+        // one settles, at most requestBatchSize at once. In cycle mode nothing new started
+        // until every request of the current batch had settled, so one request whose
+        // connection died froze every later request of the page (a BunnyQuery reindex sat at
+        // 0/1 and even a file list refresh never reached the network, reproduced 2026-11-19).
+        // REQUEST_IDLE_TIMEOUT_MS is what makes that request itself fail.
+        requestQueue = new Qpass({
             batchSize: this.requestBatchSize,
             breakWhenError: false,
+            rolling: true,
             onProgress: (progress) => {
-                // for(let key in __pendingRequest) {
-                //     delete __pendingRequest[key];
-                // }
                 this.onBatchProcess.forEach((cb) => cb(progress));
             }
-        };
-
-        requestQueue = new Qpass(config);
+        });
     }
 
     this.log('request-opt', opt);
@@ -694,8 +707,31 @@ function stripDecrypted(response: any): any {
 
 function _fetch(url: string, opt: any, progress?: ProgressCallback, attempt = 0) {
     return new Promise(
-        (res, rej) => {
+        (resolveFetch, rejectFetch) => {
             let xhr = new XMLHttpRequest();
+
+            // Idle timeout (REQUEST_IDLE_TIMEOUT_MS): restarted by anything that shows the
+            // connection is alive and cleared the moment the request settles or its answer
+            // arrives. Rejects first, then aborts, so the caller gets TIMEOUT and not
+            // 'Aborted'. Wired through res/rej and onload rather than loadend, which the
+            // Node XMLHttpRequest polyfill never fires.
+            let idleTimer: ReturnType<typeof setTimeout> | null = null;
+            const clearIdle = () => {
+                if (idleTimer) {
+                    clearTimeout(idleTimer);
+                    idleTimer = null;
+                }
+            };
+            const res = (v?: any) => { clearIdle(); resolveFetch(v); };
+            const rej = (e?: any) => { clearIdle(); rejectFetch(e); };
+            const touch = () => {
+                clearIdle();
+                idleTimer = setTimeout(() => {
+                    idleTimer = null;
+                    rej(new SkapiError(`No response for ${REQUEST_IDLE_TIMEOUT_MS / 1000} seconds.`, { code: 'TIMEOUT' }));
+                    try { xhr.abort(); } catch (e) { }
+                }, REQUEST_IDLE_TIMEOUT_MS);
+            };
 
             // 0: UNSENT - The request is not initialized.
             // 1: OPENED - The request has been set up.
@@ -724,6 +760,7 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback, attempt = 0)
             }
 
             xhr.onload = () => {
+                clearIdle();
                 if (xhr.status < 400) {
                     // Status codes in the 2xx range mean success
                     if (opt.responseType == 'json' || opt.responseType == 'blob') {
@@ -811,11 +848,31 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback, attempt = 0)
                 }
             };
 
+            // A body we cannot watch upload (no progress callback means no upload listener,
+            // kept that way because one forces a CORS preflight) only starts the clock once
+            // the response headers arrive, so a slow upload is never mistaken for a dead one.
+            const uploadUnwatched = typeof progress !== 'function'
+                && opt.body !== null && opt.body !== undefined && typeof opt.body !== 'string';
+            xhr.onreadystatechange = () => {
+                if (xhr.readyState === 4) {
+                    clearIdle();
+                }
+                else if (xhr.readyState >= 2 || !uploadUnwatched) {
+                    touch();
+                }
+            };
+            if (typeof (xhr as any).addEventListener === 'function') {
+                xhr.addEventListener('progress', () => { if (xhr.readyState !== 4) touch(); });
+            }
+
             xhr.onerror = () => rej('Network error');
             xhr.onabort = () => rej('Aborted');
             xhr.ontimeout = () => rej('Timeout');
 
             if (typeof progress === 'function') {
+                if (xhr.upload && typeof (xhr.upload as any).addEventListener === 'function') {
+                    xhr.upload.addEventListener('progress', touch);
+                }
                 xhr.onprogress = (p: ProgressEvent) => {
                     progress(
                         {
@@ -842,6 +899,10 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback, attempt = 0)
                 }
             }
 
+            // open() already ran and send() fires no state change, so the clock starts here.
+            if (!uploadUnwatched) {
+                touch();
+            }
             xhr.send(opt.body);
         }
     );
@@ -998,13 +1059,18 @@ export async function uploadFiles(
 
     // Checked here, before any byte moves, so a typo cannot turn into an upload
     // with no limit, or one that times out at once.
+    //
+    // IDLE, not total (2.4.4): how long one file may go with NOTHING moving before it is
+    // aborted. A total limit cut off a large file on a slow line that was still uploading
+    // fine; a connection that died left an upload with no limit waiting forever. Default
+    // UPLOAD_IDLE_TIMEOUT_MS; 0 turns it off.
     if (timeout !== undefined && timeout !== null) {
         if (typeof timeout !== 'number' || !Number.isFinite(timeout) || timeout < 0) {
             throw new SkapiError('"timeout" should be a number of milliseconds, 0 or more.', { code: 'INVALID_PARAMETER' });
         }
     }
     else {
-        timeout = 0;
+        timeout = UPLOAD_IDLE_TIMEOUT_MS;
     }
 
     if (hasSubmitEvent && fileList instanceof SubmitEvent) {
@@ -1040,15 +1106,56 @@ export async function uploadFiles(
         fileName: string,
         attempt = 0
     ) => {
-        return new Promise((res, rej) => {
+        return new Promise((resolveUpload, rejectUpload) => {
             xhr = new XMLHttpRequest();
-            xhr.open('POST', url);
-            // One file's whole budget: XHR counts from send() to the end of the
-            // response, and a retried 429 opens a fresh request with a fresh budget.
-            if (timeout > 0) {
-                xhr.timeout = timeout;
+            const req = xhr;
+            req.open('POST', url);
+            // Idle timer: restarted by every upload or download progress event and by the
+            // response arriving, cleared when the file settles. A retried 429 opens a fresh
+            // request with a fresh timer.
+            let idleTimer: ReturnType<typeof setTimeout> | null = null;
+            const clearIdle = () => {
+                if (idleTimer) {
+                    clearTimeout(idleTimer);
+                    idleTimer = null;
+                }
+            };
+            const res = (v?: any) => { clearIdle(); resolveUpload(v); };
+            const rej = (e?: any) => { clearIdle(); rejectUpload(e); };
+            // Once the whole body is handed off (upload `load`), several MB can still sit in the
+            // network buffers with no progress event while they drain, and on a slow line that
+            // takes longer than `timeout` (seen in testing: a file at 100% cut off while the
+            // server was still receiving). So the wait for the answer is UPLOAD_SENT_WAIT_FACTOR
+            // times longer: a dead connection still fails, a draining one is never cut off.
+            let bodySent = false;
+            const touch = () => {
+                if (!(timeout > 0)) return;
+                clearIdle();
+                const wait = bodySent ? timeout * UPLOAD_SENT_WAIT_FACTOR : timeout;
+                idleTimer = setTimeout(() => {
+                    idleTimer = null;
+                    rej(new SkapiError(bodySent
+                        ? `Upload timeout: no answer for "${fileName}" ${Math.round(wait / 1000)} seconds after it was sent.`
+                        : `Upload timeout: "${fileName}" sent nothing for ${Math.round(wait / 1000)} seconds.`, { code: 'TIMEOUT' }));
+                    try { req.abort(); } catch (e) { }
+                }, wait);
+            };
+            req.onreadystatechange = () => {
+                if (req.readyState === 4) clearIdle();
+                else touch();
+            };
+            if (typeof req.addEventListener === 'function') {
+                req.addEventListener('progress', () => { if (req.readyState !== 4) touch(); });
             }
-            xhr.onload = () => {
+            // The upload listener is what tells a slow upload from a dead one, so it is
+            // attached even without a progress callback (the bucket CORS allows the
+            // preflight it causes: any origin, POST, any header).
+            if (timeout > 0 && req.upload && typeof req.upload.addEventListener === 'function') {
+                req.upload.addEventListener('progress', touch);
+                req.upload.addEventListener('load', () => { bodySent = true; touch(); });
+            }
+            req.onload = () => {
+                clearIdle();
                 let result = xhr.responseText;
                 try {
                     result = JSON.parse(result);
@@ -1078,17 +1185,16 @@ export async function uploadFiles(
                     rej(result);
                 }
             };
-            xhr.onerror = () => rej('Network error');
-            xhr.onabort = () => rej('Aborted');
-            // Only reachable with a timeout set: an XHR with none never times out.
-            xhr.ontimeout = () => rej(new SkapiError(`Upload timeout: "${fileName}" was not finished within ${timeout} ms.`, { code: 'TIMEOUT' }));
+            req.onerror = () => rej('Network error');
+            req.onabort = () => rej('Aborted');
 
             // xhr.addEventListener('error', rej);
-            if (xhr.upload && typeof progressCallback === 'function') {
-                xhr.upload.onprogress = progressCallback;
+            if (req.upload && typeof progressCallback === 'function') {
+                req.upload.onprogress = progressCallback;
             }
 
-            xhr.send(body);
+            touch();
+            req.send(body);
         });
     };
 

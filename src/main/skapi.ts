@@ -213,7 +213,7 @@ type ResolvedProject = {
 type Options = {
 	autoLogin: boolean;
 	refetchServiceInfo?: boolean; // bypasses cached service info and always fetch new service info on load.
-	requestBatchSize?: number; // default 30. number of requests to be handled in a batch
+	requestBatchSize?: number; // default 50. most requests running at once (rolling queue, see utils/network.ts)
 	// bearerToken?: string; // custom bearer token for authentication
 	/**
 	 * Enable client-side encryption of `data` on records written to
