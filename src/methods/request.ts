@@ -837,6 +837,25 @@ function composeRequestId(
 	return requestKey(method, url, service, requestId);
 }
 
+/**
+ * The shortest polling interval skapi-js accepts, in milliseconds (owner, 2026-11-20). A
+ * shorter one is refused with INVALID_PARAMETER, not raised: a request every few hundred
+ * milliseconds per poll is load on the service that no reader needs, and quietly using a
+ * different number than the one asked for would hide that from the developer. Applies to
+ * the dispatch `poll` option (where 0 still means "do not poll"), a poll handle's
+ * `latency`, and forwardRequestStream's `poll`.
+ */
+export const MIN_POLL_INTERVAL_MS = 1000;
+
+/** Refuse an interval that is not a finite number of at least MIN_POLL_INTERVAL_MS. */
+function assertPollInterval(value: any, name: string): void {
+	if (typeof value !== 'number' || !Number.isFinite(value) || value < MIN_POLL_INTERVAL_MS) {
+		throw new SkapiError(`"${name}" should be a number of milliseconds, ${MIN_POLL_INTERVAL_MS} or more.`, {
+			code: 'INVALID_PARAMETER',
+		});
+	}
+}
+
 function pollClientSecretResponse(
 	this: any,
 	{
@@ -881,17 +900,7 @@ function pollClientSecretResponse(
 		realtimeGroup?: string;
 	},
 ):any | void {
-	if (typeof latency !== 'number') {
-		throw new SkapiError('"latency" should be a number.', {
-			code: 'INVALID_PARAMETER',
-		});
-	}
-
-	if (latency < 0) {
-		throw new SkapiError('"latency" should be a non-negative number.', {
-			code: 'INVALID_PARAMETER',
-		});
-	}
+	assertPollInterval(latency, 'latency');
 
 	if (queue && !queuePromiseList?.[queue]) {
 		queuePromiseList[queue] = new Qpass({
@@ -1553,10 +1562,10 @@ async function dispatchForwardRequest(
 		});
 	}
 
-	if (typeof params.poll === 'number' && params.poll < 0) {
-		throw new SkapiError('"poll" should be a non-negative number.', {
-			code: 'INVALID_PARAMETER',
-		});
+	// 0 (or false, or absent) means "do not poll": the reply is the early status object.
+	// Any other number is the polling interval, and must be MIN_POLL_INTERVAL_MS or more.
+	if (typeof params.poll === 'number' && params.poll !== 0) {
+		assertPollInterval(params.poll, 'poll');
 	}
 	let onResponse = params?.onResponse;
 	let onError = params?.onError;
@@ -2019,7 +2028,7 @@ export async function forwardRequest(
 		service?: string;
 		/** The owner of `service`. Only meaningful alongside it. */
 		owner?: string;
-		poll?: number; // enable polling with specified latency in ms.
+		poll?: number; // enable polling with specified latency in ms, 1000 or more (MIN_POLL_INTERVAL_MS). 0 does not poll.
 		queue?: string; // optional queue name to distinguish requests with same url and method. Only effective when polling is enabled. Requests with the same url, method and queue will be handled sequentially on the server side.
 		expires?: number; // optional history expiration time in seconds after it's resolved.
 		/** Relay the destination's response incrementally instead of buffering it. The
@@ -2191,7 +2200,7 @@ export async function clientSecretRequest(params: {
 	headers?: { [key: string]: string };
 	data?: { [key: string]: any };
 	params?: { [key: string]: string };
-	poll?: number; // enable polling with specified latency in ms.
+	poll?: number; // enable polling with specified latency in ms, 1000 or more (MIN_POLL_INTERVAL_MS). 0 does not poll.
 	queue?: string; // optional queue name to distinguish requests with same url and method. Only effective when polling is enabled. Requests with the same url, method and queue will be handled sequentially on the server side.
 	expires?: number; // optional history expiration time in seconds after it's resolved.
 	/** Relay the destination's response incrementally instead of buffering it. The
@@ -2522,7 +2531,8 @@ export function clientSecretRequestStream(
 		 *  interval at a time. See the method doc for what it does to a connection your
 		 *  app may also be using. */
 		realtimeGroup?: string;
-		/** Polling interval in ms while the request is still running. Default 1000. */
+		/** Polling interval in ms while the request is still running. Default 1000, and
+		 *  never less (MIN_POLL_INTERVAL_MS): a shorter one is refused. */
 		poll?: number;
 		/** Called once with whatever this resolves with. */
 		onResponse?: (res: any, meta?: { executed?: number }) => void; // called when the request settles. `meta.executed` is when the worker BEGAN executing it, in milliseconds, when a running poll tick reported it: `res` is the destination's own answer and carries nothing of ours, so request-level facts arrive here instead. Absent for a turn that began and ended between two ticks.
@@ -2537,11 +2547,7 @@ export function clientSecretRequestStream(
 	// Finite, not merely "a number": NaN passes a typeof check and every comparison
 	// against it, then setTimeout treats it as 0, which turns the wait between polls
 	// into a request flood.
-	if (!Number.isFinite(latency) || latency < 0) {
-		throw new SkapiError('"poll" should be a non-negative number.', {
-			code: 'INVALID_PARAMETER',
-		});
-	}
+	assertPollInterval(latency, 'poll');
 
 	if (!requestId || typeof requestId !== 'string') {
 		throw new SkapiError('"requestId" should be type: <string>.', {
