@@ -201,6 +201,12 @@ const REALTIME_SILENCE_MS = 2000;
  * left to notice. It is also the only reader of the ROW: the socket carries chunks,
  * never status, so with polling stopped a finished request would never settle. Leaving
  * it at full rate would instead spend most of what the socket just bought.
+ *
+ * The throttle ends as soon as the room says the stream is over (a "CSR_END" frame,
+ * which the worker sends once, after it has written the request's terminal status):
+ * the reader polls at once, and from then on at its own interval, because no more
+ * chunks are coming over the socket. A reader that never gets that frame (an older
+ * backend, a dropped message) settles on its next throttled poll, as before.
  */
 const REALTIME_IDLE_POLL_MS = 5000;
 
@@ -245,8 +251,14 @@ type StreamSink = {
 	fromPoll: (result: any) => boolean;
 	/** Take one chunk off the socket. */
 	fromSocket: (seq: number, txt: any) => void;
-	/** True while the socket has delivered something recently. */
+	/** True while the socket has delivered something recently and has not said the
+	 *  stream is over. */
 	warm: () => boolean;
+	/** The room said the stream ended. Runs the onEnd callback the FIRST time only. */
+	fromSocketEnd: () => void;
+	/** Register what runs when the room says the stream ended (the reader's
+	 *  "poll now"). One callback; a later call replaces it. */
+	onEnd: (cb: () => void) => void;
 	/** How many chunks each transport carried FIRST. Reported, not acted on: it is
 	 *  the only way to answer "did the socket actually deliver this answer, or did
 	 *  the poll carry it?" after the fact. */
@@ -270,6 +282,13 @@ function createStreamSink(
 	let ready = false;
 	let closed = false;
 	let lastSocketAt = 0;
+	// Set by the room's stream-end frame. From then on the socket is never "warm": no
+	// more chunks are coming over it, so there is nothing left to throttle the poll for.
+	// Only the FIRST end frame wakes the reader. The stream ends once, and anyone holding
+	// the group name can broadcast into the room, so repeats are ignored rather than
+	// answered with a poll each.
+	let ended = false;
+	let endCb: (() => void) | null = null;
 	// Counted on ARRIVAL, not on render: the question this answers is which transport
 	// won the race, and a chunk that arrived on the socket was carried by the socket
 	// even if it had to wait behind a gap before it could be handed over.
@@ -397,7 +416,21 @@ function createStreamSink(
 		},
 		fromPoll,
 		fromSocket,
-		warm: () => lastSocketAt !== 0 && Date.now() - lastSocketAt < REALTIME_SILENCE_MS,
+		warm: () => !ended && lastSocketAt !== 0 && Date.now() - lastSocketAt < REALTIME_SILENCE_MS,
+		fromSocketEnd: () => {
+			if (closed || ended) return;
+			ended = true;
+			if (!endCb) return;
+			try {
+				endCb();
+			} catch (err) {
+				// The poll carries on at its own interval either way.
+				console.error(err);
+			}
+		},
+		onEnd: (cb) => {
+			endCb = cb;
+		},
 		stats: () => ({ socket: seen.socket, poll: seen.poll }),
 		close: () => {
 			closed = true;
@@ -549,6 +582,16 @@ function startRealtimeRelay(this: any, group: string, sink: StreamSink): { stop:
 		// at another one, so a message with no room stamp is still this request's.
 		let srid = data?.['#srid'];
 		if (typeof srid === 'string' && srid !== group) return;
+
+		// The stream is over: the worker sends this once, after the request's terminal
+		// status is written. It carries no `seq` on purpose (older readers drop any
+		// frame without a numeric seq, which is how they ignore it), so it is matched
+		// here, before the chunk path below. Only a hint, like every frame in this room:
+		// the reader answers it with a poll of the row and settles on what the row says.
+		if (data?.['#code'] === 'CSR_END' && payload.end === true) {
+			sink.fromSocketEnd();
+			return;
+		}
 
 		// The payload is read leniently on purpose. A field this does not recognise
 		// means the chunk arrives on the next poll instead of instantly, which is a
@@ -971,6 +1014,10 @@ function pollClientSecretResponse(
 		let lastExecuted: number | undefined =
 			typeof seedExecuted === 'number' && seedExecuted > 0 ? seedExecuted : undefined;
 
+		// The room said the stream ended while a tick was in flight: run one more as
+		// soon as it finishes, rather than waiting for the next interval.
+		let wakeAfterTick = false;
+
 		let tick = async () => {
 			if (settled || ticking) return;
 			// The socket is delivering, so this tick is skipped unless the last read was
@@ -1007,6 +1054,10 @@ function pollClientSecretResponse(
 						: sink
 							? sink.fromPoll(result)
 							: (onStream ? deliverStreamChunks(result, cursor, onStream) : false);
+					// A degraded chunk read (`more` with nothing new) backs off to the interval
+					// below, and a stream-end wake that arrived during it must not undo that by
+					// re-asking a failing table at once.
+					if (more && !moved) wakeAfterTick = false;
 					// History has been rendered and the cursor says where it ended, so
 					// everything the socket buffered while it was in flight can be
 					// released now (duplicates dropped, the rest in seq order). Idempotent:
@@ -1105,11 +1156,29 @@ function pollClientSecretResponse(
 				}
 			} finally {
 				ticking = false;
+				if (wakeAfterTick && !settled) {
+					wakeAfterTick = false;
+					tick();
+				}
 			}
 		};
 
 		let interval = setInterval(tick, latency);
 		if (sink) {
+			// The room said the stream is over, so the row has settled: read it now
+			// instead of after the warm-socket throttle. sink.warm() is false from here
+			// on, so this tick (and every later one) runs at the reader's own interval.
+			// If this read still finds the row running (a read racing the write), the
+			// interval simply carries on. One tick at a time, as always: a tick already
+			// in flight is followed by one more the moment it finishes.
+			sink.onEnd(() => {
+				if (settled) return;
+				if (ticking) {
+					wakeAfterTick = true;
+					return;
+				}
+				tick();
+			});
 			// Step 1 of the read contract: the history fetch starts AT THE SAME TIME as
 			// the socket is being opened, not one interval later. Without this the first
 			// chunk of a socket-accelerated turn would still wait out a full poll
@@ -2661,6 +2730,18 @@ export function clientSecretRequestStream(
 			let { sink, end: endRealtime } = startLiveDelivery.call(this, ctrl.fullId, cursor, onStream, options?.realtimeGroup);
 			liveTeardown = endRealtime;
 
+			// The room said the stream ended (see the dispatch path's onEnd): cut the
+			// current wait short, or skip the next one if a read is in flight, so the
+			// settled row is read at once. Nothing else in the loop changes.
+			let wakeWait: (() => void) | null = null;
+			let wokenEarly = false;
+			if (sink) {
+				sink.onEnd(() => {
+					if (wakeWait) wakeWait();
+					else wokenEarly = true;
+				});
+			}
+
 			for (; ;) {
 				let result = await request.bind(this)(
 					'csr-poll',
@@ -2686,6 +2767,9 @@ export function clientSecretRequestStream(
 				// History rendered: release whatever the socket buffered while this read
 				// was in flight. Idempotent, so only the first pass of the loop counts.
 				if (sink) sink.open();
+				// A degraded read waits out the interval below even if the room said the
+				// stream ended meanwhile: re-asking a failing table at once does not help.
+				if (result.more && !moved) wokenEarly = false;
 				let running = isRunningStatus(result);
 
 				if (result.more && moved) {
@@ -2711,10 +2795,18 @@ export function clientSecretRequestStream(
 				// Throttled, never stopped, while the socket is delivering: the poll is
 				// what fills a gap the socket dropped and the only thing that sees the
 				// request settle. See REALTIME_IDLE_POLL_MS.
-				await new Promise((r) => setTimeout(
-					r,
-					sink && sink.warm() ? Math.max(latency, REALTIME_IDLE_POLL_MS) : latency,
-				));
+				if (wokenEarly) {
+					wokenEarly = false;
+				}
+				else {
+					await new Promise<void>((r) => {
+						let timer = setTimeout(
+							() => { wakeWait = null; r(); },
+							sink && sink.warm() ? Math.max(latency, REALTIME_IDLE_POLL_MS) : latency,
+						);
+						wakeWait = () => { clearTimeout(timer); wakeWait = null; r(); };
+					});
+				}
 				if (ctrl.stopped) return;
 			}
 		} catch (err) {
