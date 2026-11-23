@@ -132,7 +132,7 @@ The response data will be displayed in an alert box.
 Skapi is ready for AI paired development through the Skapi MCP server:
 
 ```
-https://mcp.broadwayinc.computer
+https://mcp.skapi.com
 ```
 
 Add this address as a remote MCP server (often called a custom connector) in any AI app that supports MCP, such as chat apps, coding agents in the terminal and code editors, then sign in with your Skapi account.
@@ -143,7 +143,7 @@ Once connected, your AI assistant works on your Skapi projects with your account
 Build me a [describe what you want] with Skapi.
 ```
 
-Setup steps for each app are on the [Skapi MCP page](https://mcp.broadwayinc.computer).
+Setup steps for each app are on the [Skapi MCP page](https://mcp.skapi.com).
 
 
 #### For more information, check out our [documentation](https://docs.skapi.com).
