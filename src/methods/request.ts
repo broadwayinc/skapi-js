@@ -13,6 +13,15 @@ import { extractFormData, generateRandom } from '../utils/utils';
 // second one: it is the same shared, app-wide connection connectRealtime hands the
 // application, which is exactly why this file borrows it instead of owning it.
 import { closeRealtime, connectRealtime, joinRealtime, currentSocketRoom } from './realtime';
+// Request status push (`notify`): frames that tell a poll to read now, so it may idle in between.
+import {
+	addStatusWaker,
+	adoptStatusPushSocket,
+	holdStatusPush,
+	noteStatusPushAck,
+	statusPushWarm,
+	STATUS_PUSH_IDLE_POLL_MS,
+} from './request_status';
 import Qpass from "qpass";
 
 const hasHTMLFormElement = typeof HTMLFormElement !== 'undefined';
@@ -630,6 +639,13 @@ function startRealtimeRelay(this: any, group: string, sink: StreamSink): { stop:
 				// is the no-op below, which means no app code has ever been handed a
 				// message on it and no rtc peer could have been negotiated over it.
 				// closeRealtime also leaves the room, which is why it is not left first.
+				//
+				// Unless the request status push is listening on it: then the room is left
+				// and the socket handed over, and status push closes it once nobody needs it.
+				if (adoptStatusPushSocket(opened)) {
+					if (joined && currentSocketRoom() === group) await joinRealtime.bind(this)({ group: null });
+					return;
+				}
 				await closeRealtime.bind(this)();
 				return;
 			}
@@ -831,7 +847,7 @@ function booleanFlag(name: string) {
 /** The forwardRequest() options handed on to the dispatch as they are, when given. */
 const FORWARDED_OPTIONS = [
 	'secretName', 'headers', 'data', 'params', 'skapiHeaders',
-	'service', 'owner', 'queue', 'expires', 'stream', 'realtime', 'poll',
+	'service', 'owner', 'queue', 'expires', 'stream', 'realtime', 'notify', 'poll',
 	'onStream', 'onResponse', 'onError',
 ] as const;
 
@@ -912,7 +928,8 @@ function pollClientSecretResponse(
 		onResponse,
 		onError,
 		onStream,
-		realtimeGroup
+		realtimeGroup,
+		notify
 	}: {
 		id: string;
 		auth: boolean;
@@ -941,6 +958,11 @@ function pollClientSecretResponse(
 		 *  delivers costs the reader nothing but the interval it already had. Ignored
 		 *  without `onStream`, which is the only thing a chunk could be delivered to. */
 		realtimeGroup?: string;
+		/** The request was dispatched with `notify` and the server accepted it, so
+		 *  status frames name it. While frames are arriving (statusPushWarm) this poll
+		 *  reads the row only every STATUS_PUSH_IDLE_POLL_MS on its own, and at once
+		 *  whenever a frame names it. With no frames it runs at `latency` as always. */
+		notify?: boolean;
 	},
 ):any | void {
 	assertPollInterval(latency, 'latency');
@@ -994,7 +1016,16 @@ function pollClientSecretResponse(
 		// faster, and opening a websocket to throw its messages away would cost the
 		// application a connection it never asked for. The sink owns the cursor above
 		// from here on, so the two transports share one idea of what has been rendered.
-		let { sink, end: endRealtime } = startLiveDelivery.call(this, id, cursor, onStream, realtimeGroup);
+		let { sink, end: endLiveDelivery } = startLiveDelivery.call(this, id, cursor, onStream, realtimeGroup);
+		// The status push listener is held while this poll runs, and a frame naming this
+		// request reads it now. Both are undone wherever the live delivery is.
+		let unholdStatus: (() => void) | null = notify ? holdStatusPush(this) : null;
+		let unwakeStatus: (() => void) | null = null;
+		let endRealtime = () => {
+			endLiveDelivery();
+			if (unwakeStatus) { unwakeStatus(); unwakeStatus = null; }
+			if (unholdStatus) { unholdStatus(); unholdStatus = null; }
+		};
 		liveTeardown = endRealtime;
 		// When the last poll actually went out, so a warm socket can throttle the poll
 		// to a heartbeat without touching the interval that drives it.
@@ -1026,6 +1057,9 @@ function pollClientSecretResponse(
 			// is the only reader of the row's status, so the request could not settle
 			// without it.
 			if (sink && sink.warm() && Date.now() - lastPollAt < REALTIME_IDLE_POLL_MS) return;
+			// Status frames are arriving, so this request is read when one names it and
+			// otherwise only as a heartbeat. Never stopped, for the same reasons as above.
+			if (notify && statusPushWarm() && Date.now() - lastPollAt < STATUS_PUSH_IDLE_POLL_MS) return;
 			ticking = true;
 			try {
 				for (; ;) {
@@ -1164,6 +1198,18 @@ function pollClientSecretResponse(
 		};
 
 		let interval = setInterval(tick, latency);
+		if (notify) {
+			// A frame named this request: its status changed, so read the row now instead
+			// of at the next heartbeat. One tick at a time, as with the stream-end wake.
+			unwakeStatus = addStatusWaker(id, () => {
+				if (settled) return;
+				if (ticking) {
+					wakeAfterTick = true;
+					return;
+				}
+				tick();
+			});
+		}
 		if (sink) {
 			// The room said the stream is over, so the row has settled: read it now
 			// instead of after the warm-socket throttle. sink.warm() is false from here
@@ -1735,6 +1781,7 @@ async function dispatchForwardRequest(
 			},
 			stream: booleanFlag('stream'),
 			realtime: booleanFlag('realtime'),
+			notify: booleanFlag('notify'),
 			headers: placeholderObject('headers', refuseReservedHeaders),
 			/** Which of "x-skapi-user" and "x-skapi-service" the destination is told.
 			 *  The values are written server side from the verified identity. */
@@ -1798,6 +1845,9 @@ async function dispatchForwardRequest(
 					let serviceId = params.service || this.service;
 					let ownerId = params.owner || this.owner;
 					let fullId = requestKey(params.method, params.url, serviceId, res.id);
+					// The server accepted `notify` (an older one ignores it and says nothing).
+					let notified = res?.notify === true;
+					if (notified) noteStatusPushAck();
 					// An abort stops THIS CLIENT's poll of the request, which is what the
 					// signal has always meant here: the request is already on the server
 					// and may already be running at the destination, so it is deliberately
@@ -1837,7 +1887,8 @@ async function dispatchForwardRequest(
 							// disagree about the room's name. Absent (no "realtime", or a
 							// server that predates it) simply means this poll reads the
 							// chunks the way it always has.
-							realtimeGroup: res?.realtime_group
+							realtimeGroup: res?.realtime_group,
+							notify: notified
 						}),
 					});
 				}
@@ -2117,6 +2168,14 @@ export async function forwardRequest(
 		 *  simply runs at its normal speed. See the method doc for what it does to a
 		 *  connection your app may also be using. */
 		realtime?: boolean;
+		/** Status push for a queued request: each status change (pending, running,
+		 *  resolved, failed, cancelled) arrives as a websocket frame on this user's
+		 *  connections, and the returned poll then reads the request only when one names it
+		 *  (plus a heartbeat every minute) instead of at every interval. Needs a signed-in
+		 *  user and a queue. Purely an accelerator: with no socket, no frames, or a server
+		 *  that does not support it, the poll runs at its normal interval. See
+		 *  onRequestStatus to hear about requests you hold no poll for. */
+		notify?: boolean;
 		/** Called with each piece of relayed text as it arrives, in order, with the
 		 *  sequence number it was stored under. Its PRESENCE is what makes polling read
 		 *  the text at all, so a caller that only wants the outcome can poll the very same
@@ -2143,6 +2202,8 @@ export async function forwardRequest(
 	 *  needed to re-attach later with forwardRequestStream. Keep it beside the
 	 *  id; it cannot be rebuilt from the id alone. */
 	realtime_group?: string;
+	/** True when `notify` was accepted: status frames will name this request. */
+	notify?: boolean;
 	poll?: (arg?: { latency?: number; onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void }) => Promise<any>;
 }> {
 	if (!options || typeof options !== 'object') {
@@ -2289,6 +2350,14 @@ export async function clientSecretRequest(params: {
 	 *  simply runs at its normal speed. See the method doc for what it does to a
 	 *  connection your app may also be using. */
 	realtime?: boolean;
+	/** Status push for a queued request: each status change (pending, running,
+	 *  resolved, failed, cancelled) arrives as a websocket frame on this user's
+	 *  connections, and the returned poll then reads the request only when one names it
+	 *  (plus a heartbeat every minute) instead of at every interval. Needs a signed-in
+	 *  user and a queue. Purely an accelerator: with no socket, no frames, or a server
+	 *  that does not support it, the poll runs at its normal interval. See
+	 *  onRequestStatus to hear about requests you hold no poll for. */
+	notify?: boolean;
 	/** Called with each piece of relayed text as it arrives, in order, with the
 	 *  sequence number it was stored under. Its PRESENCE is what makes polling read
 	 *  the text at all, so a caller that only wants the outcome can poll the very same
@@ -2306,6 +2375,8 @@ export async function clientSecretRequest(params: {
 	 *  needed to re-attach later with clientSecretRequestStream. Keep it beside the
 	 *  id; it cannot be rebuilt from the id alone. */
 	realtime_group?: string;
+	/** True when `notify` was accepted: status frames will name this request. */
+	notify?: boolean;
 	poll?: (arg?: { latency?: number; onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void }) => Promise<any>;
 }> {
 	return dispatchForwardRequest.call(this, params, { requireSecretName: true });
@@ -2457,6 +2528,10 @@ export async function clientSecretRequestHistory(
 				 *  path. A row that already settled has nothing left to poll: read that
 				 *  one back with clientSecretRequestStream instead. */
 				onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void;
+				/** This request was dispatched with `notify` (or is a server-queued
+				 *  continuation of one), so status frames name it: poll slowly while
+				 *  they arrive and read at once when one does. See the dispatch option. */
+				notify?: boolean;
 			}) => pollClientSecretResponse.call(this, {
 				id: id + result.id,
 				auth,
@@ -2470,7 +2545,8 @@ export async function clientSecretRequestHistory(
 				seedExecuted: result.executed,
 				onResponse: arg?.onResponse,
 				onError: arg?.onError,
-				onStream: arg?.onStream
+				onStream: arg?.onStream,
+				notify: !!arg?.notify
 			})
 		}
 		return result;

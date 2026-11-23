@@ -86,6 +86,8 @@ import {
 	forwardRequestQueueCount,
 	stopForwardRequestPolling,
 } from '../methods/request';
+import { onRequestStatus, isRequestStatusLive } from '../methods/request_status';
+import type { RequestStatusEvent, RequestStatusConnectionEvent } from '../methods/request_status';
 import {
 	request,
 	getFormResponse,
@@ -1668,6 +1670,35 @@ export default class Skapi {
 	 */
 	isPollStopped(res: any): boolean {
 		return isPollStopped(res);
+	}
+
+	/**
+	 * Listens to status changes of this user's forwarded requests that were dispatched
+	 * with `notify: true`, including ones this client holds no poll for (a pass the server
+	 * queued as the continuation of one, or a request sent from another tab). Each change
+	 * arrives as `{ type: 'status', id, queue, status, previous, updated, executed }`.
+	 *
+	 * The websocket is kept open while a listener is registered (one is opened when the
+	 * app has none and a user is signed in; the app's own realtime callback never sees
+	 * these frames). The callback also gets `{ type: 'connected' }` whenever the listener
+	 * lands on an open connection, first time and after every reconnect, and
+	 * `{ type: 'disconnected' }` when it loses it. Frames are not kept for a connection that
+	 * is down, so re-read what you show on 'connected'.
+	 *
+	 * A status event is a hint, not the outcome: read the request for that.
+	 * @param callback Called with each event.
+	 * @returns A function that removes the listener.
+	 */
+	onRequestStatus(callback: (event: RequestStatusEvent | RequestStatusConnectionEvent) => void): () => void {
+		return onRequestStatus.bind(this)(callback);
+	}
+
+	/**
+	 * True while request status frames are arriving on this client (see onRequestStatus).
+	 * Polls of `notify` requests run slowly only while this is true.
+	 */
+	isRequestStatusLive(): boolean {
+		return isRequestStatusLive();
 	}
 
 	/**

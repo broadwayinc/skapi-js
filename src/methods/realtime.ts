@@ -681,6 +681,12 @@ export async function connectRealtime(cb: RealtimeCallback, delay = 50, reconnec
                     return;
                 }
 
+                if (data?.['#code'] === 'CSR_STATUS' && data?.['#private'] && !data?.['#user_id']) {
+                    // A request status push (request_status.ts reads it off the socket
+                    // itself). Not a message for the app: no user sent it.
+                    return;
+                }
+
                 let type;
                 switch (true) {
                     case !!data?.['#message']:
