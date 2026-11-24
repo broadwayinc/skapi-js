@@ -65,6 +65,72 @@ function rateLimitExhausted(what: string): SkapiError {
     return new SkapiError(`Too many requests: ${what} still answered 429 after ${RATE_LIMIT_MAX_RETRIES} retries.`, { code: 'TOO_MANY_REQUESTS' });
 }
 
+// Transport failures of request() are SkapiErrors with a code (2.7.0). They used to be bare
+// strings ('Network error', 'Too many requests', 'Aborted', 'Timeout'), so a caller could not
+// tell "the network failed, try again" from "the server said no" without matching text. The
+// messages stay the same words, so code that matched the text still matches.
+function transportError(message: string, code: 'NETWORK_ERROR' | 'TIMEOUT' | 'RATE_LIMITED' | 'ABORTED'): SkapiError {
+    return new SkapiError(message, { code });
+}
+
+/**
+ * What request() takes to abort a request or give it a deadline (the `signal` option). The
+ * standard AbortSignal fits; only these members are used, so a runtime without
+ * AbortController can pass a small object of its own.
+ */
+export type RequestAbortSignal = {
+    readonly aborted: boolean;
+    addEventListener: (type: 'abort', listener: () => void, options?: any) => void;
+    removeEventListener?: (type: 'abort', listener: () => void) => void;
+};
+
+/**
+ * An abort handle for request(): AbortController where the runtime has one, otherwise an
+ * object with the same shape, so the SDK can abort its own requests everywhere it runs.
+ */
+export function createRequestAbort(): { signal: RequestAbortSignal; abort: () => void } {
+    if (typeof AbortController !== 'undefined') {
+        let ac = new AbortController();
+        return { signal: ac.signal as any, abort: () => ac.abort() };
+    }
+    let listeners: Array<() => void> = [];
+    let signal = {
+        aborted: false,
+        addEventListener: (_type: 'abort', fn: () => void) => { listeners.push(fn); },
+        removeEventListener: (_type: 'abort', fn: () => void) => { listeners = listeners.filter(l => l !== fn); },
+    };
+    return {
+        signal,
+        abort: () => {
+            if (signal.aborted) return;
+            signal.aborted = true;
+            let run = listeners;
+            listeners = [];
+            for (let fn of run) {
+                try { fn(); } catch (e) { }
+            }
+        },
+    };
+}
+
+/**
+ * One request whose caller may give up on it (aborted, or past its deadline). The caller's
+ * promise is settled by request() itself, at once; this is what lets the request then also
+ * leave the queue, the in-flight dedupe map and the network, so it holds nothing for later.
+ */
+type RequestControl = {
+    /** The caller gave up. Checked before every step that would send. */
+    aborted: boolean;
+    /** What the caller was rejected with. */
+    reason: any;
+    /** Runs once, when the caller gives up after the request reached the queue. */
+    onAbort: (() => void) | null;
+    /** Aborts the XMLHttpRequest of the current attempt. Set by _fetch. */
+    xhrAbort: (() => void) | null;
+    /** The transport was cancelled: a 429 wait must not send again. */
+    dropped: boolean;
+};
+
 function toPercent(loaded: number, total: number): number {
     return total > 0 ? (loaded / total) * 100 : 0;
 }
@@ -242,12 +308,46 @@ async function getEndpoint(dest: string, auth: boolean, stableGateway?: boolean)
 
 const __pendingRequest: Record<string, Promise<any>> = {};
 
+// The jobs still waiting in requestQueue (not started), each with the reject of its
+// request() promise. Qpass.terminate() empties its list without running or settling the jobs,
+// so terminatePendingRequests() rejects these itself: a caller awaiting one (a poll tick sent
+// without a deadline, for example) is told the request was aborted instead of waiting forever.
+const __waitingJobs: Set<{ reject: (err: any) => void }> = new Set();
+
+/**
+ * Drops every request still waiting in the queue (requests already on the network keep
+ * running). Each dropped request fails with code ABORTED, so its caller settles and can retry.
+ */
 export function terminatePendingRequests() {
     if (requestQueue) {
         requestQueue.terminate();
         requestQueue = null;
     }
+    let waiting = Array.from(__waitingJobs);
+    __waitingJobs.clear();
+    for (let w of waiting) {
+        try { w.reject(transportError('Aborted', 'ABORTED')); } catch (e) { }
+    }
 }
+
+// request()'s options, as requestCore receives them (documented on request()).
+type RequestOptions = {
+    fetchOptions?: FetchOptions;
+    auth?: boolean;
+    method?: string;
+    bypassAwaitConnection?: boolean;
+    responseType?: 'json' | 'blob' | 'text' | 'arrayBuffer' | 'formData' | 'document';
+    contentType?: string;
+    tokenHeaders?: {
+        accessToken?: boolean | string;
+        idToken?: boolean | string;
+    };
+    stableGateway?: boolean;
+    revalidate?: boolean;
+    fresh?: boolean;
+    deadline?: number;
+    signal?: RequestAbortSignal;
+};
 
 export async function request(
     url: string,
@@ -273,10 +373,96 @@ export async function request(
         // url and OVERWRITES its stored response instead of adding a second entry
         // beside it. Pair with stableGateway when replacing a cached response.
         revalidate?: boolean;
+        // Do not join an identical request already in flight (the dedupe below), and do not
+        // let later ones join this one. For a read that must reflect the server NOW: joining
+        // a request that was sent before a sleep or a network change can mean waiting out its
+        // idle timeout for an answer that is already stale.
+        fresh?: boolean;
+        // Milliseconds this request may take in all, counted from this call: the wait for the
+        // connection and a token refresh, the queue, and the network. Past it the request
+        // fails with code TIMEOUT and is aborted. Without it only the idle timeout applies.
+        deadline?: number;
+        // Aborting fails the request with code ABORTED and takes it out of the queue and off
+        // the network (an identical request that joined it keeps its own copy running).
+        signal?: RequestAbortSignal;
     },
     _etc?: {
         ignoreService: boolean;
     }
+): Promise<any> {
+    let deadline = options?.deadline;
+    let signal = options?.signal;
+
+    if (deadline !== undefined && deadline !== null && (typeof deadline !== 'number' || !Number.isFinite(deadline) || deadline <= 0)) {
+        throw new SkapiError('"deadline" should be a number of milliseconds above 0.', { code: 'INVALID_PARAMETER' });
+    }
+
+    if (!deadline && !signal) {
+        return requestCore.call(this, url, data, options, _etc, null);
+    }
+
+    let ctl: RequestControl = { aborted: false, reason: null, onAbort: null, xhrAbort: null, dropped: false };
+
+    return new Promise((res, rej) => {
+        let done = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        let onSignal = () => giveUp(transportError('Aborted', 'ABORTED'));
+        let cleanup = () => {
+            done = true;
+            if (timer) clearTimeout(timer);
+            if (signal && typeof signal.removeEventListener === 'function') {
+                try { signal.removeEventListener('abort', onSignal); } catch (e) { }
+            }
+        };
+        // Settles the caller first, then lets the request let go of whatever it holds.
+        let giveUp = (err: any) => {
+            if (done) return;
+            cleanup();
+            ctl.aborted = true;
+            ctl.reason = err;
+            rej(err);
+            if (ctl.onAbort) {
+                try { ctl.onAbort(); } catch (e) { }
+            }
+        };
+
+        if (signal?.aborted) {
+            giveUp(transportError('Aborted', 'ABORTED'));
+            return;
+        }
+        if (signal) signal.addEventListener('abort', onSignal);
+        if (deadline) {
+            timer = setTimeout(() => giveUp(new SkapiError(`No answer within ${deadline} ms.`, { code: 'TIMEOUT' })), deadline);
+        }
+
+        requestCore.call(this, url, data, options, _etc, ctl).then(
+            (v: any) => { if (done) return; cleanup(); res(v); },
+            (e: any) => { if (done) return; cleanup(); rej(e); },
+        );
+    });
+}
+
+// Who still waits on a request in flight, per promise: how many identical requests joined it
+// and are still waiting, whether the request that sent it gave up, and how to take it off the
+// network. It is only aborted once the sender gave up AND every joiner did too (or none came).
+type PendingShare = { joined: number; ownerGaveUp: boolean; drop: (() => void) | null };
+const __pendingJoined: WeakMap<Promise<any>, PendingShare> = new WeakMap();
+
+function pendingShare(promise: Promise<any>): PendingShare {
+    let share = __pendingJoined.get(promise);
+    if (!share) {
+        share = { joined: 0, ownerGaveUp: false, drop: null };
+        __pendingJoined.set(promise, share);
+    }
+    return share;
+}
+
+async function requestCore(
+    url: string,
+    data: Form<any>,
+    options: RequestOptions | undefined,
+    _etc: { ignoreService: boolean } | undefined,
+    ctl: RequestControl | null,
 ): Promise<any> {
     this.log('request', { url, data, options, _etc: _etc || {} });
 
@@ -309,7 +495,19 @@ export async function request(
     const wantsIdTokenHeader = options?.tokenHeaders?.idToken === true;
 
     if (auth || wantsIdTokenHeader) {
-        token = await getJwtToken.bind(this)();
+        try {
+            token = await getJwtToken.bind(this)();
+        }
+        catch (err) {
+            // Marked so a caller can tell "this client could not get a token" (no answer
+            // from the sign-in service, or a session that is gone) from the server's answer.
+            throw markTokenFailure(err);
+        }
+    }
+
+    // The caller gave up while this waited for the connection or a token: send nothing.
+    if (ctl?.aborted) {
+        throw ctl.reason;
     }
 
     let fetchOptions = {}; // record fetch options
@@ -400,9 +598,23 @@ export async function request(
     this.log('requestKey', requestKeyWithStartKey);
 
     // prevent duplicate request
-    if (typeof requestKeyWithStartKey === 'string' && __pendingRequest[requestKeyWithStartKey] instanceof Promise) {
+    if (!options.fresh && typeof requestKeyWithStartKey === 'string' && __pendingRequest[requestKeyWithStartKey] instanceof Promise) {
         this.log('request:returning pending', requestKeyWithStartKey);
-        return __pendingRequest[requestKeyWithStartKey as string];
+        let pending = __pendingRequest[requestKeyWithStartKey as string];
+        let share = pendingShare(pending);
+        share.joined += 1;
+        if (ctl) {
+            // This joiner gave up: it no longer keeps the request running for the sender.
+            let left = false;
+            ctl.onAbort = () => {
+                if (left) return;
+                left = true;
+                share.joined -= 1;
+                if (share.joined <= 0 && share.ownerGaveUp && share.drop) share.drop();
+            };
+            pending.then(() => { left = true; }, () => { left = true; });
+        }
+        return pending;
     }
 
     // new request
@@ -565,10 +777,46 @@ export async function request(
 
     this.log('request-opt', opt);
 
+    // A fresh request is neither joined nor joins, so it never enters the dedupe map.
+    let dedupe = !options.fresh;
+    // Removes this request's own entry only: a fresh request, or one whose entry was taken
+    // over, must not drop the entry of an identical request still in flight.
+    let forget = (promise: Promise<any>) => {
+        if (__pendingRequest[requestKeyWithStartKey as string] === promise) {
+            delete __pendingRequest[requestKeyWithStartKey as string];
+        }
+    };
+
     return new Promise((res, rej) => {
-        requestQueue.add([async () => {
-            let promise = _fetch.bind(this)(endpoint, opt, progress);
-            __pendingRequest[requestKeyWithStartKey as string] = promise;
+        let queue = requestQueue;
+        let started = false;
+        // Listed while the job waits in the queue, so terminatePendingRequests() can fail it.
+        // Leaves the list when the job starts or the caller's abort takes it out.
+        let waiting = { reject: (err: any) => { __waitingJobs.delete(waiting); rej(err); } };
+        __waitingJobs.add(waiting);
+        let jobIds = queue.add([async () => {
+            started = true;
+            __waitingJobs.delete(waiting);
+            if (ctl?.aborted) {
+                rej(ctl.reason);
+                return;
+            }
+            let promise = _fetch.bind(this)(endpoint, opt, progress, 0, ctl);
+            if (dedupe) __pendingRequest[requestKeyWithStartKey as string] = promise;
+            if (ctl) {
+                let share = pendingShare(promise);
+                share.drop = () => {
+                    ctl.dropped = true;
+                    if (ctl.xhrAbort) ctl.xhrAbort();
+                };
+                ctl.onAbort = () => {
+                    forget(promise);
+                    share.ownerGaveUp = true;
+                    // Others joined it and still want the answer, so it keeps running.
+                    if (share.joined > 0) return;
+                    share.drop();
+                };
+            }
 
             try {
                 let result = update_startKey_keys.bind(this)({
@@ -577,19 +825,46 @@ export async function request(
                     url,
                     fetched: await promise
                 });
-                delete __pendingRequest[requestKeyWithStartKey];
+                forget(promise);
                 this.log('request:end', result);
                 res(result);
                 return result;
             }
             catch (err) {
-                delete __pendingRequest[requestKeyWithStartKey];
+                forget(promise);
                 this.log('request:err', err);
                 rej(err);
                 throw err;
             }
         }]);
+        if (ctl) {
+            // Still waiting in the queue when the caller gives up: leave it, so it never
+            // takes a slot. Once started, the job sets its own onAbort above.
+            ctl.onAbort = () => {
+                if (started) return;
+                try { queue.remove(jobIds[0]); } catch (e) { }
+                waiting.reject(ctl.reason);
+            };
+        }
     });
+}
+
+/** Marks an error thrown while getting the sign-in token, see isTokenFailure. */
+function markTokenFailure(err: any): any {
+    if (err && typeof err === 'object') {
+        try {
+            Object.defineProperty(err, '__tokenFailure', { value: true, enumerable: false, configurable: true });
+        } catch (e) { }
+    }
+    return err;
+}
+
+/**
+ * True when request() failed before sending because no sign-in token could be had: the
+ * refresh got no answer or timed out, or the session is gone. The server never saw it.
+ */
+export function isTokenFailure(err: any): boolean {
+    return !!(err && typeof err === 'object' && (err as any).__tokenFailure);
 }
 
 function load_startKey_keys(option: {
@@ -705,10 +980,19 @@ function stripDecrypted(response: any): any {
     return response;
 }
 
-function _fetch(url: string, opt: any, progress?: ProgressCallback, attempt = 0) {
+function _fetch(url: string, opt: any, progress?: ProgressCallback, attempt = 0, ctl: RequestControl | null = null) {
     return new Promise(
         (resolveFetch, rejectFetch) => {
+            if (ctl?.dropped) {
+                rejectFetch(transportError('Aborted', 'ABORTED'));
+                return;
+            }
             let xhr = new XMLHttpRequest();
+            if (ctl) {
+                ctl.xhrAbort = () => {
+                    try { xhr.abort(); } catch (e) { }
+                };
+            }
 
             // Idle timeout (REQUEST_IDLE_TIMEOUT_MS): restarted by anything that shows the
             // connection is alive and cleared the moment the request settles or its answer
@@ -786,11 +1070,11 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback, attempt = 0)
                             return;
                         }
                         setTimeout(() => {
-                            _fetch(url, opt, progress, attempt + 1).then(res, rej);
+                            _fetch(url, opt, progress, attempt + 1, ctl).then(res, rej);
                         }, rateLimitWaitMs(retryDelayMs, attempt));
                     }
                     else {
-                        rej('Too many requests');
+                        rej(transportError('Too many requests', 'RATE_LIMITED'));
                     }
                 }
 
@@ -813,10 +1097,19 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback, attempt = 0)
                     }
                     catch (err) { }
                         
+                    // A server fault, not a refusal: SERVER_ERROR whatever the body says, so a
+                    // caller can tell "try again" from "no". The body is kept on `cause`.
+                    // 501 is left out: it says the route does not exist here, which is an answer.
+                    let serverFault = status >= 500 && status !== 501;
+
                     if (typeof result === 'string') {
                         let errMsg = result.split(':');
                         let code = errMsg.splice(0, 1)[0].trim();
                         let msg = errMsg.join(':').trim();
+                        if (serverFault) {
+                            rej(new SkapiError(msg || result || `Server error ${status}.`, { code: 'SERVER_ERROR', cause: result as any }));
+                            return;
+                        }
                         rej(new SkapiError(msg || result, { code: (errCode.includes(code) ? code : 'ERROR') }));
                     }
 
@@ -839,7 +1132,15 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback, attempt = 0)
                             // object, not a payload to resolve with: the code stands in.
                             message = String(code);
                         }
+                        if (serverFault) {
+                            rej(new SkapiError(message, { cause: cause === undefined ? result : cause, code: 'SERVER_ERROR' }));
+                            return;
+                        }
                         rej(new SkapiError(message, { cause, code }));
+                    }
+
+                    else if (serverFault) {
+                        rej(new SkapiError(`Server error ${status}.`, { code: 'SERVER_ERROR', cause: result }));
                     }
 
                     else {
@@ -865,9 +1166,9 @@ function _fetch(url: string, opt: any, progress?: ProgressCallback, attempt = 0)
                 xhr.addEventListener('progress', () => { if (xhr.readyState !== 4) touch(); });
             }
 
-            xhr.onerror = () => rej('Network error');
-            xhr.onabort = () => rej('Aborted');
-            xhr.ontimeout = () => rej('Timeout');
+            xhr.onerror = () => rej(transportError('Network error', 'NETWORK_ERROR'));
+            xhr.onabort = () => rej(transportError('Aborted', 'ABORTED'));
+            xhr.ontimeout = () => rej(transportError('Timeout', 'TIMEOUT'));
 
             if (typeof progress === 'function') {
                 if (xhr.upload && typeof (xhr.upload as any).addEventListener === 'function') {

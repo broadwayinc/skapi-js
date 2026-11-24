@@ -58,5 +58,8 @@ export type {
     TicketAction,
     TicketReceipt,
     TicketError,
-    TicketErrorCode
+    TicketErrorCode,
+    RequestHistory,
+    ForwardRequestStatus,
+    ForwardRequestEnvelope
 } from "./Types";

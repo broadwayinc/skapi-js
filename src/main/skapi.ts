@@ -85,7 +85,11 @@ import {
 	cancelForwardRequest,
 	forwardRequestQueueCount,
 	stopForwardRequestPolling,
+	forwardRequestStatus,
+	forwardRequestQueueCounters,
+	forwardRequestRead,
 } from '../methods/request';
+import type { ForwardRequestStatus, ForwardRequestEnvelope } from '../Types';
 import { onRequestStatus, isRequestStatusLive } from '../methods/request_status';
 import type { RequestStatusEvent, RequestStatusConnectionEvent } from '../methods/request_status';
 import {
@@ -1494,6 +1498,7 @@ export default class Skapi {
 		onError?: (err: any) => void; // Called when polling or the initial request fails.
 		stream?: boolean; // Read the destination's response INCREMENTALLY and relay it as it arrives, instead of downloading it whole. Skapi relays raw bytes and never parses them, so this works against any destination. Requires a queue. NOTE: this is skapi's own parameter, and is NOT the "stream" field your destination's API may take inside `data`. Asking the destination to stream is your job, in your own body; set both together or the request fails quietly.
 		onStream?: (chunk: string, seq: number) => void; // Called with each relayed piece of the response, in order, as raw text. Only meaningful with `stream: true`; its presence is what makes polling fetch the relayed pieces.
+		cref?: string; // Your own reference for this request (1 to 64 letters, digits, "_" or "-"), stored on it and handed back by every read.
 	}): Promise<any | {
 		id: string;
 		status: 'running' | 'pending';
@@ -1516,10 +1521,12 @@ export default class Skapi {
 	 * (request_text, response_text, response_complete_marker) instead of the
 	 * full request/response bodies, which stay on the server; `queue_exact`
 	 * restricts a queue listing to exactly the named queue (the queue lookup is
-	 * otherwise a prefix range, so queue "u1" would also match "u1-bg");
-	 * `queue_exclude` drops one queue's rows from the listing. Both queue
-	 * filters are applied server-side after the range read, so a page can come
-	 * back short while more matches remain - keep paging by startKey/endOfList.
+	 * otherwise a prefix range, so queue "u1" would also match "u1-bg"). The
+	 * server then reads only that queue's rows (qid "<queue>|<seq>"), so rows
+	 * queued before 2026-06-05, whose qid ends in ":<seq>", are not listed by it;
+	 * list those without `queue_exact`. `queue_exclude` drops one queue's rows
+	 * from the listing after the read, so a page can come back short while more
+	 * rows remain: keep paging by startKey/endOfList.
 	 * @param params Request parameters.
 	 * @param fetchOptions Pagination and fetch behavior options.
 	 * @returns A promise that resolves to a paginated list of request history items.
@@ -1533,8 +1540,13 @@ export default class Skapi {
 			queue?: string; // Optional queue name to filter results.
 			status?: 'pending' | 'running' | 'resolved' | 'failed'; // Optional status filter.
 			compact?: boolean; // Return label/marker stubs instead of full request/response bodies.
-			queue_exact?: boolean; // Match the named queue exactly (a bare queue lookup is a prefix range: "u1" also matches "u1-bg").
+			queue_exact?: boolean; // Match the named queue exactly (a bare queue lookup is a prefix range: "u1" also matches "u1-bg"). Rows queued before 2026-06-05 (qid ending ":<seq>") are not listed with it.
 			queue_exclude?: string; // Drop this queue's rows from the listing.
+			fields?: 'ids'; // A light listing: each row is only its id, status, times, queue and cref, no bodies.
+			after?: string; // Only rows newer than this request id ("stamp:entropy").
+			deadline?: number; // Milliseconds the listing may take in all; past it, it fails with code TIMEOUT.
+			fresh?: boolean; // Do not join an identical listing already in flight.
+			signal?: AbortSignal; // Aborting fails the listing with code ABORTED.
 		},
 		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<RequestHistory[]>> {
@@ -1609,8 +1621,9 @@ export default class Skapi {
 			method?: 'GET' | 'POST' | 'DELETE' | 'PUT';
 			service?: string;
 			owner?: string;
+			ifAbsent?: boolean; // Store only when no result is stored yet; otherwise { finalized: false, reason: "exists" }.
 		},
-	): Promise<{ finalized: boolean; message: string }> {
+	): Promise<{ finalized: boolean; message: string; reason?: string }> {
 		return clientSecretRequestFinalize.bind(this)(requestId, data, options);
 	}
 
@@ -1733,10 +1746,12 @@ export default class Skapi {
 	 * (request_text, response_text, response_complete_marker) instead of the
 	 * full request/response bodies, which stay on the server; `queue_exact`
 	 * restricts a queue listing to exactly the named queue (the queue lookup is
-	 * otherwise a prefix range, so queue "u1" would also match "u1-bg");
-	 * `queue_exclude` drops one queue's rows from the listing. Both queue
-	 * filters are applied server-side after the range read, so a page can come
-	 * back short while more matches remain - keep paging by startKey/endOfList.
+	 * otherwise a prefix range, so queue "u1" would also match "u1-bg"). The
+	 * server then reads only that queue's rows (qid "<queue>|<seq>"), so rows
+	 * queued before 2026-06-05, whose qid ends in ":<seq>", are not listed by it;
+	 * list those without `queue_exact`. `queue_exclude` drops one queue's rows
+	 * from the listing after the read, so a page can come back short while more
+	 * rows remain: keep paging by startKey/endOfList.
 	 *
 	 * The same function as the deprecated clientSecretRequestHistory, so a request
 	 * sent under either name is listed here.
@@ -1752,8 +1767,13 @@ export default class Skapi {
 			queue?: string; // Optional queue name to filter results.
 			status?: 'pending' | 'running' | 'resolved' | 'failed'; // Optional status filter.
 			compact?: boolean; // Return label/marker stubs instead of full request/response bodies.
-			queue_exact?: boolean; // Match the named queue exactly (a bare queue lookup is a prefix range: "u1" also matches "u1-bg").
+			queue_exact?: boolean; // Match the named queue exactly (a bare queue lookup is a prefix range: "u1" also matches "u1-bg"). Rows queued before 2026-06-05 (qid ending ":<seq>") are not listed with it.
 			queue_exclude?: string; // Drop this queue's rows from the listing.
+			fields?: 'ids'; // A light listing: each row is only its id, status, times, queue and cref, no bodies.
+			after?: string; // Only rows newer than this request id ("stamp:entropy").
+			deadline?: number; // Milliseconds the listing may take in all; past it, it fails with code TIMEOUT.
+			fresh?: boolean; // Do not join an identical listing already in flight.
+			signal?: AbortSignal; // Aborting fails the listing with code ABORTED.
 		},
 		fetchOptions?: FetchOptions,
 	): Promise<DatabaseResponse<RequestHistory[]>> {
@@ -1823,9 +1843,85 @@ export default class Skapi {
 			method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 			service?: string;
 			owner?: string;
+			ifAbsent?: boolean; // Store only when no result is stored yet; otherwise { finalized: false, reason: "exists" }, so two tabs cannot replace a complete answer with a partial one.
 		},
-	): Promise<{ finalized: boolean; message: string }> {
+	): Promise<{ finalized: boolean; message: string; reason?: string }> {
 		return forwardRequestFinalize.bind(this)(requestId, data, options);
+	}
+
+	/**
+	 * Reads where many forwarded requests stand in one call per 100: status
+	 * ("pending", "running", "resolved", "failed", "cancelled", or "missing" for one this
+	 * caller cannot see), stream position (`last_seq`, `final_seq`), whether a result is
+	 * stored (`has_body`), timestamps and `cref`. No bodies. Strongly consistent.
+	 *
+	 * Made for showing many unfinished requests correctly after the page was away (sleep,
+	 * another tab): one call says what happened to all of them.
+	 *
+	 * ```js
+	 * const { list } = await skapi.forwardRequestStatus(
+	 *     [{ id: 'stamp:entropy', url: 'https://api.example.com/v1/chat', method: 'POST' }],
+	 *     { deadline: 15000 }
+	 * );
+	 * ```
+	 * @param requests Full request ids, or `{ id, url, method }` with the short id.
+	 * @param opts `deadline` (milliseconds per call, then TIMEOUT), `fresh` (default true), `signal`, `service`, `owner`.
+	 * @returns `{ list }` in the order asked.
+	 */
+	forwardRequestStatus(
+		requests: (string | { id: string; url?: string; method?: string })[],
+		opts?: {
+			service?: string;
+			owner?: string;
+			deadline?: number;
+			fresh?: boolean;
+			signal?: AbortSignal;
+		},
+	): Promise<{ list: ForwardRequestStatus[]; [key: string]: any }> {
+		return forwardRequestStatus.bind(this)(requests, opts);
+	}
+
+	/**
+	 * The counters of up to 20 queues, `{ queues: { [name]: { cnt, rct, seq, in_queue } } }`.
+	 * `rct` grows when a request on the queue finishes and `seq` when one is added: read these
+	 * on every tick and the requests themselves (forwardRequestStatus) only when one moved.
+	 * @param queues Queue names.
+	 * @param opts `deadline`, `fresh` (default true), `signal`, `service`, `owner`.
+	 */
+	forwardRequestQueueCounters(
+		queues: string[],
+		opts?: { service?: string; owner?: string; deadline?: number; fresh?: boolean; signal?: AbortSignal },
+	): Promise<{ queues: { [name: string]: { cnt: number; rct: number; seq: number; in_queue: number } } }> {
+		return forwardRequestQueueCounters.bind(this)(queues, opts);
+	}
+
+	/**
+	 * Reads one forwarded request in full, always as `{ id, status, body?, error?,
+	 * chunks?, last_seq?, final_seq?, more?, ... }`: a resolved request does not come back
+	 * as its bare body, so the status is always there to read. With `since` (a chunk
+	 * sequence, 0 for the beginning) a streamed request's text after that point comes back
+	 * too, including the text a failed stream got before it failed.
+	 *
+	 * ```js
+	 * const res = await skapi.forwardRequestRead({
+	 *     id: 'stamp:entropy', url: 'https://api.example.com/v1/chat', method: 'POST', since: 0
+	 * });
+	 * ```
+	 * @param params The request (`id` with `url` and `method`, or a full id), `since`, and `deadline` / `fresh` / `signal`.
+	 * @returns The request's envelope.
+	 */
+	forwardRequestRead(params: {
+		id: string;
+		url?: string;
+		method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
+		since?: number;
+		service?: string;
+		owner?: string;
+		deadline?: number;
+		fresh?: boolean;
+		signal?: AbortSignal;
+	}): Promise<ForwardRequestEnvelope> {
+		return forwardRequestRead.bind(this)(params);
 	}
 
 	/**
@@ -2372,6 +2468,7 @@ export default class Skapi {
 			onError?: (err: any) => void; // Called when polling or the initial request fails.
 			responseType?: 'json' | 'text' | 'response'; // How to resolve with the destination's answer. A skapi status object is handed back untouched.
 			signal?: AbortSignal; // Aborting stops THIS CLIENT polling. The queued request is not cancelled; cancelForwardRequest removes it.
+			cref?: string; // Your own reference for this request, 1 to 64 letters, digits, "_" or "-". Stored on it and handed back by the reply and every read, so a send whose reply was lost can be found instead of sent again.
 		},
 	): Promise<any> {
 		return forwardRequest.bind(this)(form, options);

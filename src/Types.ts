@@ -821,6 +821,7 @@ export type RequestHistory = {
     expires?: number; // timestamp of when the request history will be deleted in epoch time (seconds).
     status: 'pending' | 'running' | 'resolved' | 'failed';
     queue_name?: string; // queue name if the request is in queue, empty string if the request is not in queue.
+    cref?: string; // the "cref" the request was sent with (forwardRequest option), when it was given one.
     // Compact-listing stubs. Present ONLY when the history was fetched with `compact: true`,
     // in which case request_body/response_body are omitted (the full bodies never leave the
     // server); re-fetch without `compact`, or poll the item, when a full body is needed.
@@ -835,6 +836,53 @@ export type RequestHistory = {
         onStream?: (chunk: string, seq: number)=>void;
     }) => Promise<any>; // function to poll the request status until it settles. The promise resolves with the final result of the request: the third-party API response body when it resolves, or the error payload when it fails. It does not resolve with a RequestHistory item, so "created" and "updated" are not on the polled value. A poll stopped by stopForwardRequestPolling() (or its deprecated alias stopClientSecretPolling()) resolves with { id, status: 'stopped' }. Optional argument "latency" can be used to set the latency of the polling in milliseconds: 1000 or more (a shorter one is refused with INVALID_PARAMETER). Default latency is 1000ms.
 }
+
+/** One request as forwardRequestStatus reports it. */
+export type ForwardRequestStatus = {
+    /** The request id, "stamp:entropy". */
+    id: string;
+    /** "missing": there is no such request for this caller (never sent, expired, deleted,
+     *  or sent by someone else). */
+    status: 'pending' | 'running' | 'resolved' | 'failed' | 'cancelled' | 'missing';
+    queue?: string;
+    /** The request was sent with `stream: true`. */
+    stream?: boolean;
+    /** The last chunk's sequence, written when a streamed request settles. A reader is
+     *  done once its cursor reaches it. (How far a running stream has got is in
+     *  forwardRequestRead's `last_seq`.) */
+    final_seq?: number;
+    /** A stored result exists (read it with forwardRequestRead). */
+    has_body?: boolean;
+    created?: number;
+    updated?: number;
+    executed?: number;
+    responded?: number;
+    cref?: string;
+};
+
+/** A forwarded request as forwardRequestRead hands it back. */
+export type ForwardRequestEnvelope = {
+    id: string;
+    status: 'pending' | 'running' | 'resolved' | 'failed' | 'cancelled' | 'missing';
+    /** The stored result: the destination's answer, or what forwardRequestFinalize kept. */
+    body?: any;
+    /** Why it failed. */
+    error?: any;
+    /** A result is stored but could not be loaded this time; read again later. */
+    body_unavailable?: boolean;
+    stream?: boolean;
+    /** Streamed text after `since`, oldest first, when `since` was given. */
+    chunks?: { seq: number; txt: string }[];
+    last_seq?: number;
+    final_seq?: number;
+    /** More chunks are stored than this read returned: read again from the new cursor. */
+    more?: boolean;
+    created?: number;
+    updated?: number;
+    executed?: number;
+    responded?: number;
+    cref?: string;
+};
 
 export type DatabaseResponse<T> = {
     list: T[];

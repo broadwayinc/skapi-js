@@ -309,7 +309,17 @@ const tokenRefreshInFlight = new WeakMap<object, Promise<any>>();
 // refresh still running when the user logged out cannot sign them back in.
 const sessionEpoch = new WeakMap<object, number>();
 
-export async function getJwtToken() {
+// How long a request waits for a token refresh (2.7.0). The refresh is a plain fetch to the
+// sign-in service, and a connection that stalls after a sleep instead of failing never
+// settles: every request of the page then waited on it, outside any request timeout. Past
+// this the waiting request fails with code TIMEOUT, the user stays signed in, and the next
+// request starts a new refresh.
+const TOKEN_REFRESH_TIME_LIMIT_MS = 15 * 1000;
+
+export async function getJwtToken(options?: {
+    /** Refresh now even when the token is not near its end (the server refused it). */
+    force?: boolean;
+}) {
     await this.__connection;
     // if (this.bearerToken) {
     //     return this.bearerToken;
@@ -319,16 +329,39 @@ export async function getJwtToken() {
         const idToken = this.session.getIdToken();
         const idTokenExp = idToken.getExpiration();
 
-        if (idTokenExp < currentTime + TOKEN_REFRESH_SKEW_SECONDS) {
+        if (options?.force || idTokenExp < currentTime + TOKEN_REFRESH_SKEW_SECONDS) {
             this.log('request:requesting new token', null);
             try {
                 let refreshing = tokenRefreshInFlight.get(this);
                 if (!refreshing) {
-                    refreshing = authentication.bind(this)().getSession({ refreshToken: true })
-                        .finally(() => tokenRefreshInFlight.delete(this));
+                    let own: Promise<any> = authentication.bind(this)().getSession({ refreshToken: true })
+                        .finally(() => {
+                            // Only its own entry: a refresh that ran past the time limit was
+                            // replaced by a newer one, which must stay shared.
+                            if (tokenRefreshInFlight.get(this) === own) tokenRefreshInFlight.delete(this);
+                        });
+                    // Settled later with nobody waiting (past the limit): not an unhandled rejection.
+                    own.catch(() => { });
+                    refreshing = own;
                     tokenRefreshInFlight.set(this, refreshing);
                 }
-                await refreshing;
+                let shared = refreshing;
+                let timer: ReturnType<typeof setTimeout> | null = null;
+                try {
+                    await Promise.race([
+                        shared,
+                        new Promise((_, rej) => {
+                            timer = setTimeout(() => {
+                                // Stops sharing the stalled refresh, so the next request tries again.
+                                if (tokenRefreshInFlight.get(this) === shared) tokenRefreshInFlight.delete(this);
+                                rej(new SkapiError(`The sign-in token refresh did not answer within ${TOKEN_REFRESH_TIME_LIMIT_MS / 1000} seconds.`, { code: 'TIMEOUT' }));
+                            }, TOKEN_REFRESH_TIME_LIMIT_MS);
+                        }),
+                    ]);
+                }
+                finally {
+                    if (timer) clearTimeout(timer);
+                }
                 this.log('request:received new tokens', {
                     exp: this.session?.idToken?.payload?.exp,
                     currentTime,
@@ -339,7 +372,7 @@ export async function getJwtToken() {
             }
             catch (err) {
                 this.log('request:new token error', err);
-                if (err?.code === 'NETWORK_ERROR') {
+                if (err?.code === 'NETWORK_ERROR' || err?.code === 'TIMEOUT') {
                     throw err; // the user is still signed in; this request fails for lack of network, as any request would
                 }
                 throw new SkapiError('User login is required.', { code: 'INVALID_REQUEST' });

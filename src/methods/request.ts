@@ -4,11 +4,14 @@ import {
 	ProgressCallback,
 	DatabaseResponse,
 	RequestHistory,
+	ForwardRequestStatus,
+	ForwardRequestEnvelope,
 } from '../Types';
 import SkapiError from '../main/error';
 import validator from '../utils/validator';
-import { request } from '../utils/network';
+import { request, createRequestAbort, isTokenFailure } from '../utils/network';
 import { extractFormData, generateRandom } from '../utils/utils';
+import { getJwtToken } from './user';
 // The realtime accelerator below rides the SDK's own websocket rather than opening a
 // second one: it is the same shared, app-wide connection connectRealtime hands the
 // application, which is exactly why this file borrows it instead of owning it.
@@ -21,6 +24,7 @@ import {
 	noteStatusPushAck,
 	statusPushWarm,
 	STATUS_PUSH_IDLE_POLL_MS,
+	shortRequestId,
 } from './request_status';
 import Qpass from "qpass";
 
@@ -32,8 +36,142 @@ let queuePromiseList: {
 } = {};
 
 /**
+ * The client queue polls of one server queue wait in: one poll ticks at a time, because the
+ * server runs that queue one request at a time and only the one it is running can change.
+ *
+ * Its own small runner rather than a Qpass (2.7.0), for the ORDER: the server runs a queue
+ * oldest first, so the waiting polls are kept oldest first too (by the request id's stamp,
+ * which sorts by time), and the first one starts on a microtask so polls attached in one go
+ * (a history page lists newest first) start with the oldest. With Qpass the first poll added
+ * took the slot, and a page attached newest first had its newest request at the head: the
+ * server runs that one last, so every older poll behind it waited for nothing.
+ */
+class PollLane {
+	private waiting: PollLaneJob[] = [];
+	private current: PollLaneJob | null = null;
+	private scheduled = false;
+	private nextId = 1;
+
+	/**
+	 * Adds a job. `order` sorts the waiting jobs (equal keys keep their add order).
+	 * `preempt` is how the job, once running, is asked to give its turn back: a job added
+	 * ahead of the running one (an older request) calls it, and the running poll yields at
+	 * its next tick boundary, adding itself back by its order (see pollClientSecretResponse).
+	 */
+	add(order: string, run: () => Promise<any>, preempt?: () => void): string {
+		let id = String(this.nextId++);
+		let at = this.waiting.findIndex((j) => j.order > order);
+		let job = { id, order, run, preempt };
+		if (at === -1) this.waiting.push(job);
+		else this.waiting.splice(at, 0, job);
+		// The server runs the older request first, so the newer one running here can only
+		// read "pending" until that one is done.
+		if (this.current && order < this.current.order && this.current.preempt) {
+			try { this.current.preempt(); } catch (e) { }
+		}
+		if (!this.current && !this.scheduled) {
+			this.scheduled = true;
+			Promise.resolve().then(() => {
+				this.scheduled = false;
+				this.pump();
+			});
+		}
+		return id;
+	}
+
+	/** Drops a job that has not started. False when it is not waiting (started or gone). */
+	remove(id: string): boolean {
+		let at = this.waiting.findIndex((j) => j.id === id);
+		if (at === -1) return false;
+		this.waiting.splice(at, 1);
+		return true;
+	}
+
+	private pump() {
+		if (this.current) return;
+		let job = this.waiting.shift();
+		if (!job) return;
+		this.current = job;
+		Promise.resolve()
+			.then(job.run)
+			.catch(() => { })
+			.then(() => {
+				this.current = null;
+				this.pump();
+			});
+	}
+}
+
+type PollLaneJob = { id: string; order: string; run: () => Promise<any>; preempt?: () => void };
+
+let pollLanes: { [queue: string]: PollLane } = {};
+
+/**
+ * Codes of a request that failed on the way, not because the server said no: no network,
+ * no answer in time, rate limited, a server fault, or a request aborted on its way out. A
+ * poll keeps going through these (2.7.0); only the server's own answer ends it.
+ */
+const TRANSPORT_FAILURE_CODES = ['NETWORK_ERROR', 'TIMEOUT', 'RATE_LIMITED', 'TOO_MANY_REQUESTS', 'SERVER_ERROR', 'ABORTED'];
+
+function isTransportFailure(err: any): boolean {
+	if (isTokenFailure(err)) return true;
+	let code = err && typeof err === 'object' ? String((err as any).code ?? '') : '';
+	return TRANSPORT_FAILURE_CODES.includes(code);
+}
+
+/** The gateway refused the sign-in token (401). */
+function isUnauthorized(err: any): boolean {
+	return !!err && typeof err === 'object' && String((err as any).code ?? '') === '401';
+}
+
+/**
+ * Milliseconds on a clock that never goes back, for the poll's throttles and backoff:
+ * performance.now() where the runtime has it, else Date.now(). The wall clock can jump back
+ * (a time sync, the user setting the clock), and a throttle measured on it would skip every
+ * tick until the clock caught up again.
+ */
+function monoNow(): number {
+	if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') {
+		return performance.now();
+	}
+	return Date.now();
+}
+
+/**
+ * True while less than `ms` has passed since `at` (a monoNow() stamp, null for never). A
+ * negative difference (the Date.now() fallback after the clock went back) counts as long
+ * ago, so the caller does what it would do when the time is up.
+ */
+function within(at: number | null, ms: number): boolean {
+	if (at === null) return false;
+	let passed = monoNow() - at;
+	return passed >= 0 && passed < ms;
+}
+
+/** Longest wait between two tries of a poll whose reads keep failing on the way. */
+const POLL_RETRY_MAX_MS = 30 * 1000;
+
+/** How long a poll waits after `failures` reads in a row failed on the way: the next tick
+ *  after the first, then twice the interval each time, up to POLL_RETRY_MAX_MS. */
+function pollRetryDelay(latency: number, failures: number): number {
+	if (failures <= 1) return 0;
+	return Math.min(POLL_RETRY_MAX_MS, latency * Math.pow(2, failures - 1));
+}
+
+/** Stops a registered reader of a request, queued or running. */
+function stopRegisteredReader(id: string) {
+	let entry = activePolls[id];
+	if (!entry) return;
+	if (entry.stop) entry.stop();
+	else {
+		entry.aborted = true;
+	}
+	if (activePolls[id] === entry) delete activePolls[id];
+}
+
+/**
  * The client-queue job of each poll still WAITING for its turn, keyed by the full
- * request id. The queue is kept beside the job id because Qpass numbers jobs per
+ * request id. The queue is kept beside the job id because a lane numbers jobs per
  * instance: the same id names an unrelated job in every other queue, so a removal
  * must go to the queue the job was actually added to. `stop` is that poll's own
  * queued stopper, which removes the job from that queue AND settles the poll, so a
@@ -48,7 +186,7 @@ let queueJobId: {
  * Live polls, keyed by the full request id, so a caller can stop one it already
  * started. Without this the setInterval below is unreachable from outside: it is a
  * closure local and is only ever cleared when the request settles, so a request that
- * never settles polls forever — and because polls run through Qpass with batchSize 1,
+ * never settles polls forever, and because polls of one queue run one at a time
  * it also blocks every poll queued behind it on the same queue.
  */
 let activePolls: {
@@ -290,7 +428,7 @@ function createStreamSink(
 	let held: Map<number, { txt: string; via: 'socket' | 'poll' }> = new Map();
 	let ready = false;
 	let closed = false;
-	let lastSocketAt = 0;
+	let lastSocketAt: number | null = null;
 	// Set by the room's stream-end frame. From then on the socket is never "warm": no
 	// more chunks are coming over it, so there is nothing left to throttle the poll for.
 	// Only the FIRST end frame wakes the reader. The stream ends once, and anyone holding
@@ -397,7 +535,7 @@ function createStreamSink(
 		// Stamped even for a chunk that turns out to be a duplicate: this is only ever
 		// asked "is the socket alive", and a duplicate proves it just as well as new
 		// text does.
-		lastSocketAt = Date.now();
+		lastSocketAt = monoNow();
 		if (seq <= cursor.seq) return;
 		if (!held.has(seq) && held.size >= REALTIME_HOLD_MAX) return;
 		if (!held.has(seq)) {
@@ -425,7 +563,7 @@ function createStreamSink(
 		},
 		fromPoll,
 		fromSocket,
-		warm: () => !ended && lastSocketAt !== 0 && Date.now() - lastSocketAt < REALTIME_SILENCE_MS,
+		warm: () => !ended && within(lastSocketAt, REALTIME_SILENCE_MS),
 		fromSocketEnd: () => {
 			if (closed || ended) return;
 			ended = true;
@@ -848,8 +986,21 @@ function booleanFlag(name: string) {
 const FORWARDED_OPTIONS = [
 	'secretName', 'headers', 'data', 'params', 'skapiHeaders',
 	'service', 'owner', 'queue', 'expires', 'stream', 'realtime', 'notify', 'poll',
-	'onStream', 'onResponse', 'onError',
+	'onStream', 'onResponse', 'onError', 'cref',
 ] as const;
+
+/**
+ * Checks a client reference (`cref`): 1 to 64 letters, digits, "_" or "-", the rule the
+ * server stores it under. Refused here so a bad one fails before anything is sent.
+ */
+function clientReference(v: any) {
+	if (typeof v !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(v)) {
+		throw new SkapiError('"cref" should be 1 to 64 characters of letters, digits, "_" or "-".', {
+			code: 'INVALID_PARAMETER',
+		});
+	}
+	return v;
+}
 
 /**
  * Composes the id csr-poll and csr-finalize address a single request by:
@@ -894,6 +1045,39 @@ function composeRequestId(
 	// Same casing rules as the dispatch path: the row id was built from an uppercased
 	// method and a lowercased url, so anything else composes a key that misses.
 	return requestKey(method, url, service, requestId);
+}
+
+/**
+ * The request() options a caller may pass to a read: `deadline` (milliseconds in all, then
+ * TIMEOUT), `fresh` (do not join an identical read in flight) and `signal` (abort). Taken
+ * off the caller's object before validation, which keeps only its own keys and cannot copy
+ * a signal. `freshByDefault` is for the reads made to show the server's state now.
+ */
+function readTransportOptions(
+	opts: any,
+	freshByDefault = false,
+): { deadline?: number; fresh?: boolean; signal?: any } {
+	let out: { deadline?: number; fresh?: boolean; signal?: any } = {};
+	if (opts?.deadline !== undefined && opts.deadline !== null) {
+		if (typeof opts.deadline !== 'number' || !Number.isFinite(opts.deadline) || opts.deadline <= 0) {
+			throw new SkapiError('"deadline" should be a number of milliseconds above 0.', {
+				code: 'INVALID_PARAMETER',
+			});
+		}
+		out.deadline = opts.deadline;
+	}
+	if (opts?.fresh !== undefined && opts.fresh !== null && typeof opts.fresh !== 'boolean') {
+		throw new SkapiError('"fresh" should be type: <boolean>.', { code: 'INVALID_PARAMETER' });
+	}
+	let fresh = typeof opts?.fresh === 'boolean' ? opts.fresh : freshByDefault;
+	if (fresh) out.fresh = true;
+	if (opts?.signal) {
+		if (typeof opts.signal !== 'object' || typeof opts.signal.addEventListener !== 'function') {
+			throw new SkapiError('"signal" should be an AbortSignal.', { code: 'INVALID_PARAMETER' });
+		}
+		out.signal = opts.signal;
+	}
+	return out;
 }
 
 /**
@@ -967,19 +1151,19 @@ function pollClientSecretResponse(
 ):any | void {
 	assertPollInterval(latency, 'latency');
 
-	if (queue && !queuePromiseList?.[queue]) {
-		queuePromiseList[queue] = new Qpass({
-			breakWhenError: false,
-			batchSize: 1,
-			// One job at a time, so rolling and cycle mode behave the same here; set for
-			// one rule across skapi-js (see network.ts).
-			rolling: true
-		});
+	if (queue && !pollLanes[queue]) {
+		pollLanes[queue] = new PollLane();
 	}
 
+	// One poll per request (2.7.0): a new reader of this id replaces the one already
+	// running or waiting, which is stopped (resolving { status: 'stopped' }) and its read
+	// in flight aborted. Two readers of one request only ever doubled the reads, and a
+	// re-attach after a return would otherwise pile a new poll on every old one.
+	stopRegisteredReader(id);
+
 	// One registry entry per poll invocation. `stop` is filled in as soon as there is
-	// something to stop; a stop that arrives while the job is still WAITING in the Qpass
-	// queue sets `aborted` instead, which the job checks when it eventually starts.
+	// something to stop; a stop that arrives while the job is still WAITING in its lane
+	// sets `aborted` instead, which the job checks when it eventually starts.
 	let entry: { stop: (() => void) | null; aborted: boolean; queue?: string; queued?: boolean } = {
 		stop: null,
 		aborted: false,
@@ -991,11 +1175,43 @@ function pollClientSecretResponse(
 	// on a queued poll would leave this reader holding the connection's room, and the
 	// next streamed request would find the room taken and quietly read at poll speed.
 	let liveTeardown: (() => void) | null = null;
+	// Aborts the read in flight, if any. Set by prom() for each tick, so a stop never
+	// leaves a request of a stopped poll holding a connection or a queue slot.
+	let abortInflight: (() => void) | null = null;
+	// Set by prom() while it runs: reads the row now (a status frame named this request).
+	let wakeRunning: (() => void) | null = null;
+	// Set by the lane code below while the poll waits in its lane: takes it out of the lane
+	// and runs it now (see promote).
+	let promote: (() => void) | null = null;
+	// Status push is held, and frames naming this request are listened to, for the poll's
+	// whole life, waiting in its lane included (2.7.0). A frame names a request whose status
+	// just changed, which a request waiting behind another in the server's queue does not
+	// do: the server is running it or is done with it, so a poll still waiting in its lane
+	// is taken out of the lane and reads the row at once. Before, the waker was added only
+	// once the poll got its turn, and a frame for a waiting poll was lost.
+	let unholdStatus: (() => void) | null = notify ? holdStatusPush(this) : null;
+	let unwakeStatus: (() => void) | null = notify
+		? addStatusWaker(id, () => {
+			if (entry.queued) {
+				if (promote) promote();
+			}
+			else if (wakeRunning) wakeRunning();
+		})
+		: null;
 	let release = () => {
 		if (activePolls[id] === entry) delete activePolls[id];
+		if (unwakeStatus) { unwakeStatus(); unwakeStatus = null; }
+		if (unholdStatus) { unholdStatus(); unholdStatus = null; }
 	};
+	// Lane turns (set by the lane code below, unused without a queue). A poll running in
+	// its lane can be asked to give its turn back (an older request's poll was added ahead
+	// of it): it stops ticking at its next tick boundary, keeps all it has read, and calls
+	// yieldTurn, which adds it back to the lane by its order. resumeRun starts it again.
+	let yieldTurn: (() => void) | null = null;
+	let requestPause: (() => void) | null = null;
+	let resumeRun: ((readNow: boolean) => void) | null = null;
 
-	let prom = () => new Promise<any>((resolve, reject) => {
+	let prom = (readNow?: boolean) => new Promise<any>((resolve, reject) => {
 		let settled = false;
 		// Its turn has come: from here a stop goes through the poll's own stopper below.
 		entry.queued = false;
@@ -1016,20 +1232,28 @@ function pollClientSecretResponse(
 		// faster, and opening a websocket to throw its messages away would cost the
 		// application a connection it never asked for. The sink owns the cursor above
 		// from here on, so the two transports share one idea of what has been rendered.
-		let { sink, end: endLiveDelivery } = startLiveDelivery.call(this, id, cursor, onStream, realtimeGroup);
-		// The status push listener is held while this poll runs, and a frame naming this
-		// request reads it now. Both are undone wherever the live delivery is.
-		let unholdStatus: (() => void) | null = notify ? holdStatusPush(this) : null;
-		let unwakeStatus: (() => void) | null = null;
+		// Started in startTicking below, and again on a resume after a yield: a poll that
+		// gave its lane turn back lets go of the socket's room meanwhile, since its request
+		// waits behind another and streams nothing, and the poll that runs may need the room.
+		let sink: StreamSink | null = null;
+		let endLiveDelivery: (() => void) | null = null;
 		let endRealtime = () => {
-			endLiveDelivery();
-			if (unwakeStatus) { unwakeStatus(); unwakeStatus = null; }
-			if (unholdStatus) { unholdStatus(); unholdStatus = null; }
+			if (endLiveDelivery) {
+				let end = endLiveDelivery;
+				endLiveDelivery = null;
+				end();
+			}
+			sink = null;
 		};
-		liveTeardown = endRealtime;
-		// When the last poll actually went out, so a warm socket can throttle the poll
-		// to a heartbeat without touching the interval that drives it.
-		let lastPollAt = 0;
+		liveTeardown = () => {
+			if (abortInflight) abortInflight();
+			endRealtime();
+		};
+		// When the last poll actually went out (monoNow), so a warm socket can throttle the
+		// poll to a heartbeat without touching the interval that drives it. Null until the
+		// first read: monoNow() counts from page load, so a 0 here would throttle the first
+		// read of a poll started in the first seconds of the page.
+		let lastPollAt: number | null = null;
 		// setInterval fires on a clock, not on completion, so a tick can start while the
 		// previous one is still in flight (a slow poll, or the drain loop below). Two
 		// overlapping polls would read from the same cursor and race to advance it, so a
@@ -1048,18 +1272,52 @@ function pollClientSecretResponse(
 		// The room said the stream ended while a tick was in flight: run one more as
 		// soon as it finishes, rather than waiting for the next interval.
 		let wakeAfterTick = false;
+		// The lane asked for the turn back while a tick was in flight: yield once it ends.
+		let pauseWanted = false;
+		// The interval that drives the ticks. Null before the poll starts ticking, while it
+		// is paused, and once it settled.
+		let interval: ReturnType<typeof setInterval> | null = null;
+		let stopInterval = () => {
+			if (interval !== null) {
+				clearInterval(interval);
+				interval = null;
+			}
+		};
 
-		let tick = async () => {
+		// Reads in a row that failed on the way (no network, timeout, 429, 5xx, no token).
+		// They never end the poll: it tries again on a later tick, waiting longer each time
+		// up to POLL_RETRY_MAX_MS, and only the server's answer settles it.
+		let failures = 0;
+		// When the last of them failed (monoNow) and how long to wait after it.
+		let failedAt: number | null = null;
+		let retryDelay = 0;
+		// One forced token refresh per run of 401s, then the poll carries on.
+		let refreshTried = false;
+		let noteFailure = () => {
+			failures += 1;
+			failedAt = monoNow();
+			retryDelay = pollRetryDelay(latency, failures);
+		};
+
+		let tick = async (woken?: boolean) => {
 			if (settled || ticking) return;
+			// Waiting out a failure. A wake (a status frame, the stream's end) reads at
+			// once: it says the server can be reached and has something new.
+			if (!woken && failures && within(failedAt, retryDelay)) return;
 			// The socket is delivering, so this tick is skipped unless the last read was
 			// long enough ago to be a heartbeat. The poll is never STOPPED (see
 			// REALTIME_IDLE_POLL_MS): it is what fills a gap the socket dropped, and it
 			// is the only reader of the row's status, so the request could not settle
 			// without it.
-			if (sink && sink.warm() && Date.now() - lastPollAt < REALTIME_IDLE_POLL_MS) return;
+			if (sink && sink.warm() && within(lastPollAt, REALTIME_IDLE_POLL_MS)) return;
 			// Status frames are arriving, so this request is read when one names it and
 			// otherwise only as a heartbeat. Never stopped, for the same reasons as above.
-			if (notify && statusPushWarm() && Date.now() - lastPollAt < STATUS_PUSH_IDLE_POLL_MS) return;
+			if (notify && statusPushWarm() && within(lastPollAt, STATUS_PUSH_IDLE_POLL_MS)) return;
+			// Signed out (logged out, or the refresh was refused): nothing to read with, and
+			// asking for a token now would sign out again on every tick. Waits for a sign in,
+			// then reads on the next tick. Not counted as a failure: a check that sends
+			// nothing costs nothing, and backing off would delay the first read after it.
+			if (auth && !this.session) return;
 			ticking = true;
 			try {
 				for (; ;) {
@@ -1072,11 +1330,25 @@ function pollClientSecretResponse(
 						payload.since = cursor.seq;
 					}
 
-					lastPollAt = Date.now();
-					let result = await request.bind(this)('csr-poll', payload, { auth });
+					lastPollAt = monoNow();
+					// Fresh: never joins another read of the row, so stopping this poll
+					// (which aborts it) touches nobody else, and a read never waits on one
+					// sent before a sleep.
+					let inflight = createRequestAbort();
+					abortInflight = inflight.abort;
+					let result: any;
+					try {
+						result = await request.bind(this)('csr-poll', payload, { auth, fresh: true, signal: inflight.signal });
+					}
+					finally {
+						if (abortInflight === inflight.abort) abortInflight = null;
+					}
 
 					// The poll may have been stopped while this request was in flight.
 					if (settled) return;
+					// The server answered.
+					failures = 0;
+					refreshTried = false;
 
 					// Chunks and `more` belong to skapi's status envelope. A resolved read is
 					// the destination's own body, and a `chunks` or `more` key in THAT is
@@ -1158,7 +1430,7 @@ function pollClientSecretResponse(
 					// Called in this same turn, so it still runs before anything awaiting
 					// the promise does.
 					settled = true;
-					clearInterval(interval);
+					stopInterval();
 					endRealtime();
 					release();
 					resolve(result);
@@ -1176,8 +1448,25 @@ function pollClientSecretResponse(
 				}
 			} catch (e) {
 				if (settled) return;
+				if (isUnauthorized(e)) {
+					// The gateway refused the token: refresh it once (time limited), then
+					// carry on. A token that still fails just waits like any failure.
+					noteFailure();
+					if (!refreshTried) {
+						refreshTried = true;
+						try {
+							await getJwtToken.call(this, { force: true });
+						} catch (err) { }
+					}
+					return;
+				}
+				if (isTransportFailure(e)) {
+					noteFailure();
+					return;
+				}
+				// The server's own answer (NOT_EXISTS included): the poll ends with it.
 				settled = true;
-				clearInterval(interval);
+				stopInterval();
 				endRealtime();
 				release();
 				reject(e);
@@ -1191,51 +1480,85 @@ function pollClientSecretResponse(
 			} finally {
 				ticking = false;
 				if (wakeAfterTick && !settled) {
+					// A wake that came during the read goes first, even with a yield asked
+					// for: the frame may say this request is the one the server now runs.
 					wakeAfterTick = false;
-					tick();
+					tick(true);
 				}
+				else if (pauseWanted && !settled) pause();
 			}
 		};
 
-		let interval = setInterval(tick, latency);
-		if (notify) {
-			// A frame named this request: its status changed, so read the row now instead
-			// of at the next heartbeat. One tick at a time, as with the stream-end wake.
-			unwakeStatus = addStatusWaker(id, () => {
-				if (settled) return;
-				if (ticking) {
-					wakeAfterTick = true;
-					return;
-				}
-				tick();
-			});
-		}
-		if (sink) {
-			// The room said the stream is over, so the row has settled: read it now
-			// instead of after the warm-socket throttle. sink.warm() is false from here
-			// on, so this tick (and every later one) runs at the reader's own interval.
-			// If this read still finds the row running (a read racing the write), the
-			// interval simply carries on. One tick at a time, as always: a tick already
-			// in flight is followed by one more the moment it finishes.
-			sink.onEnd(() => {
-				if (settled) return;
-				if (ticking) {
-					wakeAfterTick = true;
-					return;
-				}
-				tick();
-			});
-			// Step 1 of the read contract: the history fetch starts AT THE SAME TIME as
-			// the socket is being opened, not one interval later. Without this the first
-			// chunk of a socket-accelerated turn would still wait out a full poll
-			// interval, since nothing may be rendered before history has been. `ticking`
-			// keeps this from overlapping the interval's own first tick.
-			tick();
-		}
+		// Reads now, or right after the read in flight. For a status frame naming this
+		// request and for the room's stream-end frame. Never while paused (no interval).
+		let wake = () => {
+			if (settled || interval === null) return;
+			if (ticking) {
+				wakeAfterTick = true;
+				return;
+			}
+			tick(true);
+		};
+		wakeRunning = wake;
+
+		// Starts the interval and the live delivery: when the poll gets its turn, and again
+		// when it resumes after a yield. `now` reads at once (the poll was taken out of its
+		// lane by a status frame naming it).
+		let startTicking = (now?: boolean) => {
+			let live = startLiveDelivery.call(this, id, cursor, onStream, realtimeGroup);
+			sink = live.sink;
+			endLiveDelivery = live.end;
+			interval = setInterval(() => tick(), latency);
+			if (sink) {
+				// The room said the stream is over, so the row has settled: read it now
+				// instead of after the warm-socket throttle. sink.warm() is false from here
+				// on, so this tick (and every later one) runs at the reader's own interval.
+				// If this read still finds the row running (a read racing the write), the
+				// interval simply carries on. One tick at a time, as always: a tick already
+				// in flight is followed by one more the moment it finishes.
+				sink.onEnd(wake);
+			}
+			if (sink || now) {
+				// Step 1 of the read contract: the history fetch starts AT THE SAME TIME as
+				// the socket is being opened, not one interval later. Without this the first
+				// chunk of a socket-accelerated turn would still wait out a full poll
+				// interval, since nothing may be rendered before history has been. `ticking`
+				// keeps this from overlapping the interval's own first tick.
+				tick(now ? true : undefined);
+			}
+		};
+
+		// Gives the lane turn back (see requestPause): no interval, no live delivery, and
+		// everything read so far (cursor, failures, execution start) kept for the resume.
+		let pause = () => {
+			pauseWanted = false;
+			if (settled || interval === null || !yieldTurn) return;
+			stopInterval();
+			endRealtime();
+			entry.queued = true;
+			resumeRun = (now: boolean) => {
+				resumeRun = null;
+				entry.queued = false;
+				if (!settled) startTicking(now);
+			};
+			yieldTurn();
+		};
+		requestPause = () => {
+			if (settled || interval === null) return;
+			// Never in the middle of a read: the tick in flight finishes first.
+			if (ticking) {
+				pauseWanted = true;
+				return;
+			}
+			pause();
+		};
+
+		startTicking(readNow);
 		entry.stop = () => {
 			if (settled) return;
 			settled = true;
-			clearInterval(interval);
+			stopInterval();
+			if (abortInflight) abortInflight();
 			endRealtime();
 			release();
 			// onResponse/onError are deliberately NOT called: a stop is not a result,
@@ -1246,9 +1569,9 @@ function pollClientSecretResponse(
 
 	// Exposed on the returned promise so a caller holding it can stop this exact poll
 	// without having to reconstruct the full request id.
-	// This poll's OWN entry, never a registry lookup by id: a second reader of the same
-	// request (another poll(), a forwardRequestStream re-attach) replaces the registry
-	// slot, and a lookup would stop that reader instead of this one. Both stoppers
+	// This poll's OWN entry, never a registry lookup by id: a later reader of the same
+	// request (another poll(), a forwardRequestStream re-attach) stops this one and takes
+	// the registry slot, and a lookup would stop that reader instead. Both stoppers
 	// ignore a poll that already settled.
 	let publicStop = () => {
 		if (entry.stop) entry.stop();
@@ -1259,46 +1582,103 @@ function pollClientSecretResponse(
 	};
 
 	if (queue) {
+		let lane = pollLanes[queue];
+		// Ordered by the request's stamp, so the oldest waiting poll goes first.
+		let order = shortRequestId(id);
 		let outer = new Promise<any>((resolve, reject) => {
 			let outerSettled = false;
-			let jobId = queuePromiseList[queue].add([async () => {
+			// This poll's job in the lane: the one waiting, or the one whose turn it holds.
+			let jobId: string;
+			let begun = false;
+			// Ends the lane turn this poll holds, if it holds one.
+			let turnDone: (() => void) | null = null;
+			let endTurn = () => {
+				if (!turnDone) return;
+				let d = turnDone;
+				turnDone = null;
+				d();
+			};
+			// This job's own entry only: queueJobId[id] belongs to whichever poll of the
+			// request was queued last.
+			let forgetJob = () => {
 				if (queueJobId[id]?.jobId === jobId && queueJobId[id].queue === queue) delete queueJobId[id];
-				try {
-					let result = await prom();
-					if (!outerSettled) {
-						outerSettled = true;
-						resolve(result);
-					}
-					return result;
-				} catch (e) {
-					if (!outerSettled) {
-						outerSettled = true;
-						reject(e);
-					}
-					throw e;
+			};
+			// Settled (an answer, an error or a stop): out of the lane for good, and the
+			// turn it holds, if any, goes to the next poll.
+			let leave = () => {
+				promote = null;
+				yieldTurn = null;
+				requestPause = null;
+				resumeRun = null;
+				lane.remove(jobId);
+				forgetJob();
+				endTurn();
+			};
+			// Starts the poll, or resumes it after a yield.
+			let go = (readNow: boolean) => {
+				forgetJob();
+				if (resumeRun) {
+					resumeRun(readNow);
+					return;
 				}
-			}])[0];
-			queueJobId[id] = { queue, jobId, stop: () => { if (entry.stop) entry.stop(); } };
-			// Qpass starts a job on a later microtask at the earliest, so this is set
-			// before prom() can clear it.
-			entry.queued = true;
-			// Stopping a job that has not started yet must ALSO drop it from the queue,
-			// or its batchSize-1 slot stays occupied and everything behind it stalls —
-			// and must settle this outer promise, or the caller awaits forever.
+				if (begun) return;
+				begun = true;
+				prom(readNow).then(
+					(result) => {
+						leave();
+						if (!outerSettled) {
+							outerSettled = true;
+							resolve(result);
+						}
+					},
+					(e) => {
+						leave();
+						if (!outerSettled) {
+							outerSettled = true;
+							reject(e);
+						}
+					},
+				);
+			};
+			let enqueue = () => {
+				jobId = lane.add(
+					order,
+					// The turn lasts until the poll settles or yields.
+					() => new Promise<void>((done) => {
+						turnDone = done;
+						go(false);
+					}),
+					() => { if (requestPause) requestPause(); },
+				);
+				queueJobId[id] = { queue, jobId, stop: () => { if (entry.stop) entry.stop(); } };
+				// The lane starts a job on a later microtask at the earliest, so this is set
+				// before prom() can clear it.
+				entry.queued = true;
+			};
+			// The running poll paused for an older request's poll: back in the lane by its
+			// order, and the turn goes to that older poll.
+			yieldTurn = () => {
+				enqueue();
+				endTurn();
+			};
+			// A status frame named this request while its poll waits in the lane: the
+			// server is running it or is done with it, so it leaves the lane and reads now.
+			// False from remove() means the lane has just started it.
+			promote = () => {
+				if (!lane.remove(jobId)) return;
+				go(true);
+			};
+			enqueue();
+			// Stopping a poll that has not started yet must ALSO drop it from the lane, or
+			// everything behind it stalls, and must settle this outer promise, or the caller
+			// awaits forever. Once the poll starts, its own stopper replaces this one.
 			entry.stop = () => {
 				if (outerSettled) return;
 				entry.aborted = true;
 				// Puts the websocket back if this job had already started. A job that
 				// never started has no relay to stop, and this is a no-op.
 				if (liveTeardown) liveTeardown();
-				try {
-					if (queuePromiseList[queue]) {
-						// This job's own id: queueJobId[id] belongs to whichever poll of
-						// the request was queued last.
-						queuePromiseList[queue].remove(jobId);
-					}
-				} catch (e) { /* already started or already removed */ }
-				if (queueJobId[id]?.jobId === jobId && queueJobId[id].queue === queue) delete queueJobId[id];
+				leave();
 				release();
 				outerSettled = true;
 				resolve(stoppedResult(id));
@@ -1795,6 +2175,9 @@ async function dispatchForwardRequest(
 			body_content_type: 'string',
 			expires: 'number',
 			queue: 'string',
+			/** The caller's own reference for this request, stored on its row and handed
+			 *  back by every read, so a send whose reply was lost can be found again. */
+			cref: clientReference,
 		},
 		opt?.requireSecretName ? ['clientSecretName', 'method', 'url'] : ['method', 'url'],
 	);
@@ -1848,6 +2231,8 @@ async function dispatchForwardRequest(
 					// The server accepted `notify` (an older one ignores it and says nothing).
 					let notified = res?.notify === true;
 					if (notified) noteStatusPushAck();
+					// The server echoes `cref`; kept here too so the reply always carries it.
+					if (params.cref && res.cref === undefined) res.cref = params.cref;
 					// An abort stops THIS CLIENT's poll of the request, which is what the
 					// signal has always meant here: the request is already on the server
 					// and may already be running at the destination, so it is deliberately
@@ -2191,6 +2576,12 @@ export async function forwardRequest(
 		 *  server and may already be running at the destination, so it is not cancelled:
 		 *  cancelForwardRequest is what removes it. */
 		signal?: AbortSignal;
+		/** Your own reference for this request: 1 to 64 letters, digits, "_" or "-". Stored
+		 *  on the request and handed back by the reply, forwardRequestHistory,
+		 *  forwardRequestStatus and forwardRequestRead, so a send whose reply was lost (the
+		 *  device slept, the network dropped) can be found by it instead of sent again.
+		 *  Make a new one per request. */
+		cref?: string;
 	},
 ): Promise<any | void | {
 	id: string; // request id: "stamp:entropy"
@@ -2204,6 +2595,8 @@ export async function forwardRequest(
 	realtime_group?: string;
 	/** True when `notify` was accepted: status frames will name this request. */
 	notify?: boolean;
+	/** The `cref` the request was sent with. */
+	cref?: string;
 	poll?: (arg?: { latency?: number; onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void }) => Promise<any>;
 }> {
 	if (!options || typeof options !== 'object') {
@@ -2365,6 +2758,9 @@ export async function clientSecretRequest(params: {
 	onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void;
 	onResponse?: (res: any, meta?: { executed?: number }) => void; // response callback that works on both polling request and regular.
 	onError?: (err: any) => void; // error callback that works on both pollubg request error and regular.
+	/** Your own reference for this request (1 to 64 letters, digits, "_" or "-"), stored on
+	 *  it and handed back by every read. See forwardRequest. */
+	cref?: string;
 }): Promise<any | void | {
 	id: string; // request id: "stamp:entropy"
 	status: "pending";
@@ -2377,6 +2773,8 @@ export async function clientSecretRequest(params: {
 	realtime_group?: string;
 	/** True when `notify` was accepted: status frames will name this request. */
 	notify?: boolean;
+	/** The `cref` the request was sent with. */
+	cref?: string;
 	poll?: (arg?: { latency?: number; onStream?: (chunk: string, seq: number, via?: 'socket' | 'poll') => void }) => Promise<any>;
 }> {
 	return dispatchForwardRequest.call(this, params, { requireSecretName: true });
@@ -2399,15 +2797,30 @@ export async function clientSecretRequestHistory(
 		 *  item) when a full body is actually needed. */
 		compact?: boolean;
 		/** Only rows belonging to exactly `queue`. Without it the queue lookup
-		 *  is a PREFIX range, so queue "u1" also matches "u1-bg". The filter is
-		 *  applied server-side after the range read, so a page may come back
-		 *  short (or empty) while more matches remain — keep paging by
-		 *  startKey/endOfList as usual. */
-		queue_exact?: boolean;
-		/** Drop one queue's rows from the listing — e.g. fetch a chat surface
-		 *  WITHOUT its background queue. Same short-page caveat as
+		 *  is a PREFIX range, so queue "u1" also matches "u1-bg". The server reads
+		 *  only the rows of `queue` itself (qid "<queue>|<seq>"), so other queues
+		 *  cost nothing. Rows queued before 2026-06-05, whose qid ends in
+		 *  ":<seq>" instead, are NOT listed by it: list those without
 		 *  `queue_exact`. */
+		queue_exact?: boolean;
+		/** Drop one queue's rows from the listing, for example to fetch a chat
+		 *  surface WITHOUT its background queue. Applied server-side after the
+		 *  read, so a page may come back short (or empty) while more rows remain:
+		 *  keep paging by startKey/endOfList as usual. */
 		queue_exclude?: string;
+		/** "ids": a light listing. Each row is only its id, status, times, queue and
+		 *  `cref`, with no request or response bodies, so a page stays small however
+		 *  long the conversations are. */
+		fields?: 'ids';
+		/** Only rows newer than this request id ("stamp:entropy"): what has appeared
+		 *  since the newest row you already know. */
+		after?: string;
+		/** Milliseconds this listing may take in all, see forwardRequestStatus. */
+		deadline?: number;
+		/** Do not join an identical listing already in flight. */
+		fresh?: boolean;
+		/** Aborting fails the listing with code ABORTED and takes it off the network. */
+		signal?: AbortSignal;
 	},
 	fetchOptions?: FetchOptions,
 ): Promise<
@@ -2418,6 +2831,7 @@ export async function clientSecretRequestHistory(
 	// Capture before validator strips unknown fields
 	let service = (params as any).service || this.service;
 	let owner = (params as any).owner || this.owner;
+	let transport = readTransportOptions(params as any);
 
 	params = validator.Params(
 		params,
@@ -2428,13 +2842,22 @@ export async function clientSecretRequestHistory(
 			status: ['pending', 'running', 'resolved', 'failed'],
 			// Listing modifiers (see the polling lambda): `compact` returns
 			// label/marker STUBS instead of full request/response bodies;
-			// `queue_exact` post-filters the qid prefix range to the named
-			// queue (without it, queue "u1" also matches "u1-bg");
+			// `queue_exact` reads only the named queue's rows (qid
+			// "<queue>|<seq>"; without it, queue "u1" also matches "u1-bg",
+			// and rows queued before 2026-06-05 with a ":<seq>" qid are
+			// listed only without it);
 			// `queue_exclude` drops one queue's rows from an id-prefix listing
 			// (how a chat fetches its surface WITHOUT the bg-indexing queue).
 			compact: 'boolean',
 			queue_exact: 'boolean',
 			queue_exclude: 'string',
+			fields: (v: any) => {
+				if (v !== 'ids') {
+					throw new SkapiError('"fields" should be "ids".', { code: 'INVALID_PARAMETER' });
+				}
+				return v;
+			},
+			after: 'string',
 		},
 		['url', 'method'],
 	);
@@ -2446,6 +2869,8 @@ export async function clientSecretRequestHistory(
 	if (params?.compact) his_req.compact = true;
 	if (params?.queue_exact) his_req.queue_exact = true;
 	if (params?.queue_exclude) his_req.queue_exclude = params.queue_exclude;
+	if (params?.fields) his_req.fields = params.fields;
+	if (params?.after) his_req.after = params.after;
 
 	Object.keys(his_req).forEach((k) => {
 		if (!his_req[k]) {
@@ -2471,11 +2896,11 @@ export async function clientSecretRequestHistory(
 	let res = await request.bind(this)(
 		'csr-poll',
 		his_req,
-		{ auth, fetchOptions },
+		Object.assign({ auth, fetchOptions }, transport),
 	);
 
 	res.list = res.list.map((item: any) => {
-		let result = {
+		let result: any = {
 			id: item.id,
 			status_code: item.rslv?.status_code || null,
 			response_body: item.rslv?.body || item.rslv?.truncated || null,
@@ -2483,8 +2908,9 @@ export async function clientSecretRequestHistory(
 			// `stmp` is stamped once when the request is created and never rewritten;
 			// `utmp` moves on every status change. So `created` is the request time and
 			// `updated` is the time of the latest response/status change.
-			created: item?.stmp,
-			updated: item?.utmp,
+			// A `fields: "ids"` row already names these in full.
+			created: item?.stmp ?? item?.created,
+			updated: item?.utmp ?? item?.updated,
 			// When the worker actually began executing this request. `att` is written
 			// immediately before the non-idempotent upstream call fires (it doubles as
 			// the at-most-once gate), so it is the execution start, not the enqueue
@@ -2503,8 +2929,9 @@ export async function clientSecretRequestHistory(
 			responded: typeof item?.rtmp === 'number' ? item.rtmp : undefined,
 			request_body: item?.reqbdy,
 			expires: item?.expt,
-			status: item.stts,
+			status: item.stts ?? item?.status,
 			queue_name: item?.qid,
+			cref: item?.cref,
 			// Compact-listing stubs (only present when `compact` was requested):
 			// the label line of the request, the head of the response, whether
 			// the reply carried the indexing completion marker, and the flag
@@ -2737,6 +3164,8 @@ export function clientSecretRequestStream(
 	// the stopper is published before the loop runs, and a stop must leave the room
 	// whether it arrives before, during or after the socket was joined.
 	let liveTeardown: (() => void) | null = null;
+	// Aborts the read in flight, so a stop leaves nothing of this reader on the network.
+	let abortInflight: (() => void) | null = null;
 
 	let entry: { stop: (() => void) | null; aborted: boolean; queue?: string } = {
 		stop: null,
@@ -2750,6 +3179,7 @@ export function clientSecretRequestStream(
 	let stop = () => {
 		if (ctrl.stopped) return;
 		ctrl.stopped = true;
+		if (abortInflight) abortInflight();
 		if (liveTeardown) liveTeardown();
 		release();
 		// A stop RESOLVES, matching every other poll in this file: callers await these
@@ -2794,6 +3224,8 @@ export function clientSecretRequestStream(
 
 			// Registered under the same key the dispatch path uses, so
 			// stopClientSecretPolling reaches this reader exactly as it reaches a poll.
+			// One reader per request, as for poll(): one already reading it is stopped.
+			stopRegisteredReader(ctrl.fullId);
 			activePolls[ctrl.fullId] = entry;
 
 			let cursor: StreamCursor = { seq: since };
@@ -2818,14 +3250,57 @@ export function clientSecretRequestStream(
 				});
 			}
 
+			// Waits `ms`, or less when the room says the stream ended.
+			let wait = (ms: number) => new Promise<void>((r) => {
+				let timer = setTimeout(() => { wakeWait = null; r(); }, ms);
+				wakeWait = () => { clearTimeout(timer); wakeWait = null; r(); };
+			});
+
+			// Reads that failed on the way in a row, and whether a 401 already had its one
+			// forced refresh: the same rules as poll() (2.7.0).
+			let failures = 0;
+			let refreshTried = false;
+
 			for (; ;) {
-				let result = await request.bind(this)(
-					'csr-poll',
-					{ id: ctrl.fullId, service, owner, since: cursor.seq },
-					{ auth },
-				);
+				let result: any;
+				if (auth && !this.session) {
+					// Signed out: wait for a sign in instead of signing out again each read.
+					// Checked every interval, so the first read after a sign in is not delayed.
+					await wait(latency);
+					if (ctrl.stopped) return;
+					continue;
+				}
+				let inflight = createRequestAbort();
+				abortInflight = inflight.abort;
+				try {
+					result = await request.bind(this)(
+						'csr-poll',
+						{ id: ctrl.fullId, service, owner, since: cursor.seq },
+						{ auth, fresh: true, signal: inflight.signal },
+					);
+				}
+				catch (err) {
+					if (ctrl.stopped) return;
+					let unauthorized = isUnauthorized(err);
+					if (!unauthorized && !isTransportFailure(err)) throw err;
+					failures += 1;
+					if (unauthorized && !refreshTried) {
+						refreshTried = true;
+						try {
+							await getJwtToken.call(this, { force: true });
+						} catch (e) { }
+					}
+					await wait(Math.max(latency, pollRetryDelay(latency, failures)));
+					if (ctrl.stopped) return;
+					continue;
+				}
+				finally {
+					if (abortInflight === inflight.abort) abortInflight = null;
+				}
 
 				if (ctrl.stopped) return;
+				failures = 0;
+				refreshTried = false;
 
 				if (!isPollEnvelope(result)) {
 					// A stored body rather than a status: the request was finalized, or it
@@ -2875,13 +3350,7 @@ export function clientSecretRequestStream(
 					wokenEarly = false;
 				}
 				else {
-					await new Promise<void>((r) => {
-						let timer = setTimeout(
-							() => { wakeWait = null; r(); },
-							sink && sink.warm() ? Math.max(latency, REALTIME_IDLE_POLL_MS) : latency,
-						);
-						wakeWait = () => { clearTimeout(timer); wakeWait = null; r(); };
-					});
+					await wait(sink && sink.warm() ? Math.max(latency, REALTIME_IDLE_POLL_MS) : latency);
 				}
 				if (ctrl.stopped) return;
 			}
@@ -2961,8 +3430,12 @@ export async function clientSecretRequestFinalize(
 		method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 		service?: string;
 		owner?: string;
+		/** Store only when the request has no stored result yet. When it has one, nothing
+		 *  is changed and the answer is `{ finalized: false, reason: "exists" }`, so two
+		 *  tabs settling the same turn cannot replace a complete answer with a partial one. */
+		ifAbsent?: boolean;
 	},
-): Promise<{ finalized: boolean; message: string }> {
+): Promise<{ finalized: boolean; message: string; reason?: string }> {
 	await this.__connection;
 
 	let service = options?.service || this.service;
@@ -2970,15 +3443,175 @@ export async function clientSecretRequestFinalize(
 	let auth = !!this.__user;
 	let fullId = composeRequestId(requestId, options?.url, options?.method, service);
 
+	if (options?.ifAbsent !== undefined && options.ifAbsent !== null && typeof options.ifAbsent !== 'boolean') {
+		throw new SkapiError('"ifAbsent" should be type: <boolean>.', {
+			code: 'INVALID_PARAMETER',
+		});
+	}
+
 	// `data` goes up untouched and deliberately unvalidated: there is no schema for it
 	// on either side, because neither side reads it. It is only ever stored and handed
 	// back. The one thing worth knowing is that omitting it keeps null, which reads
 	// back as a request whose answer is empty.
+	let payload: any = { id: fullId, data, service, owner };
+	// Sent only when asked, so a call without it is the same request as before.
+	if (options?.ifAbsent) payload.if_absent = true;
 	return request.bind(this)(
 		'csr-finalize',
-		{ id: fullId, data, service, owner },
+		payload,
 		{ auth },
 	);
+}
+
+/** How many requests forwardRequestStatus asks about per call to the server. */
+const STATUS_BATCH_MAX = 100;
+
+/**
+ * Reads where many forwarded requests stand, in one call per 100: status, stream position,
+ * whether a result is stored, timestamps and `cref`. No bodies, so it stays small. A
+ * strongly consistent read, so a request that just changed shows its new status.
+ *
+ * Made to be called again and again while an app shows requests as unfinished: when a page
+ * comes back from sleep or another tab, one call says what happened to all of them. A
+ * request this caller cannot see comes back as "missing" instead of failing the call.
+ *
+ * `requests` takes the full ids (as composed from the url and method) or
+ * `{ id, url, method }` with the short id. The list is in the order asked. More than 100
+ * are sent 100 at a time, one call after another.
+ *
+ * Every call is fresh (it never joins an identical read in flight) unless `fresh: false`.
+ * `deadline` bounds each call in milliseconds (TIMEOUT past it), `signal` aborts it.
+ */
+export async function forwardRequestStatus(
+	this: any,
+	requests: (string | { id: string; url?: string; method?: string })[],
+	opts?: {
+		service?: string;
+		owner?: string;
+		/** Milliseconds each call may take in all (the wait for a token included). */
+		deadline?: number;
+		/** Default true: never join an identical read in flight. */
+		fresh?: boolean;
+		signal?: AbortSignal;
+	},
+): Promise<{ list: ForwardRequestStatus[]; [key: string]: any }> {
+	if (!Array.isArray(requests)) {
+		throw new SkapiError('"requests" should be an array of request ids or { id, url, method }.', {
+			code: 'INVALID_PARAMETER',
+		});
+	}
+	let transport = readTransportOptions(opts, true);
+
+	await this.__connection;
+
+	let service = opts?.service || this.service;
+	let owner = opts?.owner || this.owner;
+	let auth = !!this.__user;
+
+	let ids = requests.map((r) => {
+		if (typeof r === 'string') return composeRequestId(r, undefined, undefined, service);
+		if (!r || typeof r !== 'object') {
+			throw new SkapiError('"requests" should be an array of request ids or { id, url, method }.', {
+				code: 'INVALID_PARAMETER',
+			});
+		}
+		return composeRequestId(r.id, r.url, r.method, service);
+	});
+
+	let out: { list: ForwardRequestStatus[]; [key: string]: any } = { list: [] };
+	for (let i = 0; i < ids.length; i += STATUS_BATCH_MAX) {
+		let res = await request.bind(this)(
+			'csr-poll',
+			{ ids: ids.slice(i, i + STATUS_BATCH_MAX), service, owner },
+			Object.assign({ auth }, transport),
+		);
+		// Anything else the server reports beside the list (queue counters) is kept.
+		for (let k in res || {}) {
+			if (k !== 'list' && !(k in out)) out[k] = res[k];
+		}
+		if (Array.isArray(res?.list)) out.list.push(...res.list);
+	}
+	return out;
+}
+
+/**
+ * The counters of up to 20 queues: `{ queues: { [name]: { cnt, rct, seq, in_queue } } }`.
+ * `rct` grows whenever a request on the queue finishes and `seq` whenever one is added,
+ * so a page that watches many unfinished requests can read these on every tick (each is
+ * a few bytes) and read the requests themselves only when a counter moved. A queue that
+ * never had a request is left out. Fresh by default; `deadline` and `signal` as for
+ * forwardRequestStatus.
+ */
+export async function forwardRequestQueueCounters(
+	this: any,
+	queues: string[],
+	opts?: {
+		service?: string;
+		owner?: string;
+		deadline?: number;
+		fresh?: boolean;
+		signal?: AbortSignal;
+	},
+): Promise<{ queues: { [name: string]: { cnt: number; rct: number; seq: number; in_queue: number } } }> {
+	if (!Array.isArray(queues) || !queues.length || queues.length > 20 || queues.some((q) => typeof q !== 'string' || !q || q.includes(':'))) {
+		throw new SkapiError('"queues" should be an array of 1 to 20 queue names.', { code: 'INVALID_PARAMETER' });
+	}
+	let transport = readTransportOptions(opts, true);
+	await this.__connection;
+	let service = opts?.service || this.service;
+	let owner = opts?.owner || this.owner;
+	let res = await request.bind(this)('csr-poll', { queues, service, owner }, Object.assign({ auth: !!this.__user }, transport));
+	return { queues: (res && typeof res.queues === 'object' && res.queues) || {} };
+}
+
+/**
+ * Reads one forwarded request in full, always in the same shape: `{ id, status, body?,
+ * error?, chunks?, ... }`, whatever state it is in. Unlike a poll, a resolved request does
+ * not come back as its bare body, so the status is always there to read, and a failed
+ * streamed request comes back with the text that arrived before it failed.
+ *
+ * `since` (a chunk sequence, 0 for the beginning) also returns a streamed request's text
+ * after that point, with `more: true` when there is more than one read returns. A stored
+ * result that cannot be loaded right now comes back as `body_unavailable: true` instead of
+ * failing the read.
+ *
+ * Fresh by default (never joins an identical read in flight); `deadline` and `signal` as
+ * for forwardRequestStatus.
+ */
+export async function forwardRequestRead(
+	this: any,
+	params: {
+		/** The request id ("stamp:entropy") with `url` and `method`, or a full id alone. */
+		id: string;
+		url?: string;
+		method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
+		since?: number;
+		service?: string;
+		owner?: string;
+		deadline?: number;
+		fresh?: boolean;
+		signal?: AbortSignal;
+	},
+): Promise<ForwardRequestEnvelope> {
+	if (!params || typeof params !== 'object') {
+		throw new SkapiError('"params" should be type: <object>.', { code: 'INVALID_PARAMETER' });
+	}
+	if (params.since !== undefined && params.since !== null && (typeof params.since !== 'number' || !Number.isFinite(params.since))) {
+		throw new SkapiError('"since" should be a number.', { code: 'INVALID_PARAMETER' });
+	}
+	let transport = readTransportOptions(params, true);
+
+	await this.__connection;
+
+	let service = params.service || this.service;
+	let owner = params.owner || this.owner;
+	let auth = !!this.__user;
+	let fullId = composeRequestId(params.id, params.url, params.method, service);
+
+	let payload: any = { id: fullId, envelope: true, service, owner };
+	if (typeof params.since === 'number') payload.since = Math.max(0, params.since);
+
+	return request.bind(this)('csr-poll', payload, Object.assign({ auth }, transport));
 }
 
 /* ------------------------------------------------------------------ *
