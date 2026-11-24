@@ -353,6 +353,7 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
             referencing_limit: null,
             prevent_multiple_referencing: false,
             can_remove_referencing_records: false,
+            can_modify_referencing_records: false,
             only_granted_can_reference: false,
         },
         ip: '',
@@ -374,6 +375,14 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
     }
     const keys = {
         'ip': (r: string) => {
+            // The address part is redacted for anyone but the uploader, the project owner
+            // and admins in access group 99: it comes back empty ("R#<unique_id>",
+            // "#<unique_id>" or "") for a signed-in uploader and as 0-0-0-0 for an
+            // anonymous one, so the anonymous check below still holds and the readonly
+            // flag and unique_id are still read. Guard against a missing value as well.
+            if (typeof r !== 'string') {
+                r = '';
+            }
             // Stored as "<ip>[R]#<unique_id>". Only the FIRST '#' is the delimiter —
             // the unique_id itself may contain '#' (e.g. a "src::<path>" id built
             // from a file path), so rejoin everything after it instead of taking
@@ -647,7 +656,17 @@ export async function normalizeRecord(record: Record<string, any>, _called_from?
         'prv_acs': (r: { [key: string]: string }) => {
             for (let k in r) {
                 let subscription_config = ['notify_subscribers', 'upload_to_feed', 'feed_referencing_records', 'notify_referencing_records'];
-                if (subscription_config.includes(k)) {
+                if (k === 'upb') {
+                    // Not a source setting: the user id of whoever last updated this record
+                    // when that was not its uploader (the referenced record's owner through
+                    // can_modify_referencing_records, the project owner or an admin). The
+                    // backend keeps it in prv_acs because prv_acs is projected into every
+                    // index; it drops the key once the uploader updates the record again.
+                    if (typeof r[k] === 'string' && r[k]) {
+                        output.updated_by = r[k];
+                    }
+                }
+                else if (subscription_config.includes(k)) {
                     output.table.subscription[k] = r[k];
                 }
                 else if (k === 'referencing_index_restrictions' && Array.isArray(r[k])) {
@@ -1919,6 +1938,7 @@ function setupPostRecordConfig(config: PostRecordConfig & { data?: any; }) {
             },
             prevent_multiple_referencing: 'boolean',
             can_remove_referencing_records: 'boolean',
+            can_modify_referencing_records: 'boolean',
             only_granted_can_reference: 'boolean',
             allow_granted_to_grant_others: 'boolean',
             referencing_index_restrictions: v => {

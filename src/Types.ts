@@ -221,6 +221,12 @@ export type PostRecordConfig = {
         referencing_limit?: number; // Default: null (Infinite)
         prevent_multiple_referencing?: boolean; // If true, a single user can reference this record only once.
         can_remove_referencing_records?: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
+        /**
+         * When true, the owner of this record can update the "data", "tags" and "index" of any record that references it,
+         * or unlink it with reference: null. Nothing else of the referencing record can be changed this way.
+         * Can be turned on only when the record is created (or later by the project owner / access group 99), and turned off at any time.
+         */
+        can_modify_referencing_records?: boolean;
         only_granted_can_reference?: boolean; // When true, only the user who has granted private access to the record can reference this record.
         /** Index restrictions for referencing records. null removes all restrictions. */
         referencing_index_restrictions?: {
@@ -328,6 +334,7 @@ export type RecordData = {
         referencing_limit: number; // Default: null (Infinite)
         prevent_multiple_referencing: boolean; // If true, a single user can reference this record only once.
         can_remove_referencing_records: boolean; // When true, owner of the record can remove any record that are referencing this record. Also when this record is deleted, all the record referencing this record will be deleted.
+        can_modify_referencing_records: boolean; // When true, owner of the record can update the data, tags and index of any record that references it, or unlink it with reference: null.
         only_granted_can_reference: boolean; // When true, only the user who has granted private access to the record can reference this record.
         referencing_index_restrictions?: {
             name: string; // Allowed index name
@@ -344,8 +351,15 @@ export type RecordData = {
     data?: Record<string, any>;
     tags?: string[];
     bin: { [key: string]: BinaryFile[] };
+    /** Uploader's IP address. Returned only to the uploader, the project owner and admins in access group 99; for anyone else it is '' ('0.0.0.0' for a record posted by a signed-out user). */
     ip: string;
     readonly: boolean;
+    /**
+     * user_id of the user who last updated this record when that was not its uploader
+     * (the owner of the referenced record through source.can_modify_referencing_records, the project owner or an admin).
+     * Absent when the uploader made the last update.
+     */
+    updated_by?: string;
     /**
      * Present ONLY on an element of a postRecords() result that the backend refused.
      * Such an element is an empty record (record_id is ""), and this carries the reason

@@ -1,6 +1,6 @@
 {
   "name": "skapi-js",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Serverless Backend API for Web Developers.",
   "main": "dist/skapi.cjs",
   "browser": "dist/skapi.browser.mjs",
@@ -24,6 +24,7 @@
   "scripts": {
     "build": "npx tsup && node -e \"require('fs').rmSync('dist/skapi.d.mts',{force:true})\" && node ./src/main/typedoc.js",
     "test:node-imports": "node ./tests/node-import-compatibility.cjs",
+    "test:records": "node ./tests/referencing-owner-rights.cjs",
     "dev": "npx bns 4000"
   },
   "repository": {
