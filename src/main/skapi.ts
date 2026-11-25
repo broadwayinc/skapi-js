@@ -3110,6 +3110,11 @@ export default class Skapi {
 	}
 	/**
 	 * Lists current private record access grants.
+	 * Only users with access to the data can list: a record's grants by its uploader, the users it was
+	 * shared with, the users with private access to the record it references, the project owner and
+	 * admins in access group 99; a user's grants (user_id alone) by that user, the project owner and
+	 * admins in access group 99. Anyone else gets INVALID_REQUEST "User has no access to list the
+	 * private access of this record." (or "... of this user.").
 	 * @param params Request parameters.
 	 * @returns A promise that resolves to Promise<DatabaseResponse<{ record_id: string; user_id: string; }>>.
 	 */
@@ -3127,6 +3132,9 @@ export default class Skapi {
 	 * Requests a temporary access key for reading a private record.
 	 * The key is valid for 1 hour. A cached key is returned until it is within a minute of
 	 * expiring, then a fresh one is requested.
+	 * With reference_id, the key is given only when record_id references reference_id directly
+	 * and the user uploaded reference_id or was granted private access to it, or when the user
+	 * was granted record_id itself.
 	 * @param params Request parameters.
 	 * @returns A promise that resolves to Promise<string>.
 	 */
